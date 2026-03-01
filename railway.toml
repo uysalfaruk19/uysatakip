@@ -7,3 +7,4 @@ healthcheckPath = "/health.php"
 healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 5
+# deploy-trigger: 2026-03-01 22:07:47 UTC
