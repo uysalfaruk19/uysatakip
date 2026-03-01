@@ -785,6 +785,74 @@
 <body>
 
 <!-- ════════ UYSA LOGIN OVERLAY ════════ -->
+
+<style id="uysa-modal-styles">
+/* ── Kullanıcı Yönetimi & Audit Log Modal ── */
+#uysaUserMgmtModal,
+#uysaAuditModal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.55);
+  z-index: 9998;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  overflow-y: auto;
+}
+#uysaUserMgmtModal.active,
+#uysaAuditModal.active {
+  display: flex;
+}
+.umgmt-card,
+.audit-card {
+  background: #fff;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 700px;
+  max-height: 88vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 60px rgba(0,0,0,.25);
+}
+.audit-card { max-width: 860px; }
+.umgmt-head,
+.audit-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 22px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8faff;
+  border-radius: 16px 16px 0 0;
+  flex-shrink: 0;
+}
+.umgmt-head h3,
+.audit-head h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+}
+.umgmt-close {
+  background: none;
+  border: none;
+  font-size: 22px;
+  color: #6b7280;
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 6px;
+  transition: background .15s;
+}
+.umgmt-close:hover { background: #f1f5f9; }
+.umgmt-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 22px;
+}
+</style>
 <style id="uysa-login-styles">
 /* ═══════════════════════════════════════
    UYSA LOGIN OVERLAY – v3.0 Styles
@@ -10233,9 +10301,18 @@ Saygılarımızla,
 
 
   // ── Global erişim için window'a expose et ──────────────────
-  window.uysaDoLogin   = uysaDoLogin;
-  window.uysaCheckAuth = uysaCheckAuth;
-  window.uysaLogout    = uysaLogout;
+  window.uysaDoLogin        = uysaDoLogin;
+  window.uysaCheckAuth      = uysaCheckAuth;
+  window.uysaLogout         = uysaLogout;
+  // ── Modal & panel fonksiyonları ──────────────────────────────────
+  window.toggleUserPanel    = toggleUserPanel;
+  window.openUserMgmt       = openUserMgmt;
+  window.openAuditLog       = openAuditLog;
+  window.addNewUser         = addNewUser;
+  window.toggleUserActive   = toggleUserActive;
+  window.editUser           = editUser;
+  window.uysaChangePassword = uysaChangePassword;
+  window._filterAudit       = typeof _filterAudit === 'function' ? _filterAudit : function(){};
 })();
 
 
