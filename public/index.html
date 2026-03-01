@@ -7448,25 +7448,30 @@ const UYSA_DEFAULT_USERS = [
 
 // ── Kullanıcı listesi (localStorage) ─────────────────────
 function _getUsers() {
-  // Migration: clean up old v3 key
-  try { localStorage.removeItem('uysa_users_v3'); } catch(e){}
+  const USER_KEY = 'uysa_users_v5';
+  // Tek seferlik migrasyon: eski bozuk verileri temizle (v3 + v4)
+  if (!localStorage.getItem('uysa_migrated_to_v5')) {
+    try { localStorage.removeItem('uysa_users_v3'); } catch(e){}
+    try { localStorage.removeItem('uysa_users_v4'); } catch(e){}
+    try { localStorage.removeItem('uysa_users_v5'); } catch(e){}
+    try { localStorage.setItem('uysa_migrated_to_v5', '1'); } catch(e){}
+  }
   try {
-    const raw = localStorage.getItem('uysa_users_v4');
+    const raw = localStorage.getItem(USER_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      // Hash format kontrolu: eski veri temizle
-      const validHash = parsed.every(u => u.passwordHash && u.passwordHash.startsWith('uysa_'));
-      if (validHash) return parsed;
-      // Eski/bozuk veri - sil ve varsayilana don
-      localStorage.removeItem('uysa_users_v4');
+      // Hash format + superadmin butunluk kontrolu
+      const validFmt = parsed.every(u => u.passwordHash && u.passwordHash.startsWith('uysa_'));
+      const adminOk  = parsed.some(u => u.role === 'superadmin' && u.active);
+      if (validFmt && adminOk) return parsed;
+      localStorage.removeItem(USER_KEY);
     }
   } catch(e) {}
-  // İlk kez: varsayılan kullanıcıları yükle
-  localStorage.setItem('uysa_users_v4', JSON.stringify(UYSA_DEFAULT_USERS));
+  localStorage.setItem(USER_KEY, JSON.stringify(UYSA_DEFAULT_USERS));
   return UYSA_DEFAULT_USERS;
 }
 function _saveUsers(users) {
-  localStorage.setItem('uysa_users_v4', JSON.stringify(users));
+  localStorage.setItem('uysa_users_v5', JSON.stringify(users));
 }
 
 // ── Oturum ───────────────────────────────────────────────
