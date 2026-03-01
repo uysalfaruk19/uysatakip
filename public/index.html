@@ -575,12 +575,14 @@
 
   localStorage.setItem = function (key, value) {
     _orig.setItem(key, value);
-    if (key.startsWith(CFG.prefix)) queueWrite(key, value);
+    // Auth/kullanıcı anahtarlarını sunucuya YAZMA — güvenlik
+    if (key.startsWith(CFG.prefix) && !/^uysa_(users_|migrated_|session|audit_logs)/.test(key)) queueWrite(key, value);
   };
 
   localStorage.removeItem = function (key) {
     _orig.removeItem(key);
-    if (key.startsWith(CFG.prefix)) api('delete', { key });
+    // Auth/kullanıcı anahtarlarını sunucudan SILME — güvenlik
+    if (key.startsWith(CFG.prefix) && !/^uysa_(users_|migrated_|session|audit_logs)/.test(key)) api('delete', { key });
   };
 
   // ── Sayfa açılışında sunucudan yükle ───────────────────────
@@ -595,8 +597,11 @@
       return;
     }
 
+    // Auth/kullanıcı anahtarlarını sunucudan YÜKLEME — güvenlik + bütünlük
+    const AUTH_SKIP = /^uysa_(users_|migrated_|session|audit_logs)/;
     let loaded = 0;
     for (const [key, value] of Object.entries(result.data || {})) {
+      if (AUTH_SKIP.test(key)) continue;   // kullanıcı & oturum verisini atla
       _orig.setItem(key, value);
       loaded++;
     }
