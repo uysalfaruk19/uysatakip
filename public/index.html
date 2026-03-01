@@ -7500,23 +7500,42 @@ function uysaDoLogin() {
   const p = (document.getElementById('loginPass')?.value || '').trim();
   const err = document.getElementById('loginError');
   if (!u || !p) { err.textContent='Kullanıcı adı ve şifre gereklidir!'; err.classList.add('show'); return; }
-  const users = _getUsers();
-  const user = users.find(x => x.username.toLowerCase() === u.toLowerCase() && x.active);
-  if (!user || user.passwordHash !== _uysaHash(p)) {
+
+  // ── ADIM 1: Her zaman önce varsayılan kullanıcıları dene (localStorage bypass) ──
+  const computedHash = _uysaHash(p);
+  let matchedUser = UYSA_DEFAULT_USERS.find(
+    x => x.username.toLowerCase() === u.toLowerCase() && x.active && x.passwordHash === computedHash
+  );
+
+  // ── ADIM 2: Varsayılanlarda bulunamadıysa localStorage'a bak ──
+  if (!matchedUser) {
+    try {
+      const stored = _getUsers();
+      matchedUser = stored.find(
+        x => x.username.toLowerCase() === u.toLowerCase() && x.active && x.passwordHash === computedHash
+      );
+    } catch(e) { console.warn('[UYSA] _getUsers error:', e); }
+  }
+
+  // ── ADIM 3: Hala bulunamadıysa hata göster ──
+  if (!matchedUser) {
+    // Debug: Hash bilgisi göster (geliştirme)
     err.textContent = 'Kullanıcı adı veya şifre hatalı!';
     err.classList.add('show');
-    // Audit log - başarısız giriş
-    _auditLog('login_failed', 'LOGIN', `Başarısız giriş: ${u}`);
+    console.warn('[UYSA-LOGIN] user='+u+' computedHash='+computedHash+
+      ' defaultHashes='+UYSA_DEFAULT_USERS.map(x=>x.username+':'+x.passwordHash).join('|'));
+    _auditLog('login_failed', 'LOGIN', 'Başarısız giriş: ' + u);
     return;
   }
+
+  // ── ADIM 4: Giriş başarılı ──
   err.classList.remove('show');
-  try { _setSession(user); } catch(e) { console.warn('[UYSA] _setSession error:', e); }
-  // Audit log - başarılı giriş
-  _auditLog('login', 'LOGIN', `Giriş yapıldı: ${user.displayName}`, user.username);
+  try { _setSession(matchedUser); } catch(e) { console.warn('[UYSA] _setSession error:', e); }
+  _auditLog('login', 'LOGIN', 'Giriş yapıldı: ' + matchedUser.displayName, matchedUser.username);
   const overlay = document.getElementById('uysaLoginOverlay');
   if (overlay) overlay.classList.remove('active');
   try { _updateUserBadge(); } catch(e) {}
-  if (typeof toast === 'function') toast(`👋 Hoş geldiniz, ${user.displayName}!`);
+  if (typeof toast === 'function') toast('👋 Hoş geldiniz, ' + matchedUser.displayName + '!');
 }
 
 // ── Çıkış ────────────────────────────────────────────────
