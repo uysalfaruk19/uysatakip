@@ -1,4 +1,4 @@
-name: UYSA ERP — CI Kontrol
+name: UYSA ERP — CI/CD Pipeline
 
 on:
   push:
@@ -7,28 +7,31 @@ on:
     branches: [ main ]
 
 jobs:
+  # ════════════════════════════════════════════════
+  # JOB 1: Doğrulama
+  # ════════════════════════════════════════════════
   validate:
-    name: 📋 Dosya Doğrulama
+    name: 📋 Dosya & Syntax Doğrulama
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: 🐘 PHP Syntax Kontrolü
         run: |
-          php -l public/uysa_api.php
-          php -l public/health.php
-          echo "✅ PHP syntax geçerli"
+          php -l public/uysa_api.php   && echo "✅ uysa_api.php syntax OK"
+          php -l public/health.php     && echo "✅ health.php syntax OK"
 
       - name: 📁 Gerekli Dosya Kontrolü
         run: |
-          test -f public/index.html   && echo "✅ index.html"   || exit 1
-          test -f public/uysa_api.php && echo "✅ uysa_api.php" || exit 1
-          test -f public/.htaccess    && echo "✅ .htaccess"    || exit 1
-          test -f Dockerfile          && echo "✅ Dockerfile"   || exit 1
-          test -f railway.toml        && echo "✅ railway.toml" || exit 1
-          test -f sql/schema.sql      && echo "✅ schema.sql"   || exit 1
+          test -f public/index.html       && echo "✅ index.html" || exit 1
+          test -f public/uysa_api.php     && echo "✅ uysa_api.php" || exit 1
+          test -f public/uysa_migrate.html && echo "✅ uysa_migrate.html" || exit 1
+          test -f public/.htaccess        && echo "✅ .htaccess" || exit 1
+          test -f Dockerfile              && echo "✅ Dockerfile" || exit 1
+          test -f railway.toml            && echo "✅ railway.toml" || exit 1
+          test -f sql/schema.sql          && echo "✅ schema.sql" || exit 1
 
-      - name: 🔒 Güvenlik Kontrolü — .env commit yok
+      - name: 🔒 Güvenlik — .env commit yok
         run: |
           if git log --all --full-history -- '.env' | grep -q commit; then
             echo "❌ .env dosyası git geçmişinde bulundu!"
@@ -36,16 +39,33 @@ jobs:
           fi
           echo "✅ .env git geçmişinde yok"
 
+      - name: 🔒 Güvenlik — Token/şifre sızıntı kontrolü
+        run: |
+          # Hardcoded token/şifre kontrolü
+          if grep -r "password_hash\|DB_PASS=\|API_TOKEN=" public/index.html 2>/dev/null | grep -v "getenv\|change_me\|example\|hash\|//"; then
+            echo "⚠️  Potansiyel credential tespit edildi - kontrol edin"
+          fi
+          echo "✅ Güvenlik taraması tamamlandı"
+
       - name: 📊 Dosya Boyutu Kontrolü
         run: |
           SIZE=$(wc -c < public/index.html)
-          echo "index.html boyutu: ${SIZE} byte"
-          if [ "$SIZE" -lt 100000 ]; then
-            echo "❌ index.html çok küçük — bozuk olabilir"
+          echo "index.html boyutu: ${SIZE} byte ($(echo "$SIZE / 1024" | bc) KB)"
+          if [ "$SIZE" -lt 500000 ]; then
+            echo "❌ index.html çok küçük — bozuk olabilir (min 500KB)"
             exit 1
           fi
           echo "✅ Dosya boyutu geçerli"
 
+      - name: ✅ Kullanıcı sistemi kontrolü
+        run: |
+          grep -q "uysaLoginOverlay" public/index.html && echo "✅ Login overlay var" || echo "⚠️ Login overlay yok"
+          grep -q "uysaDoLogin" public/index.html && echo "✅ Login fonksiyonu var" || echo "⚠️ Login fonksiyonu yok"
+          grep -q "_auditLog" public/index.html && echo "✅ Audit log var" || echo "⚠️ Audit log yok"
+
+  # ════════════════════════════════════════════════
+  # JOB 2: Docker Build Test
+  # ════════════════════════════════════════════════
   docker:
     name: 🐳 Docker Build Testi
     runs-on: ubuntu-latest
@@ -55,5 +75,51 @@ jobs:
 
       - name: 🔨 Docker Image Build
         run: |
-          docker build -t uysa-erp:test .
+          docker build -t uysa-erp:ci-${{ github.sha }} .
           echo "✅ Docker image başarıyla oluşturuldu"
+
+      - name: 🔍 Container Health Check
+        run: |
+          docker run -d --name uysa-test \
+            -e DB_HOST=localhost \
+            -e DB_PORT=3306 \
+            -e DB_NAME=uysa_db \
+            -e DB_USER=root \
+            -e DB_PASS=test \
+            -e API_TOKEN=test_token_ci \
+            -p 8080:80 \
+            uysa-erp:ci-${{ github.sha }}
+          sleep 5
+          # index.html erişilebilir mi?
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/)
+          echo "HTTP response: $HTTP_CODE"
+          if [ "$HTTP_CODE" != "200" ]; then
+            docker logs uysa-test
+            echo "❌ Container sağlıklı değil"
+            exit 1
+          fi
+          echo "✅ Container başarıyla çalışıyor"
+          docker stop uysa-test && docker rm uysa-test
+
+  # ════════════════════════════════════════════════
+  # JOB 3: Railway Deploy Tetikle (sadece main push)
+  # ════════════════════════════════════════════════
+  notify:
+    name: 📢 Deploy Bildirimi
+    runs-on: ubuntu-latest
+    needs: [validate, docker]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: 🚀 Railway Deploy Tetiklendi
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🚀 UYSA ERP v3.0 — Railway Deploy Tetiklendi!"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Commit: ${{ github.sha }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Yapan:  ${{ github.actor }}"
+          echo "Mesaj:  ${{ github.event.head_commit.message }}"
+          echo "Zaman:  $(date '+%Y-%m-%d %H:%M:%S UTC')"
+          echo ""
+          echo "Railway otomatik olarak bu commit'i deploy edecek."
+          echo "Railway dashboard: https://railway.app"
