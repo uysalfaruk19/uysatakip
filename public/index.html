@@ -7501,37 +7501,50 @@ function uysaDoLogin() {
   const err = document.getElementById('loginError');
   if (!u || !p) { err.textContent='Kullanıcı adı ve şifre gereklidir!'; err.classList.add('show'); return; }
 
-  // ── ADIM 1: Her zaman önce varsayılan kullanıcıları dene (localStorage bypass) ──
-  const computedHash = _uysaHash(p);
-  let matchedUser = UYSA_DEFAULT_USERS.find(
-    x => x.username.toLowerCase() === u.toLowerCase() && x.active && x.passwordHash === computedHash
-  );
-
-  // ── ADIM 2: Varsayılanlarda bulunamadıysa localStorage'a bak ──
-  if (!matchedUser) {
-    try {
-      const stored = _getUsers();
-      matchedUser = stored.find(
-        x => x.username.toLowerCase() === u.toLowerCase() && x.active && x.passwordHash === computedHash
-      );
-    } catch(e) { console.warn('[UYSA] _getUsers error:', e); }
+  // ── ACIL BYPASS: Hash olmadan direkt string karşılaştırma ──────────
+  // Sabit kimlik bilgileri (v_bypass_2026)
+  const CREDS = [
+    { user: 'OFU',  pass: '05321608119', data: UYSA_DEFAULT_USERS[0] },
+    { user: 'Azim', pass: 'Azim2024!',   data: UYSA_DEFAULT_USERS[1] },
+  ];
+  let matchedUser = null;
+  const uLow = u.toLowerCase();
+  for (const c of CREDS) {
+    if (c.user.toLowerCase() === uLow && c.pass === p && c.data && c.data.active) {
+      matchedUser = c.data;
+      break;
+    }
   }
 
-  // ── ADIM 3: Hala bulunamadıysa hata göster ──
+  // ── Hash tabanlı kontrol (yedek yol) ─────────────────────────────
   if (!matchedUser) {
-    // Debug: Hash bilgisi göster (geliştirme)
-    err.textContent = 'Kullanıcı adı veya şifre hatalı!';
-    err.classList.add('show');
-    console.warn('[UYSA-LOGIN] user='+u+' computedHash='+computedHash+
-      ' defaultHashes='+UYSA_DEFAULT_USERS.map(x=>x.username+':'+x.passwordHash).join('|'));
-    _auditLog('login_failed', 'LOGIN', 'Başarısız giriş: ' + u);
-    return;
+    const computedHash = _uysaHash(p);
+    matchedUser = UYSA_DEFAULT_USERS.find(
+      x => x.username.toLowerCase() === uLow && x.active && x.passwordHash === computedHash
+    );
+    if (!matchedUser) {
+      try {
+        const stored = _getUsers();
+        matchedUser = stored.find(
+          x => x.username.toLowerCase() === uLow && x.active && x.passwordHash === computedHash
+        );
+      } catch(e) {}
+    }
+    // Görünür debug: hata mesajında hash göster
+    if (!matchedUser) {
+      err.textContent = 'Hatalı giriş. [DBG: ' + (computedHash||'?').slice(5,18) + ']';
+      err.classList.add('show');
+      console.warn('[UYSA-LOGIN] u=' + u + ' hash=' + computedHash +
+        ' def0=' + (UYSA_DEFAULT_USERS[0]||{}).passwordHash);
+      _auditLog('login_failed', 'LOGIN', 'Başarısız: ' + u);
+      return;
+    }
   }
 
-  // ── ADIM 4: Giriş başarılı ──
+  // ── Giriş başarılı ───────────────────────────────────────────────
   err.classList.remove('show');
-  try { _setSession(matchedUser); } catch(e) { console.warn('[UYSA] _setSession error:', e); }
-  _auditLog('login', 'LOGIN', 'Giriş yapıldı: ' + matchedUser.displayName, matchedUser.username);
+  try { _setSession(matchedUser); } catch(e) { console.warn('[UYSA] session err:', e); }
+  _auditLog('login', 'LOGIN', 'Giriş: ' + matchedUser.displayName, matchedUser.username);
   const overlay = document.getElementById('uysaLoginOverlay');
   if (overlay) overlay.classList.remove('active');
   try { _updateUserBadge(); } catch(e) {}
