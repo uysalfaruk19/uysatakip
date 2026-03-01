@@ -10230,84 +10230,22 @@ if (typeof window.UYSA_JS_V61_LOADED === 'undefined') {
 // ─────────────────────────────────────────
 const USERS = {
   'Azim': { hash: btoa('Azim2024!'), role: 'editor', display: 'Azim' },
-  'OFU':  { hash: btoa('OFU2024Admin!'), role: 'admin', display: 'OFU Admin' }
+  'OFU':  { hash: btoa('05321608119'), role: 'admin', display: 'OFU Admin' }
 };
 let currentUser = null;
 let currentRole  = null;
 
 // Login ekranı oluştur
-(function createLoginScreen() {
-  const ls = document.createElement('div');
-  ls.id = 'loginScreen';
-  ls.style.cssText = 'position:fixed;inset:0;background:linear-gradient(135deg,#1a56db 0%,#0b3aa6 100%);display:flex;align-items:center;justify-content:center;z-index:99999';
-  ls.innerHTML = `
-    <div style="background:#fff;border-radius:16px;padding:40px 36px;width:340px;box-shadow:0 20px 60px rgba(0,0,0,.25)">
-      <div style="text-align:center;margin-bottom:24px">
-        <div style="font-size:36px;margin-bottom:8px">🍽️</div>
-        <h2 style="margin:0;color:#1a56db;font-size:20px">UYSA v61</h2>
-        <p style="margin:4px 0 0;color:#6b7280;font-size:13px">Yemek Sektörü Yönetim Sistemi</p>
-      </div>
-      <div style="margin-bottom:14px">
-        <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:6px">Kullanıcı Adı</label>
-        <input id="loginUser" class="inp" placeholder="Kullanıcı adını girin" style="width:100%"
-          onkeydown="if(event.key==='Enter') document.getElementById('loginPass').focus()"/>
-      </div>
-      <div style="margin-bottom:20px">
-        <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:6px">Şifre</label>
-        <input id="loginPass" class="inp" type="password" placeholder="Şifrenizi girin" style="width:100%"
-          onkeydown="if(event.key==='Enter') window.doLogin()"/>
-      </div>
-      <button onclick="window.doLogin()" style="width:100%;background:#1a56db;color:#fff;border:none;border-radius:8px;padding:12px;font-size:15px;font-weight:700;cursor:pointer">🔐 Giriş Yap</button>
-      <div id="loginErr" style="display:none;margin-top:12px;color:#dc2626;font-size:13px;text-align:center;background:#fef2f2;padding:8px;border-radius:6px">❌ Hatalı kullanıcı adı veya şifre!</div>
-    </div>`;
-  document.body.appendChild(ls);
+// [v61 login screen DISABLED — main uysaLoginOverlay is used instead]
 
-  // Önceki oturumu kontrol et
-  try {
-    const s = JSON.parse(sessionStorage.getItem('uysa_session') || '{}');
-    if (s.user && USERS[s.user] && s.hash === USERS[s.user].hash) {
-      ls.style.display = 'none';
-      currentUser = s.user;
-      currentRole  = USERS[s.user].role;
-      const badge = document.getElementById('userBadge');
-      if (badge) badge.textContent = '👤 ' + USERS[s.user].display;
-      updateDeleteVisibility();
-    }
-  } catch(e) {}
-})();
+// [v61 doLogin → redirected to main uysaDoLogin]
+window.doLogin = function() { if(typeof uysaDoLogin === "function") uysaDoLogin(); };
 
-window.doLogin = function() {
-  const user = (document.getElementById('loginUser')?.value || '').trim();
-  const pass  =  document.getElementById('loginPass')?.value || '';
-  const err   =  document.getElementById('loginErr');
-  if (USERS[user] && USERS[user].hash === btoa(pass)) {
-    sessionStorage.setItem('uysa_session', JSON.stringify({ user, hash: USERS[user].hash }));
-    currentUser = user;
-    currentRole  = USERS[user].role;
-    const badge = document.getElementById('userBadge');
-    if (badge) badge.textContent = '👤 ' + USERS[user].display;
-    document.getElementById('loginScreen').style.display = 'none';
-    if (err) err.style.display = 'none';
-    updateDeleteVisibility();
-    renderKDS();
-    renderTumBildirimler();
-    portalMusterileriYukle();
-  } else {
-    if (err) err.style.display = 'block';
-    document.getElementById('loginPass').value = '';
-  }
-};
+// [v61 doLogout → redirected to main uysaLogout]
+window.doLogout = function() { if(typeof uysaLogout === "function") uysaLogout(); };
 
-window.doLogout = function() {
-  sessionStorage.removeItem('uysa_session');
-  currentUser = null; currentRole = null;
-  document.getElementById('loginScreen').style.display = 'flex';
-  const badge = document.getElementById('userBadge');
-  if (badge) badge.textContent = 'v61';
-};
-
-window.getCurrentUser = function() { return currentUser; };
-window.canDelete = function() { return currentRole === 'admin'; };
+window.getCurrentUser = function() { try { const s=JSON.parse(sessionStorage.getItem('uysa_session')||'null'); return s ? s.username : null; } catch(e){ return null; } };
+window.canDelete = function() { try { const s=JSON.parse(sessionStorage.getItem('uysa_session')||'null'); return s && s.role==='superadmin'; } catch(e){ return false; } };
 
 function updateDeleteVisibility() {
   const show = canDelete();
