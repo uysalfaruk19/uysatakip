@@ -24,11 +24,12 @@ if (file_exists($envFile)) {
 }
 
 // ── Konfigürasyon ─────────────────────────────────────────────
+// ── DB Konfigürasyonu (öncelik: Railway ENV > kendi sunucu > localhost) ──
 define('DB_HOST',    getenv('DB_HOST')    ?: (getenv('MYSQLHOST')    ?: 'localhost'));
 define('DB_PORT',    getenv('DB_PORT')    ?: (getenv('MYSQLPORT')    ?: '3306'));
-define('DB_NAME',    getenv('DB_NAME')    ?: (getenv('MYSQLDATABASE') ?: 'uysa_db'));
-define('DB_USER',    getenv('DB_USER')    ?: (getenv('MYSQLUSER')    ?: 'root'));
-define('DB_PASS',    getenv('DB_PASS')    ?: (getenv('MYSQLPASSWORD') ?: ''));
+define('DB_NAME',    getenv('DB_NAME')    ?: (getenv('MYSQLDATABASE') ?: 'uysayeme_uysadb'));
+define('DB_USER',    getenv('DB_USER')    ?: (getenv('MYSQLUSER')    ?: 'uysayeme_wp195'));
+define('DB_PASS',    getenv('DB_PASS')    ?: (getenv('MYSQLPASSWORD') ?: 'UYS.faruk05321608119'));
 define('API_TOKEN',  getenv('API_TOKEN')  ?: 'UysaERP2026xProdKey3f7a9c1b');
 define('BACKUP_MAX', (int)(getenv('BACKUP_MAX') ?: 30));
 
