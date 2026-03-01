@@ -7296,7 +7296,6 @@ alert('Malzeme ve miktar giriniz.'); return; }
       `);
     }
   });
-})();
 
 
 
@@ -7891,131 +7890,6 @@ window.addEventListener('DOMContentLoaded', function() {
   }
   // Login overlay zaten active olarak açık, uysaCheckAuth kapatacak
 });
-</script>
-
-
-<script id="uysa-dok-server-patch">
-/* Doküman modülü dosya yükleme → sunucuya yönlendirme */
-(function() {
-  const _origBind = typeof _bindDokKaydetV77 === 'function' ? _bindDokKaydetV77 : null;
-
-  function _patchDokUpload() {
-    const btn = document.getElementById('dokKaydetBtn');
-    if (!btn || btn.dataset.serverPatched) return;
-    btn.dataset.serverPatched = '1';
-
-    btn.addEventListener('click', async function(e) {
-      const fileInput = document.getElementById('dok-dosya');
-      const file = fileInput?.files?.[0];
-      if (!file) return; // dosya seçilmemişse orijinal akış devam eder
-
-      e.stopImmediatePropagation();
-
-      const adi      = document.getElementById('dok-adi')?.value?.trim() || file.name;
-      const kategori = document.getElementById('dok-kategori')?.value || 'diger';
-      const tarih    = document.getElementById('dok-tarih')?.value || new Date().toISOString().slice(0,10);
-      const not_     = document.getElementById('dok-not')?.value?.trim() || '';
-      const sess     = typeof _getSession === 'function' ? _getSession() : {};
-
-      const status = document.getElementById('dokKaydetStatus');
-      if (status) status.innerHTML = '⏳ Sunucuya yükleniyor...';
-
-      const result = await uysaUploadFile(file, {
-        name: adi, category: kategori, date: tarih, notes: not_,
-        uploadedBy: sess?.username || 'unknown'
-      });
-
-      if (result && result.ok) {
-        if (status) status.innerHTML = `✅ <b>${file.name}</b> sunucuya yüklendi`;
-        // Ayrıca metadata'yı localStorage'a da kaydet (offline erişim için)
-        const docs = JSON.parse(localStorage.getItem('uysa_dokuman_arsiv') || '[]');
-        docs.unshift({
-          id: result.file_id || Date.now(),
-          adi, kategori, tarih, not: not_,
-          dosyaAdi: file.name,
-          dosyaBoyut: file.size,
-          serverPath: result.path || '',
-          uploadedBy: sess?.username || 'unknown',
-          kaydAt: new Date().toISOString()
-        });
-        localStorage.setItem('uysa_dokuman_arsiv', JSON.stringify(docs));
-        fileInput.value = '';
-        if (typeof _renderDokAll === 'function') _renderDokAll('');
-      } else if (result && result.local) {
-        if (status) status.innerHTML = `⚠️ Sunucu yok, dosya yerel saklandı`;
-      }
-    }, true); // capture: true → orijinalden önce çalışır
-  }
-
-  // DOM hazır olduğunda ve sekme değişimlerinde patch'le
-  document.addEventListener('DOMContentLoaded', _patchDokUpload);
-  document.addEventListener('click', function(e) {
-    if (e.target?.dataset?.module === 'dokuman') {
-      setTimeout(_patchDokUpload, 300);
-    }
-  });
-})();
-</script>
-
-
-<script id="uysa-delete-audit">
-/* Uygulama içi silme işlemlerini audit log'a ekle */
-(function() {
-  // localStorage.removeItem zaten USER_JS içinde override edildi
-  // Burada ERP modüllerindeki silme butonlarını izliyoruz
-
-  function _watchDeleteBtns() {
-    // Doküman sil
-    document.addEventListener('click', function(e) {
-      const btn = e.target?.closest('[onclick*="silDok"], [onclick*="dokSil"], [id="dokSilSecBtn"]');
-      if (btn) {
-        const sess = typeof _getSession==='function' ? _getSession() : {};
-        const row = btn.closest('tr');
-        const docName = row?.querySelector('td:first-child')?.textContent?.trim() || 'Bilinmeyen';
-        if (typeof _auditLog==='function') {
-          _auditLog('delete_document', 'DOKUMAN', `Doküman silindi: ${docName}`, sess?.username);
-        }
-      }
-
-      // Personel sil
-      const persBtn = e.target?.closest('[onclick*="personelSil"], [onclick*="silPersonel"]');
-      if (persBtn) {
-        const sess = typeof _getSession==='function' ? _getSession() : {};
-        const row = persBtn.closest('tr');
-        const name = row?.querySelector('td')?.textContent?.trim() || 'Bilinmeyen';
-        if (typeof _auditLog==='function') {
-          _auditLog('delete_employee', 'IK', `Personel silindi: ${name}`, sess?.username);
-        }
-      }
-
-      // Müşteri sil
-      const custBtn = e.target?.closest('[onclick*="musteriSil"], [onclick*="silMusteri"]');
-      if (custBtn) {
-        const sess = typeof _getSession==='function' ? _getSession() : {};
-        if (typeof _auditLog==='function') {
-          _auditLog('delete_customer', 'SATIS', `Müşteri silindi`, sess?.username);
-        }
-      }
-
-      // Finansal kayıt sil
-      const finBtn = e.target?.closest('[onclick*="finSil"], [onclick*="gelirSil"], [onclick*="giderSil"]');
-      if (finBtn) {
-        const sess = typeof _getSession==='function' ? _getSession() : {};
-        if (typeof _auditLog==='function') {
-          _auditLog('delete_finance', 'FINANS', `Finansal kayıt silindi`, sess?.username);
-        }
-      }
-    });
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', _watchDeleteBtns);
-  } else {
-    _watchDeleteBtns();
-  }
-})();
-</script>
-
 </body></html>`);
     }
     win.document.close();
@@ -10217,6 +10091,131 @@ Saygılarımızla,
 
 
 </script>
+
+
+
+<script id="uysa-dok-server-patch">
+/* Doküman modülü dosya yükleme → sunucuya yönlendirme */
+(function() {
+  const _origBind = typeof _bindDokKaydetV77 === 'function' ? _bindDokKaydetV77 : null;
+
+  function _patchDokUpload() {
+    const btn = document.getElementById('dokKaydetBtn');
+    if (!btn || btn.dataset.serverPatched) return;
+    btn.dataset.serverPatched = '1';
+
+    btn.addEventListener('click', async function(e) {
+      const fileInput = document.getElementById('dok-dosya');
+      const file = fileInput?.files?.[0];
+      if (!file) return; // dosya seçilmemişse orijinal akış devam eder
+
+      e.stopImmediatePropagation();
+
+      const adi      = document.getElementById('dok-adi')?.value?.trim() || file.name;
+      const kategori = document.getElementById('dok-kategori')?.value || 'diger';
+      const tarih    = document.getElementById('dok-tarih')?.value || new Date().toISOString().slice(0,10);
+      const not_     = document.getElementById('dok-not')?.value?.trim() || '';
+      const sess     = typeof _getSession === 'function' ? _getSession() : {};
+
+      const status = document.getElementById('dokKaydetStatus');
+      if (status) status.innerHTML = '⏳ Sunucuya yükleniyor...';
+
+      const result = await uysaUploadFile(file, {
+        name: adi, category: kategori, date: tarih, notes: not_,
+        uploadedBy: sess?.username || 'unknown'
+      });
+
+      if (result && result.ok) {
+        if (status) status.innerHTML = `✅ <b>${file.name}</b> sunucuya yüklendi`;
+        // Ayrıca metadata'yı localStorage'a da kaydet (offline erişim için)
+        const docs = JSON.parse(localStorage.getItem('uysa_dokuman_arsiv') || '[]');
+        docs.unshift({
+          id: result.file_id || Date.now(),
+          adi, kategori, tarih, not: not_,
+          dosyaAdi: file.name,
+          dosyaBoyut: file.size,
+          serverPath: result.path || '',
+          uploadedBy: sess?.username || 'unknown',
+          kaydAt: new Date().toISOString()
+        });
+        localStorage.setItem('uysa_dokuman_arsiv', JSON.stringify(docs));
+        fileInput.value = '';
+        if (typeof _renderDokAll === 'function') _renderDokAll('');
+      } else if (result && result.local) {
+        if (status) status.innerHTML = `⚠️ Sunucu yok, dosya yerel saklandı`;
+      }
+    }, true); // capture: true → orijinalden önce çalışır
+  }
+
+  // DOM hazır olduğunda ve sekme değişimlerinde patch'le
+  document.addEventListener('DOMContentLoaded', _patchDokUpload);
+  document.addEventListener('click', function(e) {
+    if (e.target?.dataset?.module === 'dokuman') {
+      setTimeout(_patchDokUpload, 300);
+    }
+  });
+})();
+</script>
+
+
+<script id="uysa-delete-audit">
+/* Uygulama içi silme işlemlerini audit log'a ekle */
+(function() {
+  // localStorage.removeItem zaten USER_JS içinde override edildi
+  // Burada ERP modüllerindeki silme butonlarını izliyoruz
+
+  function _watchDeleteBtns() {
+    // Doküman sil
+    document.addEventListener('click', function(e) {
+      const btn = e.target?.closest('[onclick*="silDok"], [onclick*="dokSil"], [id="dokSilSecBtn"]');
+      if (btn) {
+        const sess = typeof _getSession==='function' ? _getSession() : {};
+        const row = btn.closest('tr');
+        const docName = row?.querySelector('td:first-child')?.textContent?.trim() || 'Bilinmeyen';
+        if (typeof _auditLog==='function') {
+          _auditLog('delete_document', 'DOKUMAN', `Doküman silindi: ${docName}`, sess?.username);
+        }
+      }
+
+      // Personel sil
+      const persBtn = e.target?.closest('[onclick*="personelSil"], [onclick*="silPersonel"]');
+      if (persBtn) {
+        const sess = typeof _getSession==='function' ? _getSession() : {};
+        const row = persBtn.closest('tr');
+        const name = row?.querySelector('td')?.textContent?.trim() || 'Bilinmeyen';
+        if (typeof _auditLog==='function') {
+          _auditLog('delete_employee', 'IK', `Personel silindi: ${name}`, sess?.username);
+        }
+      }
+
+      // Müşteri sil
+      const custBtn = e.target?.closest('[onclick*="musteriSil"], [onclick*="silMusteri"]');
+      if (custBtn) {
+        const sess = typeof _getSession==='function' ? _getSession() : {};
+        if (typeof _auditLog==='function') {
+          _auditLog('delete_customer', 'SATIS', `Müşteri silindi`, sess?.username);
+        }
+      }
+
+      // Finansal kayıt sil
+      const finBtn = e.target?.closest('[onclick*="finSil"], [onclick*="gelirSil"], [onclick*="giderSil"]');
+      if (finBtn) {
+        const sess = typeof _getSession==='function' ? _getSession() : {};
+        if (typeof _auditLog==='function') {
+          _auditLog('delete_finance', 'FINANS', `Finansal kayıt silindi`, sess?.username);
+        }
+      }
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _watchDeleteBtns);
+  } else {
+    _watchDeleteBtns();
+  }
+})();
+</script>
+
 
 
 
