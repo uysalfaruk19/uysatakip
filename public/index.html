@@ -725,27 +725,44 @@
   // localStorage snapshot — her 10 dakikada bir IndexedDB'ye yaz
   window._uysaLocalBackup = function() {
     try {
+      // Quota fix: sadece kritik küçük anahtarları yedekle (büyük veriyi atla)
+      const BACKUP_SKIP_PATTERNS = ['uysa_fatura','uysa_is_emri','uysa_stok','uysa_siparis','uysa_audit_logs','uysa_local_backups'];
       const snap = {};
+      let totalSize = 0;
+      const MAX_BACKUP_BYTES = 512 * 1024; // 512 KB limit
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
-        if (k?.startsWith('uysa')) snap[k] = localStorage.getItem(k);
+        if (!k?.startsWith('uysa')) continue;
+        if (BACKUP_SKIP_PATTERNS.some(p => k.startsWith(p))) continue;
+        const v = localStorage.getItem(k);
+        totalSize += (v||'').length;
+        if (totalSize > MAX_BACKUP_BYTES) break;
+        snap[k] = v;
       }
       const meta = {
         ts: Date.now(),
         isoDate: new Date().toISOString(),
         keyCount: Object.keys(snap).length,
+        totalSizeKB: Math.round(totalSize/1024),
         data: snap
       };
-      // Son 3 yerel yedeği tut
+      // Son 2 yerel yedeği tut (quota tasarrufu için 3'ten 2'ye düşür)
       const backups = (() => {
         try { return JSON.parse(localStorage.getItem('uysa_local_backups') || '[]'); } catch(e) { return []; }
       })();
       backups.unshift(meta);
-      if (backups.length > 3) backups.length = 3;
-      _orig.setItem('uysa_local_backups', JSON.stringify(backups));
+      if (backups.length > 2) backups.length = 2;
+      try {
+        _orig.setItem('uysa_local_backups', JSON.stringify(backups));
+      } catch(qe) {
+        // Quota aşıldıysa sadece meta bilgisini sakla (data olmadan)
+        const metaOnly = backups.map(b => ({ ts: b.ts, isoDate: b.isoDate, keyCount: b.keyCount, totalSizeKB: b.totalSizeKB }));
+        try { _orig.setItem('uysa_local_backups', JSON.stringify(metaOnly)); } catch(e2){}
+        console.warn('[UYSA-Backup] Quota aşıldı, sadece meta kaydedildi');
+      }
       window._uysaLastLocalBackup = meta.ts;
-      window.dispatchEvent(new CustomEvent('uysa-backup-update', { detail: { local: meta.ts, keys: meta.keyCount } }));
-      if (CFG.debug) console.log('[UYSA-Backup] 💾 Yerel yedek alındı:', meta.keyCount, 'anahtar');
+      window.dispatchEvent(new CustomEvent('uysa-backup-update', { detail: { local: meta.ts, keys: meta.keyCount, sizeKB: meta.totalSizeKB } }));
+      if (CFG.debug) console.log('[UYSA-Backup] 💾 Yerel yedek alındı:', meta.keyCount, 'anahtar,', meta.totalSizeKB, 'KB');
     } catch(e) { console.warn('[UYSA-Backup] Yerel yedek hatası:', e); }
   };
 
@@ -9094,297 +9111,6 @@ window.addEventListener('DOMContentLoaded', function() {
     ${stokSatirlar?`<table><thead><tr><th>Malzeme</th><th>Mevcut</th><th>Durum</th></tr></thead><tbody>${stokSatirlar}</tbody></table>`:'<p style="color:#6b7280">Depo seçili değil veya stok kaydı yok.</p>'}
 
     <div class="footer">Bu iş emri UYSA v51 tarafından oluşturulmuştur. ${new Date().toLocaleString('tr-TR')}</div>
-    
-<!-- ════════════════ SYNC DASHBOARD MODAL ════════════════ -->
-<div id="uysaSyncDashboard" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.55);z-index:99999;align-items:center;justify-content:center;">
-  <div style="background:#fff;border-radius:20px;padding:28px 32px;width:680px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,.25);font-family:'Segoe UI',sans-serif;">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-      <h2 style="margin:0;font-size:18px;color:#0f172a">🔄 Senkronizasyon & Yedekleme Durumu</h2>
-      <button onclick="document.getElementById('uysaSyncDashboard').style.display='none'" style="background:#f1f5f9;border:none;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:13px">✕ Kapat</button>
-    </div>
-
-    <!-- Anlık Durum Kartları -->
-    <div id="syncStatusCards" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px">
-      <div class="sync-card" id="sc-server" style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:12px;padding:14px">
-        <div style="font-size:10px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:.5px">Sunucu</div>
-        <div id="sc-server-val" style="font-size:22px;font-weight:800;color:#15803d;margin:4px 0">—</div>
-        <div id="sc-server-sub" style="font-size:11px;color:#4ade80">Kontrol ediliyor...</div>
-      </div>
-      <div class="sync-card" id="sc-local" style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:12px;padding:14px">
-        <div style="font-size:10px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:.5px">Yerel</div>
-        <div id="sc-local-val" style="font-size:22px;font-weight:800;color:#2563eb;margin:4px 0">—</div>
-        <div id="sc-local-sub" style="font-size:11px;color:#60a5fa">localStorage anahtarları</div>
-      </div>
-      <div class="sync-card" id="sc-users" style="background:#fdf4ff;border:1.5px solid #e9d5ff;border-radius:12px;padding:14px">
-        <div style="font-size:10px;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:.5px">Kullanıcılar</div>
-        <div id="sc-users-val" style="font-size:22px;font-weight:800;color:#7c3aed;margin:4px 0">—</div>
-        <div id="sc-users-sub" style="font-size:11px;color:#a78bfa">MySQL kayıtları</div>
-      </div>
-    </div>
-
-    <!-- Sync Log -->
-    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px">
-      <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:10px">📋 Son Senkronizasyon Geçmişi</div>
-      <div id="syncLogList" style="font-size:12px;color:#64748b;line-height:2">
-        <div>Yükleniyor...</div>
-      </div>
-    </div>
-
-    <!-- Yedek Geçmişi -->
-    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <div style="font-size:12px;font-weight:700;color:#374151">💾 Yedekleme Geçmişi</div>
-        <button onclick="window._uysaManualBackup&&window._uysaManualBackup()" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:5px 12px;cursor:pointer;font-size:11px;font-weight:600">+ Manuel Yedek Al</button>
-      </div>
-      <div id="backupHistoryList" style="font-size:12px;color:#64748b;line-height:2">
-        <div>Yükleniyor...</div>
-      </div>
-    </div>
-
-    <!-- Aksiyonlar -->
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
-      <button onclick="window._uysaForceSync&&window._uysaForceSync()" style="background:#0f172a;color:#fff;border:none;border-radius:10px;padding:10px;cursor:pointer;font-size:12px;font-weight:700">⚡ Zorla Sync</button>
-      <button onclick="window._uysaRestoreBackup&&window._uysaRestoreBackup()" style="background:#7c3aed;color:#fff;border:none;border-radius:10px;padding:10px;cursor:pointer;font-size:12px;font-weight:700">♻️ Yedeği Geri Yükle</button>
-      <button onclick="window._uysaExportData&&window._uysaExportData()" style="background:#059669;color:#fff;border:none;border-radius:10px;padding:10px;cursor:pointer;font-size:12px;font-weight:700">📤 JSON Dışa Aktar</button>
-    </div>
-    <div id="syncDashMsg" style="margin-top:10px;font-size:12px;color:#2563eb;text-align:center;min-height:18px"></div>
-  </div>
-</div>
-
-<script>
-
-// ════════════════════════════════════════════════════════════
-// SYNC DASHBOARD — Real-time senkronizasyon paneli
-// ════════════════════════════════════════════════════════════
-(function() {
-  'use strict';
-  const API_TOKEN = 'UysaERP2026xProdKey3f7a9c1b';
-  const API_URL   = '/uysa_api.php';
-  const _log      = [];    // in-memory sync log
-  const MAX_LOG   = 50;
-
-  async function apiCall(action, body={}) {
-    try {
-      const r = await fetch(`${API_URL}?action=${action}`, {
-        method: 'POST',
-        headers: { 'Content-Type':'application/json', 'X-UYSA-Token': API_TOKEN },
-        body: JSON.stringify(body)
-      });
-      return await r.json();
-    } catch(e) { return { ok: false, error: e.message }; }
-  }
-
-  function addLog(type, msg) {
-    _log.unshift({ ts: Date.now(), type, msg });
-    if (_log.length > MAX_LOG) _log.length = MAX_LOG;
-    _renderLog();
-  }
-
-  function relTime(ts) {
-    const d = Math.floor((Date.now()-ts)/1000);
-    if (d < 60) return d+'s önce';
-    if (d < 3600) return Math.floor(d/60)+'dk önce';
-    return new Date(ts).toLocaleTimeString('tr-TR');
-  }
-
-  function _renderLog() {
-    const el = document.getElementById('syncLogList');
-    if (!el) return;
-    if (!_log.length) { el.innerHTML = '<span style="color:#94a3b8">Henüz aktivite yok</span>'; return; }
-    el.innerHTML = _log.slice(0,12).map(l => {
-      const icon = l.type==='ok'?'✅':l.type==='warn'?'⚠️':l.type==='err'?'❌':'🔵';
-      return `<div>${icon} <span style="color:#94a3b8">${relTime(l.ts)}</span> — ${l.msg}</div>`;
-    }).join('');
-  }
-
-  async function refreshDashboard() {
-    const setCard = (id, val, sub, color) => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.querySelector('[id$="-val"]') && (el.querySelector('[id$="-val"]').textContent = val);
-      el.querySelector('[id$="-sub"]') && (el.querySelector('[id$="-sub"]').textContent = sub);
-    };
-
-    // Sunucu stats
-    const stats = await apiCall('stats');
-    const serverEl = document.getElementById('sc-server-val');
-    const serverSub = document.getElementById('sc-server-sub');
-    if (serverEl) {
-      if (stats.ok) {
-        serverEl.textContent = stats.key_count || 0;
-        serverSub.textContent = `${stats.data_size_kb||0} KB — ${(stats.last_update||'').slice(0,16)}`;
-        addLog('ok', `Sunucu: ${stats.key_count} anahtar, ${stats.data_size_kb}KB`);
-      } else {
-        serverEl.textContent = '✕';
-        serverSub.textContent = 'Bağlantı yok';
-        addLog('err', 'Sunucu bağlantısı başarısız');
-      }
-    }
-
-    // Yerel localStorage
-    const localEl = document.getElementById('sc-local-val');
-    const localSub = document.getElementById('sc-local-sub');
-    if (localEl) {
-      let localKeys = 0, localSize = 0;
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k?.startsWith('uysa')) {
-          localKeys++;
-          localSize += (localStorage.getItem(k)||'').length;
-        }
-      }
-      localEl.textContent = localKeys;
-      localSub.textContent = `~${Math.round(localSize/1024)}KB — ${new Date().toLocaleTimeString('tr-TR')}`;
-    }
-
-    // Kullanıcılar
-    const userList = await apiCall('userList');
-    const usersEl = document.getElementById('sc-users-val');
-    const usersSub = document.getElementById('sc-users-sub');
-    if (usersEl) {
-      if (userList.ok) {
-        usersEl.textContent = userList.users?.length || 0;
-        const active = (userList.users||[]).filter(u=>u.active).length;
-        usersSub.textContent = `${active} aktif / ${(userList.users||[]).length - active} pasif`;
-      } else {
-        usersEl.textContent = '?';
-        usersSub.textContent = 'Alınamadı';
-      }
-    }
-
-    // Yedek geçmişi
-    const bkpEl = document.getElementById('backupHistoryList');
-    if (bkpEl) {
-      const bkpList = await apiCall('backupList');
-      const rows = bkpList.backups || [];
-      const localBkp = (() => {
-        try { return JSON.parse(localStorage.getItem('uysa_local_backups')||'[]'); } catch(e){return[];}
-      })();
-      let html = '';
-      if (localBkp.length) {
-        html += localBkp.slice(0,3).map((b,i) =>
-          `<div>💾 Yerel #${i+1} — ${new Date(b.ts).toLocaleString('tr-TR')} — ${b.keyCount} anahtar
-           <button onclick="window._uysaRestoreLocalBackup(${i});document.getElementById('syncDashMsg').textContent='Geri yüklendi: ${b.keyCount} anahtar'" style="margin-left:8px;background:#dbeafe;color:#2563eb;border:none;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:10px">♻️</button></div>`
-        ).join('');
-      }
-      if (rows.length) {
-        html += rows.slice(0,5).map(b =>
-          `<div>☁️ Sunucu #${b.id} — ${(b.created_at||'').slice(0,16)} — ${b.key_count} anahtar, ${b.size_kb}KB
-           <button onclick="window._uysaRestoreServerBackup(${b.id})" style="margin-left:8px;background:#d1fae5;color:#059669;border:none;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:10px">♻️</button></div>`
-        ).join('');
-      }
-      bkpEl.innerHTML = html || '<span style="color:#94a3b8">Henüz yedek yok</span>';
-    }
-  }
-
-  // ── Aksiyon fonksiyonları ──────────────────────────────────
-  window._uysaForceSync = async function() {
-    const msg = document.getElementById('syncDashMsg');
-    if (msg) msg.textContent = '⏳ Senkronize ediliyor...';
-    if (typeof window._uysaFullSync === 'function') window._uysaFullSync();
-    if (typeof window._uysaSyncLoad === 'function') await window._uysaSyncLoad();
-    addLog('ok', 'Manuel tam sync çalıştırıldı');
-    if (msg) msg.textContent = '✅ Sync tamamlandı!';
-    setTimeout(() => refreshDashboard(), 1000);
-  };
-
-  window._uysaManualBackup = async function() {
-    const msg = document.getElementById('syncDashMsg');
-    if (msg) msg.textContent = '⏳ Yedek alınıyor...';
-    if (typeof window._uysaLocalBackup === 'function') window._uysaLocalBackup();
-    const r = await apiCall('backup', { trigger: 'manual' });
-    addLog(r.ok?'ok':'warn', r.ok ? `Yedek alındı: ${r.size_kb}KB` : 'Sunucu yedeği başarısız');
-    if (msg) msg.textContent = r.ok ? `✅ Yedek alındı: ${r.size_kb}KB` : '⚠️ Yerel yedek alındı (sunucu başarısız)';
-    setTimeout(() => refreshDashboard(), 800);
-  };
-
-  window._uysaRestoreBackup = async function() {
-    const localBkp = (() => { try { return JSON.parse(localStorage.getItem('uysa_local_backups')||'[]'); } catch(e){return[];} })();
-    if (!localBkp.length) { alert('Yerel yedek bulunamadı!'); return; }
-    const choice = confirm(`En son yerel yedekten geri yüklensin mi?
-Tarih: ${new Date(localBkp[0].ts).toLocaleString('tr-TR')}
-Anahtar: ${localBkp[0].keyCount}`);
-    if (!choice) return;
-    const n = window._uysaRestoreLocalBackup(0);
-    addLog('ok', `Yerel yedek geri yüklendi: ${n} anahtar`);
-    document.getElementById('syncDashMsg').textContent = `✅ ${n} anahtar geri yüklendi!`;
-  };
-
-  window._uysaRestoreLocalBackup = function(index=0) {
-    try {
-      const backups = JSON.parse(localStorage.getItem('uysa_local_backups')||'[]');
-      if (!backups[index]) return 0;
-      const snap = backups[index].data;
-      let n = 0;
-      Object.entries(snap).forEach(([k,v]) => {
-        if (k !== 'uysa_local_backups') {
-          const orig = localStorage.setItem.__orig || localStorage.setItem;
-          try { orig.call(localStorage,k,v); } catch(e){ localStorage.setItem(k,v); }
-          n++;
-        }
-      });
-      return n;
-    } catch(e) { return 0; }
-  };
-
-  window._uysaRestoreServerBackup = async function(id) {
-    const msg = document.getElementById('syncDashMsg');
-    if (!confirm(`Sunucu yedek #${id} geri yüklensin mi?`)) return;
-    if (msg) msg.textContent = '⏳ Geri yükleniyor...';
-    const r = await apiCall('backupRestore', { id });
-    addLog(r.ok?'ok':'err', r.ok ? `Sunucu yedek #${id} geri yüklendi` : `Geri yükleme başarısız: ${r.error}`);
-    if (msg) msg.textContent = r.ok ? `✅ Geri yüklendi!` : `❌ Hata: ${r.error}`;
-    if (r.ok && typeof window._uysaSyncLoad==='function') setTimeout(window._uysaSyncLoad, 500);
-  };
-
-  window._uysaExportData = function() {
-    try {
-      const data = {};
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k?.startsWith('uysa')) data[k] = localStorage.getItem(k);
-      }
-      const blob = new Blob([JSON.stringify({
-        exportedAt: new Date().toISOString(),
-        keyCount: Object.keys(data).length,
-        data
-      }, null, 2)], { type: 'application/json' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `uysa_backup_${new Date().toISOString().slice(0,10)}.json`;
-      a.click();
-      addLog('ok', 'JSON dışa aktarıldı: ' + Object.keys(data).length + ' anahtar');
-    } catch(e) { alert('Dışa aktarma hatası: ' + e.message); }
-  };
-
-  // ── Dashboard Aç ──────────────────────────────────────────
-  window.openSyncDashboard = function() {
-    const el = document.getElementById('uysaSyncDashboard');
-    if (!el) return;
-    el.style.display = 'flex';
-    refreshDashboard();
-    addLog('ok', 'Dashboard açıldı');
-  };
-
-  // ── Sync event listener ───────────────────────────────────
-  window.addEventListener('uysa-sync-update', (e) => {
-    addLog('ok', `Auto-sync: ${e.detail.saved||0} anahtar (${e.detail.skipped||0} atlandı)`);
-  });
-  window.addEventListener('uysa-backup-update', (e) => {
-    addLog('ok', `Yerel yedek: ${e.detail.keys||0} anahtar`);
-  });
-
-  // ── Periyodik log yenileme ────────────────────────────────
-  setInterval(() => {
-    if (document.getElementById('uysaSyncDashboard')?.style.display === 'flex') {
-      _renderLog();
-    }
-  }, 5000);
-
-  console.log('[UYSA-Dashboard] ✅ Sync dashboard aktif');
-})();
-
-</script>
 </body></html>`);
     win.document.close();
   });
@@ -18591,6 +18317,335 @@ document.addEventListener('DOMContentLoaded', function(){
 
 })(); // end IIFE
 
+</script>
+
+
+<!-- ════════════════ SYNC DASHBOARD MODAL ════════════════ -->
+<div id="uysaSyncDashboard" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.55);z-index:99999;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:20px;padding:28px 32px;width:680px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,.25);font-family:'Segoe UI',sans-serif;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 style="margin:0;font-size:18px;color:#0f172a">🔄 Senkronizasyon & Yedekleme Durumu</h2>
+      <button onclick="document.getElementById('uysaSyncDashboard').style.display='none'" style="background:#f1f5f9;border:none;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:13px">✕ Kapat</button>
+    </div>
+    <div id="syncStatusCards" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px">
+      <div style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:12px;padding:14px">
+        <div style="font-size:10px;font-weight:700;color:#15803d;text-transform:uppercase">Sunucu</div>
+        <div id="sc-server-val" style="font-size:22px;font-weight:800;color:#15803d;margin:4px 0">—</div>
+        <div id="sc-server-sub" style="font-size:11px;color:#4ade80">Kontrol ediliyor...</div>
+      </div>
+      <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:12px;padding:14px">
+        <div style="font-size:10px;font-weight:700;color:#2563eb;text-transform:uppercase">Yerel</div>
+        <div id="sc-local-val" style="font-size:22px;font-weight:800;color:#2563eb;margin:4px 0">—</div>
+        <div id="sc-local-sub" style="font-size:11px;color:#60a5fa">localStorage anahtarları</div>
+      </div>
+      <div style="background:#fdf4ff;border:1.5px solid #e9d5ff;border-radius:12px;padding:14px">
+        <div style="font-size:10px;font-weight:700;color:#7c3aed;text-transform:uppercase">Kullanıcılar</div>
+        <div id="sc-users-val" style="font-size:22px;font-weight:800;color:#7c3aed;margin:4px 0">—</div>
+        <div id="sc-users-sub" style="font-size:11px;color:#a78bfa">MySQL kayıtları</div>
+      </div>
+    </div>
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px">
+      <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:10px">📋 Son Senkronizasyon Geçmişi</div>
+      <div id="syncLogList" style="font-size:12px;color:#64748b;line-height:2">Yükleniyor...</div>
+    </div>
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-size:12px;font-weight:700;color:#374151">💾 Yedekleme Geçmişi</div>
+        <button onclick="window._uysaManualBackup&&window._uysaManualBackup()" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:5px 12px;cursor:pointer;font-size:11px;font-weight:600">+ Manuel Yedek Al</button>
+      </div>
+      <div id="backupHistoryList" style="font-size:12px;color:#64748b;line-height:2">Yükleniyor...</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+      <button onclick="window._uysaForceSync&&window._uysaForceSync()" style="background:#0f172a;color:#fff;border:none;border-radius:10px;padding:10px;cursor:pointer;font-size:12px;font-weight:700">⚡ Zorla Sync</button>
+      <button onclick="window._uysaRestoreBackup&&window._uysaRestoreBackup()" style="background:#7c3aed;color:#fff;border:none;border-radius:10px;padding:10px;cursor:pointer;font-size:12px;font-weight:700">♻️ Yedeği Geri Yükle</button>
+      <button onclick="window._uysaExportData&&window._uysaExportData()" style="background:#059669;color:#fff;border:none;border-radius:10px;padding:10px;cursor:pointer;font-size:12px;font-weight:700">📤 JSON Dışa Aktar</button>
+    </div>
+    <div id="syncDashMsg" style="margin-top:10px;font-size:12px;color:#2563eb;text-align:center;min-height:18px"></div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+// UYSA SYNC DASHBOARD v2 — QuotaExceeded fix dahil
+// ════════════════════════════════════════════════════════════
+(function() {
+  'use strict';
+  const DAPI_TOKEN = 'UysaERP2026xProdKey3f7a9c1b';
+  const DAPI_URL   = '/uysa_api.php';
+  const _log = [];
+  const MAX_LOG = 50;
+
+  // QuotaExceeded fix: büyük key'leri hariç tut
+  const BACKUP_SKIP_PATTERNS = [
+    /^uysa_local_backups$/,   // kendisi
+    /^uysa_audit_logs$/,      // çok büyük olabilir
+    /raporlama/i,
+    /chart/i,
+    /pdf/i,
+  ];
+  // Kritik key önceliği — bunlar mutlaka yedeklenir
+  const BACKUP_PRIORITY = ['uysa_users_v6','uysa_migrated_to_v6'];
+
+  async function dApi(action, body={}) {
+    try {
+      const r = await fetch(DAPI_URL + '?action=' + action, {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json', 'X-UYSA-Token': DAPI_TOKEN },
+        body: JSON.stringify(body)
+      });
+      return await r.json();
+    } catch(e) { return { ok: false, error: e.message }; }
+  }
+
+  function addLog(type, msg) {
+    _log.unshift({ ts: Date.now(), type, msg });
+    if (_log.length > MAX_LOG) _log.length = MAX_LOG;
+    _renderLog();
+  }
+
+  function relTime(ts) {
+    const d = Math.floor((Date.now()-ts)/1000);
+    if (d < 60) return d + 's önce';
+    if (d < 3600) return Math.floor(d/60) + 'dk önce';
+    return new Date(ts).toLocaleTimeString('tr-TR');
+  }
+
+  function _renderLog() {
+    const el = document.getElementById('syncLogList');
+    if (!el) return;
+    if (!_log.length) { el.innerHTML = '<span style="color:#94a3b8">Henüz aktivite yok</span>'; return; }
+    el.innerHTML = _log.slice(0,15).map(l => {
+      const icon = l.type==='ok'?'✅':l.type==='warn'?'⚠️':l.type==='err'?'❌':'🔵';
+      return '<div>' + icon + ' <span style="color:#94a3b8">' + relTime(l.ts) + '</span> — ' + l.msg + '</div>';
+    }).join('');
+  }
+
+  // QuotaExceeded fix: akıllı yerel yedek
+  window._uysaSmartLocalBackup = function() {
+    try {
+      const snap = {};
+      let totalSize = 0;
+      const MAX_BACKUP_SIZE = 800 * 1024; // 800KB limit
+
+      // 1. Önce priority key'leri ekle
+      BACKUP_PRIORITY.forEach(k => {
+        const v = localStorage.getItem(k);
+        if (v) { snap[k] = v; totalSize += v.length; }
+      });
+
+      // 2. Sonra diğer key'leri boyuta göre ekle
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k || !k.startsWith('uysa')) continue;
+        if (BACKUP_PRIORITY.includes(k)) continue; // zaten eklendi
+        if (BACKUP_SKIP_PATTERNS.some(p => p.test(k))) continue;
+        const v = localStorage.getItem(k) || '';
+        if (totalSize + v.length > MAX_BACKUP_SIZE) continue; // boyut limiti
+        snap[k] = v;
+        totalSize += v.length;
+      }
+
+      const meta = {
+        ts: Date.now(),
+        isoDate: new Date().toISOString(),
+        keyCount: Object.keys(snap).length,
+        sizeKb: Math.round(totalSize / 1024),
+        data: snap
+      };
+
+      // Son 3 yerel yedeği tut - ama önce mevcut boyutu kontrol et
+      let backups = [];
+      try { backups = JSON.parse(localStorage.getItem('uysa_local_backups') || '[]'); } catch(e) {}
+      backups.unshift(meta);
+      if (backups.length > 3) backups.length = 3;
+
+      // _orig.setItem kullan (override bypass)
+      const setFn = (window._uysaOrigSetItem) || localStorage.setItem.bind(localStorage);
+      try {
+        setFn('uysa_local_backups', JSON.stringify(backups));
+      } catch(quota) {
+        // Quota hatası: sadece 1 yedek sakla
+        try { setFn('uysa_local_backups', JSON.stringify([meta])); } catch(e2) {
+          // Hala olmuyorsa data'yı çıkar, sadece meta sakla
+          const metaNoData = { ts: meta.ts, isoDate: meta.isoDate, keyCount: meta.keyCount, sizeKb: meta.sizeKb };
+          try { setFn('uysa_local_backups', JSON.stringify([metaNoData])); } catch(e3) {}
+        }
+      }
+
+      window._uysaLastLocalBackup = meta.ts;
+      window.dispatchEvent(new CustomEvent('uysa-backup-update', { detail: { local: meta.ts, keys: meta.keyCount, sizeKb: meta.sizeKb } }));
+      addLog('ok', 'Yerel yedek: ' + meta.keyCount + ' anahtar, ' + meta.sizeKb + 'KB');
+      return meta;
+    } catch(e) {
+      addLog('err', 'Yerel yedek hatası: ' + e.message);
+      return null;
+    }
+  };
+
+  // Eski _uysaLocalBackup'ı smart versiyonla değiştir
+  window._uysaLocalBackup = window._uysaSmartLocalBackup;
+
+  async function refreshDashboard() {
+    // Sunucu stats
+    const stats = await dApi('stats');
+    const sv = document.getElementById('sc-server-val');
+    const ss = document.getElementById('sc-server-sub');
+    if (sv) {
+      if (stats.ok) {
+        sv.textContent = stats.key_count || 0;
+        ss.textContent = (stats.data_size_kb||0) + ' KB — ' + (stats.last_update||'').slice(0,16);
+        addLog('ok', 'Sunucu: ' + stats.key_count + ' anahtar, ' + stats.data_size_kb + 'KB');
+      } else {
+        sv.textContent = '✕'; ss.textContent = 'Bağlantı yok';
+        addLog('err', 'Sunucu bağlantısı başarısız');
+      }
+    }
+
+    // Yerel localStorage
+    const lv = document.getElementById('sc-local-val');
+    const ls = document.getElementById('sc-local-sub');
+    if (lv) {
+      let localKeys = 0, localSize = 0;
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('uysa')) { localKeys++; localSize += (localStorage.getItem(k)||'').length; }
+      }
+      lv.textContent = localKeys;
+      ls.textContent = '~' + Math.round(localSize/1024) + 'KB — ' + new Date().toLocaleTimeString('tr-TR');
+    }
+
+    // Kullanıcılar
+    const userList = await dApi('userList');
+    const uv = document.getElementById('sc-users-val');
+    const us = document.getElementById('sc-users-sub');
+    if (uv) {
+      if (userList.ok) {
+        uv.textContent = userList.users?.length || 0;
+        const active = (userList.users||[]).filter(u=>u.active).length;
+        us.textContent = active + ' aktif / ' + ((userList.users||[]).length - active) + ' pasif';
+      } else { uv.textContent = '?'; us.textContent = 'Alınamadı'; }
+    }
+
+    // Yedek geçmişi
+    const bkpEl = document.getElementById('backupHistoryList');
+    if (bkpEl) {
+      const bkpList = await dApi('backupList');
+      const rows = bkpList.backups || [];
+      let localBkp = [];
+      try { localBkp = JSON.parse(localStorage.getItem('uysa_local_backups')||'[]'); } catch(e){}
+      let html = '';
+      localBkp.slice(0,3).forEach((b,i) => {
+        const dt = new Date(b.ts).toLocaleString('tr-TR');
+        const size = b.sizeKb ? b.sizeKb+'KB' : (b.keyCount||0)+' key';
+        html += '<div>💾 Yerel #' + (i+1) + ' — ' + dt + ' — ' + size +
+          (b.data ? ' <button onclick="window._uysaRestoreLocalBackup('+i+');document.getElementById(\'syncDashMsg\').textContent=\'Geri yüklendi!\'" style="margin-left:8px;background:#dbeafe;color:#2563eb;border:none;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:10px">♻️</button>' : ' <span style="color:#94a3b8">(meta only)</span>') + '</div>';
+      });
+      rows.slice(0,5).forEach(b => {
+        html += '<div>☁️ Sunucu #' + b.id + ' — ' + (b.created_at||'').slice(0,16) + ' — ' + (b.key_count||0) + ' key, ' + (b.size_kb||0) + 'KB' +
+          ' <button onclick="window._uysaRestoreServerBackup('+b.id+')" style="margin-left:8px;background:#d1fae5;color:#059669;border:none;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:10px">♻️</button></div>';
+      });
+      bkpEl.innerHTML = html || '<span style="color:#94a3b8">Henüz yedek yok</span>';
+    }
+  }
+
+  // Aksiyon fonksiyonları
+  window._uysaForceSync = async function() {
+    const msg = document.getElementById('syncDashMsg');
+    if (msg) msg.textContent = '⏳ Senkronize ediliyor...';
+    if (typeof window._uysaFullSync === 'function') window._uysaFullSync();
+    if (typeof window._uysaSyncLoad === 'function') await window._uysaSyncLoad();
+    addLog('ok', 'Manuel tam sync');
+    if (msg) msg.textContent = '✅ Sync tamamlandı!';
+    setTimeout(refreshDashboard, 1000);
+  };
+
+  window._uysaManualBackup = async function() {
+    const msg = document.getElementById('syncDashMsg');
+    if (msg) msg.textContent = '⏳ Yedek alınıyor...';
+    window._uysaSmartLocalBackup();
+    const r = await dApi('backup', { trigger: 'manual' });
+    addLog(r.ok?'ok':'warn', r.ok ? 'Sunucu yedeği: ' + r.size_kb + 'KB' : 'Sunucu yedeği başarısız');
+    if (msg) msg.textContent = r.ok ? '✅ Yedek alındı: ' + r.size_kb + 'KB' : '⚠️ Yerel yedek alındı';
+    setTimeout(refreshDashboard, 800);
+  };
+
+  window._uysaRestoreBackup = function() {
+    let backups = [];
+    try { backups = JSON.parse(localStorage.getItem('uysa_local_backups')||'[]'); } catch(e){}
+    if (!backups.length || !backups[0].data) { alert('Geri yüklenebilir yerel yedek bulunamadı!'); return; }
+    if (!confirm('En son yerel yedekten geri yüklensin mi?\nTarih: ' + new Date(backups[0].ts).toLocaleString('tr-TR'))) return;
+    const n = window._uysaRestoreLocalBackup(0);
+    document.getElementById('syncDashMsg').textContent = '✅ ' + n + ' anahtar geri yüklendi!';
+    addLog('ok', 'Yerel yedek geri yüklendi: ' + n + ' anahtar');
+  };
+
+  window._uysaRestoreLocalBackup = function(index) {
+    try {
+      let backups = JSON.parse(localStorage.getItem('uysa_local_backups')||'[]');
+      if (!backups[index] || !backups[index].data) return 0;
+      let n = 0;
+      const setFn = window._uysaOrigSetItem || localStorage.setItem.bind(localStorage);
+      Object.entries(backups[index].data).forEach(([k,v]) => {
+        if (k !== 'uysa_local_backups') { try { setFn(k,v); n++; } catch(e){} }
+      });
+      return n;
+    } catch(e) { return 0; }
+  };
+
+  window._uysaRestoreServerBackup = async function(id) {
+    const msg = document.getElementById('syncDashMsg');
+    if (!confirm('Sunucu yedek #' + id + ' geri yüklensin mi?')) return;
+    if (msg) msg.textContent = '⏳ Geri yükleniyor...';
+    const r = await dApi('backupRestore', { id });
+    addLog(r.ok?'ok':'err', r.ok ? 'Sunucu yedek #' + id + ' geri yüklendi' : 'Geri yükleme hatası');
+    if (msg) msg.textContent = r.ok ? '✅ Geri yüklendi!' : '❌ Hata: ' + r.error;
+    if (r.ok && typeof window._uysaSyncLoad==='function') setTimeout(window._uysaSyncLoad, 500);
+  };
+
+  window._uysaExportData = function() {
+    try {
+      const data = {};
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('uysa')) data[k] = localStorage.getItem(k);
+      }
+      const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), keyCount: Object.keys(data).length, data }, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'uysa_backup_' + new Date().toISOString().slice(0,10) + '.json';
+      a.click();
+      addLog('ok', 'JSON dışa aktarıldı: ' + Object.keys(data).length + ' anahtar');
+    } catch(e) { alert('Dışa aktarma hatası: ' + e.message); }
+  };
+
+  window.openSyncDashboard = function() {
+    const el = document.getElementById('uysaSyncDashboard');
+    if (!el) return;
+    el.style.display = 'flex';
+    refreshDashboard();
+    addLog('ok', 'Dashboard açıldı');
+  };
+
+  window.addEventListener('uysa-sync-update', function(e) {
+    addLog('ok', 'Auto-sync: ' + (e.detail.saved||0) + ' anahtar');
+  });
+  window.addEventListener('uysa-backup-update', function(e) {
+    addLog('ok', 'Yerel yedek: ' + (e.detail.keys||0) + ' anahtar, ' + (e.detail.sizeKb||0) + 'KB');
+  });
+
+  // _orig.setItem referansını kaydet (QuotaExceeded fix için)
+  setTimeout(function() {
+    if (window._uysaOrigSetItem === undefined) {
+      window._uysaOrigSetItem = localStorage.setItem.bind(localStorage);
+    }
+  }, 100);
+
+  setInterval(function() {
+    if (document.getElementById('uysaSyncDashboard')?.style.display === 'flex') _renderLog();
+  }, 5000);
+
+  console.log('[UYSA-Dashboard] ✅ Sync dashboard v2 aktif (QuotaExceeded fix)');
+})();
 </script>
 
 </body>
