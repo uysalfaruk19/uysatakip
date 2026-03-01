@@ -7448,30 +7448,35 @@ const UYSA_DEFAULT_USERS = [
 
 // ── Kullanıcı listesi (localStorage) ─────────────────────
 function _getUsers() {
-  const USER_KEY = 'uysa_users_v5';
-  // Tek seferlik migrasyon: eski bozuk verileri temizle (v3 + v4)
-  if (!localStorage.getItem('uysa_migrated_to_v5')) {
-    try { localStorage.removeItem('uysa_users_v3'); } catch(e){}
-    try { localStorage.removeItem('uysa_users_v4'); } catch(e){}
-    try { localStorage.removeItem('uysa_users_v5'); } catch(e){}
-    try { localStorage.setItem('uysa_migrated_to_v5', '1'); } catch(e){}
+  const USER_KEY = 'uysa_users_v6';
+  const MIGRATE_KEY = 'uysa_migrated_to_v6';
+  // Zorla migrasyon: v3/v4/v5 temizle, v6'ya geç
+  if (!localStorage.getItem(MIGRATE_KEY)) {
+    ['uysa_users_v3','uysa_users_v4','uysa_users_v5','uysa_users_v6'].forEach(k => {
+      try { localStorage.removeItem(k); } catch(e){}
+    });
+    try { localStorage.setItem(MIGRATE_KEY, '1'); } catch(e){}
   }
   try {
     const raw = localStorage.getItem(USER_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      // Hash format + superadmin butunluk kontrolu
+      // Hem format hem değer doğrulama: superadmin hash kontrol
+      const expectedHash = 'uysa_b9394741_OTExODA2MTIzNTA';
+      const adminUser = parsed.find(u => u.role === 'superadmin' && u.active);
       const validFmt = parsed.every(u => u.passwordHash && u.passwordHash.startsWith('uysa_'));
-      const adminOk  = parsed.some(u => u.role === 'superadmin' && u.active);
-      if (validFmt && adminOk) return parsed;
-      localStorage.removeItem(USER_KEY);
+      const hashOk = adminUser && adminUser.passwordHash === expectedHash;
+      if (validFmt && hashOk) return parsed;
+      // Bozuk veri — temizle
+      try { localStorage.removeItem(USER_KEY); } catch(e){}
     }
   } catch(e) {}
-  localStorage.setItem(USER_KEY, JSON.stringify(UYSA_DEFAULT_USERS));
+  // Varsayılan kullanıcıları yaz
+  try { localStorage.setItem(USER_KEY, JSON.stringify(UYSA_DEFAULT_USERS)); } catch(e){}
   return UYSA_DEFAULT_USERS;
 }
 function _saveUsers(users) {
-  localStorage.setItem('uysa_users_v5', JSON.stringify(users));
+  localStorage.setItem('uysa_users_v6', JSON.stringify(users));
 }
 
 // ── Oturum ───────────────────────────────────────────────
@@ -7480,7 +7485,7 @@ function _getSession() {
 }
 function _setSession(user) {
   const sess = { id: user.id, username: user.username, displayName: user.displayName, role: user.role, permissions: user.permissions, loginAt: new Date().toISOString() };
-  sessionStorage.setItem('uysa_session', JSON.stringify(sess));
+  try { sessionStorage.setItem('uysa_session', JSON.stringify(sess)); } catch(e) { console.warn('[UYSA] sessionStorage write failed:', e); }
 }
 function _clearSession() { sessionStorage.removeItem('uysa_session'); }
 
@@ -7500,11 +7505,12 @@ function uysaDoLogin() {
     return;
   }
   err.classList.remove('show');
-  _setSession(user);
+  try { _setSession(user); } catch(e) { console.warn('[UYSA] _setSession error:', e); }
   // Audit log - başarılı giriş
   _auditLog('login', 'LOGIN', `Giriş yapıldı: ${user.displayName}`, user.username);
-  document.getElementById('uysaLoginOverlay').classList.remove('active');
-  _updateUserBadge();
+  const overlay = document.getElementById('uysaLoginOverlay');
+  if (overlay) overlay.classList.remove('active');
+  try { _updateUserBadge(); } catch(e) {}
   if (typeof toast === 'function') toast(`👋 Hoş geldiniz, ${user.displayName}!`);
 }
 
