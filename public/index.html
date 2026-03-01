@@ -7349,23 +7349,25 @@ const UYSA_DEFAULT_USERS = [
 
 // ── Kullanıcı listesi (localStorage) ─────────────────────
 function _getUsers() {
+  // Migration: clean up old v3 key
+  try { localStorage.removeItem('uysa_users_v3'); } catch(e){}
   try {
-    const raw = localStorage.getItem('uysa_users_v3');
+    const raw = localStorage.getItem('uysa_users_v4');
     if (raw) {
       const parsed = JSON.parse(raw);
       // Hash format kontrolu: eski veri temizle
       const validHash = parsed.every(u => u.passwordHash && u.passwordHash.startsWith('uysa_'));
       if (validHash) return parsed;
       // Eski/bozuk veri - sil ve varsayilana don
-      localStorage.removeItem('uysa_users_v3');
+      localStorage.removeItem('uysa_users_v4');
     }
   } catch(e) {}
   // İlk kez: varsayılan kullanıcıları yükle
-  localStorage.setItem('uysa_users_v3', JSON.stringify(UYSA_DEFAULT_USERS));
+  localStorage.setItem('uysa_users_v4', JSON.stringify(UYSA_DEFAULT_USERS));
   return UYSA_DEFAULT_USERS;
 }
 function _saveUsers(users) {
-  localStorage.setItem('uysa_users_v3', JSON.stringify(users));
+  localStorage.setItem('uysa_users_v4', JSON.stringify(users));
 }
 
 // ── Oturum ───────────────────────────────────────────────
