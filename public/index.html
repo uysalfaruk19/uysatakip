@@ -7305,14 +7305,23 @@ alert('Malzeme ve miktar giriniz.'); return; }
    - Silme audit logu
    ══════════════════════════════════════════════════════════ */
 
+// ── Basit hash (SHA-benzeri, client-side güvenlik katmanı) ─
+function _uysaHash(str) {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    hash ^= str.charCodeAt(i);
+    hash = (hash * 0x01000193) >>> 0;
+  }
+  return 'uysa_' + hash.toString(16).padStart(8,'0') + '_' + btoa(str.split('').reverse().join('')).replace(/=/g,'');
+}
+
 // ── Sabit kullanıcılar (ilk kurulum) ─────────────────────
 const UYSA_DEFAULT_USERS = [
   {
     id: 1,
     username: 'OFU',
     phone: '05321608119',
-    // Şifre: telefon numarası (ilk giriş)
-    passwordHash: _uysaHash('05321608119'),
+    passwordHash: 'uysa_b9394741_OTExODA2MTIzNTA',
     role: 'superadmin',
     displayName: 'OFU',
     active: true,
@@ -7324,7 +7333,7 @@ const UYSA_DEFAULT_USERS = [
     id: 2,
     username: 'Azim',
     phone: '',
-    passwordHash: _uysaHash('Azim2024!'),
+    passwordHash: 'uysa_ee9ee51b_ITQyMDJtaXpB',
     role: 'user',
     displayName: 'Azim',
     active: true,
@@ -7333,16 +7342,6 @@ const UYSA_DEFAULT_USERS = [
     permissions: ['read', 'write']
   }
 ];
-
-// ── Basit hash (SHA-benzeri, client-side güvenlik katmanı) ─
-function _uysaHash(str) {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < str.length; i++) {
-    hash ^= str.charCodeAt(i);
-    hash = (hash * 0x01000193) >>> 0;
-  }
-  return 'uysa_' + hash.toString(16).padStart(8,'0') + '_' + btoa(str.split('').reverse().join('')).replace(/=/g,'');
-}
 
 // ── Kullanıcı listesi (localStorage) ─────────────────────
 function _getUsers() {
