@@ -25,7 +25,7 @@ if (file_exists($envFile)) {
 
 // ── Konfigürasyon ─────────────────────────────────────────────
 // ── DB Konfigürasyonu (öncelik: Railway ENV > kendi sunucu > localhost) ──
-define('DB_HOST',    getenv('DB_HOST')    ?: (getenv('MYSQLHOST')    ?: 'localhost'));
+define('DB_HOST',    getenv('DB_HOST')    ?: (getenv('MYSQLHOST')    ?: '78.135.65.2'));
 define('DB_PORT',    getenv('DB_PORT')    ?: (getenv('MYSQLPORT')    ?: '3306'));
 define('DB_NAME',    getenv('DB_NAME')    ?: (getenv('MYSQLDATABASE') ?: 'uysayeme_uysadb'));
 define('DB_USER',    getenv('DB_USER')    ?: (getenv('MYSQLUSER')    ?: 'uysayeme_wp195'));
