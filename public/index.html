@@ -503,6 +503,69 @@
     ::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 3px; }
     ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
     ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+    /* ═══════════════════════════════════════════
+       UYSA LOGIN OVERLAY — tam ekran, z-index:9999
+       ═══════════════════════════════════════════ */
+    #uysaLoginOverlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: linear-gradient(135deg,#1a56db 0%,#0b3aa6 100%);
+      z-index: 9999;
+      align-items: center;
+      justify-content: center;
+    }
+    #uysaLoginOverlay.active { display: flex; }
+    .login-card {
+      background: #fff;
+      border-radius: 16px;
+      padding: 40px 36px;
+      width: 340px;
+      max-width: 94vw;
+      box-shadow: 0 20px 60px rgba(0,0,0,.3);
+    }
+    .login-logo {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 20px;
+    }
+    .login-logo-icon {
+      width: 48px; height: 48px;
+      background: linear-gradient(135deg,#1a56db,#0b3aa6);
+      border-radius: 12px; display: flex; align-items: center;
+      justify-content: center; color:#fff; font-size:24px; font-weight:800;
+    }
+    .login-logo-text { font-size:18px; font-weight:800; color:#1a56db; }
+    .login-logo-sub  { font-size:12px; color:#6b7280; }
+    .login-title  { font-size:22px; font-weight:800; color:#111827; margin-bottom:6px; }
+    .login-sub    { font-size:13px; color:#6b7280; margin-bottom:20px; }
+    .login-error  {
+      display:none; background:#fef2f2; color:#dc2626;
+      font-size:13px; padding:8px 12px; border-radius:8px;
+      margin-bottom:12px; border:1px solid #fecaca;
+    }
+    .login-error.show { display:block; }
+    .login-field  { margin-bottom:14px; }
+    .login-field label {
+      display:block; font-size:12px; font-weight:700;
+      color:#374151; margin-bottom:6px;
+    }
+    .login-field input {
+      width:100%; padding:10px 12px; border:1.5px solid #d1d5db;
+      border-radius:8px; font-size:14px; outline:none;
+      box-sizing:border-box; transition:border-color .2s;
+    }
+    .login-field input:focus { border-color:#1a56db; }
+    .login-btn {
+      width:100%; background:linear-gradient(135deg,#1a56db,#0b3aa6);
+      color:#fff; border:none; border-radius:8px; padding:12px;
+      font-size:15px; font-weight:700; cursor:pointer;
+      margin-top:4px; transition:opacity .2s;
+    }
+    .login-btn:hover { opacity:.9; }
+    .login-footer {
+      text-align:center; font-size:11px; color:#9ca3af; margin-top:20px;
+    }
+
 </style>
 <script>
 // ╔═══════════════════════════════════════════════════════════════╗
