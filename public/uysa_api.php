@@ -29,7 +29,7 @@ define('DB_PORT',    getenv('DB_PORT')    ?: (getenv('MYSQLPORT')    ?: '3306'))
 define('DB_NAME',    getenv('DB_NAME')    ?: (getenv('MYSQLDATABASE') ?: 'uysa_db'));
 define('DB_USER',    getenv('DB_USER')    ?: (getenv('MYSQLUSER')    ?: 'root'));
 define('DB_PASS',    getenv('DB_PASS')    ?: (getenv('MYSQLPASSWORD') ?: ''));
-define('API_TOKEN',  getenv('API_TOKEN')  ?: 'change_me_to_a_strong_random_token');
+define('API_TOKEN',  getenv('API_TOKEN')  ?: 'UysaERP2026xProdKey3f7a9c1b');
 define('BACKUP_MAX', (int)(getenv('BACKUP_MAX') ?: 30));
 
 // Dosya yükleme klasörü
