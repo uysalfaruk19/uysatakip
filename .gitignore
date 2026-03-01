@@ -1,0 +1,30 @@
+# Dependencies
+vendor/
+node_modules/
+
+# Env dosyaları (GİZLİ - ASLA GITHUB'A YÜKLEMEYİN!)
+.env
+*.env
+.env.local
+.env.production
+
+# Yüklenen dosyalar (Railway volume'da olacak)
+public/uploads/*
+!public/uploads/.gitkeep
+!public/uploads/.htaccess
+
+# Geçici dosyalar
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build
+dist/
+build/

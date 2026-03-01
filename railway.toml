@@ -1,0 +1,16 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/health.php"
+healthcheckTimeout = 60
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+
+[deploy.env]
+UPLOAD_DIR = "/var/www/html/uploads"
+UPLOAD_MAX_MB = "25"
+
+[[volumes]]
+mountPath = "/var/www/html/uploads"

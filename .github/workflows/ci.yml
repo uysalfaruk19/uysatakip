@@ -1,0 +1,59 @@
+name: UYSA ERP — CI Kontrol
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate:
+    name: 📋 Dosya Doğrulama
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 🐘 PHP Syntax Kontrolü
+        run: |
+          php -l public/uysa_api.php
+          php -l public/health.php
+          echo "✅ PHP syntax geçerli"
+
+      - name: 📁 Gerekli Dosya Kontrolü
+        run: |
+          test -f public/index.html   && echo "✅ index.html"   || exit 1
+          test -f public/uysa_api.php && echo "✅ uysa_api.php" || exit 1
+          test -f public/.htaccess    && echo "✅ .htaccess"    || exit 1
+          test -f Dockerfile          && echo "✅ Dockerfile"   || exit 1
+          test -f railway.toml        && echo "✅ railway.toml" || exit 1
+          test -f sql/schema.sql      && echo "✅ schema.sql"   || exit 1
+
+      - name: 🔒 Güvenlik Kontrolü — .env commit yok
+        run: |
+          if git log --all --full-history -- '.env' | grep -q commit; then
+            echo "❌ .env dosyası git geçmişinde bulundu!"
+            exit 1
+          fi
+          echo "✅ .env git geçmişinde yok"
+
+      - name: 📊 Dosya Boyutu Kontrolü
+        run: |
+          SIZE=$(wc -c < public/index.html)
+          echo "index.html boyutu: ${SIZE} byte"
+          if [ "$SIZE" -lt 100000 ]; then
+            echo "❌ index.html çok küçük — bozuk olabilir"
+            exit 1
+          fi
+          echo "✅ Dosya boyutu geçerli"
+
+  docker:
+    name: 🐳 Docker Build Testi
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 🔨 Docker Image Build
+        run: |
+          docker build -t uysa-erp:test .
+          echo "✅ Docker image başarıyla oluşturuldu"
