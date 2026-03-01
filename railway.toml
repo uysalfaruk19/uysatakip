@@ -1,22 +1,11 @@
 # UYSA ERP v3.0 — Railway Configuration
-# GitHub'a her push → Railway otomatik deploy
 
 [build]
 builder = "dockerfile"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-# Railway health check
 healthcheckPath = "/health.php"
-healthcheckTimeout = 60
+healthcheckTimeout = 120
 restartPolicyType = "on_failure"
-restartPolicyMaxRetries = 3
-
-# Çevre değişkenleri (Railway Variables panelinden ayarlayın)
-[deploy.env]
-UPLOAD_DIR    = "/var/www/html/uploads"
-UPLOAD_MAX_MB = "25"
-
-# Persistent volume — yüklenen dosyalar için
-[[volumes]]
-mountPath = "/var/www/html/uploads"
+restartPolicyMaxRetries = 5
