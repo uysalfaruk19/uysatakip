@@ -1,26 +1,21 @@
-FROM php:8.2-apache
+FROM php:8.2-cli
 
-# PDO MySQL
+# PDO MySQL extension
 RUN docker-php-ext-install pdo pdo_mysql
 
-# mod_rewrite  
-RUN a2enmod rewrite headers
-
-# PHP config
-RUN echo "upload_max_filesize=30M\npost_max_size=32M\nmemory_limit=256M" \
+# PHP ayarları
+RUN printf "upload_max_filesize=30M\npost_max_size=32M\nmemory_limit=256M\nmax_execution_time=120\n" \
     > /usr/local/etc/php/conf.d/uysa.ini
 
-# Apache: PORT env var'ı dinle (Railway için kritik)
-COPY docker-entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
-
-# App
+# Dosyaları kopyala
 WORKDIR /var/www/html
 COPY public/ .
-RUN mkdir -p uploads && chmod 777 uploads \
-    && chown -R www-data:www-data .
 
-EXPOSE 80
+# Uploads klasörü
+RUN mkdir -p uploads && chmod 777 uploads
 
-ENTRYPOINT ["docker-entrypoint.sh"]
-CMD ["apache2-foreground"]
+EXPOSE 8080
+
+# PHP built-in server (Apache MPM sorunu yok, Railway ile %100 uyumlu)
+CMD php -S 0.0.0.0:${PORT:-8080} -t /var/www/html
+
