@@ -617,6 +617,47 @@
       }, 600);
     }
     if (CFG.debug) console.log(`[UYSA-Sync] 🔄 ${loaded} anahtar yüklendi`);
+
+    // ── Sunucudan kullanıcıları yükle ve localStorage ile merge et ──
+    try {
+      const userRes = await api('userList');
+      if (userRes && userRes.ok && Array.isArray(userRes.users) && userRes.users.length > 0) {
+        const serverUsers = userRes.users.map(u => ({
+          id: u.id,
+          username: u.username,
+          phone: u.phone || '',
+          passwordHash: 'uysa_SERVER_' + u.id, // placeholder — giriş localStorage hash'i kullanır
+          role: u.role,
+          displayName: u.display_name || u.username,
+          active: !!u.active,
+          createdAt: (u.created_at || '').slice(0,10),
+          createdBy: u.created_by || 'system',
+          permissions: u.role === 'superadmin' ? ['all'] : ['read','write']
+        }));
+        // Mevcut localStorage kullanıcılarını al (hash'ler burada)
+        const localUsers = (() => {
+          try {
+            const raw = _orig.setItem ? null : localStorage.getItem('uysa_users_v6');
+            const r2 = localStorage.getItem('uysa_users_v6');
+            return r2 ? JSON.parse(r2) : [];
+          } catch(e) { return []; }
+        })();
+        // Merge: localStorage hash'i koru, sunucudaki aktif bilgisini güncelle
+        const merged = serverUsers.map(su => {
+          const local = localUsers.find(lu => lu.username === su.username);
+          if (local) return { ...su, passwordHash: local.passwordHash }; // local hash koru
+          return su; // sunucudan geldi, local yok → serverdan geldiğini işaretle
+        });
+        // Local'de olup sunucuda olmayan kullanıcıları da ekle (henüz sync olmamış)
+        localUsers.forEach(lu => {
+          if (!merged.find(m => m.username === lu.username)) merged.push(lu);
+        });
+        if (merged.length > 0) {
+          try { _orig.setItem('uysa_users_v6', JSON.stringify(merged)); } catch(e){}
+          if (CFG.debug) console.log('[UYSA-Sync] 👥 Kullanıcılar merge edildi:', merged.length);
+        }
+      }
+    } catch(e) { if(CFG.debug) console.warn('[UYSA-Sync] userList yükleme hatası:', e); }
   };
 
   // ── Tam senkronizasyon ──────────────────────────────────────
@@ -7534,12 +7575,13 @@ function _getUsers() {
     const raw = localStorage.getItem(USER_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      // Hem format hem değer doğrulama: superadmin hash kontrol
-      const expectedHash = 'uysa_b9394741_OTExODA2MTIzNTA';
-      const adminUser = parsed.find(u => u.role === 'superadmin' && u.active);
-      const validFmt = parsed.every(u => u.passwordHash && u.passwordHash.startsWith('uysa_'));
-      const hashOk = adminUser && adminUser.passwordHash === expectedHash;
-      if (validFmt && hashOk) return parsed;
+      // Sadece format doğrulama — sabit hash kontrolü kaldırıldı
+      // (Şifre değiştirilince veya farklı superadmin olunca reset OLMAZ)
+      const adminUser = parsed.find(u => u.role === 'superadmin');
+      const validFmt = Array.isArray(parsed) && parsed.length > 0 &&
+                       parsed.every(u => u.passwordHash && u.passwordHash.startsWith('uysa_') && u.username);
+      const hasAdmin = !!adminUser;
+      if (validFmt && hasAdmin) return parsed;
       // Bozuk veri — temizle
       try { localStorage.removeItem(USER_KEY); } catch(e){}
     }
@@ -7569,11 +7611,11 @@ function uysaDoLogin() {
   const err = document.getElementById('loginError');
   if (!u || !p) { err.textContent='Kullanıcı adı ve şifre gereklidir!'; err.classList.add('show'); return; }
 
-  // ── ACIL BYPASS: Hash olmadan direkt string karşılaştırma ──────────
-  // Sabit kimlik bilgileri (v_bypass_2026)
+  // ── ACIL BYPASS: Sadece OFU (superadmin) için sabit geçiş ──────────
+  // Azim ve diğer kullanıcılar localStorage hash sistemi ile girer
+  // (v_bypass_2026)
   const CREDS = [
     { user: 'OFU',  pass: '05321608119', data: UYSA_DEFAULT_USERS[0] },
-    { user: 'Azim', pass: 'Azim2024!',   data: UYSA_DEFAULT_USERS[1] },
   ];
   let matchedUser = null;
   const uLow = u.toLowerCase();
@@ -7804,6 +7846,20 @@ function addNewUser() {
   users.push(newUser);
   _saveUsers(users);
   _auditLog('user_add', 'USER_MGMT', `Yeni kullanıcı: ${name} (${role})`, sess?.username);
+  // Server-side persistence: MySQL'e de kaydet
+  if (typeof api === 'function') {
+    api('userSave', {
+      username: name,
+      password: pass,
+      display_name: display || name,
+      phone: phone || '',
+      role: role,
+      created_by: sess?.username || 'admin'
+    }).then(r => {
+      if (r && r.ok) console.log('[UYSA] Kullanıcı sunucuya kaydedildi:', name);
+      else console.warn('[UYSA] Sunucu kayıt hatası:', r?.error);
+    });
+  }
   errEl.style.display='none';
   _renderUserMgmt();
   if (typeof toast==='function') toast(`✅ ${display||name} kullanıcısı oluşturuldu!`);
