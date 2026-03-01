@@ -7347,7 +7347,14 @@ const UYSA_DEFAULT_USERS = [
 function _getUsers() {
   try {
     const raw = localStorage.getItem('uysa_users_v3');
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Hash format kontrolu: eski veri temizle
+      const validHash = parsed.every(u => u.passwordHash && u.passwordHash.startsWith('uysa_'));
+      if (validHash) return parsed;
+      // Eski/bozuk veri - sil ve varsayilana don
+      localStorage.removeItem('uysa_users_v3');
+    }
   } catch(e) {}
   // İlk kez: varsayılan kullanıcıları yükle
   localStorage.setItem('uysa_users_v3', JSON.stringify(UYSA_DEFAULT_USERS));
