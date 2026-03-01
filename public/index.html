@@ -10183,6 +10183,11 @@ Saygılarımızla,
     renderCalendarModal(y,mo,c);
   });
 
+
+  // ── Global erişim için window'a expose et ──────────────────
+  window.uysaDoLogin   = uysaDoLogin;
+  window.uysaCheckAuth = uysaCheckAuth;
+  window.uysaLogout    = uysaLogout;
 })();
 
 
