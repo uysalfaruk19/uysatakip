@@ -1,36 +1,25 @@
-# UYSA ERP v3.0 — PHP 8.2 + Apache (Railway Optimized)
 FROM php:8.2-apache
 
-# PHP uzantıları
-RUN docker-php-ext-install pdo pdo_mysql \
-    && rm -rf /var/lib/apt/lists/*
+# PDO MySQL
+RUN docker-php-ext-install pdo pdo_mysql
 
-# Apache mod_rewrite
+# mod_rewrite
 RUN a2enmod rewrite
 
-# PHP upload ayarları
-RUN { \
-    echo 'upload_max_filesize = 30M'; \
-    echo 'post_max_size = 32M'; \
-    echo 'memory_limit = 256M'; \
-    echo 'max_execution_time = 120'; \
-} > /usr/local/etc/php/conf.d/uysa.ini
+# PHP config
+RUN echo "upload_max_filesize=30M\npost_max_size=32M\nmemory_limit=256M" \
+    > /usr/local/etc/php/conf.d/uysa.ini
 
-# Apache AllowOverride
-RUN sed -i 's/AllowOverride None/AllowOverride All/g' /etc/apache2/apache2.conf \
-    && echo "ServerName localhost" >> /etc/apache2/apache2.conf
+# AllowOverride All
+RUN echo '<Directory /var/www/html>\n    AllowOverride All\n    Options -Indexes\n</Directory>' \
+    >> /etc/apache2/apache2.conf
 
-# Uygulama dosyaları
+# App
 WORKDIR /var/www/html
-COPY public/ /var/www/html/
+COPY public/ .
 
-# Uploads klasörü
-RUN mkdir -p /var/www/html/uploads \
-    && chown -R www-data:www-data /var/www/html \
-    && chmod 755 /var/www/html/uploads
+RUN mkdir -p uploads && chmod 777 uploads \
+    && chown -R www-data:www-data .
 
 EXPOSE 80
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost/health.php || exit 1
-
 CMD ["apache2-foreground"]

@@ -1,11 +1,10 @@
-# UYSA ERP v3.0 — Railway Configuration
-
 [build]
 builder = "dockerfile"
 dockerfilePath = "Dockerfile"
 
 [deploy]
+startCommand = "apache2-foreground"
 healthcheckPath = "/health.php"
-healthcheckTimeout = 120
+healthcheckTimeout = 300
 restartPolicyType = "on_failure"
-restartPolicyMaxRetries = 5
+restartPolicyMaxRetries = 3
