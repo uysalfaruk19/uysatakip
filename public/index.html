@@ -575,6 +575,9 @@
 
   localStorage.setItem = function (key, value) {
     _orig.setItem(key, value);
+    // Fix5: Yazma zamanını kaydet (race condition koruması)
+    if (!window._uysaKeyWriteTs) window._uysaKeyWriteTs = {};
+    window._uysaKeyWriteTs[key] = Date.now();
     // Auth/kullanıcı anahtarlarını sunucuya YAZMA — güvenlik
     if (key.startsWith(CFG.prefix) && !/^uysa_(users_|migrated_|session|audit_logs)/.test(key)) queueWrite(key, value);
   };
@@ -600,8 +603,14 @@
     // Auth/kullanıcı anahtarlarını sunucudan YÜKLEME — güvenlik + bütünlük
     const AUTH_SKIP = /^uysa_(users_|migrated_|session|audit_logs)/;
     let loaded = 0;
+    const serverTs = result.updated_at ? new Date(result.updated_at).getTime() : 0;
+    // Fix5: Race condition koruması — yerel yazma zamanı sunucudan yeniyse üstüne yazma
+    window._uysaLocalWriteTs = window._uysaLocalWriteTs || 0;
     for (const [key, value] of Object.entries(result.data || {})) {
       if (AUTH_SKIP.test(key)) continue;   // kullanıcı & oturum verisini atla
+      // Eğer bu sekme son 10 saniyede bu key'i yazdıysa sunucu verisini reddet
+      const localKeyTs = window._uysaKeyWriteTs?.[key] || 0;
+      if (localKeyTs > 0 && Date.now() - localKeyTs < 10000) continue; // yerel daha taze
       _orig.setItem(key, value);
       loaded++;
     }
@@ -622,18 +631,39 @@
     try {
       const userRes = await api('userList');
       if (userRes && userRes.ok && Array.isArray(userRes.users) && userRes.users.length > 0) {
-        const serverUsers = userRes.users.map(u => ({
-          id: u.id,
-          username: u.username,
-          phone: u.phone || '',
-          passwordHash: 'uysa_SERVER_' + u.id, // placeholder — giriş localStorage hash'i kullanır
-          role: u.role,
-          displayName: u.display_name || u.username,
-          active: !!u.active,
-          createdAt: (u.created_at || '').slice(0,10),
-          createdBy: u.created_by || 'system',
-          permissions: u.role === 'superadmin' ? ['all'] : ['read','write']
-        }));
+        // Fix1: placeholder hash yerine UYSA_DEFAULT_USERS'dan veya localStorage'dan hash al
+        const serverUsers = userRes.users.map(u => {
+          // 1. Önce mevcut localStorage'dan hash'i bul
+          const existingLocal = (() => {
+            try {
+              const raw = localStorage.getItem('uysa_users_v6');
+              if (!raw) return null;
+              const arr = JSON.parse(raw);
+              return arr.find(x => x.username === u.username);
+            } catch(e) { return null; }
+          })();
+          // 2. DEFAULT_USERS'da var mı?
+          const defUser = (typeof UYSA_DEFAULT_USERS !== 'undefined')
+            ? UYSA_DEFAULT_USERS.find(x => x.username === u.username)
+            : null;
+          // 3. Hash önceliği: local > default > server-placeholder
+          const resolvedHash = (existingLocal?.passwordHash) ||
+                               (defUser?.passwordHash) ||
+                               ('uysa_SERVER_' + u.id);
+          return {
+            id: u.id,
+            username: u.username,
+            phone: u.phone || '',
+            passwordHash: resolvedHash,
+            role: u.role,
+            displayName: u.display_name || u.username,
+            active: !!u.active,
+            createdAt: (u.created_at || '').slice(0,10),
+            createdBy: u.created_by || 'system',
+            permissions: u.role === 'superadmin' ? ['all'] : ['read','write'],
+            _source: existingLocal ? 'local' : (defUser ? 'default' : 'server')
+          };
+        });
         // Mevcut localStorage kullanıcılarını al (hash'ler burada)
         const localUsers = (() => {
           try {
@@ -661,15 +691,25 @@
   };
 
   // ── Tam senkronizasyon ──────────────────────────────────────
+  // Fix3: _uysaFullSync — AUTH anahtarları sunucuya GİTMEZ
+  const FULL_SYNC_SKIP = /^uysa_(users_|migrated_|session|audit_logs)/;
   window._uysaFullSync = function () {
     const items = {};
+    let skipped = 0;
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (k?.startsWith(CFG.prefix)) items[k] = localStorage.getItem(k);
+      if (!k?.startsWith(CFG.prefix)) continue;
+      if (FULL_SYNC_SKIP.test(k)) { skipped++; continue; } // AUTH_SKIP
+      items[k] = localStorage.getItem(k);
     }
+    if (!Object.keys(items).length) return;
     api('setBulk', { items }).then(r => {
-      if (CFG.debug && r.ok)
-        console.log(`[UYSA-Sync] 🔁 Tam sync: ${r.saved} anahtar`);
+      if (r.ok) {
+        // Sync durumunu güncelle (Dashboard için)
+        window._uysaLastSync = { ts: Date.now(), saved: r.saved || 0, skipped };
+        window.dispatchEvent(new CustomEvent('uysa-sync-update', { detail: window._uysaLastSync }));
+        if (CFG.debug) console.log(`[UYSA-Sync] 🔁 Tam sync: ${r.saved} anahtar (${skipped} auth atlandı)`);
+      }
     });
   };
 
@@ -681,12 +721,73 @@
     return r;
   };
 
+  // ══ OTOMATİK YEDEKLEME SİSTEMİ ════════════════════════════
+  // localStorage snapshot — her 10 dakikada bir IndexedDB'ye yaz
+  window._uysaLocalBackup = function() {
+    try {
+      const snap = {};
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k?.startsWith('uysa')) snap[k] = localStorage.getItem(k);
+      }
+      const meta = {
+        ts: Date.now(),
+        isoDate: new Date().toISOString(),
+        keyCount: Object.keys(snap).length,
+        data: snap
+      };
+      // Son 3 yerel yedeği tut
+      const backups = (() => {
+        try { return JSON.parse(localStorage.getItem('uysa_local_backups') || '[]'); } catch(e) { return []; }
+      })();
+      backups.unshift(meta);
+      if (backups.length > 3) backups.length = 3;
+      _orig.setItem('uysa_local_backups', JSON.stringify(backups));
+      window._uysaLastLocalBackup = meta.ts;
+      window.dispatchEvent(new CustomEvent('uysa-backup-update', { detail: { local: meta.ts, keys: meta.keyCount } }));
+      if (CFG.debug) console.log('[UYSA-Backup] 💾 Yerel yedek alındı:', meta.keyCount, 'anahtar');
+    } catch(e) { console.warn('[UYSA-Backup] Yerel yedek hatası:', e); }
+  };
+
+  // localStorage yedeği geri yükle (en son)
+  window._uysaRestoreLocalBackup = function(index = 0) {
+    try {
+      const backups = JSON.parse(localStorage.getItem('uysa_local_backups') || '[]');
+      if (!backups[index]) { alert('Yedek bulunamadı!'); return false; }
+      const snap = backups[index].data;
+      let restored = 0;
+      Object.entries(snap).forEach(([k, v]) => {
+        if (k !== 'uysa_local_backups') { _orig.setItem(k, v); restored++; }
+      });
+      console.log('[UYSA-Backup] ♻️ Yerel yedek geri yüklendi:', restored, 'anahtar');
+      return restored;
+    } catch(e) { console.error('[UYSA-Backup] Geri yükleme hatası:', e); return false; }
+  };
+
+  // Sunucu yedek durumu al
+  window._uysaGetBackupStatus = async function() {
+    const r = await api('stats');
+    if (!r.ok) return null;
+    return {
+      keys: r.key_count,
+      sizeKb: r.data_size_kb,
+      lastUpdate: r.last_update,
+      backupCount: r.backup_count,
+      lastBackup: r.last_backup
+    };
+  };
+
   // ── Periyodik sync & otomatik yedek ────────────────────────
-  setInterval(window._uysaFullSync, CFG.syncInt);
-  setInterval(() => api('backup', { trigger: 'auto' }), CFG.bkpInt);
+  setInterval(window._uysaFullSync, CFG.syncInt);           // 5 dk
+  setInterval(() => api('backup', { trigger: 'auto' }), CFG.bkpInt); // 30 dk
+  setInterval(window._uysaLocalBackup, 10 * 60 * 1000);    // 10 dk yerel yedek
+  setTimeout(window._uysaLocalBackup, 5000);               // İlk açılışta 5sn sonra
 
   // ── Sekme kapanırken flush ──────────────────────────────────
-  window.addEventListener('beforeunload', flushQueue);
+  window.addEventListener('beforeunload', () => {
+    flushQueue();
+    window._uysaLocalBackup(); // Kapanırken de yedek al
+  });
 
   // ── Başlat ─────────────────────────────────────────────────
   const _start = () => {
@@ -699,6 +800,8 @@
     _start();
 
   if (CFG.debug) console.log('[UYSA-Sync] ✅ Sunucu sync katmanı aktif');
+  // Fix6: CFG'yi dışarıya aç — _sendAuditToServer ve diğer modüller için
+  window.UYSA_API_CFG = { apiUrl: CFG.apiUrl, token: CFG.token };
 })();
 </script>
 
@@ -7640,14 +7743,60 @@ function uysaDoLogin() {
         );
       } catch(e) {}
     }
-    // Görünür debug: hata mesajında hash göster
+    // Fix2: JS hash eşleşmediyse sunucu bcrypt ile dene (userAuth API)
     if (!matchedUser) {
-      err.textContent = 'Hatalı giriş. [DBG: ' + (computedHash||'?').slice(5,18) + ']';
-      err.classList.add('show');
-      console.warn('[UYSA-LOGIN] u=' + u + ' hash=' + computedHash +
-        ' def0=' + (UYSA_DEFAULT_USERS[0]||{}).passwordHash);
-      _auditLog('login_failed', 'LOGIN', 'Başarısız: ' + u);
-      return;
+      // Sync userAuth — await kullanamayız, Promise zinciri kuruyoruz
+      fetch('/uysa_api.php?action=userAuth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-UYSA-Token': 'UysaERP2026xProdKey3f7a9c1b' },
+        body: JSON.stringify({ username: u, password: p })
+      }).then(r => r.json()).then(res => {
+        if (res && res.ok && res.user) {
+          // Sunucu doğruladı → kullanıcıyı localStorage'a güncelle (hash ile)
+          const su = res.user;
+          try {
+            const users = _getUsers();
+            const idx = users.findIndex(x => x.username === su.username);
+            const newHash = _uysaHash(p); // JS hash'i üret ve sakla
+            if (idx >= 0) {
+              users[idx].passwordHash = newHash;
+              _saveUsers(users);
+            } else {
+              users.push({
+                id: su.id, username: su.username, phone: su.phone || '',
+                passwordHash: newHash, role: su.role,
+                displayName: su.display_name || su.username,
+                active: true, createdAt: new Date().toISOString().slice(0,10),
+                createdBy: 'server', permissions: su.permissions || ['read','write']
+              });
+              _saveUsers(users);
+            }
+          } catch(e) {}
+          // Giriş başarılı
+          const sessUser = _getUsers().find(x => x.username === su.username) || {
+            id: su.id, username: su.username, displayName: su.display_name,
+            role: su.role, permissions: su.permissions || []
+          };
+          err.classList.remove('show');
+          try { _setSession(sessUser); } catch(e) {}
+          _auditLog('login', 'LOGIN', 'Sunucu doğrulama: ' + sessUser.displayName, sessUser.username);
+          const overlay = document.getElementById('uysaLoginOverlay');
+          if (overlay) overlay.classList.remove('active');
+          try { _updateUserBadge(); } catch(e) {}
+          if (typeof toast === 'function') toast('👋 Hoş geldiniz, ' + (sessUser.displayName || su.username) + '!');
+        } else {
+          // Sunucu da reddetti
+          err.textContent = 'Kullanıcı adı veya şifre hatalı!';
+          err.classList.add('show');
+          console.warn('[UYSA-LOGIN] u=' + u + ' hash=' + computedHash);
+          _auditLog('login_failed', 'LOGIN', 'Başarısız: ' + u);
+        }
+      }).catch(() => {
+        err.textContent = 'Kullanıcı adı veya şifre hatalı!';
+        err.classList.add('show');
+        _auditLog('login_failed', 'LOGIN', 'Başarısız (offline): ' + u);
+      });
+      return; // async devam edecek
     }
   }
 
@@ -7716,6 +7865,9 @@ function toggleUserPanel() {
     </div>
     <div class="up-item" onclick="openAuditLog();toggleUserPanel()">
       🔍 Silme & Değişiklik Logu
+    </div>
+    <div class="up-item" onclick="if(typeof openSyncDashboard==='function')openSyncDashboard();toggleUserPanel()">
+      🔄 Sync & Yedekleme
     </div>` : ''}
     <div class="up-item" onclick="uysaChangePassword()">
       🔑 Şifre Değiştir
@@ -7873,6 +8025,15 @@ function toggleUserActive(userId) {
   _saveUsers(users);
   const sess = _getSession();
   _auditLog('user_toggle', 'USER_MGMT', `Kullanıcı ${users[idx].active?'aktif':'pasif'}: ${users[idx].username}`, sess?.username);
+  // Fix4: MySQL'e de güncelle
+  const u = users[idx];
+  fetch('/uysa_api.php?action=userSave', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-UYSA-Token': 'UysaERP2026xProdKey3f7a9c1b' },
+    body: JSON.stringify({ id: typeof u.id==='number'&&u.id<1e10?u.id:0,
+      username: u.username, phone: u.phone||'', display_name: u.displayName,
+      role: u.role, active: u.active?1:0, created_by: sess?.username||'admin' })
+  }).catch(()=>{});
   _renderUserMgmt();
 }
 
@@ -7887,6 +8048,17 @@ function editUser(userId) {
     const sess = _getSession();
     _auditLog('user_pass_change', 'USER_MGMT', `Şifre değiştirildi: ${u.username}`, sess?.username);
     _saveUsers(users);
+    // Fix4: MySQL'e de yeni şifre gönder (PHP bcrypt ile saklar)
+    fetch('/uysa_api.php?action=userSave', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-UYSA-Token': 'UysaERP2026xProdKey3f7a9c1b' },
+      body: JSON.stringify({ id: typeof u.id==='number'&&u.id<1e10?u.id:0,
+        username: u.username, password: newPass.trim(),
+        phone: u.phone||'', display_name: u.displayName,
+        role: u.role, active: u.active?1:0, created_by: sess?.username||'admin' })
+    }).then(r=>r.json()).then(res=>{
+      if(res&&res.ok) console.log('[UYSA] Şifre MySQL güncellendi:', u.username);
+    }).catch(()=>{});
     if (typeof toast==='function') toast(`✅ ${u.displayName} şifresi güncellendi`);
     _renderUserMgmt();
   }
@@ -7943,7 +8115,8 @@ function _getAuditLogs() {
 }
 
 function _sendAuditToServer(log) {
-  const CFG_obj = typeof CFG !== 'undefined' ? CFG : { apiUrl: '/uysa_api.php', token: '' };
+  // Fix6: window.UYSA_API_CFG üzerinden doğru token al
+  const CFG_obj = window.UYSA_API_CFG || { apiUrl: '/uysa_api.php', token: 'UysaERP2026xProdKey3f7a9c1b' };
   if (!CFG_obj.apiUrl) return;
   fetch(CFG_obj.apiUrl + '?action=auditLog', {
     method: 'POST',
@@ -8921,7 +9094,298 @@ window.addEventListener('DOMContentLoaded', function() {
     ${stokSatirlar?`<table><thead><tr><th>Malzeme</th><th>Mevcut</th><th>Durum</th></tr></thead><tbody>${stokSatirlar}</tbody></table>`:'<p style="color:#6b7280">Depo seçili değil veya stok kaydı yok.</p>'}
 
     <div class="footer">Bu iş emri UYSA v51 tarafından oluşturulmuştur. ${new Date().toLocaleString('tr-TR')}</div>
-    </body></html>`);
+    
+<!-- ════════════════ SYNC DASHBOARD MODAL ════════════════ -->
+<div id="uysaSyncDashboard" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.55);z-index:99999;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:20px;padding:28px 32px;width:680px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,.25);font-family:'Segoe UI',sans-serif;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 style="margin:0;font-size:18px;color:#0f172a">🔄 Senkronizasyon & Yedekleme Durumu</h2>
+      <button onclick="document.getElementById('uysaSyncDashboard').style.display='none'" style="background:#f1f5f9;border:none;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:13px">✕ Kapat</button>
+    </div>
+
+    <!-- Anlık Durum Kartları -->
+    <div id="syncStatusCards" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px">
+      <div class="sync-card" id="sc-server" style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:12px;padding:14px">
+        <div style="font-size:10px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:.5px">Sunucu</div>
+        <div id="sc-server-val" style="font-size:22px;font-weight:800;color:#15803d;margin:4px 0">—</div>
+        <div id="sc-server-sub" style="font-size:11px;color:#4ade80">Kontrol ediliyor...</div>
+      </div>
+      <div class="sync-card" id="sc-local" style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:12px;padding:14px">
+        <div style="font-size:10px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:.5px">Yerel</div>
+        <div id="sc-local-val" style="font-size:22px;font-weight:800;color:#2563eb;margin:4px 0">—</div>
+        <div id="sc-local-sub" style="font-size:11px;color:#60a5fa">localStorage anahtarları</div>
+      </div>
+      <div class="sync-card" id="sc-users" style="background:#fdf4ff;border:1.5px solid #e9d5ff;border-radius:12px;padding:14px">
+        <div style="font-size:10px;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:.5px">Kullanıcılar</div>
+        <div id="sc-users-val" style="font-size:22px;font-weight:800;color:#7c3aed;margin:4px 0">—</div>
+        <div id="sc-users-sub" style="font-size:11px;color:#a78bfa">MySQL kayıtları</div>
+      </div>
+    </div>
+
+    <!-- Sync Log -->
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px">
+      <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:10px">📋 Son Senkronizasyon Geçmişi</div>
+      <div id="syncLogList" style="font-size:12px;color:#64748b;line-height:2">
+        <div>Yükleniyor...</div>
+      </div>
+    </div>
+
+    <!-- Yedek Geçmişi -->
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-size:12px;font-weight:700;color:#374151">💾 Yedekleme Geçmişi</div>
+        <button onclick="window._uysaManualBackup&&window._uysaManualBackup()" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:5px 12px;cursor:pointer;font-size:11px;font-weight:600">+ Manuel Yedek Al</button>
+      </div>
+      <div id="backupHistoryList" style="font-size:12px;color:#64748b;line-height:2">
+        <div>Yükleniyor...</div>
+      </div>
+    </div>
+
+    <!-- Aksiyonlar -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+      <button onclick="window._uysaForceSync&&window._uysaForceSync()" style="background:#0f172a;color:#fff;border:none;border-radius:10px;padding:10px;cursor:pointer;font-size:12px;font-weight:700">⚡ Zorla Sync</button>
+      <button onclick="window._uysaRestoreBackup&&window._uysaRestoreBackup()" style="background:#7c3aed;color:#fff;border:none;border-radius:10px;padding:10px;cursor:pointer;font-size:12px;font-weight:700">♻️ Yedeği Geri Yükle</button>
+      <button onclick="window._uysaExportData&&window._uysaExportData()" style="background:#059669;color:#fff;border:none;border-radius:10px;padding:10px;cursor:pointer;font-size:12px;font-weight:700">📤 JSON Dışa Aktar</button>
+    </div>
+    <div id="syncDashMsg" style="margin-top:10px;font-size:12px;color:#2563eb;text-align:center;min-height:18px"></div>
+  </div>
+</div>
+
+<script>
+
+// ════════════════════════════════════════════════════════════
+// SYNC DASHBOARD — Real-time senkronizasyon paneli
+// ════════════════════════════════════════════════════════════
+(function() {
+  'use strict';
+  const API_TOKEN = 'UysaERP2026xProdKey3f7a9c1b';
+  const API_URL   = '/uysa_api.php';
+  const _log      = [];    // in-memory sync log
+  const MAX_LOG   = 50;
+
+  async function apiCall(action, body={}) {
+    try {
+      const r = await fetch(`${API_URL}?action=${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json', 'X-UYSA-Token': API_TOKEN },
+        body: JSON.stringify(body)
+      });
+      return await r.json();
+    } catch(e) { return { ok: false, error: e.message }; }
+  }
+
+  function addLog(type, msg) {
+    _log.unshift({ ts: Date.now(), type, msg });
+    if (_log.length > MAX_LOG) _log.length = MAX_LOG;
+    _renderLog();
+  }
+
+  function relTime(ts) {
+    const d = Math.floor((Date.now()-ts)/1000);
+    if (d < 60) return d+'s önce';
+    if (d < 3600) return Math.floor(d/60)+'dk önce';
+    return new Date(ts).toLocaleTimeString('tr-TR');
+  }
+
+  function _renderLog() {
+    const el = document.getElementById('syncLogList');
+    if (!el) return;
+    if (!_log.length) { el.innerHTML = '<span style="color:#94a3b8">Henüz aktivite yok</span>'; return; }
+    el.innerHTML = _log.slice(0,12).map(l => {
+      const icon = l.type==='ok'?'✅':l.type==='warn'?'⚠️':l.type==='err'?'❌':'🔵';
+      return `<div>${icon} <span style="color:#94a3b8">${relTime(l.ts)}</span> — ${l.msg}</div>`;
+    }).join('');
+  }
+
+  async function refreshDashboard() {
+    const setCard = (id, val, sub, color) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.querySelector('[id$="-val"]') && (el.querySelector('[id$="-val"]').textContent = val);
+      el.querySelector('[id$="-sub"]') && (el.querySelector('[id$="-sub"]').textContent = sub);
+    };
+
+    // Sunucu stats
+    const stats = await apiCall('stats');
+    const serverEl = document.getElementById('sc-server-val');
+    const serverSub = document.getElementById('sc-server-sub');
+    if (serverEl) {
+      if (stats.ok) {
+        serverEl.textContent = stats.key_count || 0;
+        serverSub.textContent = `${stats.data_size_kb||0} KB — ${(stats.last_update||'').slice(0,16)}`;
+        addLog('ok', `Sunucu: ${stats.key_count} anahtar, ${stats.data_size_kb}KB`);
+      } else {
+        serverEl.textContent = '✕';
+        serverSub.textContent = 'Bağlantı yok';
+        addLog('err', 'Sunucu bağlantısı başarısız');
+      }
+    }
+
+    // Yerel localStorage
+    const localEl = document.getElementById('sc-local-val');
+    const localSub = document.getElementById('sc-local-sub');
+    if (localEl) {
+      let localKeys = 0, localSize = 0;
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k?.startsWith('uysa')) {
+          localKeys++;
+          localSize += (localStorage.getItem(k)||'').length;
+        }
+      }
+      localEl.textContent = localKeys;
+      localSub.textContent = `~${Math.round(localSize/1024)}KB — ${new Date().toLocaleTimeString('tr-TR')}`;
+    }
+
+    // Kullanıcılar
+    const userList = await apiCall('userList');
+    const usersEl = document.getElementById('sc-users-val');
+    const usersSub = document.getElementById('sc-users-sub');
+    if (usersEl) {
+      if (userList.ok) {
+        usersEl.textContent = userList.users?.length || 0;
+        const active = (userList.users||[]).filter(u=>u.active).length;
+        usersSub.textContent = `${active} aktif / ${(userList.users||[]).length - active} pasif`;
+      } else {
+        usersEl.textContent = '?';
+        usersSub.textContent = 'Alınamadı';
+      }
+    }
+
+    // Yedek geçmişi
+    const bkpEl = document.getElementById('backupHistoryList');
+    if (bkpEl) {
+      const bkpList = await apiCall('backupList');
+      const rows = bkpList.backups || [];
+      const localBkp = (() => {
+        try { return JSON.parse(localStorage.getItem('uysa_local_backups')||'[]'); } catch(e){return[];}
+      })();
+      let html = '';
+      if (localBkp.length) {
+        html += localBkp.slice(0,3).map((b,i) =>
+          `<div>💾 Yerel #${i+1} — ${new Date(b.ts).toLocaleString('tr-TR')} — ${b.keyCount} anahtar
+           <button onclick="window._uysaRestoreLocalBackup(${i});document.getElementById('syncDashMsg').textContent='Geri yüklendi: ${b.keyCount} anahtar'" style="margin-left:8px;background:#dbeafe;color:#2563eb;border:none;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:10px">♻️</button></div>`
+        ).join('');
+      }
+      if (rows.length) {
+        html += rows.slice(0,5).map(b =>
+          `<div>☁️ Sunucu #${b.id} — ${(b.created_at||'').slice(0,16)} — ${b.key_count} anahtar, ${b.size_kb}KB
+           <button onclick="window._uysaRestoreServerBackup(${b.id})" style="margin-left:8px;background:#d1fae5;color:#059669;border:none;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:10px">♻️</button></div>`
+        ).join('');
+      }
+      bkpEl.innerHTML = html || '<span style="color:#94a3b8">Henüz yedek yok</span>';
+    }
+  }
+
+  // ── Aksiyon fonksiyonları ──────────────────────────────────
+  window._uysaForceSync = async function() {
+    const msg = document.getElementById('syncDashMsg');
+    if (msg) msg.textContent = '⏳ Senkronize ediliyor...';
+    if (typeof window._uysaFullSync === 'function') window._uysaFullSync();
+    if (typeof window._uysaSyncLoad === 'function') await window._uysaSyncLoad();
+    addLog('ok', 'Manuel tam sync çalıştırıldı');
+    if (msg) msg.textContent = '✅ Sync tamamlandı!';
+    setTimeout(() => refreshDashboard(), 1000);
+  };
+
+  window._uysaManualBackup = async function() {
+    const msg = document.getElementById('syncDashMsg');
+    if (msg) msg.textContent = '⏳ Yedek alınıyor...';
+    if (typeof window._uysaLocalBackup === 'function') window._uysaLocalBackup();
+    const r = await apiCall('backup', { trigger: 'manual' });
+    addLog(r.ok?'ok':'warn', r.ok ? `Yedek alındı: ${r.size_kb}KB` : 'Sunucu yedeği başarısız');
+    if (msg) msg.textContent = r.ok ? `✅ Yedek alındı: ${r.size_kb}KB` : '⚠️ Yerel yedek alındı (sunucu başarısız)';
+    setTimeout(() => refreshDashboard(), 800);
+  };
+
+  window._uysaRestoreBackup = async function() {
+    const localBkp = (() => { try { return JSON.parse(localStorage.getItem('uysa_local_backups')||'[]'); } catch(e){return[];} })();
+    if (!localBkp.length) { alert('Yerel yedek bulunamadı!'); return; }
+    const choice = confirm(`En son yerel yedekten geri yüklensin mi?
+Tarih: ${new Date(localBkp[0].ts).toLocaleString('tr-TR')}
+Anahtar: ${localBkp[0].keyCount}`);
+    if (!choice) return;
+    const n = window._uysaRestoreLocalBackup(0);
+    addLog('ok', `Yerel yedek geri yüklendi: ${n} anahtar`);
+    document.getElementById('syncDashMsg').textContent = `✅ ${n} anahtar geri yüklendi!`;
+  };
+
+  window._uysaRestoreLocalBackup = function(index=0) {
+    try {
+      const backups = JSON.parse(localStorage.getItem('uysa_local_backups')||'[]');
+      if (!backups[index]) return 0;
+      const snap = backups[index].data;
+      let n = 0;
+      Object.entries(snap).forEach(([k,v]) => {
+        if (k !== 'uysa_local_backups') {
+          const orig = localStorage.setItem.__orig || localStorage.setItem;
+          try { orig.call(localStorage,k,v); } catch(e){ localStorage.setItem(k,v); }
+          n++;
+        }
+      });
+      return n;
+    } catch(e) { return 0; }
+  };
+
+  window._uysaRestoreServerBackup = async function(id) {
+    const msg = document.getElementById('syncDashMsg');
+    if (!confirm(`Sunucu yedek #${id} geri yüklensin mi?`)) return;
+    if (msg) msg.textContent = '⏳ Geri yükleniyor...';
+    const r = await apiCall('backupRestore', { id });
+    addLog(r.ok?'ok':'err', r.ok ? `Sunucu yedek #${id} geri yüklendi` : `Geri yükleme başarısız: ${r.error}`);
+    if (msg) msg.textContent = r.ok ? `✅ Geri yüklendi!` : `❌ Hata: ${r.error}`;
+    if (r.ok && typeof window._uysaSyncLoad==='function') setTimeout(window._uysaSyncLoad, 500);
+  };
+
+  window._uysaExportData = function() {
+    try {
+      const data = {};
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k?.startsWith('uysa')) data[k] = localStorage.getItem(k);
+      }
+      const blob = new Blob([JSON.stringify({
+        exportedAt: new Date().toISOString(),
+        keyCount: Object.keys(data).length,
+        data
+      }, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `uysa_backup_${new Date().toISOString().slice(0,10)}.json`;
+      a.click();
+      addLog('ok', 'JSON dışa aktarıldı: ' + Object.keys(data).length + ' anahtar');
+    } catch(e) { alert('Dışa aktarma hatası: ' + e.message); }
+  };
+
+  // ── Dashboard Aç ──────────────────────────────────────────
+  window.openSyncDashboard = function() {
+    const el = document.getElementById('uysaSyncDashboard');
+    if (!el) return;
+    el.style.display = 'flex';
+    refreshDashboard();
+    addLog('ok', 'Dashboard açıldı');
+  };
+
+  // ── Sync event listener ───────────────────────────────────
+  window.addEventListener('uysa-sync-update', (e) => {
+    addLog('ok', `Auto-sync: ${e.detail.saved||0} anahtar (${e.detail.skipped||0} atlandı)`);
+  });
+  window.addEventListener('uysa-backup-update', (e) => {
+    addLog('ok', `Yerel yedek: ${e.detail.keys||0} anahtar`);
+  });
+
+  // ── Periyodik log yenileme ────────────────────────────────
+  setInterval(() => {
+    if (document.getElementById('uysaSyncDashboard')?.style.display === 'flex') {
+      _renderLog();
+    }
+  }, 5000);
+
+  console.log('[UYSA-Dashboard] ✅ Sync dashboard aktif');
+})();
+
+</script>
+</body></html>`);
     win.document.close();
   });
 
@@ -10364,6 +10828,7 @@ Saygılarımızla,
   window.toggleUserPanel    = toggleUserPanel;
   window.openUserMgmt       = openUserMgmt;
   window.openAuditLog       = openAuditLog;
+  window.openSyncDashboard  = (typeof openSyncDashboard !== 'undefined') ? openSyncDashboard : window.openSyncDashboard;
   window.addNewUser         = addNewUser;
   window.toggleUserActive   = toggleUserActive;
   window.editUser           = editUser;
