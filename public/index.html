@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23005fcc'/><text x='16' y='23' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='18' fill='white'>U</text></svg>">
-<!-- UYSA ERP v124-Dashboard | Son Denetim Geçti | Veri Girişine Hazır -->
+<!-- UYSA ERP v125-BugFix | Son Denetim Geçti | Veri Girişine Hazır -->
 <!-- UYSA ERP v118b | Sprint 1: B+C+D+E patches | 2026-03-02 -->
   <meta charset="utf-8"/>
 <!-- UYSA ERP v118 Sprint 1 - COMPLETE: LazyLoadManager + Modal/Toast + SPA Refresh + VirtualScroll + CSS External -->
@@ -18,21 +18,24 @@
 window.__uysaCache = Object.create(null);
 window.__uysaCacheStats = { hits: 0, misses: 0, writes: 0 };
 
-window.lsGet = function(key) {
+window.lsGet = function(key, def) {
   if (key in window.__uysaCache) {
     window.__uysaCacheStats.hits++;
     return window.__uysaCache[key];
   }
   window.__uysaCacheStats.misses++;
-  var val = lsGet(key);
-  if (val !== null) window.__uysaCache[key] = val;
-  return val;
+  try {
+    var raw = localStorage.getItem(key);
+    var val = raw !== null ? JSON.parse(raw) : (def !== undefined ? def : null);
+    if (val !== null) window.__uysaCache[key] = val;
+    return val;
+  } catch(e) { return def !== undefined ? def : null; }
 };
 
 window.lsSet = function(key, val) {
   window.__uysaCacheStats.writes++;
   window.__uysaCache[key] = val;
-  lsSet(key, val);
+  try { localStorage.setItem(key, JSON.stringify(val)); } catch(e) {}
 };
 
 window.lsCacheStats = function() {
@@ -7509,7 +7512,7 @@ ${note}`);
   }
 
   // ========= FİNANS MODULE =========
-  /* v117-stub-switchFinTab-0 */
+  window.switchFinTab = function(tab) {
     if (tab === 'butce') { setTimeout(function(){ renderButceSapma(); initButceYillar(); }, 100); }
     document.querySelectorAll('.fin-pane').forEach(p=>p.style.display='none');
     const el = document.getElementById('finPane-'+tab);
@@ -9019,7 +9022,29 @@ _uysaAlert('Malzeme ve miktar giriniz.'); return; }
   /* ────────────────────────────────────────────────────────────────────
      2. CRM MÜŞTERİ LISTESI
      ──────────────────────────────────────────────────────────────────── */
-  /* v117-stub: v75RenderMusteriListesi (eski tanım silindi) */
+  /* v117-stub: v75RenderMusteriListesi */
+  window.v75RenderMusteriListesi = function() {
+    try {
+      var div = document.getElementById('v75MusteriListeDiv');
+      if (!div) return;
+      var customers = window.ls ? window.ls.get('uysa_customers_v1', {}) : {};
+      var custs = Array.isArray(customers) ? customers : (customers.customers || []);
+      if (!custs.length) {
+        div.innerHTML = '<div style="color:#94a3b8;padding:10px;font-size:12px">Müşteri kaydı bulunamadı.</div>';
+        return;
+      }
+      div.innerHTML = custs.filter(function(c){ return c && c !== 'GENEL'; }).map(function(c, i) {
+        var name = typeof c === 'string' ? c : (c.ad || c.musteri || String(c));
+        return '<div style="padding:6px 8px;border-bottom:1px solid #f1f5f9;font-size:12px;cursor:pointer" onclick="v75SelectMusteri(\'' + name.replace(/'/g, "\'") + '\')">👤 ' + name + '</div>';
+      }).join('');
+    } catch(e) { console.warn('[v75] renderMusteriListesi error:', e); }
+  };
+  if (!window.v75SelectMusteri) {
+    window.v75SelectMusteri = function(name) {
+      var inp = document.getElementById('v75RenameInput') || document.getElementById('crmSearchInput');
+      if (inp) { inp.value = name; }
+    };
+  }
 
   /* ────────────────────────────────────────────────────────────────────
      3. CRM RENAME MODAL
