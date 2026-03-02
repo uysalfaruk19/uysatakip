@@ -195,7 +195,7 @@ function ensureSchema(PDO $pdo): void
         `name`         VARCHAR(100) NOT NULL DEFAULT 'API Key',
         `owner`        VARCHAR(100) NOT NULL DEFAULT 'system',
         `role`         VARCHAR(50)  NOT NULL DEFAULT 'viewer',
-        `scopes`       JSON         NOT NULL,
+        `scopes`       LONGTEXT     NOT NULL,
         `is_active`    TINYINT(1)   NOT NULL DEFAULT 1,
         `uses_count`   INT UNSIGNED NOT NULL DEFAULT 0,
         `last_used_at` DATETIME              DEFAULT NULL,
@@ -207,7 +207,7 @@ function ensureSchema(PDO $pdo): void
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 }
 
-ensureSchema($pdo);
+try { ensureSchema($pdo); } catch (\Throwable $e) { error_log('[UYSA] Schema init error: ' . $e->getMessage()); }
 
 // ── JWT Manager ───────────────────────────────────────────────
 require_once __DIR__ . '/src/JwtManager.php';
@@ -452,9 +452,8 @@ case 'set':
 // ── Storage: setBulk ─────────────────────────────────────────
 case 'setBulk':
     $data = $body['items'] ?? $body['data'] ?? [];
-    if (!is_array($data) || empty($data)) {
-        jsonResponse(['ok' => false, 'error' => 'data (object) gerekli'], 400);
-    }
+    if (!is_array($data)) { jsonResponse(['ok' => false, 'error' => 'data array gerekli'], 400); }
+    if (empty($data)) { jsonResponse(['ok' => true, 'saved' => 0, 'count' => 0]); }
     $pdo->beginTransaction();
     try {
         $stmt = $pdo->prepare("INSERT INTO uysa_storage (store_key, store_value) VALUES (?, ?)
@@ -560,8 +559,13 @@ case 'userAuth':
 
 // ── User List ─────────────────────────────────────────────────
 case 'userList':
-    $rows = $pdo->query("SELECT id, username, role, display_name, last_login, is_active, created_at FROM uysa_users ORDER BY created_at DESC")->fetchAll();
-    jsonResponse(['ok' => true, 'users' => $rows]);
+    try {
+        $rows = $pdo->query("SELECT id, username, role, display_name, last_login, is_active, created_at FROM uysa_users ORDER BY created_at DESC")->fetchAll();
+        jsonResponse(['ok' => true, 'users' => $rows]);
+    } catch (\Throwable $e) {
+        error_log('[UYSA] userList error: ' . $e->getMessage());
+        jsonResponse(['ok' => false, 'error' => 'Kullanıcı listesi alınamadı: ' . $e->getMessage()], 500);
+    }
 
 // ── User Save ─────────────────────────────────────────────────
 case 'userSave':
