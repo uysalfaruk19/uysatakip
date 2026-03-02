@@ -451,7 +451,7 @@ case 'set':
 
 // ── Storage: setBulk ─────────────────────────────────────────
 case 'setBulk':
-    $data = $body['data'] ?? [];
+    $data = $body['items'] ?? $body['data'] ?? [];
     if (!is_array($data) || empty($data)) {
         jsonResponse(['ok' => false, 'error' => 'data (object) gerekli'], 400);
     }
