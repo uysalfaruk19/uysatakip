@@ -1266,7 +1266,7 @@
       <label>Kullanıcı Adı</label>
       <input type="text" id="loginUser" placeholder="Kullanıcı adınız" autocomplete="username"
         onkeydown="if(event.key==='Enter') document.getElementById('loginPass').focus()"/>
-    </div>
+      +'</div>'
     <div class="login-field">
       <label>Şifre</label>
       <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password"
@@ -1328,10 +1328,10 @@
             <div style="padding:12px 14px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;background:#f8faff;border-radius:12px 12px 0 0">
               <b style="color:#0b3aa6;font-size:13px">🔔 Bildirim Merkezi</b>
               <button onclick="document.getElementById('bildirimPanel').style.display='none'" style="border:none;background:none;cursor:pointer;font-size:18px;color:#6b7280;line-height:1">×</button>
-            </div>
+            +'</div>'
             <div id="bildirimIcerik" style="padding:8px"></div>
-          </div>
-        </div>
+        +'</div>'
+        +'</div>'
         <!-- A1: Yedek -->
         <button onclick="yedegiIndir()" style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700">📤 Yedek Al</button>
         <label style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;margin:0;white-space:nowrap">
@@ -11299,7 +11299,7 @@ setInterval(() => { if (_saveFolder) window.autoSaveToFolder(); }, 5 * 60 * 1000
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:6px">
           <label style="display:flex;gap:8px;align-items:center;font-size:13px;color:#111827">
             <input type="checkbox" id="restorePurgeChk" checked /> Modül anahtarlarını önce temizle (önerilir)
-          </label>
+      +'</label>'
           <label style="display:flex;gap:8px;align-items:center;font-size:13px;color:#111827">
             <input type="checkbox" id="restoreBackupChk" checked /> Geri yüklemeden önce mevcut durumu klasöre yedekle
           </label>
@@ -14710,7 +14710,7 @@ window.addEventListener('load', function() {
       </div>
       +'<div style="flex:2;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:10px;min-width:200px">'
       +'<div style="font-size:10px;color:#166534;font-weight:700;margin-bottom:6px">💾 TAM YEDEKLEME</div>'
-        <div style="display:flex;gap:6px">
+      +'<div style="display:flex;gap:6px">'
       +'<button onclick="window._uysaExportAll()" style="flex:1;padding:7px;background:#16a34a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">📤 JSON İndir</button>'
       +'<label style="flex:1;padding:7px;background:#0ea5e9;color:#fff;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;text-align:center;display:flex;align-items:center;justify-content:center">'
       +'📥 Geri Yükle'
@@ -14719,7 +14719,7 @@ window.addEventListener('load', function() {
         </div>
       </div>
     </div>
-    <h3 style="margin:0 0 16px;color:#1e293b">✏️ Müşteri Adını Değiştir</h3>'
+      +'<h3 style="margin:0 0 16px;color:#1e293b">✏️ Müşteri Adını Değiştir</h3>'
       +'<div style="margin-bottom:12px"><label style="font-size:13px;color:#64748b">Mevcut Ad</label>'
       +'<div id="v75RenameCurrentName" style="font-weight:700;color:#1e293b;font-size:15px;padding:6px 0"></div></div>'
       +'<div style="margin-bottom:16px"><label style="font-size:13px;color:#64748b">Yeni Ad</label>'
