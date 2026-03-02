@@ -937,6 +937,27 @@
   };
 
   // ── Sayfa açılışında sunucudan yükle ───────────────────────
+  // ── Zorla sunucudan yükleme (mobil/çapraz cihaz) ──────────────
+  window._uysaForcePull = async function() {
+    var btn = document.getElementById('syncPullBtn');
+    if(btn){ btn.disabled=true; btn.innerHTML='<span>⏳</span> Yükleniyor...'; }
+    try {
+      await window._uysaSyncLoad();
+      // Tüm render fonksiyonlarını tekrar çağır
+      var allFns = [
+        'renderAnasayfa','refreshFinStats','gsRenderTableV76','v75RenderAylikRapor',
+        'renderCrmList','_menuRebuildRows','renderStokTablo',
+        'renderPersonelTablo','renderLojistikTablo'
+      ];
+      allFns.forEach(fn => { try { if(typeof window[fn]==='function') window[fn](); } catch(e){} });
+      if(btn){ btn.disabled=false; btn.innerHTML='<span>✅</span> Yüklendi'; }
+      setTimeout(()=>{ if(btn) btn.innerHTML='<span>☁️</span> Sunucudan Yükle'; }, 2000);
+    } catch(e) {
+      if(btn){ btn.disabled=false; btn.innerHTML='<span>❌</span> Hata'; }
+      console.error('[UYSA] ForcePull error:', e);
+    }
+  };
+
   window._uysaSyncLoad = async function () {
     const toast = (m, d=4000) => {
       if (typeof window._uysaToast === 'function') window._uysaToast(m, d);
@@ -964,13 +985,52 @@
     }
 
     if (loaded > 0) {
-      toast(`☁️ ${loaded} kayıt sunucudan yüklendi`, 3000);
+      toast(`☁️ Sunucu senkronizasyonu tamamlandı: ${loaded} kayıt yüklendi. Sayfa yenileniyor...`, 4000);
+      // Tüm modül render fonksiyonları — cross-device sync için genişletildi
       const fns = [
-        'refreshFinStats','gsRenderTable','_menuRebuildRows','_menuRenderTable',
-        'renderStokTablo','renderCrmList','renderPersonelTablo','renderLojistikTablo'
+        // Finans
+        'refreshFinStats', 'gsRenderTableV76', 'v75RenderAylikRapor',
+        // Anasayfa
+        'renderAnasayfa', 'renderDashboard',
+        // Müşteri & CRM
+        'renderCrmList', 'renderMusteriListesi',
+        // Menü
+        '_menuRebuildRows', '_menuRenderTable', 'renderMenuPlanning',
+        // Stok & Üretim
+        'renderStokTablo', 'renderUretimTablo',
+        // İK & Bordro
+        'renderPersonelTablo', 'renderBordroTablo', 'renderIzinTablo',
+        // Lojistik
+        'renderLojistikTablo', 'renderDepoTablo',
+        // Satın alma
+        'renderSatinAlmaTablo',
+        // Raporlama
+        'renderRaporlamaTablo'
       ];
       setTimeout(() => {
-        fns.forEach(fn => { try { if (typeof window[fn]==='function') window[fn](); } catch(e){} });
+        fns.forEach(fn => {
+          try { if (typeof window[fn]==='function') window[fn](); }
+          catch(e){ if(window._uysaCFG?.debug) console.warn('[UYSA-Sync] render err:', fn, e); }
+        });
+        // Aktif modülü yeniden render et
+        try {
+          var activePanel = document.querySelector('.mod-panel.active');
+          if(activePanel) {
+            var modId = activePanel.id || '';
+            var modMap = {
+              'mod-finans': ['refreshFinStats','gsRenderTableV76'],
+              'mod-crm': ['renderCrmList','renderMusteriListesi'],
+              'mod-menu': ['_menuRebuildRows','_menuRenderTable'],
+              'mod-stok': ['renderStokTablo'],
+              'mod-ik': ['renderPersonelTablo'],
+              'mod-lojistik': ['renderLojistikTablo'],
+              'mod-anasayfa': ['renderAnasayfa']
+            };
+            (modMap[modId] || []).forEach(fn => {
+              try { if(typeof window[fn]==='function') window[fn](); } catch(e){}
+            });
+          }
+        } catch(e){}
       }, 600);
     }
     if (CFG.debug) console.log(`[UYSA-Sync] 🔄 ${loaded} anahtar yüklendi`);
@@ -1216,8 +1276,17 @@
 
   // ── Başlat ─────────────────────────────────────────────────
   const _start = () => {
+    // 400ms sonra sunucudan veri çek
     setTimeout(window._uysaSyncLoad, 400);
-    setTimeout(()=>{ if(typeof window.renderAnasayfa==='function') window.renderAnasayfa(); }, 1000);
+    // 1.2s sonra anasayfayı render et (sync tamamlanmış olacak)
+    setTimeout(function(){
+      try { if(typeof window.renderAnasayfa==='function') window.renderAnasayfa(); } catch(e){}
+      // Tüm modülleri güncelle
+      ['refreshFinStats','gsRenderTableV76','renderCrmList','renderPersonelTablo',
+       '_menuRebuildRows','renderStokTablo','renderLojistikTablo'].forEach(function(fn){
+        try { if(typeof window[fn]==='function') window[fn](); } catch(e){} 
+      });
+    }, 1800);
   };
   if (document.readyState === 'loading')
     document.addEventListener('DOMContentLoaded', _start);
@@ -19849,7 +19918,7 @@ document.addEventListener('DOMContentLoaded', function(){
 <script>
 
   // ════════════════════════════════════════════════════════════
-  // UYSA v87 — KDV Sistemi + SGK + Biriken Haklar + Aylık KDV Raporu + Üretim KDV Sütunu
+  // UYSA v88 — KDV Sistemi + SGK + Biriken Haklar + Aylık KDV Raporu + Üretim KDV Sütunu
   // ════════════════════════════════════════════════════════════
   (function(){
     'use strict';
