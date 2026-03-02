@@ -953,7 +953,7 @@
       const result = await resp.json();
       if(!result.ok) throw new Error(result.error || 'API hatası');
 
-      const AUTH_SKIP = /^uysa_(users_|migrated_|session|audit_logs)/;
+      const AUTH_SKIP = /^uysa_(session_|token_|password_|auth_secret)/;
       let loaded = 0;
       for(const [k, v] of Object.entries(result.data || {})){
         if(AUTH_SKIP.test(k)) continue;
@@ -982,7 +982,7 @@
     }
 
     // Auth/kullanıcı anahtarlarını sunucudan YÜKLEME — güvenlik + bütünlük
-    const AUTH_SKIP = /^uysa_(users_|migrated_|session|audit_logs)/;
+    const AUTH_SKIP = /^uysa_(session_|token_|password_|auth_secret)/;
     let loaded = 0;
     const serverTs = result.updated_at ? new Date(result.updated_at).getTime() : 0;
     // Fix5: Race condition koruması — yerel yazma zamanı sunucudan yeniyse üstüne yazma
@@ -19939,7 +19939,7 @@ document.addEventListener('DOMContentLoaded', function(){
 <script>
 
   // ════════════════════════════════════════════════════════════
-  // UYSA v89 — KDV Sistemi + SGK + Biriken Haklar + Aylık KDV Raporu + Üretim KDV Sütunu
+  // UYSA v90 — KDV Sistemi + SGK + Biriken Haklar + Aylık KDV Raporu + Üretim KDV Sütunu
   // ════════════════════════════════════════════════════════════
   (function(){
     'use strict';
