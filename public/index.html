@@ -2692,7 +2692,7 @@
           </div>
         </div>
 
-        <div style="display:grid;grid-template-columns:3fr 2fr;gap:16px;align-items:start;min-height:calc(100vh - 180px)">
+        <div style="display:grid;grid-template-columns:3fr 2fr;gap:16px;align-items:stretch;min-height:calc(100vh - 180px)">
 
           <!-- 3.1 CRM -->
           <div class="panel">
@@ -17761,121 +17761,9 @@ window.uysaPerMalHesapla = function() {
 document.addEventListener('DOMContentLoaded', function() {
   const btn = document.getElementById('perMalHesaplaBtn');
   if (btn) btn.onclick = window.uysaPerMalHesapla;
-});
-
-// ─── CRM Müşteri Özeti Sabit Panel ────────────────────────────────────────
-(function() {
-  let _fixed = false;
-  let _panel = null;
-  let _placeholder = null;
-
-  function getPanel() {
-    return document.getElementById('crmOzetPanel');
-  }
-
-  function applyFixed() {
-    _panel = getPanel();
-    if (!_panel || _fixed) return;
-
-    const rect = _panel.getBoundingClientRect();
-    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-    const absTop = rect.top + scrollTop;
-
-    // Placeholder oluştur (yer tutucu)
-    if (!_placeholder) {
-      _placeholder = document.createElement('div');
-      _placeholder.id = 'crmOzetPlaceholder';
-      _placeholder.style.cssText = `width:${rect.width}px;height:${rect.height}px;`;
-      _panel.parentNode.insertBefore(_placeholder, _panel);
-    }
-
-    // Panel'i fixed yap
-    _panel.style.cssText = `
-      position: fixed !important;
-      top: 60px !important;
-      right: 16px !important;
-      width: ${rect.width}px !important;
-      max-height: calc(100vh - 80px) !important;
-      overflow-y: auto !important;
-      z-index: 500 !important;
-      box-shadow: 0 8px 32px rgba(0,0,0,.2) !important;
-      border-radius: 12px !important;
-    `;
-    _fixed = true;
-  }
-
-  function removeFixed() {
-    if (!_panel || !_fixed) return;
-    _panel.style.cssText = '';
-    if (_placeholder) {
-      _placeholder.remove();
-      _placeholder = null;
-    }
-    _fixed = false;
-  }
-
-  function reposition() {
-    if (!_fixed || !_panel) return;
-    _panel.style.top = '60px';
-    _panel.style.right = '16px';
-    _panel.style.maxHeight = 'calc(100vh - 80px)';
-  }
-
-  function activate() {
-    setTimeout(function() {
-      _panel = getPanel();
-      if (_panel) {
-        applyFixed();
-        window.addEventListener('resize', reposition);
-      }
-    }, 200);
-  }
-
-  function deactivate() {
-    removeFixed();
-    window.removeEventListener('resize', reposition);
-  }
-
-  // MutationObserver: mod-satis active sınıfını izle
-  function observeSatis() {
-    const modEl = document.getElementById('mod-satis');
-    if (!modEl) {
-      setTimeout(observeSatis, 500);
-      return;
-    }
-
-    // Başlangıçta aktif mi?
-    if (modEl.classList.contains('active')) activate();
-
-    const obs = new MutationObserver(function(muts) {
-      muts.forEach(function(m) {
-        if (m.type === 'attributes' && m.attributeName === 'class') {
-          if (modEl.classList.contains('active')) activate();
-          else deactivate();
-        }
-      });
-    });
-
-    obs.observe(modEl, { attributes: true, attributeNameFilter: ['class'] });
-
-    // Nav butonlarına event delegation ile de dinle
-    document.addEventListener('click', function(e) {
-      const btn = e.target.closest('[data-module]');
-      if (!btn) return;
-      if (btn.dataset.module === 'satis') {
-        activate();
-      } else {
-        deactivate();
-      }
-    }, true);
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', observeSatis);
-  } else {
-    setTimeout(observeSatis, 300);
-  }
-})();
+})
+// CRM Sabit Panel JS kaldırıldı — pure CSS sticky kullanılıyor
+);
 
 // ─── refreshIkSelectors - aktif personel filtreli final versiyon ──────────
 window.refreshIkSelectors = function() {
