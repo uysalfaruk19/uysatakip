@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23005fcc'/><text x='16' y='23' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='18' fill='white'>U</text></svg>">
-<!-- UYSA ERP v120 Sprint3 | Son Denetim Geçti | Veri Girişine Hazır -->
+<!-- UYSA ERP v120 Sprint3+LoginFix | Son Denetim Geçti | Veri Girişine Hazır -->
 <!-- UYSA ERP v118b | Sprint 1: B+C+D+E patches | 2026-03-02 -->
   <meta charset="utf-8"/>
 <!-- UYSA ERP v118 Sprint 1 - COMPLETE: LazyLoadManager + Modal/Toast + SPA Refresh + VirtualScroll + CSS External -->
@@ -784,6 +784,303 @@ window.addEventListener('DOMContentLoaded', function() {
 <style id="uysa-virtual-scroll-css">.uysa-vs-container{overflow-y:auto;position:relative;contain:strict;will-change:transform}.uysa-vs-spacer{position:absolute;top:0;left:0;width:1px;visibility:hidden;pointer-events:none}.uysa-vs-viewport{position:absolute;top:0;left:0;width:100%}.uysa-vs-row{box-sizing:border-box;overflow:hidden}.uysa-vs-row:hover{background:rgba(var(--primary-rgb,99,102,241),0.08);cursor:pointer}table.uysa-vs-table{table-layout:fixed;width:100%}table.uysa-vs-table td,table.uysa-vs-table th{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.uysa-vs-loading{display:flex;align-items:center;justify-content:center;padding:20px;color:var(--text-muted,#9ca3af);font-size:13px}</style>
 </head>
 <body>
+
+
+<script id="uysa-auth-script">
+/* ═══════════════════════════════════════════════════════════
+   UYSA AUTH SYSTEM v4.1  —  Login / Logout / User Mgmt
+   ═══════════════════════════════════════════════════════════ */
+(function() {
+  'use strict';
+
+  /* ── Hash fonksiyonu (basit SHA-256 olmadan, btoa tabanlı) ── */
+  function simpleHash(str) {
+    var h = 0, i, chr;
+    for (i = 0; i < str.length; i++) {
+      chr = str.charCodeAt(i);
+      h = ((h << 5) - h) + chr;
+      h |= 0;
+    }
+    return 'h_' + Math.abs(h).toString(36) + '_' + btoa(str.slice(0,4)).replace(/=/g,'');
+  }
+
+  /* ── Varsayılan kullanıcılar ── */
+  var UYSA_DEFAULT_USERS = window.UYSA_DEFAULT_USERS || [
+    {
+      id: 1,
+      username: 'OFU',
+      role: 'superadmin',
+      displayName: 'OFU',
+      active: true,
+      // Şifre sıfırlanmış: uysa2026
+      passwordHash: simpleHash('uysa2026')
+    },
+    {
+      id: 2,
+      username: 'Azim',
+      role: 'user',
+      displayName: 'Azim',
+      active: true,
+      passwordHash: simpleHash('uysa2026')
+    }
+  ];
+  window.UYSA_DEFAULT_USERS = UYSA_DEFAULT_USERS;
+
+  /* ── Kullanıcı listesini al (localStorage + default merge) ── */
+  function getUsers() {
+    try {
+      var raw = typeof lsGet === 'function' ? lsGet('uysa_users_v6') : localStorage.getItem('uysa_users_v6');
+      if (raw) {
+        var stored = JSON.parse(raw);
+        if (Array.isArray(stored) && stored.length > 0) {
+          // Stored listesine default'ları merge et (yeni eklenenler)
+          UYSA_DEFAULT_USERS.forEach(function(du) {
+            if (!stored.find(function(u) { return u.username === du.username; })) {
+              stored.push(du);
+            }
+          });
+          return stored;
+        }
+      }
+    } catch(e) {}
+    return UYSA_DEFAULT_USERS.slice();
+  }
+
+  /* ── Kullanıcı kaydet ── */
+  function saveUsers(users) {
+    try {
+      if (typeof lsSet === 'function') {
+        lsSet('uysa_users_v6', JSON.stringify(users));
+      } else {
+        localStorage.setItem('uysa_users_v6', JSON.stringify(users));
+      }
+    } catch(e) {}
+  }
+
+  /* ── Oturum kontrolü ── */
+  function getSession() {
+    try {
+      var s = sessionStorage.getItem('uysa_session');
+      return s ? JSON.parse(s) : null;
+    } catch(e) { return null; }
+  }
+
+  function setSession(user) {
+    try {
+      sessionStorage.setItem('uysa_session', JSON.stringify({
+        username: user.username,
+        role: user.role,
+        displayName: user.displayName || user.username,
+        loginTime: Date.now()
+      }));
+    } catch(e) {}
+  }
+
+  function clearSession() {
+    try { sessionStorage.removeItem('uysa_session'); } catch(e) {}
+  }
+
+  /* ── Giriş yap ── */
+  window.uysaDoLogin = function() {
+    var userInput = document.getElementById('loginUser');
+    var passInput = document.getElementById('loginPass');
+    var errorDiv  = document.getElementById('loginError');
+
+    if (!userInput || !passInput) {
+      console.error('[UYSA-Auth] Login form elements not found');
+      return;
+    }
+
+    var username = (userInput.value || '').trim();
+    var password = (passInput.value || '').trim();
+    var errorEl  = errorDiv;
+
+    if (!username || !password) {
+      if (errorEl) { errorEl.classList.add('show'); errorEl.textContent = 'Kullanıcı adı ve şifre gerekli!'; }
+      return;
+    }
+
+    // Şifre hash
+    var inputHash = simpleHash(password);
+
+    // Kullanıcı listesinden bul
+    var users = getUsers();
+    var found = null;
+    
+    for (var i = 0; i < users.length; i++) {
+      var u = users[i];
+      if (u.username === username && (u.active === true || u.active === 1 || u.active === undefined)) {
+        // Hash karşılaştır
+        if (u.passwordHash === inputHash) {
+          found = u;
+          break;
+        }
+        // Düz metin karşılaştır (eski kayıtlar)
+        if (u.password === password || u.passwordHash === password) {
+          found = u;
+          // Hash'i güncelle
+          u.passwordHash = inputHash;
+          saveUsers(users);
+          break;
+        }
+        // Sunucu placeholder hash (uysa_SERVER_N formatı) → uysa2026 dene
+        if (u.passwordHash && u.passwordHash.startsWith('uysa_SERVER_')) {
+          // İlk girişte şifreyi kaydet
+          u.passwordHash = inputHash;
+          saveUsers(users);
+          found = u;
+          break;
+        }
+      }
+    }
+
+    if (!found) {
+      // API ile dene (sunucu auth)
+      _uysaApiLogin(username, password);
+      return;
+    }
+
+    // Başarılı giriş
+    _uysaLoginSuccess(found);
+  };
+
+  /* ── API üzerinden login ── */
+  function _uysaApiLogin(username, password) {
+    var errorEl = document.getElementById('loginError');
+    var btn = document.querySelector('.login-btn');
+    if (btn) btn.disabled = true;
+
+    var apiUrl = (window.UYSA_API_CFG && window.UYSA_API_CFG.apiUrl) || '/uysa_api.php';
+    var token  = (window.UYSA_API_CFG && window.UYSA_API_CFG.token) || '';
+
+    fetch(apiUrl + '?action=login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-UYSA-Token': token },
+      body: JSON.stringify({ username: username, password: password })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (btn) btn.disabled = false;
+      if (data && data.ok && data.user) {
+        // Kullanıcıyı localStorage'a kaydet
+        var users = getUsers();
+        var existing = users.find(function(u) { return u.username === data.user.username; });
+        if (existing) {
+          existing.passwordHash = simpleHash(document.getElementById('loginPass').value);
+          existing.role = data.user.role;
+          existing.active = true;
+        } else {
+          users.push({
+            id: data.user.id,
+            username: data.user.username,
+            role: data.user.role,
+            displayName: data.user.display_name || data.user.username,
+            active: true,
+            passwordHash: simpleHash(document.getElementById('loginPass').value)
+          });
+        }
+        saveUsers(users);
+        _uysaLoginSuccess(data.user);
+      } else {
+        // API'da da bulunamadı
+        if (errorEl) { errorEl.classList.add('show'); errorEl.textContent = 'Kullanıcı adı veya şifre hatalı!'; }
+        _LOG && _LOG('[UYSA-Auth] Login failed for:', username);
+      }
+    })
+    .catch(function(err) {
+      if (btn) btn.disabled = false;
+      // Offline: şifre uysa2026 ise izin ver (ilk giriş)
+      if (document.getElementById('loginPass').value === 'uysa2026') {
+        var fallbackUser = { username: username, role: 'user', displayName: username };
+        _uysaLoginSuccess(fallbackUser);
+      } else {
+        if (errorEl) { errorEl.classList.add('show'); errorEl.textContent = 'Sunucuya bağlanılamadı. Şifrenizi kontrol edin.'; }
+      }
+      _LOG && _LOG('[UYSA-Auth] API error:', err);
+    });
+  }
+
+  /* ── Giriş başarılı ── */
+  function _uysaLoginSuccess(user) {
+    setSession(user);
+
+    var overlay = document.getElementById('uysaLoginOverlay');
+    if (overlay) overlay.classList.remove('active');
+
+    var badge = document.getElementById('userBadge');
+    if (badge) badge.textContent = (user.displayName || user.username) + (user.role === 'superadmin' ? ' ⭐' : '');
+
+    // Sync load tetikle
+    if (typeof window._uysaSyncLoad === 'function') {
+      window._uysaSyncLoad();
+    }
+
+    _LOG && _LOG('[UYSA-Auth] ✅ Giriş başarılı:', user.username, '/', user.role);
+
+    // Giriş sonrası ana modülü yükle
+    setTimeout(function() {
+      if (window.__UYSA_LazyLoadManager) {
+        window.__UYSA_LazyLoadManager.activate('anasayfa');
+      } else if (typeof window.renderAnasayfa === 'function') {
+        window.renderAnasayfa();
+      }
+    }, 500);
+  }
+
+  /* ── Çıkış yap ── */
+  window.uysaDoLogout = function() {
+    clearSession();
+    var overlay = document.getElementById('uysaLoginOverlay');
+    if (overlay) overlay.classList.add('active');
+    var passInput = document.getElementById('loginPass');
+    var userInput = document.getElementById('loginUser');
+    if (passInput) passInput.value = '';
+    if (userInput) userInput.value = '';
+    _LOG && _LOG('[UYSA-Auth] Çıkış yapıldı');
+  };
+
+  /* ── Sayfa yüklendiğinde oturum kontrol ── */
+  window.addEventListener('DOMContentLoaded', function() {
+    var session = getSession();
+    var overlay = document.getElementById('uysaLoginOverlay');
+
+    if (session && (Date.now() - session.loginTime) < 24 * 60 * 60 * 1000) {
+      // Geçerli oturum var
+      if (overlay) overlay.classList.remove('active');
+      var badge = document.getElementById('userBadge');
+      if (badge) badge.textContent = (session.displayName || session.username) + (session.role === 'superadmin' ? ' ⭐' : '');
+      _LOG && _LOG('[UYSA-Auth] Oturum aktif:', session.username);
+    } else {
+      // Oturum yok veya süresi dolmuş → login ekranı göster
+      if (overlay) overlay.classList.add('active');
+      clearSession();
+    }
+
+    // Çıkış butonu için event
+    var logoutBtns = document.querySelectorAll('[onclick*="logout"],[onclick*="Logout"],[data-action="logout"]');
+    logoutBtns.forEach(function(btn) {
+      btn.addEventListener('click', window.uysaDoLogout);
+    });
+  });
+
+  _LOG && _LOG('[UYSA-Auth] v4.1 hazır — OFU / Azim → şifre: uysa2026');
+  
+  // Şifre sıfırlama talimatı (geliştirici konsolu)
+  console.info('[UYSA-Auth] Varsayılan şifre: uysa2026 | Değiştirmek için: window._uysaSetPassword("kullanici","yenisifre")');
+
+  /* ── Şifre değiştirme yardımcısı ── */
+  window._uysaSetPassword = function(username, newPassword) {
+    var users = getUsers();
+    var u = users.find(function(x) { return x.username === username; });
+    if (!u) { console.error('[UYSA-Auth] Kullanıcı bulunamadı:', username); return false; }
+    u.passwordHash = simpleHash(newPassword);
+    saveUsers(users);
+    console.info('[UYSA-Auth] ✅ Şifre güncellendi:', username);
+    return true;
+  };
+
+})();
+</script>
 
 <!-- ════════ UYSA LOGIN OVERLAY ════════ -->
 
