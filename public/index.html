@@ -2278,7 +2278,7 @@
                 </div>
                 <div>
                   <label>🏪 Tedarikçi (opsiyonel)</label>
-                  <select id="gider-tedarikci" style="width:100%;padding:7px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px">
+                  <select id="gider-tedarikci" onfocus="if(typeof window._fillTedarikciDropdown==='function') window._fillTedarikciDropdown();" style="width:100%;padding:7px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px">
                     <option value="">— Tedarikçi seçin —</option>
                   </select>
                 </div>
@@ -6716,7 +6716,7 @@ alert('Tutar giriniz.'); return; }
     const tedList = (function(){try{return JSON.parse(localStorage.getItem('uysa_tedarikci')||'[]');}catch(e){return[];}})();
     const existing = new Set(Array.from(sel.options).map(o=>o.value));
     tedList.forEach(t=>{
-      const val = t.isim||t.ad||t.name||'';
+      const val = t.firma||t.isim||t.ad||t.name||'';
       if(val && !existing.has(val)){
         const o = document.createElement('option');
         o.value = val; o.textContent = val;
@@ -6755,7 +6755,7 @@ alert('Tutar giriniz.'); return; }
       while(sel.options.length>1) sel.remove(1);
       // Add from tedarikci list
       tedList.forEach(function(t){
-        var val=t.isim||t.ad||t.name||'';
+        var val=t.firma||t.isim||t.ad||t.name||'';
         if(!val) return;
         var o=document.createElement('option'); o.value=val; o.textContent=val;
         sel.appendChild(o);
@@ -6796,7 +6796,7 @@ alert('Tutar giriniz.'); return; }
     while(sel.options.length > 1) sel.remove(1);
     var seen = new Set();
     tedList.forEach(function(t){
-      var v = t.isim||t.ad||t.name||'';
+      var v = t.firma||t.isim||t.ad||t.name||'';
       if(v && !seen.has(v)){ seen.add(v);
         var o = document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o); }
     });
@@ -6812,7 +6812,7 @@ alert('Tutar giriniz.'); return; }
     if(!sel||sel.options.length>1) return;
     var tedList=(function(){try{return JSON.parse(localStorage.getItem('uysa_tedarikci')||'[]');}catch(e){return[];}})();
     tedList.forEach(function(t){
-      var val=t.isim||t.ad||t.name||'';
+      var val=t.firma||t.isim||t.ad||t.name||'';
       if(val){var o=document.createElement('option');o.value=val;o.textContent=val;sel.appendChild(o);}
     });
   })();
@@ -12306,6 +12306,7 @@ window.excelIndir = function(tip) {
 (function extendNavigation() {
   const onModSwitch = function(module) {
     if (module === 'raporlama') setTimeout(window.renderRaporDashboard, 100);
+    if (module === 'finans') setTimeout(function(){ if(typeof window._fillTedarikciDropdown==='function') window._fillTedarikciDropdown(); }, 150); // FIX-V16
     if (module === 'portal') setTimeout(portalMusterileriYukle, 100);
     if (module === 'bildirim') setTimeout(window.renderTumBildirimler, 100);
     if (module === 'uretim') setTimeout(() => window.switchUretimTab('kds'), 100);
@@ -16078,7 +16079,7 @@ window.addEventListener('load', function() {
     html+='<tr style="background:#fff">'
       +'<td style="padding:8px 10px;font-weight:700;white-space:nowrap;border-right:1px solid #e2e8f0">'+personelAd+'</td>';
 
-    var isteSay=0, izinSay=0, devszSay=0, maasKat=0;
+    var isteSay=0, izinSay=0, devszSay=0, maasKat=0, ucretsizSay2=0, yariSay2=0;
 
     for(var g2=1; g2<=gunSay; g2++){
       var tarih_obj2 = new Date(yil, ay_num-1, g2);
@@ -16102,9 +16103,11 @@ window.addEventListener('load', function() {
       if(mevcut==='iste') isteSay++;
       else if(mevcut==='ucretli'||mevcut==='raporlu'||mevcut==='tatil'||mevcut==='dogum'||mevcut==='evlilik'||mevcut==='olum') izinSay++;
       else if(mevcut==='devsz') devszSay++;
-      // FIX-V15: weekends never count toward maasKat (isGunSay only counts weekdays)
+      // FIX-V16: maas/30 formula — count kesilecek days (weekdays only)
       if(!isWeekend2){
         maasKat += (DURUMLAR[mevcut]||{maas:1}).maas;
+        if(mevcut==='ucretsiz') ucretsizSay2++;
+        else if(mevcut==='yari') yariSay2++;
       }
     }
 
@@ -16115,7 +16118,9 @@ window.addEventListener('load', function() {
       if(hg!==0&&hg!==6) isGunSay++;
     }
 
-    var hakedis = isGunSay>0 ? maas*(maasKat/isGunSay) : maas;
+    // FIX-V16: maaş/30 hesaplama — her kesilen gün = maaş/30
+    var kesilecekGun16 = ucretsizSay2 + devszSay + yariSay2*0.5;
+    var hakedis = Math.max(0, maas - kesilecekGun16*(maas/30));
 
     html+='<td style="padding:6px;text-align:center;font-weight:700;color:#16a34a;border-left:2px solid #e2e8f0">'+isteSay+'</td>'
         +'<td style="padding:6px;text-align:center;font-weight:700;color:#2563eb">'+izinSay+'</td>'
@@ -16193,7 +16198,7 @@ window.addEventListener('load', function() {
       +'<tr style="background:#f8fafc"><td style="padding:10px 14px">💼 Toplam İş Günü (ay)</td><td style="padding:10px 14px;font-weight:700;text-align:right">'+isGunSay+' gün</td></tr>'
       +'<tr><td style="padding:10px 14px">💰 Net Maaş (tam ay)</td><td style="padding:10px 14px;font-weight:700;text-align:right">'+_fmt(maas)+' ₺</td></tr>'
       +'<tr style="background:#f8fafc"><td style="padding:10px 14px">📉 Kesilecek Gün</td><td style="padding:10px 14px;font-weight:700;text-align:right;color:#dc2626">'+(ucretsizIzin+devszSay+yari*0.5)+' gün</td></tr>'
-      +'<tr><td style="padding:10px 14px">📉 Günlük Ücret</td><td style="padding:10px 14px;font-weight:700;text-align:right;color:#64748b">'+_fmt(isGunSay>0?maas/isGunSay:0)+' ₺/gün</td></tr>'
+      +'<tr><td style="padding:10px 14px">📉 Günlük Ücret (maaş/30)</td><td style="padding:10px 14px;font-weight:700;text-align:right;color:#64748b">'+_fmt(maas/30)+' ₺/gün</td></tr>'
       +'<tr style="background:#f8fafc"><td style="padding:10px 14px">✂️ Toplam Kesinti</td><td style="padding:10px 14px;font-weight:700;text-align:right;color:#dc2626">'+_fmt(kesinti)+' ₺</td></tr>'
       +'<tr style="background:#1e293b"><td style="padding:12px 14px;color:#fff;font-weight:900;font-size:15px">💳 ÖDENECEK NET MAAŞ</td>'
       +'<td style="padding:12px 14px;color:#34d399;font-weight:900;font-size:18px;text-align:right">'+_fmt(hakedis)+' ₺</td></tr>'
@@ -16379,7 +16384,7 @@ window.addEventListener('load', function() {
       else if(v==='yari'){kesilecek+=0.5;yariGun++;}
     });
 
-    var gunlukUcret = isGunSay>0 ? maas/isGunSay : 0;
+    var gunlukUcret = maas/30; // FIX-V16: maaş/30
     var kesilenTutar= gunlukUcret*kesilecek;
     var fmUcret     = (maas/240)*1.5*fm; // 1.5 katsayılı FM
     var netOdeme    = maas - kesilenTutar + fmUcret + prim;
@@ -16423,7 +16428,7 @@ window.addEventListener('load', function() {
         else if(v==='iste')iste++;
       });
       var kesilecek=ucretsiz+devsz+yari*0.5;
-      var gunluk=isGunSay>0?maas/isGunSay:0;
+      var gunluk=maas/30; // FIX-V16: maaş/30
       var net=maas-gunluk*kesilecek;
       toplamOdeme+=net;
       return '<tr style="border-bottom:1px solid #e2e8f0">'
