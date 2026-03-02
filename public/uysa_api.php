@@ -1,17 +1,17 @@
 <?php
 /**
- * UYSA Sunucu API v3.0 — Railway/Production Ready
+ * UYSA ERP — Secured API v4.0
+ * JWT + API Key + Rate Limiting + Error Handling
  * Dosya: public/uysa_api.php
- * ─────────────────────────────────────────────────────────────
- * Yenilikler v3.0:
- *  - Dosya yükleme (fileUpload, fileList, fileDelete, fileDownload)
- *  - Kullanıcı kimlik doğrulama (userAuth, userList, userSave)
- *  - Gelişmiş audit log (auditLog, auditList) — kim neyi sildi
- *  - Silme işlemlerinde soft-delete (deleted_at alanı)
- *  - Tüm v2.1 işlevleri korundu
  */
+declare(strict_types=1);
 
-// ── .env loader (lokal geliştirme için) ───────────────────────
+// ── Hata Raporlama (production: sadece log) ───────────────────
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
+error_reporting(E_ALL);
+
+// ── .env Loader ───────────────────────────────────────────────
 $envFile = dirname(__DIR__) . '/.env';
 if (file_exists($envFile)) {
     foreach (file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
@@ -24,626 +24,644 @@ if (file_exists($envFile)) {
 }
 
 // ── Konfigürasyon ─────────────────────────────────────────────
-// ── DB Konfigürasyonu (öncelik: Railway ENV > kendi sunucu > localhost) ──
-define('DB_HOST',    getenv('DB_HOST')    ?: (getenv('MYSQLHOST')    ?: '78.135.65.2'));
-define('DB_PORT',    getenv('DB_PORT')    ?: (getenv('MYSQLPORT')    ?: '3306'));
-define('DB_NAME',    getenv('DB_NAME')    ?: (getenv('MYSQLDATABASE') ?: 'uysayeme_uysadb'));
-define('DB_USER',    getenv('DB_USER')    ?: (getenv('MYSQLUSER')    ?: 'uysayeme_wp195'));
-define('DB_PASS',    getenv('DB_PASS')    ?: (getenv('MYSQLPASSWORD') ?: 'UYS.faruk05321608119'));
-define('API_TOKEN',  getenv('API_TOKEN')  ?: 'UysaERP2026xProdKey3f7a9c1b');
+define('DB_HOST',    getenv('DB_HOST')    ?: (getenv('MYSQLHOST')     ?: '127.0.0.1'));
+define('DB_PORT',    getenv('DB_PORT')    ?: (getenv('MYSQLPORT')     ?: '3306'));
+define('DB_NAME',    getenv('DB_NAME')    ?: (getenv('MYSQLDATABASE') ?: 'uysa_db'));
+define('DB_USER',    getenv('DB_USER')    ?: (getenv('MYSQLUSER')     ?: 'root'));
+define('DB_PASS',    getenv('DB_PASS')    ?: (getenv('MYSQLPASSWORD') ?: ''));
+define('API_TOKEN',  getenv('API_TOKEN')  ?: 'change-me-in-env');
+define('JWT_SECRET', getenv('JWT_SECRET') ?: 'change-jwt-secret-minimum-32-chars-here!!');
 define('BACKUP_MAX', (int)(getenv('BACKUP_MAX') ?: 30));
-
-// Dosya yükleme klasörü
 define('UPLOAD_DIR', getenv('UPLOAD_DIR') ?: __DIR__ . '/uploads');
 define('UPLOAD_MAX_MB', (int)(getenv('UPLOAD_MAX_MB') ?: 25));
 
-// ── CORS & Headers ────────────────────────────────────────────
+// ── Güvenlik Başlıkları ───────────────────────────────────────
 header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: DENY');
 header('X-XSS-Protection: 1; mode=block');
 header('Referrer-Policy: strict-origin-when-cross-origin');
-// CSP sadece production'da (geliştirme sırasında yorum satırı yapılabilir)
-// header("Content-Security-Policy: default-src 'self'");
-// ── Güvenli CORS ─────────────────────────────────────────────
-$allowed_origins = [
-    'https://uysatakip.production.up.railway.app',
-    'http://localhost',
-    'http://127.0.0.1'
-];
+header('Permissions-Policy: geolocation=(), microphone=(), camera=()');
+
+// ── Güvenli CORS ──────────────────────────────────────────────
+$allowedOrigins = array_filter(array_map('trim', explode(',',
+    getenv('CORS_ORIGINS') ?: 'https://uysatakip.production.up.railway.app,http://localhost,http://127.0.0.1'
+)));
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-if (in_array($origin, $allowed_origins)) {
+if (in_array($origin, $allowedOrigins, true)) {
     header("Access-Control-Allow-Origin: {$origin}");
     header('Vary: Origin');
 } else {
-    header('Access-Control-Allow-Origin: https://uysatakip.production.up.railway.app');
+    header('Access-Control-Allow-Origin: ' . ($allowedOrigins[0] ?? 'null'));
 }
 header('Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, X-UYSA-Token');
+header('Access-Control-Allow-Headers: Content-Type, X-UYSA-Token, Authorization');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') exit(0);
 
-// ── Token kontrolü (fileDownload public erişime açık) ─────────
-$action = trim($_GET['action'] ?? '');
-$token  = $_SERVER['HTTP_X_UYSA_TOKEN'] ?? $_GET['token'] ?? '';
-
-if ($action !== 'fileDownload' && $token !== API_TOKEN) {
-    http_response_code(403);
-    die(json_encode(['ok' => false, 'error' => 'Unauthorized']));
+// ── Yardımcı: JSON yanıt ─────────────────────────────────────
+function jsonResponse(array $data, int $code = 200): never
+{
+    http_response_code($code);
+    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
 }
 
-// ── Veritabanı ────────────────────────────────────────────────
+// ── Sınıf autoloader (basit) ─────────────────────────────────
+spl_autoload_register(function (string $class) {
+    $file = __DIR__ . '/src/' . $class . '.php';
+    if (file_exists($file)) require_once $file;
+});
+// Fallback: proje kök src/
+spl_autoload_register(function (string $class) {
+    $file = dirname(__DIR__) . '/src/' . $class . '.php';
+    if (file_exists($file)) require_once $file;
+});
+
+// ── Veritabanı Bağlantısı ─────────────────────────────────────
 try {
-    $dsn = 'mysql:host=' . DB_HOST
-         . ';port=' . DB_PORT
-         . ';dbname=' . DB_NAME
-         . ';charset=utf8mb4';
+    $dsn = 'mysql:host=' . DB_HOST . ';port=' . DB_PORT
+         . ';dbname=' . DB_NAME . ';charset=utf8mb4';
     $pdo = new PDO($dsn, DB_USER, DB_PASS, [
         PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         PDO::ATTR_EMULATE_PREPARES   => false,
+        PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci",
     ]);
 } catch (PDOException $e) {
-    http_response_code(500);
-    die(json_encode(['ok' => false, 'error' => 'DB bağlantı hatası: ' . $e->getMessage()]));
+    error_log('[UYSA] DB Error: ' . $e->getMessage());
+    jsonResponse(['ok' => false, 'error' => 'Veritabanı bağlantı hatası'], 503);
 }
 
-$body = json_decode(file_get_contents('php://input'), true) ?? [];
+// ── Schema ────────────────────────────────────────────────────
+function ensureSchema(PDO $pdo): void
+{
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_storage` (
+        `id`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        `store_key`   VARCHAR(255)    NOT NULL,
+        `store_value` MEDIUMTEXT      NOT NULL,
+        `created_at`  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        `updated_at`  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        UNIQUE KEY `uk_store_key` (`store_key`),
+        KEY `idx_updated` (`updated_at`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
-// ── Schema otomatik oluştur ───────────────────────────────────
-function ensureSchema(PDO $pdo): void {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_backups` (
+        `id`         INT UNSIGNED  NOT NULL AUTO_INCREMENT,
+        `backup_at`  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        `key_count`  INT UNSIGNED  NOT NULL DEFAULT 0,
+        `size_bytes` INT UNSIGNED  NOT NULL DEFAULT 0,
+        `trigger_by` VARCHAR(50)   NOT NULL DEFAULT 'auto',
+        `snapshot`   LONGTEXT      NOT NULL,
+        PRIMARY KEY (`id`),
+        KEY `idx_backup_at` (`backup_at`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
-    // Ana depolama
-    $pdo->exec("
-        CREATE TABLE IF NOT EXISTS `uysa_storage` (
-          `id`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-          `store_key`   VARCHAR(255)    NOT NULL,
-          `store_value` MEDIUMTEXT      NOT NULL,
-          `created_at`  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          `updated_at`  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          PRIMARY KEY (`id`),
-          UNIQUE KEY `uk_store_key` (`store_key`),
-          KEY `idx_updated` (`updated_at`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    ");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_logs` (
+        `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        `action`     VARCHAR(50)     NOT NULL,
+        `store_key`  VARCHAR(255)    NOT NULL DEFAULT '',
+        `ip_addr`    VARCHAR(45)     NOT NULL DEFAULT '',
+        `created_at` DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        KEY `idx_action` (`action`),
+        KEY `idx_created_at` (`created_at`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
-    // Yedekler
-    $pdo->exec("
-        CREATE TABLE IF NOT EXISTS `uysa_backups` (
-          `id`         INT UNSIGNED  NOT NULL AUTO_INCREMENT,
-          `backup_at`  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          `key_count`  INT UNSIGNED  NOT NULL DEFAULT 0,
-          `size_bytes` INT UNSIGNED  NOT NULL DEFAULT 0,
-          `trigger_by` VARCHAR(50)   NOT NULL DEFAULT 'auto',
-          `snapshot`   LONGTEXT      NOT NULL,
-          PRIMARY KEY (`id`),
-          KEY `idx_backup_at` (`backup_at`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    ");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_audit` (
+        `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        `action`     VARCHAR(100)    NOT NULL,
+        `actor`      VARCHAR(100)             DEFAULT NULL,
+        `target_key` VARCHAR(255)             DEFAULT NULL,
+        `detail`     TEXT                     DEFAULT NULL,
+        `ip_addr`    VARCHAR(45)     NOT NULL DEFAULT '',
+        `created_at` DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        KEY `idx_action`  (`action`),
+        KEY `idx_actor`   (`actor`),
+        KEY `idx_created` (`created_at`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
-    // Audit log — kim neyi sildi, kim ne yaptı
-    $pdo->exec("
-        CREATE TABLE IF NOT EXISTS `uysa_audit` (
-          `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-          `action`     VARCHAR(100)    NOT NULL,
-          `module`     VARCHAR(50)     NOT NULL DEFAULT '',
-          `detail`     TEXT,
-          `username`   VARCHAR(100)    NOT NULL DEFAULT '',
-          `ip_addr`    VARCHAR(45)     NOT NULL DEFAULT '',
-          `user_agent` VARCHAR(500)    NOT NULL DEFAULT '',
-          `created_at` DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          PRIMARY KEY (`id`),
-          KEY `idx_action`     (`action`),
-          KEY `idx_username`   (`username`),
-          KEY `idx_created_at` (`created_at`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    ");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_users` (
+        `id`           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+        `username`     VARCHAR(50)  NOT NULL,
+        `password`     VARCHAR(255) NOT NULL,
+        `role`         VARCHAR(50)  NOT NULL DEFAULT 'user',
+        `display_name` VARCHAR(100)          DEFAULT NULL,
+        `last_login`   DATETIME              DEFAULT NULL,
+        `is_active`    TINYINT(1)   NOT NULL DEFAULT 1,
+        `created_at`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        UNIQUE KEY `uk_username` (`username`),
+        KEY `idx_role` (`role`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
-    // İşlem logları (legacy compat)
-    $pdo->exec("
-        CREATE TABLE IF NOT EXISTS `uysa_logs` (
-          `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-          `action`     VARCHAR(50)     NOT NULL,
-          `store_key`  VARCHAR(255)    NOT NULL DEFAULT '',
-          `ip_addr`    VARCHAR(45)     NOT NULL DEFAULT '',
-          `created_at` DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          PRIMARY KEY (`id`),
-          KEY `idx_action`     (`action`),
-          KEY `idx_created_at` (`created_at`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    ");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_files` (
+        `id`           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        `filename`     VARCHAR(255)    NOT NULL,
+        `original`     VARCHAR(255)    NOT NULL,
+        `mime`         VARCHAR(100)    NOT NULL,
+        `size_bytes`   INT UNSIGNED    NOT NULL DEFAULT 0,
+        `uploaded_by`  VARCHAR(100)             DEFAULT NULL,
+        `category`     VARCHAR(100)             DEFAULT NULL,
+        `date`         DATE                     DEFAULT NULL,
+        `deleted_at`   DATETIME                 DEFAULT NULL,
+        `created_at`   DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        KEY `idx_category` (`category`),
+        KEY `idx_deleted`  (`deleted_at`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
-    // Kullanıcılar
-    $pdo->exec("
-        CREATE TABLE IF NOT EXISTS `uysa_users` (
-          `id`            INT UNSIGNED  NOT NULL AUTO_INCREMENT,
-          `username`      VARCHAR(100)  NOT NULL,
-          `password_hash` VARCHAR(500)  NOT NULL,
-          `phone`         VARCHAR(20)   NOT NULL DEFAULT '',
-          `display_name`  VARCHAR(100)  NOT NULL DEFAULT '',
-          `role`          ENUM('superadmin','editor','user','viewer') NOT NULL DEFAULT 'user',
-          `permissions`   JSON,
-          `active`        TINYINT(1)    NOT NULL DEFAULT 1,
-          `last_login`    DATETIME,
-          `created_by`    VARCHAR(100)  NOT NULL DEFAULT 'system',
-          `created_at`    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          `updated_at`    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          PRIMARY KEY (`id`),
-          UNIQUE KEY `uk_username` (`username`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    ");
+    // Rate limit tabloları
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_rate_limits` (
+        `id`           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        `key`          VARCHAR(255)    NOT NULL,
+        `attempted_at` INT UNSIGNED    NOT NULL,
+        PRIMARY KEY (`id`),
+        KEY `idx_key_time` (`key`, `attempted_at`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
-    // Dosyalar
-    $pdo->exec("
-        CREATE TABLE IF NOT EXISTS `uysa_files` (
-          `id`           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-          `file_name`    VARCHAR(255)    NOT NULL,
-          `original_name`VARCHAR(255)    NOT NULL,
-          `category`     VARCHAR(100)    NOT NULL DEFAULT 'diger',
-          `notes`        TEXT,
-          `mime_type`    VARCHAR(100)    NOT NULL DEFAULT '',
-          `file_size`    INT UNSIGNED    NOT NULL DEFAULT 0,
-          `file_path`    VARCHAR(500)    NOT NULL,
-          `uploaded_by`  VARCHAR(100)    NOT NULL DEFAULT '',
-          `doc_date`     DATE,
-          `deleted_at`   DATETIME,
-          `deleted_by`   VARCHAR(100)    NOT NULL DEFAULT '',
-          `created_at`   DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          PRIMARY KEY (`id`),
-          KEY `idx_category`   (`category`),
-          KEY `idx_uploaded_by`(`uploaded_by`),
-          KEY `idx_created_at` (`created_at`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    ");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_rate_locks` (
+        `key`          VARCHAR(255) NOT NULL,
+        `locked_until` INT UNSIGNED NOT NULL,
+        PRIMARY KEY (`key`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
-    // Uploads klasörü
-    if (!is_dir(UPLOAD_DIR)) {
-        @mkdir(UPLOAD_DIR, 0755, true);
-        // .htaccess: sadece script erişimi
-        @file_put_contents(UPLOAD_DIR . '/.htaccess', "Order Deny,Allow\nDeny from all\n");
-    }
-
-    // Varsayılan kullanıcıları ekle (sadece yoksa)
-    $count = (int)$pdo->query("SELECT COUNT(*) FROM uysa_users")->fetchColumn();
-    if ($count === 0) {
-        // OFU — superadmin (şifre: 05321608119)
-        $hash1 = password_hash('05321608119', PASSWORD_BCRYPT, ['cost' => 10]);
-        $pdo->prepare("INSERT IGNORE INTO uysa_users (username,password_hash,phone,display_name,role,permissions,created_by)
-            VALUES (?,?,?,?,?,?,?)")
-            ->execute(['OFU', $hash1, '05321608119', 'OFU', 'superadmin', json_encode(['all']), 'system']);
-
-        // Azim — standart kullanıcı (şifre: Azim2024!)
-        $hash2 = password_hash('Azim2024!', PASSWORD_BCRYPT, ['cost' => 10]);
-        $pdo->prepare("INSERT IGNORE INTO uysa_users (username,password_hash,phone,display_name,role,permissions,created_by)
-            VALUES (?,?,?,?,?,?,?)")
-            ->execute(['Azim', $hash2, '', 'Azim', 'user', json_encode(['read','write']), 'OFU']);
-    }
+    // API Keys tablosu
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_api_keys` (
+        `id`           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+        `key_hash`     VARCHAR(64)  NOT NULL,
+        `key_prefix`   VARCHAR(20)  NOT NULL,
+        `name`         VARCHAR(100) NOT NULL DEFAULT 'API Key',
+        `owner`        VARCHAR(100) NOT NULL DEFAULT 'system',
+        `role`         VARCHAR(50)  NOT NULL DEFAULT 'viewer',
+        `scopes`       JSON         NOT NULL,
+        `is_active`    TINYINT(1)   NOT NULL DEFAULT 1,
+        `uses_count`   INT UNSIGNED NOT NULL DEFAULT 0,
+        `last_used_at` DATETIME              DEFAULT NULL,
+        `expires_at`   DATETIME              DEFAULT NULL,
+        `created_at`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        UNIQUE KEY `uk_key_hash` (`key_hash`),
+        KEY `idx_owner_active` (`owner`, `is_active`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 }
+
 ensureSchema($pdo);
 
-// ── Helper: IP ────────────────────────────────────────────────
-function getClientIp(): string {
-    $ip = $_SERVER['HTTP_X_FORWARDED_FOR']
-       ?? $_SERVER['HTTP_CF_CONNECTING_IP']
-       ?? $_SERVER['REMOTE_ADDR']
-       ?? '';
-    return substr(trim(explode(',', $ip)[0]), 0, 45);
+// ── JWT Manager ───────────────────────────────────────────────
+require_once __DIR__ . '/src/JwtManager.php';
+$jwtManager = new JwtManager(JWT_SECRET);
+
+// ── Rate Limiter ──────────────────────────────────────────────
+require_once __DIR__ . '/src/RateLimiter.php';
+$rateLimiter = new RateLimiter($pdo, 10, 600, 900);
+
+// ── API Key Manager ───────────────────────────────────────────
+require_once __DIR__ . '/src/ApiKeyManager.php';
+$apiKeyManager = new ApiKeyManager($pdo, 'uysa');
+
+// ── İstemci IP ────────────────────────────────────────────────
+$clientIp = $_SERVER['HTTP_X_FORWARDED_FOR']
+    ? explode(',', $_SERVER['HTTP_X_FORWARDED_FOR'])[0]
+    : ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
+$clientIp = trim($clientIp);
+
+// ── İstek Verisi ──────────────────────────────────────────────
+$action = trim($_GET['action'] ?? '');
+$body   = json_decode(file_get_contents('php://input'), true) ?? [];
+
+// ── Auth Bypass: fileDownload public ─────────────────────────
+$publicActions = ['fileDownload', 'ping', 'health'];
+
+// ── Kimlik Doğrulama ─────────────────────────────────────────
+$authedUser = null;
+$authMethod = null;
+
+if (!in_array($action, $publicActions, true)) {
+    $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+    $uysaToken  = $_SERVER['HTTP_X_UYSA_TOKEN']  ?? $_GET['token'] ?? '';
+
+    // 1. Bearer JWT Token
+    if (str_starts_with($authHeader, 'Bearer ')) {
+        $jwt = substr($authHeader, 7);
+        try {
+            $payload    = $jwtManager->verify($jwt);
+            $authedUser = $payload;
+            $authMethod = 'jwt';
+        } catch (\RuntimeException $e) {
+            jsonResponse(['ok' => false, 'error' => 'JWT geçersiz: ' . $e->getMessage()], 401);
+        }
+    }
+    // 2. API Key (X-UYSA-Token: uysa_...)
+    elseif (str_starts_with($uysaToken, 'uysa_')) {
+        $keyRecord = $apiKeyManager->verify($uysaToken);
+        if (!$keyRecord) {
+            jsonResponse(['ok' => false, 'error' => 'API key geçersiz veya süresi dolmuş'], 401);
+        }
+        $authedUser = ['sub' => $keyRecord['owner'], 'role' => $keyRecord['role'], 'scopes' => $keyRecord['scopes']];
+        $authMethod = 'api_key';
+    }
+    // 3. Legacy API Token
+    elseif ($uysaToken === API_TOKEN) {
+        $authedUser = ['sub' => 'system', 'role' => 'superadmin', 'scopes' => ['*']];
+        $authMethod = 'legacy';
+    }
+    else {
+        jsonResponse(['ok' => false, 'error' => 'Kimlik doğrulama gerekli'], 403);
+    }
 }
 
-// ── Legacy logger ─────────────────────────────────────────────
-function logAction(PDO $pdo, string $action, string $key = ''): void {
+// ── Rate Limiting (auth sonrası) ──────────────────────────────
+$rateLimitKey = 'ip:' . $clientIp;
+if (!in_array($action, $publicActions, true)) {
+    $limit = $rateLimiter->attempt($rateLimitKey);
+    if (!$limit['allowed']) {
+        header('X-RateLimit-Limit: 10');
+        header('X-RateLimit-Remaining: 0');
+        header('Retry-After: ' . $limit['retry_after']);
+        jsonResponse([
+            'ok'          => false,
+            'error'       => 'Çok fazla istek. Lütfen bekleyin.',
+            'retry_after' => $limit['retry_after'],
+        ], 429);
+    }
+    header('X-RateLimit-Limit: 10');
+    header('X-RateLimit-Remaining: ' . $limit['remaining']);
+}
+
+// ── Input Sanitize ────────────────────────────────────────────
+function sanitizeInput(mixed $val, int $maxLen = 65535): mixed
+{
+    if (is_string($val)) {
+        $val = mb_substr(trim($val), 0, $maxLen);
+        return $val;
+    }
+    if (is_array($val)) {
+        return array_map(fn($v) => sanitizeInput($v, $maxLen), $val);
+    }
+    return $val;
+}
+
+// ── Audit Log ─────────────────────────────────────────────────
+function auditLog(PDO $pdo, string $action, ?string $actor, ?string $key, ?string $detail, string $ip): void
+{
     try {
-        $stmt = $pdo->prepare("INSERT INTO uysa_logs (action, store_key, ip_addr) VALUES (?,?,?)");
-        $stmt->execute([$action, $key, getClientIp()]);
-    } catch (Exception) {}
+        $pdo->prepare("INSERT INTO uysa_audit (action, actor, target_key, detail, ip_addr)
+                        VALUES (?, ?, ?, ?, ?)")
+            ->execute([$action, $actor, $key, $detail, $ip]);
+    } catch (\Throwable) {}
 }
 
-// ── Audit logger ──────────────────────────────────────────────
-function auditLog(PDO $pdo, string $action, string $module, string $detail, string $username = ''): void {
-    try {
-        $ua   = substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 500);
-        $stmt = $pdo->prepare("
-            INSERT INTO uysa_audit (action, module, detail, username, ip_addr, user_agent)
-            VALUES (?,?,?,?,?,?)
-        ");
-        $stmt->execute([$action, $module, $detail, $username, getClientIp(), $ua]);
-    } catch (Exception) {}
-}
+$actor = $authedUser['sub'] ?? 'anonymous';
 
-// ── Route ─────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+// ACTIONS
+// ═══════════════════════════════════════════════════════════════
 switch ($action) {
 
-    // ════════════════════════════════════════════════
-    // STORAGE (v2.1 uyumlu — tüm fonksiyonlar korundu)
-    // ════════════════════════════════════════════════
+// ── Ping ────────────────────────────────────────────────────
+case 'ping':
+    jsonResponse(['ok' => true, 'msg' => 'UYSA API v4.0', 'time' => date('c')]);
 
-    case 'getAll':
-        $rows = $pdo->query("SELECT store_key, store_value FROM uysa_storage")->fetchAll();
-        $data = [];
-        foreach ($rows as $r) $data[$r['store_key']] = $r['store_value'];
-        logAction($pdo, 'getAll');
-        echo json_encode(['ok' => true, 'data' => $data, 'count' => count($data)]);
-        break;
+// ── JWT: Token Al ────────────────────────────────────────────
+case 'getToken':
+    $username = sanitizeInput($body['username'] ?? '', 50);
+    $password = $body['password'] ?? '';
 
-    case 'get':
-        $key  = $body['key'] ?? $_GET['key'] ?? '';
-        $stmt = $pdo->prepare("SELECT store_value FROM uysa_storage WHERE store_key = ?");
-        $stmt->execute([$key]);
-        $row  = $stmt->fetch();
-        echo json_encode(['ok' => true, 'key' => $key, 'value' => $row ? $row['store_value'] : null]);
-        break;
+    if (!$username || !$password) {
+        jsonResponse(['ok' => false, 'error' => 'Kullanıcı adı ve şifre gerekli'], 400);
+    }
 
-    case 'set':
-        $key   = $body['key']   ?? '';
-        $value = $body['value'] ?? '';
-        $uname = $body['username'] ?? '';
-        if (!$key) { echo json_encode(['ok' => false, 'error' => 'key boş']); break; }
-        $stmt = $pdo->prepare("
-            INSERT INTO uysa_storage (store_key, store_value)
-            VALUES (?, ?)
-            ON DUPLICATE KEY UPDATE store_value = VALUES(store_value), updated_at = NOW()
-        ");
-        $stmt->execute([$key, $value]);
-        logAction($pdo, 'set', $key);
-        echo json_encode(['ok' => true, 'key' => $key]);
-        break;
+    // Login rate limit (kullanıcı bazlı)
+    $loginKey = 'login:' . md5($username . ':' . $clientIp);
+    $loginLimit = $rateLimiter->attempt($loginKey);
+    if (!$loginLimit['allowed']) {
+        auditLog($pdo, 'login_ratelimit', $username, null, null, $clientIp);
+        jsonResponse([
+            'ok'          => false,
+            'error'       => 'Çok fazla başarısız giriş denemesi. Hesap geçici olarak kilitlendi.',
+            'retry_after' => $loginLimit['retry_after'],
+        ], 429);
+    }
 
-    case 'setBulk':
-        $items = $body['items'] ?? [];
-        $uname = $body['username'] ?? '';
-        if (empty($items)) { echo json_encode(['ok' => false, 'error' => 'items boş']); break; }
-        $stmt = $pdo->prepare("
-            INSERT INTO uysa_storage (store_key, store_value)
-            VALUES (?, ?)
-            ON DUPLICATE KEY UPDATE store_value = VALUES(store_value), updated_at = NOW()
-        ");
-        $saved = 0;
-        $pdo->beginTransaction();
-        try {
-            foreach ($items as $key => $value) {
-                if (!str_starts_with((string)$key, 'uysa')) continue;
-                $stmt->execute([(string)$key, (string)$value]);
-                $saved++;
-            }
-            $pdo->commit();
-        } catch (Exception $e) {
-            $pdo->rollBack();
-            echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
-            break;
+    // Kullanıcı doğrula
+    $stmt = $pdo->prepare("SELECT * FROM uysa_users WHERE username = ? AND is_active = 1");
+    $stmt->execute([$username]);
+    $user = $stmt->fetch();
+
+    // Timing attack mitigation
+    $dummyHash = '$2y$10$invalidhashfortimingatk00000000000000000000000000000000';
+    $hashToVerify = $user ? $user['password'] : $dummyHash;
+
+    if (!$user || !password_verify($password, $hashToVerify)) {
+        auditLog($pdo, 'login_fail', $username, null, json_encode(['ip' => $clientIp]), $clientIp);
+        jsonResponse(['ok' => false, 'error' => 'Kullanıcı adı veya şifre hatalı'], 401);
+    }
+
+    // Başarılı giriş → rate limit sıfırla
+    $rateLimiter->reset($loginKey);
+    $pdo->prepare("UPDATE uysa_users SET last_login = NOW() WHERE id = ?")->execute([$user['id']]);
+
+    $tokenPayload = ['sub' => $user['username'], 'role' => $user['role'], 'uid' => $user['id']];
+    $accessToken  = $jwtManager->issue($tokenPayload);
+    $refreshToken = $jwtManager->issueRefresh($tokenPayload);
+
+    auditLog($pdo, 'login_success', $username, null, json_encode(['method' => 'jwt']), $clientIp);
+    jsonResponse([
+        'ok'           => true,
+        'access_token' => $accessToken,
+        'refresh_token'=> $refreshToken,
+        'expires_in'   => 3600,
+        'user'         => ['username' => $user['username'], 'role' => $user['role'], 'display_name' => $user['display_name']],
+    ]);
+
+// ── JWT: Token Yenile ────────────────────────────────────────
+case 'refreshToken':
+    $refreshToken = $body['refresh_token'] ?? '';
+    if (!$refreshToken) {
+        jsonResponse(['ok' => false, 'error' => 'refresh_token gerekli'], 400);
+    }
+    try {
+        $newAccess = $jwtManager->refresh($refreshToken);
+        jsonResponse(['ok' => true, 'access_token' => $newAccess, 'expires_in' => 3600]);
+    } catch (\RuntimeException $e) {
+        jsonResponse(['ok' => false, 'error' => $e->getMessage()], 401);
+    }
+
+// ── API Key Yönetimi ─────────────────────────────────────────
+case 'apiKeyCreate':
+    if (($authedUser['role'] ?? '') !== 'superadmin') {
+        jsonResponse(['ok' => false, 'error' => 'Yetki yok (superadmin gerekli)'], 403);
+    }
+    $opts = [
+        'name'         => sanitizeInput($body['name'] ?? 'API Key', 100),
+        'owner'        => sanitizeInput($body['owner'] ?? $actor, 100),
+        'role'         => in_array($body['role'] ?? '', ['viewer', 'user', 'editor', 'superadmin'])
+                            ? $body['role'] : 'viewer',
+        'scopes'       => is_array($body['scopes'] ?? null) ? $body['scopes'] : ['read'],
+        'expires_days' => (int)($body['expires_days'] ?? 365),
+    ];
+    $result = $apiKeyManager->create($opts);
+    auditLog($pdo, 'api_key_create', $actor, null, json_encode(['name' => $opts['name']]), $clientIp);
+    jsonResponse(['ok' => true, 'key' => $result['key'], 'id' => $result['id'],
+                  'warning' => 'Bu key bir daha gösterilmeyecek. Güvenli yerde saklayın.']);
+
+case 'apiKeyList':
+    if (($authedUser['role'] ?? '') !== 'superadmin') {
+        jsonResponse(['ok' => false, 'error' => 'Yetki yok'], 403);
+    }
+    $owner = sanitizeInput($body['owner'] ?? $actor, 100);
+    jsonResponse(['ok' => true, 'keys' => $apiKeyManager->list($owner)]);
+
+case 'apiKeyRevoke':
+    if (($authedUser['role'] ?? '') !== 'superadmin') {
+        jsonResponse(['ok' => false, 'error' => 'Yetki yok'], 403);
+    }
+    $keyId = (int)($body['id'] ?? 0);
+    $apiKeyManager->revoke($keyId);
+    auditLog($pdo, 'api_key_revoke', $actor, null, json_encode(['id' => $keyId]), $clientIp);
+    jsonResponse(['ok' => true]);
+
+// ── Storage: GET ─────────────────────────────────────────────
+case 'get':
+    $key = sanitizeInput($_GET['key'] ?? $body['key'] ?? '', 255);
+    if (!$key) jsonResponse(['ok' => false, 'error' => 'key gerekli'], 400);
+    $stmt = $pdo->prepare("SELECT store_value FROM uysa_storage WHERE store_key = ?");
+    $stmt->execute([$key]);
+    $val = $stmt->fetchColumn();
+    if ($val === false) jsonResponse(['ok' => false, 'error' => 'Bulunamadı'], 404);
+    jsonResponse(['ok' => true, 'value' => $val]);
+
+// ── Storage: SET ─────────────────────────────────────────────
+case 'set':
+    $key = sanitizeInput($body['key'] ?? '', 255);
+    $val = $body['value'] ?? null;
+    if (!$key || $val === null) jsonResponse(['ok' => false, 'error' => 'key ve value gerekli'], 400);
+    $val = is_string($val) ? $val : json_encode($val);
+    $pdo->prepare("INSERT INTO uysa_storage (store_key, store_value) VALUES (?, ?)
+                   ON DUPLICATE KEY UPDATE store_value = VALUES(store_value), updated_at = NOW()")
+        ->execute([$key, $val]);
+    auditLog($pdo, 'set', $actor, $key, null, $clientIp);
+    jsonResponse(['ok' => true]);
+
+// ── Storage: setBulk ─────────────────────────────────────────
+case 'setBulk':
+    $data = $body['data'] ?? [];
+    if (!is_array($data) || empty($data)) {
+        jsonResponse(['ok' => false, 'error' => 'data (object) gerekli'], 400);
+    }
+    $pdo->beginTransaction();
+    try {
+        $stmt = $pdo->prepare("INSERT INTO uysa_storage (store_key, store_value) VALUES (?, ?)
+                               ON DUPLICATE KEY UPDATE store_value = VALUES(store_value), updated_at = NOW()");
+        foreach ($data as $k => $v) {
+            $k = sanitizeInput((string)$k, 255);
+            $v = is_string($v) ? $v : json_encode($v);
+            $stmt->execute([$k, $v]);
         }
-        logAction($pdo, 'setBulk', "count:$saved");
-        echo json_encode(['ok' => true, 'saved' => $saved]);
-        break;
+        $pdo->commit();
+        auditLog($pdo, 'setBulk', $actor, null, json_encode(['count' => count($data)]), $clientIp);
+        jsonResponse(['ok' => true, 'count' => count($data)]);
+    } catch (\Throwable $e) {
+        $pdo->rollBack();
+        error_log('[UYSA] setBulk error: ' . $e->getMessage());
+        jsonResponse(['ok' => false, 'error' => 'Toplu kayıt başarısız'], 500);
+    }
 
-    case 'delete':
-        $key   = $body['key']      ?? '';
-        $uname = $body['username'] ?? 'api';
-        $stmt  = $pdo->prepare("DELETE FROM uysa_storage WHERE store_key = ?");
-        $stmt->execute([$key]);
-        logAction($pdo, 'delete', $key);
-        auditLog($pdo, 'delete_key', 'STORAGE', "Silinen anahtar: {$key}", $uname);
-        echo json_encode(['ok' => true, 'deleted' => $stmt->rowCount()]);
-        break;
+// ── Storage: DELETE ──────────────────────────────────────────
+case 'delete':
+    $key = sanitizeInput($body['key'] ?? $_GET['key'] ?? '', 255);
+    if (!$key) jsonResponse(['ok' => false, 'error' => 'key gerekli'], 400);
+    $pdo->prepare("DELETE FROM uysa_storage WHERE store_key = ?")->execute([$key]);
+    auditLog($pdo, 'delete_key', $actor, $key, null, $clientIp);
+    jsonResponse(['ok' => true]);
 
-    case 'backup':
-        $trigger  = $body['trigger'] ?? 'auto';
-        $uname    = $body['username'] ?? 'api';
-        $rows     = $pdo->query("SELECT store_key, store_value FROM uysa_storage")->fetchAll();
-        $snapshot = [];
-        foreach ($rows as $r) $snapshot[$r['store_key']] = $r['store_value'];
-        $json = json_encode($snapshot, JSON_UNESCAPED_UNICODE);
-        $count = (int)$pdo->query("SELECT COUNT(*) FROM uysa_backups")->fetchColumn();
-        if ($count >= BACKUP_MAX) {
-            $pdo->exec("DELETE FROM uysa_backups ORDER BY backup_at ASC LIMIT " . ($count - BACKUP_MAX + 1));
+// ── Storage: getAll ──────────────────────────────────────────
+case 'getAll':
+    $rows = $pdo->query("SELECT store_key, store_value, updated_at FROM uysa_storage ORDER BY store_key")->fetchAll();
+    $out  = [];
+    foreach ($rows as $r) $out[$r['store_key']] = $r['store_value'];
+    jsonResponse(['ok' => true, 'data' => $out, 'count' => count($out)]);
+
+// ── Backup ────────────────────────────────────────────────────
+case 'backup':
+    $rows     = $pdo->query("SELECT store_key, store_value FROM uysa_storage")->fetchAll();
+    $snapshot = json_encode($rows, JSON_UNESCAPED_UNICODE);
+    $pdo->prepare("INSERT INTO uysa_backups (key_count, size_bytes, trigger_by, snapshot)
+                   VALUES (?, ?, ?, ?)")
+        ->execute([count($rows), strlen($snapshot), $actor, $snapshot]);
+    // Eski yedekleri temizle
+    $pdo->exec("DELETE FROM uysa_backups WHERE id NOT IN (
+                  SELECT id FROM (SELECT id FROM uysa_backups ORDER BY backup_at DESC LIMIT " . BACKUP_MAX . ") t
+                )");
+    auditLog($pdo, 'backup', $actor, null, json_encode(['keys' => count($rows)]), $clientIp);
+    jsonResponse(['ok' => true, 'keys' => count($rows), 'size' => strlen($snapshot)]);
+
+// ── Backup List ───────────────────────────────────────────────
+case 'backupList':
+    $rows = $pdo->query("SELECT id, backup_at, key_count, size_bytes, trigger_by FROM uysa_backups
+                          ORDER BY backup_at DESC LIMIT 50")->fetchAll();
+    jsonResponse(['ok' => true, 'backups' => $rows]);
+
+// ── Backup Restore ────────────────────────────────────────────
+case 'backupRestore':
+    $id = (int)($body['id'] ?? 0);
+    if (!$id) jsonResponse(['ok' => false, 'error' => 'id gerekli'], 400);
+    $stmt = $pdo->prepare("SELECT snapshot FROM uysa_backups WHERE id = ?");
+    $stmt->execute([$id]);
+    $snap = $stmt->fetchColumn();
+    if (!$snap) jsonResponse(['ok' => false, 'error' => 'Yedek bulunamadı'], 404);
+    $rows = json_decode($snap, true);
+    $pdo->beginTransaction();
+    try {
+        $pdo->exec("DELETE FROM uysa_storage");
+        $ins = $pdo->prepare("INSERT INTO uysa_storage (store_key, store_value) VALUES (?, ?)");
+        foreach ($rows as $r) $ins->execute([$r['store_key'], $r['store_value']]);
+        $pdo->commit();
+        auditLog($pdo, 'backup_restore', $actor, null, json_encode(['backup_id' => $id, 'keys' => count($rows)]), $clientIp);
+        jsonResponse(['ok' => true, 'restored' => count($rows)]);
+    } catch (\Throwable $e) {
+        $pdo->rollBack();
+        jsonResponse(['ok' => false, 'error' => 'Geri yükleme başarısız: ' . $e->getMessage()], 500);
+    }
+
+// ── User Auth (legacy login for index.html) ───────────────────
+case 'userAuth':
+    $username = sanitizeInput($body['username'] ?? '', 50);
+    $password = $body['password'] ?? '';
+    if (!$username || !$password) {
+        jsonResponse(['ok' => false, 'error' => 'Kullanıcı adı ve şifre gerekli'], 400);
+    }
+    $loginKey   = 'login:' . md5($username . ':' . $clientIp);
+    $loginLimit = $rateLimiter->attempt($loginKey);
+    if (!$loginLimit['allowed']) {
+        auditLog($pdo, 'login_ratelimit', $username, null, null, $clientIp);
+        jsonResponse(['ok' => false, 'error' => 'Çok fazla giriş denemesi. Bekleyin.', 'retry_after' => $loginLimit['retry_after']], 429);
+    }
+    $stmt = $pdo->prepare("SELECT * FROM uysa_users WHERE username = ? AND is_active = 1");
+    $stmt->execute([$username]);
+    $user = $stmt->fetch();
+    $dummy = '$2y$10$invalidhashfortimingattackprevention000000000000000000';
+    $hash  = $user ? $user['password'] : $dummy;
+    usleep(500000); // 0.5 sn sabit bekleme (timing attack önlemi)
+    if (!$user || !password_verify($password, $hash)) {
+        auditLog($pdo, 'login_fail', $username, null, null, $clientIp);
+        jsonResponse(['ok' => false, 'error' => 'Kullanıcı adı veya şifre hatalı'], 401);
+    }
+    $rateLimiter->reset($loginKey);
+    $pdo->prepare("UPDATE uysa_users SET last_login = NOW() WHERE id = ?")->execute([$user['id']]);
+    auditLog($pdo, 'login_success', $username, null, null, $clientIp);
+    jsonResponse(['ok' => true, 'user' => ['username' => $user['username'], 'role' => $user['role'], 'display_name' => $user['display_name']]]);
+
+// ── User List ─────────────────────────────────────────────────
+case 'userList':
+    $rows = $pdo->query("SELECT id, username, role, display_name, last_login, is_active, created_at FROM uysa_users ORDER BY created_at DESC")->fetchAll();
+    jsonResponse(['ok' => true, 'users' => $rows]);
+
+// ── User Save ─────────────────────────────────────────────────
+case 'userSave':
+    if (!in_array($authedUser['role'] ?? '', ['superadmin', 'editor'], true)) {
+        jsonResponse(['ok' => false, 'error' => 'Yetki yok'], 403);
+    }
+    $username    = sanitizeInput($body['username'] ?? '', 50);
+    $password    = $body['password'] ?? '';
+    $role        = in_array($body['role'] ?? '', ['superadmin', 'editor', 'user', 'viewer']) ? $body['role'] : 'user';
+    $displayName = sanitizeInput($body['display_name'] ?? '', 100);
+
+    if (!$username) jsonResponse(['ok' => false, 'error' => 'username gerekli'], 400);
+
+    // Güçlü şifre kontrolü
+    if ($password && strlen($password) < 8) {
+        jsonResponse(['ok' => false, 'error' => 'Şifre en az 8 karakter olmalı'], 400);
+    }
+
+    $existing = $pdo->prepare("SELECT id FROM uysa_users WHERE username = ?");
+    $existing->execute([$username]);
+    $existId = $existing->fetchColumn();
+
+    if ($existId) {
+        $fields = ['role = ?', 'display_name = ?'];
+        $params = [$role, $displayName];
+        if ($password) {
+            $fields[] = 'password = ?';
+            $params[]  = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
         }
-        $ins = $pdo->prepare("INSERT INTO uysa_backups (key_count, size_bytes, trigger_by, snapshot) VALUES (?,?,?,?)");
-        $ins->execute([count($rows), strlen($json), $trigger, $json]);
-        logAction($pdo, 'backup', "trigger:$trigger");
-        auditLog($pdo, 'backup', 'SYSTEM', "Yedek alındı: {$trigger} ({" . count($rows) . "} key)", $uname);
-        echo json_encode(['ok' => true, 'backup_id' => $pdo->lastInsertId(), 'keys' => count($rows), 'size_kb' => round(strlen($json)/1024,1), 'time' => date('Y-m-d H:i:s')]);
-        break;
+        $params[] = $existId;
+        $pdo->prepare("UPDATE uysa_users SET " . implode(', ', $fields) . " WHERE id = ?")->execute($params);
+    } else {
+        if (!$password) jsonResponse(['ok' => false, 'error' => 'Yeni kullanıcı için şifre gerekli'], 400);
+        $pdo->prepare("INSERT INTO uysa_users (username, password, role, display_name) VALUES (?, ?, ?, ?)")
+            ->execute([$username, password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]), $role, $displayName]);
+    }
+    auditLog($pdo, 'user_save', $actor, $username, json_encode(['role' => $role]), $clientIp);
+    jsonResponse(['ok' => true]);
 
-    case 'backupList':
-        $rows = $pdo->query("SELECT id, backup_at, key_count, size_bytes, trigger_by FROM uysa_backups ORDER BY backup_at DESC LIMIT 30")->fetchAll();
-        echo json_encode(['ok' => true, 'backups' => $rows]);
-        break;
+// ── Audit Log ─────────────────────────────────────────────────
+case 'auditLog':
+    $logAction = sanitizeInput($body['action'] ?? '', 100);
+    $logDetail = sanitizeInput($body['detail'] ?? '', 1000);
+    $logKey    = sanitizeInput($body['key'] ?? '', 255);
+    auditLog($pdo, $logAction, $actor, $logKey ?: null, $logDetail ?: null, $clientIp);
+    jsonResponse(['ok' => true]);
 
-    case 'backupRestore':
-        $bid  = (int)($body['id'] ?? 0);
-        $uname = $body['username'] ?? 'api';
-        $stmt = $pdo->prepare("SELECT snapshot FROM uysa_backups WHERE id = ?");
-        $stmt->execute([$bid]);
-        $row = $stmt->fetch();
-        if (!$row) { echo json_encode(['ok' => false, 'error' => 'Yedek bulunamadı']); break; }
-        $data = json_decode($row['snapshot'], true);
-        $pdo->beginTransaction();
-        try {
-            $pdo->exec("TRUNCATE TABLE uysa_storage");
-            $ins = $pdo->prepare("INSERT INTO uysa_storage (store_key, store_value) VALUES(?,?)");
-            $cnt = 0;
-            foreach ($data as $k => $v) {
-                // Key sanitizasyonu - sadece uysa_ önekli anahtarlar
-                if (!is_string($k) || strlen($k) > 255) continue; $ins->execute([$k, $v]); $cnt++; }
-            $pdo->commit();
-        } catch (Exception $e) {
-            $pdo->rollBack();
-            echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
-            break;
-        }
-        logAction($pdo, 'backupRestore', "id:$bid");
-        auditLog($pdo, 'backupRestore', 'SYSTEM', "Yedek geri yüklendi: id={$bid}, {$cnt} key", $uname);
-        echo json_encode(['ok' => true, 'restored' => $cnt]);
-        break;
+case 'auditList':
+    $limit = min((int)($_GET['limit'] ?? 100), 500);
+    $rows  = $pdo->prepare("SELECT * FROM uysa_audit ORDER BY created_at DESC LIMIT ?")->execute([$limit]) ? null : null;
+    $stmt  = $pdo->prepare("SELECT * FROM uysa_audit ORDER BY created_at DESC LIMIT ?");
+    $stmt->execute([$limit]);
+    jsonResponse(['ok' => true, 'logs' => $stmt->fetchAll()]);
 
-    case 'stats':
-        $keyCount = (int)$pdo->query("SELECT COUNT(*) FROM uysa_storage")->fetchColumn();
-        $dataSize = (int)$pdo->query("SELECT COALESCE(SUM(LENGTH(store_value)),0) FROM uysa_storage")->fetchColumn();
-        $lastUpd  = $pdo->query("SELECT MAX(updated_at) FROM uysa_storage")->fetchColumn();
-        $bkpCount = (int)$pdo->query("SELECT COUNT(*) FROM uysa_backups")->fetchColumn();
-        $lastBkp  = $pdo->query("SELECT MAX(backup_at) FROM uysa_backups")->fetchColumn();
-        $fileCount = (int)$pdo->query("SELECT COUNT(*) FROM uysa_files WHERE deleted_at IS NULL")->fetchColumn();
-        echo json_encode([
-            'ok' => true, 'key_count' => $keyCount, 'data_size_kb' => round($dataSize/1024,1),
-            'last_update' => $lastUpd, 'backup_count' => $bkpCount, 'last_backup' => $lastBkp,
-            'file_count' => $fileCount
-        ]);
-        break;
+// ── File Upload ───────────────────────────────────────────────
+case 'fileUpload':
+    if (!isset($_FILES['file'])) jsonResponse(['ok' => false, 'error' => 'Dosya gönderilmedi'], 400);
+    $file = $_FILES['file'];
+    if ($file['error'] !== UPLOAD_ERR_OK) jsonResponse(['ok' => false, 'error' => 'Upload hatası: ' . $file['error']], 400);
+    if ($file['size'] > UPLOAD_MAX_MB * 1024 * 1024) {
+        jsonResponse(['ok' => false, 'error' => 'Dosya boyutu ' . UPLOAD_MAX_MB . 'MB limitini aşıyor'], 413);
+    }
 
-    case 'health':
-        echo json_encode(['ok' => true, 'status' => 'healthy', 'db' => DB_NAME, 'time' => date('Y-m-d H:i:s'), 'version' => '3.0']);
-        break;
+    $allowedExt  = ['pdf','doc','docx','xls','xlsx','ppt','pptx','jpg','jpeg','png','gif','webp','txt','csv','zip'];
+    $allowedMime = [
+        'application/pdf', 'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'image/jpeg','image/png','image/gif','image/webp',
+        'text/plain','text/csv',
+        'application/zip','application/x-zip-compressed',
+    ];
 
-    // ════════════════════════════════════════════════
-    // AUDIT LOG
-    // ════════════════════════════════════════════════
+    $origName = basename($file['name']);
+    $ext      = strtolower(pathinfo($origName, PATHINFO_EXTENSION));
+    if (!in_array($ext, $allowedExt, true)) {
+        jsonResponse(['ok' => false, 'error' => "İzin verilmeyen uzantı: .{$ext}"], 415);
+    }
 
-    case 'auditLog':
-        $action_  = $body['action']   ?? 'unknown';
-        $module_  = $body['module']   ?? '';
-        $detail_  = $body['detail']   ?? '';
-        $uname_   = $body['username'] ?? '';
-        auditLog($pdo, $action_, $module_, $detail_, $uname_);
-        echo json_encode(['ok' => true]);
-        break;
+    $finfo    = new finfo(FILEINFO_MIME_TYPE);
+    $mimeType = $finfo->file($file['tmp_name']);
+    if (!in_array($mimeType, $allowedMime, true)) {
+        jsonResponse(['ok' => false, 'error' => "İzin verilmeyen MIME türü: {$mimeType}"], 415);
+    }
 
-    case 'auditList':
-        $limit   = min((int)($_GET['limit'] ?? 200), 1000);
-        $filter  = $_GET['filter'] ?? '';
-        $search  = $_GET['search'] ?? '';
-        $module  = $_GET['module'] ?? '';
-        $where   = ['1=1'];
-        $params  = [];
-        if ($filter === 'delete') { $where[] = "action LIKE '%delete%' OR action LIKE '%sil%'"; }
-        if ($filter === 'login')  { $where[] = "action LIKE '%login%' OR action LIKE '%logout%'"; }
-        if ($filter === 'file')   { $where[] = "action LIKE '%file%'"; }
-        if ($module) { $where[] = "module = ?"; $params[] = $module; }
-        if ($search) { $where[] = "(detail LIKE ? OR username LIKE ? OR action LIKE ?)";
-            $params = array_merge($params, ["%$search%","%$search%","%$search%"]); }
-        $sql  = "SELECT * FROM uysa_audit WHERE " . implode(' AND ', $where) . " ORDER BY created_at DESC LIMIT $limit";
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        $rows = $stmt->fetchAll();
-        echo json_encode(['ok' => true, 'logs' => $rows, 'count' => count($rows)]);
-        break;
+    if (!is_dir(UPLOAD_DIR)) mkdir(UPLOAD_DIR, 0755, true);
+    $safeName  = time() . '_' . bin2hex(random_bytes(8)) . '.' . $ext;
+    $destPath  = UPLOAD_DIR . '/' . $safeName;
 
-    // ════════════════════════════════════════════════
-    // DOSYA YÖNETİMİ
-    // ════════════════════════════════════════════════
+    if (!move_uploaded_file($file['tmp_name'], $destPath)) {
+        jsonResponse(['ok' => false, 'error' => 'Dosya kaydedilemedi'], 500);
+    }
 
-    case 'fileUpload':
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($_FILES['file'])) {
-            echo json_encode(['ok' => false, 'error' => 'Dosya bulunamadı']); break;
-        }
-        $file = $_FILES['file'];
-        if ($file['error'] !== UPLOAD_ERR_OK) {
-            echo json_encode(['ok' => false, 'error' => 'Upload hatası: ' . $file['error']]); break;
-        }
-        $maxBytes = UPLOAD_MAX_MB * 1024 * 1024;
-        if ($file['size'] > $maxBytes) {
-            echo json_encode(['ok' => false, 'error' => 'Dosya çok büyük (max ' . UPLOAD_MAX_MB . ' MB)']); break;
-        }
+    $pdo->prepare("INSERT INTO uysa_files (filename, original, mime, size_bytes, uploaded_by, category, date)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)")
+        ->execute([$safeName, $origName, $mimeType, $file['size'],
+                   sanitizeInput($body['uploadedBy'] ?? $actor, 100),
+                   sanitizeInput($body['category'] ?? '', 100),
+                   $body['date'] ?? null]);
+    auditLog($pdo, 'file_upload', $actor, $origName, json_encode(['size' => $file['size']]), $clientIp);
+    jsonResponse(['ok' => true, 'filename' => $safeName, 'original' => $origName]);
 
-        // Güvenli dosya adı
-        $ext       = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        $allowed   = ['pdf','doc','docx','xls','xlsx','ppt','pptx','jpg','jpeg','png','gif','webp','txt','csv','zip'];
-        if (!in_array($ext, $allowed)) {
-            echo json_encode(['ok' => false, 'error' => 'Bu dosya türü desteklenmiyor: .' . $ext]); break;
-        }
-
-        // ── MIME type gerçek kontrolü (uzantı sahteciliği önleme) ──
-        $finfo    = new finfo(FILEINFO_MIME_TYPE);
-        $mimeType = $finfo->file($file['tmp_name']);
-        $safeMimes = [
-            'application/pdf','application/msword',
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            'application/vnd.ms-excel',
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'application/vnd.ms-powerpoint',
-            'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-            'image/jpeg','image/png','image/gif','image/webp',
-            'text/plain','text/csv',
-            'application/zip','application/x-zip-compressed','application/octet-stream',
-        ];
-        if (!in_array($mimeType, $safeMimes)) {
-            echo json_encode(['ok' => false, 'error' => 'Güvenli olmayan dosya içeriği: ' . $mimeType]); break;
-        }
-
-        $safeName  = date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
-        $destPath  = UPLOAD_DIR . '/' . $safeName;
-
-        if (!move_uploaded_file($file['tmp_name'], $destPath)) {
-            echo json_encode(['ok' => false, 'error' => 'Dosya taşınamadı']); break;
-        }
-
-        $meta = json_decode($_POST['meta'] ?? '{}', true) ?? [];
-        $uname = $meta['uploadedBy'] ?? 'unknown';
-        $category = $meta['category'] ?? 'diger';
-        $docDate = $meta['date'] ?? null;
-
-        $ins = $pdo->prepare("
-            INSERT INTO uysa_files (file_name, original_name, category, notes, mime_type, file_size, file_path, uploaded_by, doc_date)
-            VALUES (?,?,?,?,?,?,?,?,?)
-        ");
-        $ins->execute([
-            $safeName, $file['name'], $category,
-            $meta['notes'] ?? '', $file['type'] ?? 'application/octet-stream',
-            $file['size'], $destPath, $uname, $docDate ?: null
-        ]);
-        $fileId = $pdo->lastInsertId();
-        auditLog($pdo, 'file_upload', 'FILE', "Dosya yüklendi: {$file['name']} ({$category}, " . round($file['size']/1024,1) . " KB)", $uname);
-        echo json_encode(['ok' => true, 'file_id' => $fileId, 'file_name' => $safeName, 'path' => $safeName, 'size_kb' => round($file['size']/1024,1)]);
-        break;
-
-    case 'fileList':
-        $category = $_GET['category'] ?? '';
-        $search   = $_GET['search']   ?? '';
-        $where    = ['deleted_at IS NULL'];
-        $params   = [];
-        if ($category) { $where[] = "category = ?"; $params[] = $category; }
-        if ($search)   { $where[] = "(original_name LIKE ? OR notes LIKE ?)"; $params[] = "%$search%"; $params[] = "%$search%"; }
-        $stmt = $pdo->prepare("SELECT id, file_name, original_name, category, notes, mime_type, file_size, uploaded_by, doc_date, created_at FROM uysa_files WHERE " . implode(' AND ', $where) . " ORDER BY created_at DESC LIMIT 500");
-        $stmt->execute($params);
-        $rows = $stmt->fetchAll();
-        // download_url ekle
-        foreach ($rows as &$r) {
-            $r['download_url'] = 'uysa_api.php?action=fileDownload&id=' . $r['id'] . '&token=' . urlencode(API_TOKEN);
-            $r['size_kb'] = round($r['file_size'] / 1024, 1);
-        }
-        unset($r);
-        echo json_encode(['ok' => true, 'files' => $rows, 'count' => count($rows)]);
-        break;
-
-    case 'fileDownload':
-        // Token query param ile kontrol (GET indirmesi için)
-        $dlToken = $_GET['token'] ?? '';
-        if ($dlToken !== API_TOKEN) { http_response_code(403); die('Unauthorized'); }
-        $fid  = (int)($_GET['id'] ?? 0);
-        $stmt = $pdo->prepare("SELECT * FROM uysa_files WHERE id = ? AND deleted_at IS NULL");
-        $stmt->execute([$fid]);
-        $file = $stmt->fetch();
-        if (!$file || !file_exists($file['file_path'])) {
-            http_response_code(404); header('Content-Type: application/json');
-            die(json_encode(['ok' => false, 'error' => 'Dosya bulunamadı']));
-        }
-        header('Content-Type: ' . $file['mime_type']);
-        header('Content-Disposition: attachment; filename="' . addslashes($file['original_name']) . '"');
-        header('Content-Length: ' . $file['file_size']);
-        readfile($file['file_path']);
-        exit;
-
-    case 'fileDelete':
-        $fid   = (int)($body['id'] ?? 0);
-        $uname = $body['username'] ?? 'api';
-        $stmt  = $pdo->prepare("SELECT original_name, file_path FROM uysa_files WHERE id = ? AND deleted_at IS NULL");
-        $stmt->execute([$fid]);
-        $file  = $stmt->fetch();
-        if (!$file) { echo json_encode(['ok' => false, 'error' => 'Dosya bulunamadı']); break; }
-
-        // Soft delete
-        $pdo->prepare("UPDATE uysa_files SET deleted_at = NOW(), deleted_by = ? WHERE id = ?")
-            ->execute([$uname, $fid]);
-        // Fiziksel dosyayı da sil
-        if (file_exists($file['file_path'])) @unlink($file['file_path']);
-
-        auditLog($pdo, 'file_delete', 'FILE', "Dosya silindi: {$file['original_name']} (id:{$fid})", $uname);
-        echo json_encode(['ok' => true, 'deleted' => $file['original_name']]);
-        break;
-
-    // ════════════════════════════════════════════════
-    // KULLANICI YÖNETİMİ
-    // ════════════════════════════════════════════════
-
-    case 'userAuth':
-        $username = trim($body['username'] ?? '');
-        $password = $body['password'] ?? '';
-        if (!$username || !$password) {
-            echo json_encode(['ok' => false, 'error' => 'Kullanıcı adı/şifre gerekli']); break;
-        }
-
-        // ── Input uzunluk kontrolü ────────────────────────────
-        if (strlen($username) > 100 || strlen($password) > 200) {
-            http_response_code(400);
-            echo json_encode(['ok' => false, 'error' => 'Geçersiz giriş']); break;
-        }
-
-        // ── Sunucu taraflı Rate-Limiting ──────────────────────
-        $clientIp  = getClientIp();
-        $rateKey   = 'uysa_rl_' . md5($clientIp . '_' . date('YmdH'));
-        $rateCount = (int)($pdo->query("SELECT COUNT(*) FROM uysa_logs
-            WHERE action='login_failed' AND ip_addr=" . $pdo->quote($clientIp) .
-            " AND created_at > DATE_SUB(NOW(), INTERVAL 10 MINUTE)")->fetchColumn());
-
-        if ($rateCount >= 10) {
-            http_response_code(429);
-            auditLog($pdo, 'rate_limit', 'AUTH', "Rate limit: {$clientIp}", $username);
-            echo json_encode(['ok' => false, 'error' => 'Çok fazla deneme. Lütfen bekleyin.']); break;
-        }
-
-        $stmt = $pdo->prepare("SELECT * FROM uysa_users WHERE username = ? AND active = 1");
-        $stmt->execute([$username]);
-        $user = $stmt->fetch();
-        if (!$user || !password_verify($password, $user['password_hash'])) {
-            auditLog($pdo, 'login_failed', 'AUTH', "Başarısız giriş: {$username}", $username);
-            // Timing attack'ı önlemek için sabit gecikme
-            usleep(500000); // 0.5 saniye
-            echo json_encode(['ok' => false, 'error' => 'Kullanıcı adı veya şifre hatalı']); break;
-        }
-        // Son giriş güncelle
-        $pdo->prepare("UPDATE uysa_users SET last_login = NOW() WHERE id = ?")
-            ->execute([$user['id']]);
-        auditLog($pdo, 'login', 'AUTH', "Başarılı giriş: {$username}", $username);
-        echo json_encode(['ok' => true, 'user' => [
-            'id' => $user['id'], 'username' => $user['username'],
-            'display_name' => $user['display_name'], 'role' => $user['role'],
-            'permissions' => json_decode($user['permissions'] ?? '[]', true)
-        ]]);
-        break;
-
-    case 'userList':
-        $stmt = $pdo->query("SELECT id,username,phone,display_name,role,active,last_login,created_by,created_at FROM uysa_users ORDER BY id ASC");
-        echo json_encode(['ok' => true, 'users' => $stmt->fetchAll()]);
-        break;
-
-    case 'userSave':
-        $uid    = (int)($body['id'] ?? 0);
-        $uname  = trim($body['username'] ?? '');
-        $pass   = $body['password'] ?? '';
-        $display= trim($body['display_name'] ?? $uname);
-        $phone  = trim($body['phone'] ?? '');
-        $role   = $body['role'] ?? 'user';
-        $active = isset($body['active']) ? (int)$body['active'] : 1;
-        $by     = $body['created_by'] ?? 'api';
-        $allowed_roles = ['superadmin','editor','user','viewer'];
-        if (!in_array($role, $allowed_roles)) $role = 'user';
-
-        if ($uid > 0) {
-            // Güncelle
-            if ($pass) {
-                $hash = password_hash($pass, PASSWORD_BCRYPT, ['cost' => 10]);
-                $pdo->prepare("UPDATE uysa_users SET password_hash=?,phone=?,display_name=?,role=?,active=? WHERE id=?")
-                    ->execute([$hash, $phone, $display, $role, $active, $uid]);
-            } else {
-                $pdo->prepare("UPDATE uysa_users SET phone=?,display_name=?,role=?,active=? WHERE id=?")
-                    ->execute([$phone, $display, $role, $active, $uid]);
-            }
-            auditLog($pdo, 'user_update', 'USER_MGMT', "Kullanıcı güncellendi: {$uname} (id:{$uid})", $by);
-            echo json_encode(['ok' => true, 'action' => 'updated']);
-        } else {
-            // Yeni kullanıcı
-            if (!$uname || !$pass) { echo json_encode(['ok' => false, 'error' => 'username ve password zorunlu']); break; }
-            $hash = password_hash($pass, PASSWORD_BCRYPT, ['cost' => 10]);
-            $perms = $role === 'superadmin' ? ['all'] : ['read','write'];
-            try {
-                $pdo->prepare("INSERT INTO uysa_users (username,password_hash,phone,display_name,role,permissions,created_by) VALUES(?,?,?,?,?,?,?)")
-                    ->execute([$uname, $hash, $phone, $display, $role, json_encode($perms), $by]);
-                auditLog($pdo, 'user_add', 'USER_MGMT', "Yeni kullanıcı: {$uname} ({$role})", $by);
-                echo json_encode(['ok' => true, 'action' => 'created', 'id' => $pdo->lastInsertId()]);
-            } catch (PDOException $e) {
-                echo json_encode(['ok' => false, 'error' => 'Bu kullanıcı adı zaten mevcut']);
-            }
-        }
-        break;
-
-    default:
-        http_response_code(400);
-        echo json_encode(['ok' => false, 'error' => 'Geçersiz action: ' . $action]);
+// ── Default: 404 ─────────────────────────────────────────────
+default:
+    jsonResponse(['ok' => false, 'error' => "Bilinmeyen action: {$action}"], 404);
 }
