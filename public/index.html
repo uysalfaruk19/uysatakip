@@ -1383,8 +1383,6 @@
       <div>
         <div class="login-logo-text">UYSA ERP</div>
         <div class="login-logo-sub">Yemek Sektörü Yönetim Sistemi · v3.0</div>
-      +'</div>'
-      +'</div>'
     <div class="login-title">Giriş Yapın</div>
     <div class="login-sub">Devam etmek için kullanıcı bilgilerinizi girin.</div>
     <div class="login-error" id="loginError">Kullanıcı adı veya şifre hatalı!</div>
@@ -1392,7 +1390,6 @@
       <label>Kullanıcı Adı</label>
       <input type="text" id="loginUser" placeholder="Kullanıcı adınız" autocomplete="username"
         onkeydown="if(event.key==='Enter') document.getElementById('loginPass').focus()"/>
-      +'</div>'
     <div class="login-field">
       <label>Şifre</label>
       <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password"
@@ -1434,7 +1431,6 @@
       <div>
         <h1>UYSA — Yemek Sektörü Yönetim Sistemi</h1>
         <div class="sub">Menü · Üretim · HACCP · Lojistik · CRM · Finans · İK · Raporlama · Müşteri Portalı</div>
-      +'</div>'
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;position:relative">
         <!-- B5: Global Arama -->
         <div style="position:relative">
@@ -1444,7 +1440,6 @@
             onfocus="this.select();document.getElementById('aramaPanel').style.display=''"
             onblur="setTimeout(()=>{const p=document.getElementById('aramaPanel');if(p)p.style.display='none'},250)"/>
           <div id="aramaPanel" style="display:none;position:absolute;top:38px;right:0;width:360px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.2);z-index:9999;max-height:360px;overflow:auto"></div>
-      +'</div>'
         <!-- B1: Bildirim -->
         <div style="position:relative">
           <button id="bildirimBtn" onclick="toggleBildirimPanel()" style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:15px;position:relative">
@@ -1454,10 +1449,7 @@
             <div style="padding:12px 14px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;background:#f8faff;border-radius:12px 12px 0 0">
               <b style="color:#0b3aa6;font-size:13px">🔔 Bildirim Merkezi</b>
               <button onclick="document.getElementById('bildirimPanel').style.display='none'" style="border:none;background:none;cursor:pointer;font-size:18px;color:#6b7280;line-height:1">×</button>
-            +'</div>'
             <div id="bildirimIcerik" style="padding:8px"></div>
-        +'</div>'
-        +'</div>'
         <!-- A1: Yedek -->
         <button onclick="yedegiIndir()" style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700">📤 Yedek Al</button>
         <label style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;margin:0;white-space:nowrap">
@@ -1678,7 +1670,6 @@
             <label style="display:flex;gap:8px;align-items:center;font-weight:600">
               <input type="checkbox" id="applyGeneralToAll" />
               Genel menüyü tüm müşterilere uygula
-        +'</label>'
             <button class="btn" id="applyGeneralNowBtn" type="button">Şimdi Uygula</button>
           </div>
           <div class="hint" style="margin-top:6px">Genel (GENEL) seçiliyken işaretleyip kaydederseniz, aynı ay/hafta menüsü tüm müşterilere kopyalanır.</div>
@@ -2302,7 +2293,6 @@
               <div style="display:grid;gap:10px">
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:center">
                   <label style="font-size:12px;font-weight:600">Yıl / Ay</label>
-                +'<div style="display:flex;gap:6px">'
                     <select id="butceYil" style="flex:1;padding:6px;border:1px solid #d1d5db;border-radius:7px;font-size:13px"></select>
                     <select id="butceAy" style="flex:1;padding:6px;border:1px solid #d1d5db;border-radius:7px;font-size:13px">
                       <option value="1">Ocak</option><option value="2">Şubat</option><option value="3">Mart</option>
