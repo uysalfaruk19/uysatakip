@@ -39,7 +39,25 @@ define('UPLOAD_MAX_MB', (int)(getenv('UPLOAD_MAX_MB') ?: 25));
 
 // ── CORS & Headers ────────────────────────────────────────────
 header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
+header('X-Content-Type-Options: nosniff');
+header('X-Frame-Options: DENY');
+header('X-XSS-Protection: 1; mode=block');
+header('Referrer-Policy: strict-origin-when-cross-origin');
+// CSP sadece production'da (geliştirme sırasında yorum satırı yapılabilir)
+// header("Content-Security-Policy: default-src 'self'");
+// ── Güvenli CORS ─────────────────────────────────────────────
+$allowed_origins = [
+    'https://uysatakip.production.up.railway.app',
+    'http://localhost',
+    'http://127.0.0.1'
+];
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+if (in_array($origin, $allowed_origins)) {
+    header("Access-Control-Allow-Origin: {$origin}");
+    header('Vary: Origin');
+} else {
+    header('Access-Control-Allow-Origin: https://uysatakip.production.up.railway.app');
+}
 header('Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, X-UYSA-Token');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') exit(0);
@@ -342,7 +360,9 @@ switch ($action) {
             $pdo->exec("TRUNCATE TABLE uysa_storage");
             $ins = $pdo->prepare("INSERT INTO uysa_storage (store_key, store_value) VALUES(?,?)");
             $cnt = 0;
-            foreach ($data as $k => $v) { $ins->execute([$k, $v]); $cnt++; }
+            foreach ($data as $k => $v) {
+                // Key sanitizasyonu - sadece uysa_ önekli anahtarlar
+                if (!is_string($k) || strlen($k) > 255) continue; $ins->execute([$k, $v]); $cnt++; }
             $pdo->commit();
         } catch (Exception $e) {
             $pdo->rollBack();
@@ -427,6 +447,24 @@ switch ($action) {
         $allowed   = ['pdf','doc','docx','xls','xlsx','ppt','pptx','jpg','jpeg','png','gif','webp','txt','csv','zip'];
         if (!in_array($ext, $allowed)) {
             echo json_encode(['ok' => false, 'error' => 'Bu dosya türü desteklenmiyor: .' . $ext]); break;
+        }
+
+        // ── MIME type gerçek kontrolü (uzantı sahteciliği önleme) ──
+        $finfo    = new finfo(FILEINFO_MIME_TYPE);
+        $mimeType = $finfo->file($file['tmp_name']);
+        $safeMimes = [
+            'application/pdf','application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/vnd.ms-excel',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'application/vnd.ms-powerpoint',
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            'image/jpeg','image/png','image/gif','image/webp',
+            'text/plain','text/csv',
+            'application/zip','application/x-zip-compressed','application/octet-stream',
+        ];
+        if (!in_array($mimeType, $safeMimes)) {
+            echo json_encode(['ok' => false, 'error' => 'Güvenli olmayan dosya içeriği: ' . $mimeType]); break;
         }
 
         $safeName  = date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
@@ -520,11 +558,33 @@ switch ($action) {
         if (!$username || !$password) {
             echo json_encode(['ok' => false, 'error' => 'Kullanıcı adı/şifre gerekli']); break;
         }
+
+        // ── Input uzunluk kontrolü ────────────────────────────
+        if (strlen($username) > 100 || strlen($password) > 200) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => 'Geçersiz giriş']); break;
+        }
+
+        // ── Sunucu taraflı Rate-Limiting ──────────────────────
+        $clientIp  = getClientIp();
+        $rateKey   = 'uysa_rl_' . md5($clientIp . '_' . date('YmdH'));
+        $rateCount = (int)($pdo->query("SELECT COUNT(*) FROM uysa_logs
+            WHERE action='login_failed' AND ip_addr=" . $pdo->quote($clientIp) .
+            " AND created_at > DATE_SUB(NOW(), INTERVAL 10 MINUTE)")->fetchColumn());
+
+        if ($rateCount >= 10) {
+            http_response_code(429);
+            auditLog($pdo, 'rate_limit', 'AUTH', "Rate limit: {$clientIp}", $username);
+            echo json_encode(['ok' => false, 'error' => 'Çok fazla deneme. Lütfen bekleyin.']); break;
+        }
+
         $stmt = $pdo->prepare("SELECT * FROM uysa_users WHERE username = ? AND active = 1");
         $stmt->execute([$username]);
         $user = $stmt->fetch();
         if (!$user || !password_verify($password, $user['password_hash'])) {
             auditLog($pdo, 'login_failed', 'AUTH', "Başarısız giriş: {$username}", $username);
+            // Timing attack'ı önlemek için sabit gecikme
+            usleep(500000); // 0.5 saniye
             echo json_encode(['ok' => false, 'error' => 'Kullanıcı adı veya şifre hatalı']); break;
         }
         // Son giriş güncelle
