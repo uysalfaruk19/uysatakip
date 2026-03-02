@@ -9479,6 +9479,17 @@ if (typeof _LOG_ENABLED !== 'undefined' && _LOG_ENABLED) {
 }
 // ─────────────────────────────────────────────────────────────────────────
 
+
+window._uysaFrag=function(items,rowFn,container){var frag=document.createDocumentFragment();var tmp=document.createElement('tbody');tmp.innerHTML=items.map(rowFn).join('');while(tmp.firstChild)frag.appendChild(tmp.firstChild);if(container){var tb=container.querySelector('tbody')||container;tb.innerHTML='';tb.appendChild(frag);}return frag;};
+window._uysaBatchHTML=function(items,rowFn,container,chunkSize){chunkSize=chunkSize||50;if(!container)return items.map(rowFn).join('');if(items.length<=chunkSize){container.innerHTML=items.map(rowFn).join('');return;}container.innerHTML='';var i=0;function rc(){container.insertAdjacentHTML('beforeend',items.slice(i,i+chunkSize).map(rowFn).join(''));i+=chunkSize;if(i<items.length)requestAnimationFrame(rc);}requestAnimationFrame(rc);};
+
+window._uysaRenderWithVS=function(cid,items,rowFn,opts){var T=(opts&&opts.threshold)||100;var c=typeof cid==='string'?document.getElementById(cid):cid;if(!c)return;if(items&&items.length>T&&typeof window._uysaVirtualTable==='function'){window._uysaVirtualTable(cid,items,rowFn,opts||{});}else{c.innerHTML=items?items.map(rowFn).join(''):'';}}
+window._uysaAutoVS=function(tid,items,rowFn){if(!items||items.length===0){var el=document.getElementById(tid);if(el)el.innerHTML='<tr><td colspan="20" style="text-align:center;color:#94a3b8;padding:20px">Kayit bulunamadi</td></tr>';return;}window._uysaRenderWithVS(tid,items,rowFn,{threshold:80,rowHeight:40});};
 </script>
+
+<script>
+if("serviceWorker"in navigator){window.addEventListener("load",function(){navigator.serviceWorker.register("/sw_v119.js",{scope:"/"}).then(function(reg){_LOG("[SW] OK");}).catch(function(e){_LOGE("[SW]",e);});});}
+</script>
+<div id="pwa-install-banner" style="display:none;position:fixed;bottom:20px;right:20px;background:#1a56db;color:#fff;border-radius:12px;padding:12px 18px;box-shadow:0 4px 20px rgba(0,0,0,.25);z-index:99999;align-items:center;gap:12px;font-family:Inter,sans-serif;font-size:14px;max-width:320px;"><span>UYSA ERP offline calisir!</span><button onclick="window._uysaInstallPWA&&window._uysaInstallPWA()" style="background:#fff;color:#1a56db;border:none;border-radius:8px;padding:6px 14px;cursor:pointer;font-weight:600;">Yukle</button><button onclick="this.closest('#pwa-install-banner').style.display='none'" style="background:transparent;border:none;color:#fff;cursor:pointer;font-size:18px;">x</button></div>
 </body>
 </html>
