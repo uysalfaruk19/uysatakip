@@ -1426,7 +1426,7 @@
         </div>
 
         <!-- ═══ HERO KPI ROW ═══ -->
-        <div id="home-kpi-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px"></div>
+        <div id="home-kpi-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px"><div style="grid-column:1/-1;text-align:center;padding:20px;color:#64748b;font-size:13px">⏳ Veriler yükleniyor...</div></div>
 
         <!-- ═══ ROW 1: Maliyet Trend + Gider Dağılımı ═══ -->
         <div style="display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:14px">
@@ -7062,6 +7062,8 @@ alert('Malzeme ve miktar giriniz.'); return; }
     el('bi-karlilik', '%'+fmt(margin,1));
   }
   refreshFinStats();
+  // Ana sayfa render çağrısını erteleyerek yap (DOM hazır olunca)
+  setTimeout(function(){ if(typeof window.renderAnasayfa==='function') window.renderAnasayfa(); }, 800);
 
   // ========= DEPO / STOK MODULE =========
   function getDepolar(){ return ls.get('uysa_depolar',[]); }
@@ -16094,12 +16096,16 @@ window.addEventListener('load', function() {
     _saveIzinler(arr);
     // Ücretsiz izin ise puantaja otomatik yaz
     var izin = arr[i];
-    if(izin.tip === 'ucretsiz' || izin.tip === 'Ücretsiz İzin') {
+    // İZİN FIX: izin.tip yerine izin.tur kullan (kayıt tur: ile yapılıyor)
+    var _izinTur = izin.tur || izin.tip || '';
+    if(_izinTur === 'ucretsiz' || _izinTur === 'Ücretsiz İzin') {
       _puantajIzinYaz(izin, 'ucretsiz');
-    } else if(izin.tip === 'ucretli' || izin.tip === 'Ücretli İzin' || izin.tip === 'Yıllık İzin') {
+    } else if(_izinTur === 'ucretli' || _izinTur === 'Ücretli İzin' || _izinTur === 'Yıllık İzin') {
       _puantajIzinYaz(izin, 'ucretli');
-    } else if(izin.tip === 'raporlu' || izin.tip === 'Hastalık Raporu') {
+    } else if(_izinTur === 'raporlu' || _izinTur === 'Hastalık Raporu') {
       _puantajIzinYaz(izin, 'raporlu');
+    } else if(_izinTur === 'resmitatil') {
+      _puantajIzinYaz(izin, 'tatil');
     }
     renderIzinListesi();
     _toast('✅ İzin onaylandı — puantaj güncellendi.');
@@ -16107,10 +16113,14 @@ window.addEventListener('load', function() {
 
   // İzin onayında puantaj günlerini yaz
   function _puantajIzinYaz(izin, durum) {
-    if(!izin.baslangic || !izin.gun || !izin.personel) return;
+    // FIX: izin.baslangic → izin.bas, izin.gun → bit-bas hesapla
+    var _bas = izin.baslangic || izin.bas;
+    var _bit = izin.bit || _bas;
+    if(!_bas || !izin.personel) return;
     try {
-      var bas = new Date(izin.baslangic);
-      var gunSay = parseInt(izin.gun) || 1;
+      var bas = new Date(_bas);
+      var bit2 = new Date(_bit);
+      var gunSay = Math.max(1, Math.round((bit2-bas)/(1000*60*60*24))+1);
       var ad = izin.personel.replace(/[^a-zA-Z0-9çÇğĞıİöÖşŞüÜ]/g,'_');
       for(var g=0; g<gunSay; g++) {
         var d = new Date(bas);
@@ -18213,10 +18223,20 @@ function todayStr(){ return new Date().toISOString().slice(0,10); }
 // ── Veri Okuyucular ───────────────────────────────────────────
 
 function getGelirler(){
-  try{ return JSON.parse(localStorage.getItem('uysa_gelirler_v2')||'[]'); }catch(e){ return []; }
+  // KPI FIX: v2 boşsa v1'e bak — gerçek veriler uysa_gelirler'de
+  try{
+    const v2 = JSON.parse(localStorage.getItem('uysa_gelirler_v2')||'[]');
+    if(v2.length>0) return v2;
+    return JSON.parse(localStorage.getItem('uysa_gelirler')||'[]');
+  }catch(e){ return []; }
 }
 function getGiderler(){
-  try{ return JSON.parse(localStorage.getItem('uysa_giderler_v2')||'[]'); }catch(e){ return []; }
+  // KPI FIX: v2 boşsa v1'e bak — gerçek veriler uysa_giderler'de
+  try{
+    const v2 = JSON.parse(localStorage.getItem('uysa_giderler_v2')||'[]');
+    if(v2.length>0) return v2;
+    return JSON.parse(localStorage.getItem('uysa_giderler')||'[]');
+  }catch(e){ return []; }
 }
 function getUretimGiderleri(){
   try{ return JSON.parse(localStorage.getItem('uysa_uretim_giderleri')||'[]'); }catch(e){ return []; }
