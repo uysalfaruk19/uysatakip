@@ -19978,7 +19978,7 @@ document.addEventListener('DOMContentLoaded', function(){
 <script>
 
   // ════════════════════════════════════════════════════════════
-  // UYSA v92b — KDV Sistemi + SGK + Biriken Haklar + Aylık KDV Raporu + Üretim KDV Sütunu
+  // UYSA v92c — KDV Sistemi + SGK + Biriken Haklar + Aylık KDV Raporu + Üretim KDV Sütunu
   // ════════════════════════════════════════════════════════════
   (function(){
     'use strict';
@@ -20019,7 +20019,7 @@ document.addEventListener('DOMContentLoaded', function(){
     // ── 2. KDV Seçici — Gider ─────────────────────────────────
     window._giderKdvPct = 0;
     window.setGiderKdv = function(pct){
-      window.window._giderKdvPct = pct;
+      window._giderKdvPct = pct;
       [0,1,10,20].forEach(function(p){
         var btn = document.getElementById('giderKdv'+p);
         if(btn) btn.style.background = (p===pct) ? '#dc2626' : (p===0?'#e2e8f0':'');
