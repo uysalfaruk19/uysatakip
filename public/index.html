@@ -631,6 +631,24 @@
   /* ── uretim tab ───────────────────────────────────────────── */
   .uretim-tab { animation: fadeSlideIn .2s; }
 
+
+  /* ── v27: mod-panel position:fixed — container bağımsız ── */
+  .mod-panel { display: none !important; }
+  .mod-panel.active {
+    display: block !important;
+    position: fixed !important;
+    top: 106px !important; /* JS ile override edilir */
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    height: auto !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    background: var(--bg, #f8faff) !important;
+    z-index: 5 !important;
+    animation: fadeSlideIn .2s cubic-bezier(.4,0,.2,1);
+  }
+
   /* ── Print ────────────────────────────────────────────────── */
   @media print {
     .mod-nav, .bar, .right, .btn, header, .mod-panel:not(.active) { display: none !important; }
@@ -2167,7 +2185,6 @@
   </div>
 </div>
 
-    </div><!-- /mod-operasyon -->
 
     <!-- MODULE 1: FİNANS & KONTROL -->
     <div class="mod-panel" id="mod-finans">
@@ -9608,6 +9625,26 @@ window.addEventListener('DOMContentLoaded', function() {
     ${stokSatirlar?`<table><thead><tr><th>Malzeme</th><th>Mevcut</th><th>Durum</th></tr></thead><tbody>${stokSatirlar}</tbody></table>`:'<p style="color:#6b7280">Depo seçili değil veya stok kaydı yok.</p>'}
 
     <div class="footer">Bu iş emri UYSA v51 tarafından oluşturulmuştur. ${new Date().toLocaleString('tr-TR')}</div>
+<script>
+/* v27 — mod-panel top: nav bottom'ını dinamik hesapla */
+(function() {
+  function fixPanelTop() {
+    var nav = document.querySelector('.mod-nav');
+    if (!nav) return;
+    var bottom = Math.round(nav.getBoundingClientRect().bottom);
+    if (bottom < 50) return; // henüz hazır değil
+    var s = document.getElementById('v27-top-fix');
+    if (!s) { s = document.createElement('style'); s.id='v27-top-fix'; document.head.appendChild(s); }
+    s.textContent = '.mod-panel.active{top:' + bottom + 'px!important}';
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', fixPanelTop);
+  } else {
+    fixPanelTop();
+  }
+  window.addEventListener('resize', fixPanelTop);
+})();
+</script>
 </body></html>`);
     win.document.close();
   });
@@ -11220,6 +11257,7 @@ Saygılarımızla,
 })();
 </script>
 
+  </div><!-- /container -->
 
 
 
