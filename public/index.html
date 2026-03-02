@@ -7448,7 +7448,7 @@ alert('Tutar giriniz.'); return; }
                 var kdvT = totT * kdvPct / 100;
                 var kdvD = totT + kdvT;
                 return '<br><span style="color:#7c3aed;font-size:10px;font-weight:700">+%' + kdvPct + ' KDV: ' + fmt(kdvT) + ' ₺</span>'
-                     + '<br><span style="color:#4a148c;font-size:11px;font-weight:800">KDV'li: ' + fmt(kdvD) + ' ₺</span>';
+                     + '<br><span style="color:#4a148c;font-size:11px;font-weight:800">KDV&#39;li: ' + fmt(kdvD) + ' ₺</span>';
               }
               return '';
             })()}
@@ -19978,7 +19978,7 @@ document.addEventListener('DOMContentLoaded', function(){
 <script>
 
   // ════════════════════════════════════════════════════════════
-  // UYSA v92c — KDV Sistemi + SGK + Biriken Haklar + Aylık KDV Raporu + Üretim KDV Sütunu
+  // UYSA v93 — KDV Sistemi + SGK + Biriken Haklar + Aylık KDV Raporu + Üretim KDV Sütunu
   // ════════════════════════════════════════════════════════════
   (function(){
     'use strict';
@@ -20409,7 +20409,7 @@ document.addEventListener('DOMContentLoaded', function(){
         +'<div style="background:#fdf4ff;border-radius:12px;padding:14px;text-align:center;border:1px solid #e9d5ff">'
         +'<div style="font-size:11px;font-weight:700;color:#6b21a8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">GELİR VERGİSİ</div>'
         +'<div style="font-size:20px;font-weight:900;color:#7c3aed">'+_fmtL(gelirVergisi)+' ₺</div>'
-        +'<div style="font-size:11px;color:#64748b;margin-top:2px">(KDV'li Gelir−Gider)÷4.1</div></div>'
+        +'<div style="font-size:11px;color:#64748b;margin-top:2px">(KDV&#39;li Gelir−Gider)÷4.1</div></div>'
 
         +'</div>'
 
