@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23005fcc'/><text x='16' y='23' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='18' fill='white'>U</text></svg>">
-<!-- UYSA ERP v123-CleanBuild | Son Denetim Geçti | Veri Girişine Hazır -->
+<!-- UYSA ERP v123-SmartSync | Son Denetim Geçti | Veri Girişine Hazır -->
 <!-- UYSA ERP v118b | Sprint 1: B+C+D+E patches | 2026-03-02 -->
   <meta charset="utf-8"/>
 <!-- UYSA ERP v118 Sprint 1 - COMPLETE: LazyLoadManager + Modal/Toast + SPA Refresh + VirtualScroll + CSS External -->
@@ -1766,38 +1766,135 @@ function _uysaDoLoginLocal(user, pass, errEl, btn) {
 }
 
 function _uysaAutoSyncOnLogin() {
-  // Sunucu verisi var mı? Kritik anahtarları say
-  var CRITICAL = ['uysa_gelirler','uysa_giderler','uysa_customers_v1',
-                  'uysa_personeller','uysa_stok','uysa_menu_v1'];
+  // 1. Yerel veri sayısını ölçek
+  var ALL_SYNC_KEYS = [
+    'uysa_gelirler','uysa_giderler','uysa_customers_v1','uysa_personeller',
+    'uysa_stok','uysa_menu_v1','uysa_haccp_kayitlar','uysa_lojistik',
+    'uysa_butceler','uysa_gunluk_uretim','uysa_uretim_sablon','uysa_catalog_v1',
+    'uysa_depolar','uysa_izinler','uysa_tedarikci'
+  ];
+  var TOKEN = atob('VXlzYUVSUDIwMjZ4UHJvZEtleTNmN2E5YzFi');
+  var AUTH_SKIP = /^uysa_(session_|token_|password_|auth_secret)/;
   var localCount = 0;
-  CRITICAL.forEach(function(k) {
+
+  ALL_SYNC_KEYS.forEach(function(k) {
     try {
       var v = localStorage.getItem(k);
       if (v && v !== 'null' && v !== '[]') {
-        var parsed = JSON.parse(v);
-        if (Array.isArray(parsed) && parsed.length > 0) localCount++;
-        else if (v.length > 10) localCount++;
+        var p = JSON.parse(v);
+        if ((Array.isArray(p) && p.length > 0) || (typeof p === 'object' && Object.keys(p).length > 0)) localCount++;
       }
     } catch(e) {}
   });
 
+  console.log('[UYSA-v123] Yerel veri sayısı:', localCount);
+
   if (localCount < 2) {
-    // localStorage çok boş - sunucudan çek
-    console.log('[UYSA-v123] Yerel veri az, sunucudan otomatik çekiliyor...');
+    // ── TABLET / YENİ CİHAZ: Sunucudan çek ──────────────────────
+    console.log('[UYSA-v123] Boş cihaz — sunucudan veri çekiliyor...');
     if (typeof window._uysaForcePull === 'function') {
       window._uysaForcePull();
     } else {
-      // Fallback: doğrudan fetch
       _uysaDirectPull();
     }
   } else {
-    // Yeterli yerel veri var - normal render
-    if (typeof window._uysaSpaRefresh === 'function') {
-      window._uysaSpaRefresh('Giriş başarılı', 300);
-    } else if (typeof window.renderAnasayfa === 'function') {
-      setTimeout(window.renderAnasayfa, 400);
-    }
+    // ── PC / DOLU CİHAZ: Sunucuya eksikleri gönder ──────────────
+    console.log('[UYSA-v123] Dolu cihaz — sunucuya eksik veriler gönderiliyor...');
+    _uysaPushLocalToServer(ALL_SYNC_KEYS, TOKEN, AUTH_SKIP, function() {
+      if (typeof window._uysaSpaRefresh === 'function') {
+        window._uysaSpaRefresh('Veriler senkronize edildi ✅', 400);
+      } else if (typeof window.renderAnasayfa === 'function') {
+        setTimeout(window.renderAnasayfa, 500);
+      }
+    });
   }
+}
+
+// PC'deki verileri sunucuya push et (yalnızca sunucuda yok/boş olanları)
+function _uysaPushLocalToServer(keys, TOKEN, AUTH_SKIP, onDone) {
+  // Önce sunucudaki mevcut anahtarları öğren
+  fetch('/uysa_api.php?action=getAll', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-UYSA-Token': TOKEN },
+    body: JSON.stringify({})
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(result) {
+    var serverData = result.data || result.allData || {};
+    var pushed = 0;
+    var pending = [];
+
+    // Hangi yerel anahtarları sunucuya göndereceğiz?
+    var allLocalKeys = Object.keys(localStorage).filter(function(k) {
+      return k.startsWith('uysa_') && !AUTH_SKIP.test(k) && k !== 'uysa_local_backups';
+    });
+
+    allLocalKeys.forEach(function(key) {
+      var localVal = localStorage.getItem(key);
+      if (!localVal || localVal === 'null' || localVal === '[]') return;
+
+      var serverVal = serverData[key];
+      var shouldPush = false;
+
+      if (!serverVal || serverVal === 'null' || serverVal === '[]') {
+        // Sunucuda yok → push et
+        shouldPush = true;
+      } else {
+        // Her ikisinde de var → kayıt sayısını karşılaştır
+        try {
+          var localParsed = JSON.parse(localVal);
+          var serverParsed = JSON.parse(serverVal);
+          var lc = Array.isArray(localParsed) ? localParsed.length : (typeof localParsed==='object' ? Object.keys(localParsed).length : 0);
+          var sc = Array.isArray(serverParsed) ? serverParsed.length : (typeof serverParsed==='object' ? Object.keys(serverParsed).length : 0);
+          if (lc > sc) shouldPush = true; // Yerel daha güncel
+        } catch(e) {
+          if (localVal.length > (serverVal||'').length) shouldPush = true;
+        }
+      }
+
+      if (shouldPush) {
+        pending.push({ key: key, val: localVal });
+      }
+    });
+
+    if (pending.length === 0) {
+      console.log('[UYSA-v123] Sunucu güncel, push gerekmedi');
+      if (onDone) onDone();
+      return;
+    }
+
+    console.log('[UYSA-v123] ' + pending.length + ' anahtar sunucuya gönderilecek:', pending.map(function(p){ return p.key; }));
+
+    // Sıralı push (rate limit aşımını önle)
+    var i = 0;
+    function pushNext() {
+      if (i >= pending.length) {
+        console.log('[UYSA-v123] Tüm veriler sunucuya gönderildi: ' + pushed + ' anahtar ✅');
+        if (onDone) onDone();
+        return;
+      }
+      var item = pending[i++];
+      fetch('/uysa_api.php?action=set', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-UYSA-Token': TOKEN },
+        body: JSON.stringify({ key: item.key, value: item.val })
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(res) {
+        if (res.ok) {
+          pushed++;
+          console.log('[UYSA-v123] ✅ Gönderildi:', item.key);
+        }
+      })
+      .catch(function(e) { console.warn('[UYSA-v123] Push hatası:', item.key, e); })
+      .finally(function() { setTimeout(pushNext, 50); }); // 50ms aralık
+    }
+    pushNext();
+  })
+  .catch(function(e) {
+    console.error('[UYSA-v123] Push hatası:', e);
+    if (onDone) onDone();
+  });
 }
 
 function _uysaDirectPull() {
@@ -1860,7 +1957,7 @@ window.uysaDoLogout = function() {
   }
 })();
 
-/* v123-CleanBuild */
+/* v123-SmartSync */
 </script>
 
 </head>
