@@ -983,25 +983,51 @@
 
     // Auth/kullanıcı anahtarlarını sunucudan YÜKLEME — güvenlik + bütünlük
     const AUTH_SKIP = /^uysa_(session_|token_|password_|auth_secret)/;
+    // v91: Kritik key'ler önce yaz, büyük dosyaları atla (iOS Safari 5MB sınırı)
+    const SYNC_CRITICAL = ['uysa_migrated_to_v6','uysa_migrated_to_v5','uysa_users_v6','uysa_aktif_depo'];
+    const SYNC_SIZE_LIMIT = 150000; // 150KB — bu üstü mobilde localStorage'a yazılmaz
+    const SYNC_SKIP_LARGE = ['uysa_dokumanlar','uysa_offline_queue','uysa_local_backups'];
     let loaded = 0;
-    const serverTs = result.updated_at ? new Date(result.updated_at).getTime() : 0;
-    // Fix5: Race condition koruması — yerel yazma zamanı sunucudan yeniyse üstüne yazma
+    const allData = result.data || {};
+    // Fix91-A: KRİTİK flag'leri ÖNCE yaz — QuotaExceeded olsa bile bunlar yazılmış olsun
+    for (const key of SYNC_CRITICAL) {
+      if (key in allData) {
+        try {
+          const v = typeof allData[key] === 'string' ? allData[key] : JSON.stringify(allData[key]);
+          _orig.setItem(key, v);
+          loaded++;
+        } catch(e) { console.warn('[UYSA-Sync] Kritik key yazılamadı:', key, e.message); }
+      }
+    }
+    // Fix91-B: Geri kalan key'leri yaz (büyükleri ve atlanacakları hariç)
     window._uysaLocalWriteTs = window._uysaLocalWriteTs || 0;
-    for (const [key, value] of Object.entries(result.data || {})) {
-      if (AUTH_SKIP.test(key)) continue;   // kullanıcı & oturum verisini atla
-      // Eğer bu sekme son 10 saniyede bu key'i yazdıysa sunucu verisini reddet
+    for (const [key, value] of Object.entries(allData)) {
+      if (SYNC_CRITICAL.includes(key)) continue;   // zaten yazıldı
+      if (AUTH_SKIP.test(key)) continue;            // gizli — atlıyoruz
+      if (SYNC_SKIP_LARGE.includes(key)) continue; // çok büyük — atlıyoruz
       const localKeyTs = window._uysaKeyWriteTs?.[key] || 0;
       if (localKeyTs > 0 && Date.now() - localKeyTs < 10000) continue; // yerel daha taze
-      _orig.setItem(key, value);
-      loaded++;
+      const valStr = typeof value === 'string' ? value : JSON.stringify(value);
+      if (valStr.length > SYNC_SIZE_LIMIT) continue; // boyut sınırı
+      try {
+        _orig.setItem(key, valStr);
+        loaded++;
+      } catch(e) {
+        // Fix91-C: QuotaExceededError — storage dolu, kritik key'ler zaten yazıldı
+        console.warn('[UYSA-Sync] ⚠️ Storage dolu, atlıyorum:', key, '(' + valStr.length + ' char)');
+        // Devam et — diğer küçük key'leri yazmayı dene
+      }
     }
 
     if (loaded > 0) {
       // Yeni cihaz kontrolü
-        const _justSynced = sessionStorage.getItem('uysa_sync_done');
+        // v91: Reload flag — hem sessionStorage hem de kısa süreli localStorage
+        const _justSynced = sessionStorage.getItem('uysa_sync_done') ||
+                            (Date.now() - parseInt(localStorage.getItem('uysa_sync_reload_ts')||'0') < 8000);
         if (!_justSynced && loaded > 3) {
           toast('☁️ ' + loaded + ' kayıt sunucudan yüklendi, sayfa yenileniyor...', 2500);
           sessionStorage.setItem('uysa_sync_done', Date.now().toString());
+          try { localStorage.setItem('uysa_sync_reload_ts', Date.now().toString()); } catch(e){}
           setTimeout(function(){ window.location.reload(); }, 1500);
           return;
         }
@@ -8499,8 +8525,10 @@ function _getUsers() {
       // Sadece format doğrulama — sabit hash kontrolü kaldırıldı
       // (Şifre değiştirilince veya farklı superadmin olunca reset OLMAZ)
       const adminUser = parsed.find(u => u.role === 'superadmin');
+      // v91: Hash format kontrolü gevşetildi — sunucudan gelen hash da geçerli
+      // Eski: sadece 'uysa_' ile başlayan hash → sunucudan gelince reddediyordu
       const validFmt = Array.isArray(parsed) && parsed.length > 0 &&
-                       parsed.every(u => u.passwordHash && u.passwordHash.startsWith('uysa_') && u.username);
+                       parsed.every(u => u.passwordHash && u.username);
       const hasAdmin = !!adminUser;
       if (validFmt && hasAdmin) return parsed;
       // Bozuk veri — temizle
@@ -19939,7 +19967,7 @@ document.addEventListener('DOMContentLoaded', function(){
 <script>
 
   // ════════════════════════════════════════════════════════════
-  // UYSA v90 — KDV Sistemi + SGK + Biriken Haklar + Aylık KDV Raporu + Üretim KDV Sütunu
+  // UYSA v91 — KDV Sistemi + SGK + Biriken Haklar + Aylık KDV Raporu + Üretim KDV Sütunu
   // ════════════════════════════════════════════════════════════
   (function(){
     'use strict';
