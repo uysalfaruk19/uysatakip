@@ -525,7 +525,30 @@
 
   // ── Offline / Online durum ──────────────────────────────────
   let _isOnline = navigator.onLine;
-  window.addEventListener('online',  () => { _isOnline = true;  _uysaSyncLoad(); });
+  window.addEventListener('online', async () => {
+    _isOnline = true;
+    // Offline kuyruğu gönder (persist edilmiş yazılmamış veriler)
+    try {
+      const offlineRaw = localStorage.getItem('uysa_offline_queue');
+      if (offlineRaw) {
+        const offlineQ = JSON.parse(offlineRaw);
+        const cnt = Object.keys(offlineQ).length;
+        if (cnt > 0) {
+          console.log('[UYSA-Sync] 📤 Offline kuyruk gönderiliyor:', cnt, 'anahtar');
+          const r = await api('setBulk', { items: offlineQ });
+          if (r && r.ok) {
+            _orig.removeItem('uysa_offline_queue');
+            _retryState.count = 0;
+            console.log('[UYSA-Sync] ✅ Offline kuyruk gönderildi:', r.saved, 'anahtar');
+            if (typeof window._uysaToast === 'function')
+              window._uysaToast('☁️ Bağlantı geldi — ' + r.saved + ' bekleyen kayıt sunucuya aktarıldı', 5000);
+            window.dispatchEvent(new CustomEvent('uysa-sync-update', { detail: { offlineQueue: 0, online: true } }));
+          }
+        }
+      }
+    } catch(e) { console.warn('[UYSA-Sync] Offline queue gönderme hatası:', e); }
+    _uysaSyncLoad();
+  });
   window.addEventListener('offline', () => { _isOnline = false; });
 
   // ── API yardımcısı ──────────────────────────────────────────
@@ -551,13 +574,57 @@
   const _queue = {};
   let   _timer = null;
 
+  function _persistOfflineQueue(failedItems) {
+    try {
+      const existing = JSON.parse(_orig.getItem ? _orig.getItem('uysa_offline_queue') : (localStorage.getItem('uysa_offline_queue') || '{}')) || {};
+      const merged = Object.assign({}, existing, failedItems);
+      _orig.setItem('uysa_offline_queue', JSON.stringify(merged));
+      const cnt = Object.keys(merged).length;
+      console.warn('[UYSA-Sync] ⚠️', cnt, 'anahtar offline kuyruğuna alındı');
+      window.dispatchEvent(new CustomEvent('uysa-sync-update', { detail: { offlineQueue: cnt } }));
+    } catch(e) { console.error('[UYSA-Sync] Offline queue persist hatası:', e); }
+  }
+
+  // ── Exponential backoff retry ────────────────────────────────
+  const _retryState = { count: 0, timer: null };
+  function _scheduleRetry(items) {
+    const delays = [5000, 15000, 60000, 300000];
+    const delay = delays[Math.min(_retryState.count, delays.length - 1)];
+    _retryState.count++;
+    clearTimeout(_retryState.timer);
+    _retryState.timer = setTimeout(async () => {
+      const r = await api('setBulk', { items });
+      if (r && r.ok) {
+        _retryState.count = 0;
+        try { _orig.removeItem('uysa_offline_queue'); } catch(e){}
+        if (typeof window._uysaToast === 'function')
+          window._uysaToast('✅ Bağlantı düzeldi — ' + (r.saved||'?') + ' kayıt sunucuya aktarıldı', 4000);
+        window.dispatchEvent(new CustomEvent('uysa-sync-update', { detail: { offlineQueue: 0 } }));
+      } else {
+        _persistOfflineQueue(items);
+        if (_retryState.count < 4) _scheduleRetry(items);
+      }
+    }, delay);
+    if (typeof window._uysaToast === 'function')
+      window._uysaToast('⚠️ Sunucu hatası — ' + Math.round(delay/1000) + 'sn sonra tekrar denenecek', delay);
+  }
+
   function flushQueue() {
-    const items = { ..._queue };
-    Object.keys(_queue).forEach(k => delete _queue[k]);
-    if (!Object.keys(items).length) return;
+    if (!Object.keys(_queue).length) return;
+    const items = Object.assign({}, _queue);
+    // ATOMIC: kuyrugu temizleme, önce gönder
     api('setBulk', { items }).then(r => {
-      if (CFG.debug && r.ok)
-        console.log(`[UYSA-Sync] ✅ ${r.saved} anahtar sunucuya yazıldı`);
+      if (r && r.ok) {
+        // Başarılı → sadece gönderilenleri sil
+        Object.keys(items).forEach(k => { if (_queue[k] === items[k]) delete _queue[k]; });
+        try { _orig.removeItem('uysa_offline_queue'); } catch(e){}
+        _retryState.count = 0;
+        if (CFG.debug) console.log('[UYSA-Sync] ✅', r.saved, 'anahtar sunucuya yazıldı');
+      } else {
+        // Başarısız → persist et ve retry planla
+        _persistOfflineQueue(items);
+        _scheduleRetry(items);
+      }
     });
   }
 
@@ -723,6 +790,66 @@
 
   // ══ OTOMATİK YEDEKLEME SİSTEMİ ════════════════════════════
   // localStorage snapshot — her 10 dakikada bir IndexedDB'ye yaz
+  
+  // ═══════════════════════════════════════════════════════════
+  // EXPORT / IMPORT — Tam Veri Yedekleme & Geri Yükleme
+  // ═══════════════════════════════════════════════════════════
+  window._uysaExportAll = function() {
+    const data = {};
+    const SKIP = /^uysa_(session|migrated)/;
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k?.startsWith('uysa') || SKIP.test(k)) continue;
+      try { data[k] = JSON.parse(localStorage.getItem(k)); }
+      catch(e) { data[k] = localStorage.getItem(k); }
+    }
+    const meta = { exportedAt: new Date().toISOString(), version: 'v10', keyCount: Object.keys(data).length };
+    const out  = { _meta: meta, data };
+    const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'uysa_yedek_' + new Date().toISOString().slice(0,10) + '.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    if (typeof window._uysaToast === 'function')
+      window._uysaToast('📤 Dışa aktarma tamam — ' + meta.keyCount + ' kayıt indirildi', 4000);
+  };
+
+  window._uysaImportAll = function(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        const parsed = JSON.parse(e.target.result);
+        const rows = parsed.data || parsed; // hem yeni hem eski format
+        let count = 0;
+        for (const [k, v] of Object.entries(rows)) {
+          if (!k.startsWith('uysa')) continue;
+          const str = typeof v === 'string' ? v : JSON.stringify(v);
+          localStorage.setItem(k, str);
+          count++;
+        }
+        window._uysaFullSync && window._uysaFullSync();
+        if (typeof window._uysaToast === 'function')
+          window._uysaToast('✅ ' + count + ' kayıt geri yüklendi — sayfa yenileniyor...', 3000);
+        setTimeout(() => location.reload(), 3000);
+      } catch(err) {
+        alert('Dosya okunamadı: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  // Offline kuyruk durumunu sorgula
+  window._uysaOfflineQueueStatus = function() {
+    try {
+      const q = JSON.parse(localStorage.getItem('uysa_offline_queue') || '{}');
+      const cnt = Object.keys(q).length;
+      console.log('[UYSA] Offline kuyruk:', cnt, 'bekleyen anahtar', cnt > 0 ? Object.keys(q) : '');
+      return cnt;
+    } catch(e) { return 0; }
+  };
+
   window._uysaLocalBackup = function() {
     try {
       // Quota fix: sadece kritik küçük anahtarları yedekle (büyük veriyi atla)
@@ -14320,7 +14447,24 @@ window.addEventListener('load', function() {
     m.id = 'v75RenameModal';
     m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99999;align-items:center;justify-content:center;';
     m.innerHTML = '<div style="background:#fff;border-radius:16px;padding:28px 32px;width:380px;max-width:95vw;box-shadow:0 8px 40px rgba(0,0,0,.25)">'
-      +'<h3 style="margin:0 0 16px;color:#1e293b">✏️ Müşteri Adını Değiştir</h3>'
+      +'<div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <div id="offlineQueueCard" style="flex:1;background:#fef3c7;border:1px solid #f59e0b;border-radius:10px;padding:10px;min-width:150px;display:none">
+        <div style="font-size:10px;color:#92400e;font-weight:700;margin-bottom:3px">⚠️ OFFLİNE KUYRUK</div>
+        <div id="offlineQueueCount" style="font-size:24px;font-weight:800;color:#b45309">0</div>
+        <div style="font-size:10px;color:#78350f">bekleyen kayıt (sunucuya gönderilmedi)</div>
+      </div>
+      <div style="flex:2;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:10px;min-width:200px">
+        <div style="font-size:10px;color:#166534;font-weight:700;margin-bottom:6px">💾 TAM YEDEKLEME</div>
+        <div style="display:flex;gap:6px">
+          <button onclick="window._uysaExportAll()" style="flex:1;padding:7px;background:#16a34a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">📤 JSON İndir</button>
+          <label style="flex:1;padding:7px;background:#0ea5e9;color:#fff;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;text-align:center;display:flex;align-items:center;justify-content:center">
+            📥 Geri Yükle
+            <input type="file" accept=".json" onchange="window._uysaImportAll(this.files[0])" style="display:none">
+          </label>
+        </div>
+      </div>
+    </div>
+    <h3 style="margin:0 0 16px;color:#1e293b">✏️ Müşteri Adını Değiştir</h3>'
       +'<div style="margin-bottom:12px"><label style="font-size:13px;color:#64748b">Mevcut Ad</label>'
       +'<div id="v75RenameCurrentName" style="font-weight:700;color:#1e293b;font-size:15px;padding:6px 0"></div></div>'
       +'<div style="margin-bottom:16px"><label style="font-size:13px;color:#64748b">Yeni Ad</label>'
@@ -18327,7 +18471,7 @@ document.addEventListener('DOMContentLoaded', function(){
       <h2 style="margin:0;font-size:18px;color:#0f172a">🔄 Senkronizasyon & Yedekleme Durumu</h2>
       <button onclick="document.getElementById('uysaSyncDashboard').style.display='none'" style="background:#f1f5f9;border:none;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:13px">✕ Kapat</button>
     </div>
-    <div id="syncStatusCards" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px">
+    <div id="syncStatusCards" style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:20px">
       <div style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:12px;padding:14px">
         <div style="font-size:10px;font-weight:700;color:#15803d;text-transform:uppercase">Sunucu</div>
         <div id="sc-server-val" style="font-size:22px;font-weight:800;color:#15803d;margin:4px 0">—</div>
@@ -18627,6 +18771,15 @@ document.addEventListener('DOMContentLoaded', function(){
   };
 
   window.addEventListener('uysa-sync-update', function(e) {
+    // Offline kuyruk kartı güncelle
+    if (e.detail && e.detail.offlineQueue !== undefined) {
+      const card = document.getElementById('offlineQueueCard');
+      const cnt  = document.getElementById('offlineQueueCount');
+      if (card && cnt) {
+        cnt.textContent = e.detail.offlineQueue;
+        card.style.display = e.detail.offlineQueue > 0 ? 'block' : 'none';
+      }
+    }
     addLog('ok', 'Auto-sync: ' + (e.detail.saved||0) + ' anahtar');
   });
   window.addEventListener('uysa-backup-update', function(e) {
