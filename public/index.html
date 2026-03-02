@@ -2274,6 +2274,14 @@
                 </div>
                 <div><label>Açıklama</label><input id="gider-aciklama" placeholder="Et alımı, elektrik faturası, maaş vb." style="width:100%;padding:7px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px"/></div>
                 <div><label>Belge No (isteğe bağlı)</label><input id="gider-belge" placeholder="FAT/İRS no"/></div>
+                <!-- FIX-G: PDF Fatura Yükleme -->
+                <div style="background:#fefce8;border:1.5px dashed #fbbf24;border-radius:10px;padding:10px">
+                  <label style="font-weight:700;color:#92400e">📄 PDF Fatura Yükle (Opsiyonel)</label>
+                  <input type="file" id="gider-pdf-fatura" accept=".pdf" style="display:block;margin:6px 0;font-size:12px"/>
+                  <div id="gider-pdf-sonuc" style="font-size:11px;color:#64748b;min-height:20px"></div>
+                  <button type="button" onclick="parseFaturaPDF()" style="font-size:11px;padding:4px 10px;background:#fbbf24;border:none;border-radius:6px;cursor:pointer;margin-top:4px">🔍 PDF Analiz Et</button>
+                  <div class="hint" style="margin-top:4px;font-size:10px">PDF yüklenir, ürün satırları ayrıştırılır ve aşağıdaki formlara otomatik aktarılır. PDF dosyası saklanmaz.</div>
+                </div>
                 <button class="btn danger" id="giderKaydetBtn" type="button">Gider Kaydet</button>
               </div>
             </div>
@@ -2703,7 +2711,7 @@
           </div>
 
           <!-- 3.1b Müşteri Özet Paneli -->
-          <div class="panel" id="crmOzetPanel" style="overflow:auto;max-height:calc(100vh - 180px);position:sticky;top:80px;align-self:start;z-index:10;background:linear-gradient(135deg,#f0f9ff,#e0f2fe);border:1.5px solid #bae6fd">
+          <div class="panel" id="crmOzetPanel" style="overflow:auto;max-height:calc(100vh - 120px);position:sticky;top:70px;align-self:start;z-index:20;background:linear-gradient(135deg,#f0f9ff,#e0f2fe);border:1.5px solid #bae6fd;box-shadow:0 4px 20px rgba(0,0,0,0.1)">
             <h3 style="color:#1e40af;border-bottom:2px solid #bae6fd">📋 Müşteri Özeti</h3>
             <div id="crmOzetIcerik" style="font-size:12px;color:#64748b">
               <div style="text-align:center;padding:20px;color:#94a3b8">
@@ -6565,7 +6573,10 @@ ${note}`);
       return `<div style="border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:6px;background:#fff;display:flex;justify-content:space-between;align-items:center">
         <div><b>${g.musteri||'—'}</b> — ${g.tarih||'?'} — <span style="color:#166534;font-weight:800">${fmt(g.tutar)} ₺</span><br>
         <span style="color:var(--muted);font-size:11px">${g.aciklama||''} ${g.fatura?'Fatura: '+g.fatura:''} ${g.kisi?g.kisi+' kişi':''}</span></div>
-        <button onclick="silGelir(${i})" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:16px" title="Sil">🗑️</button>
+        <div style="display:flex;gap:4px">
+          <button onclick="duzenleGelir(${i})" style="border:none;background:none;color:#2563eb;cursor:pointer;font-size:15px" title="Düzenle">✏️</button>
+          <button onclick="silGelir(${i})" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:16px" title="Sil">🗑️</button>
+        </div>
       </div>`;
     }).join('');
     if(toplamDiv) toplamDiv.textContent = 'Toplam: ' + fmt(toplam) + ' ₺';
@@ -6618,14 +6629,50 @@ alert('Tutar giriniz.'); return; }
       toplam += g.tutar||0;
       return `<div style="border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:6px;background:#fff;display:flex;justify-content:space-between;align-items:center">
         <div><b>${giderKatLabel[g.kat]||g.kat}</b> — ${g.tarih||'?'} — <span style="color:#dc2626;font-weight:800">${fmt(g.tutar)} ₺</span><br>
-        <span style="color:var(--muted);font-size:11px">${g.aciklama||''} ${g.belge?'Belge:'+g.belge:''}</span></div>
-        <button onclick="silGider(${i})" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:16px">🗑️</button>
+        <span style="color:var(--muted);font-size:11px">${g.tedarikci?'🏪'+g.tedarikci+' · ':''} ${g.aciklama||''} ${g.belge?'Belge:'+g.belge:''}</span></div>
+        <div style="display:flex;gap:4px">
+          <button onclick="duzenleGider(${i})" style="border:none;background:none;color:#2563eb;cursor:pointer;font-size:15px" title="Düzenle">✏️</button>
+          <button onclick="silGider(${i})" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:16px" title="Sil">🗑️</button>
+        </div>
       </div>`;
     }).join('');
     if(toplamDiv) toplamDiv.textContent = 'Toplam: ' + fmt(toplam) + ' ₺';
     refreshFinStats();
   }
   window.silGider = function(i){ const arr=getGiderler(); arr.splice(i,1); saveGiderler(arr); renderGiderler(); };
+
+  // FIX-E: Edit functions for gelir/gider
+  window.duzenleGelir = function(idx){
+    var arr=getGelirler(); if(!arr[idx]) return;
+    var g=arr[idx];
+    var yeniTutar=prompt('Tutar (₺):', g.tutar||0);
+    if(yeniTutar===null) return;
+    var yeniMus=prompt('Müşteri:', g.musteri||'');
+    if(yeniMus===null) return;
+    var yeniAcik=prompt('Açıklama:', g.aciklama||'');
+    if(yeniAcik===null) return;
+    arr[idx].tutar=parseFloat(yeniTutar)||arr[idx].tutar;
+    arr[idx].musteri=yeniMus||arr[idx].musteri;
+    arr[idx].aciklama=yeniAcik;
+    saveGelirler(arr); renderGelirler();
+    _toast&&_toast('✅ Gelir güncellendi.');
+  };
+
+  window.duzenleGider = function(idx){
+    var arr=getGiderler(); if(!arr[idx]) return;
+    var g=arr[idx];
+    var yeniTutar=prompt('Tutar (₺):', g.tutar||0);
+    if(yeniTutar===null) return;
+    var yeniAcik=prompt('Açıklama:', g.aciklama||'');
+    if(yeniAcik===null) return;
+    var yeniTed=prompt('Tedarikçi:', g.tedarikci||'');
+    if(yeniTed===null) return;
+    arr[idx].tutar=parseFloat(yeniTutar)||arr[idx].tutar;
+    arr[idx].aciklama=yeniAcik;
+    arr[idx].tedarikci=yeniTed;
+    saveGiderler(arr); renderGiderler();
+    _toast&&_toast('✅ Gider güncellendi.');
+  };
 
   
   // Tedarikçi select'ini dinamik doldur (FIX-E)
@@ -6652,8 +6699,9 @@ alert('Tutar giriniz.'); return; }
     const belge = document.getElementById('gider-belge')?.value||'';
     if(!tutar){
 alert('Tutar giriniz.'); return; }
+    const tedarikci = document.getElementById('gider-tedarikci')?.value||'';
     const arr = getGiderler();
-    arr.push({kat,tarih,tutar,aciklama,belge});
+    arr.push({kat,tarih,tutar,aciklama,belge,tedarikci}); // FIX-C: save tedarikci
     saveGiderler(arr);
     renderGiderler();
     try { if (typeof window.autoSaveToFolder === 'function') window.autoSaveToFolder(); } catch(e){}
@@ -6663,6 +6711,16 @@ alert('Tutar giriniz.'); return; }
   });
   document.getElementById('giderFiltreKat')?.addEventListener('change',e=>renderGiderler(e.target.value));
   renderGelirler(); renderGiderler();
+  // FIX-C3: Re-fill tedarikci dropdown when finans loads
+  (function _reFillTed(){
+    var sel = document.getElementById('gider-tedarikci');
+    if(!sel||sel.options.length>1) return;
+    var tedList=(function(){try{return JSON.parse(localStorage.getItem('uysa_tedarikci')||'[]');}catch(e){return[];}})();
+    tedList.forEach(function(t){
+      var val=t.isim||t.ad||t.name||'';
+      if(val){var o=document.createElement('option');o.value=val;o.textContent=val;sel.appendChild(o);}
+    });
+  })();
 
   // ===== GÜNLÜK ÜRETİM SAYILARI =====
   function getGunlukSayilar(){ return ls.get('uysa_gunluk_uretim',[]); }
@@ -15936,7 +15994,12 @@ window.addEventListener('load', function() {
       if(mevcut==='iste') isteSay++;
       else if(mevcut==='ucretli'||mevcut==='raporlu'||mevcut==='tatil'||mevcut==='dogum'||mevcut==='evlilik'||mevcut==='olum') izinSay++;
       else if(mevcut==='devsz') devszSay++;
-      if(mevcut!=='hb') maasKat += (DURUMLAR[mevcut]||{maas:1}).maas;
+      // FIX-B: blank weekdays (hb) count as full worked day; weekends = 0
+      if(mevcut==='hb'){
+        if(!isWeekend2) maasKat += 1;
+      } else {
+        maasKat += (DURUMLAR[mevcut]||{maas:1}).maas;
+      }
     }
 
     // İş günü sayısı (hafta sonu hariç)
@@ -16125,7 +16188,7 @@ window.addEventListener('load', function() {
       for(var g=0; g<gunSay; g++) {
         var d = new Date(bas);
         d.setDate(d.getDate() + g);
-        var ay = d.getFullYear() + '_' + String(d.getMonth()+1).padStart(2,'0');
+        var ay = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); // FIX-A: hyphen separator to match _puantajKey
         var key = 'uysa_puantaj_' + ay + '_' + ad;
         var tarihStr = d.toISOString().slice(0,10);
         var kayit = {};
@@ -18584,6 +18647,99 @@ function renderSozlesmeUyarilari(){
 }
 
 // ── Ana Render ────────────────────────────────────────────────
+
+
+  // FIX-H: PDF Fatura Parser (PDF.js CDN)
+  window.parseFaturaPDF = function(){
+    var fileInput = document.getElementById('gider-pdf-fatura');
+    var sonucDiv = document.getElementById('gider-pdf-sonuc');
+    if(!fileInput||!fileInput.files||!fileInput.files[0]){
+      sonucDiv.innerHTML='<span style="color:#dc2626">Lütfen önce bir PDF dosyası seçin.</span>';
+      return;
+    }
+    sonucDiv.innerHTML='⏳ PDF okunuyor...';
+    var file = fileInput.files[0];
+    var reader = new FileReader();
+    reader.onload = function(e){
+      var typedArr = new Uint8Array(e.target.result);
+      if(typeof pdfjsLib === 'undefined'){
+        var script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+        script.onload = function(){
+          pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+          _doPDFParse(typedArr, sonucDiv);
+        };
+        document.head.appendChild(script);
+      } else {
+        _doPDFParse(typedArr, sonucDiv);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    setTimeout(function(){ fileInput.value=''; }, 100);
+  };
+
+  window._doPDFParse = function(typedArr, sonucDiv){
+    pdfjsLib.getDocument({data: typedArr}).promise.then(function(pdf){
+      var totalPages = pdf.numPages;
+      var textPromises = [];
+      for(var p=1; p<=Math.min(totalPages,5); p++){
+        textPromises.push(pdf.getPage(p).then(function(page){
+          return page.getTextContent().then(function(tc){
+            return tc.items.map(function(i){return i.str;}).join(' ');
+          });
+        }));
+      }
+      Promise.all(textPromises).then(function(pages){
+        var fullText = pages.join(' ');
+        var results = _parseFaturaText(fullText);
+        if(results.length===0){
+          sonucDiv.innerHTML='<span style="color:#f59e0b">⚠️ Ürün satırı bulunamadı. Lütfen manuel girin.</span>';
+          return;
+        }
+        var html = '<div style="margin-top:6px"><b style="color:#166534">✅ '+results.length+' satır bulundu:</b><table style="width:100%;font-size:11px;border-collapse:collapse;margin-top:4px">';
+        var totalFatura = 0;
+        results.forEach(function(r,i){
+          totalFatura += r.tutar||0;
+          html += '<tr style="background:'+(i%2===0?'#f0fdf4':'#fff')+'"><td style="padding:3px 6px">'+r.urun+'</td><td style="padding:3px 6px;text-align:right;font-weight:700;color:#dc2626">'+r.tutar.toFixed(2)+' ₺</td></tr>';
+        });
+        html += '<tr style="background:#1e293b"><td style="padding:4px 6px;color:#fff;font-weight:700">TOPLAM</td><td style="padding:4px 6px;color:#34d399;font-weight:900;text-align:right">'+totalFatura.toFixed(2)+' ₺</td></tr>';
+        html += '</table><button type="button" onclick="_faturaOtoFill('+JSON.stringify(results)+','+totalFatura.toFixed(2)+')" style="margin-top:6px;font-size:11px;padding:4px 12px;background:#16a34a;color:#fff;border:none;border-radius:6px;cursor:pointer">✅ Forma Aktar</button></div>';
+        sonucDiv.innerHTML = html;
+      });
+    }).catch(function(err){
+      sonucDiv.innerHTML='<span style="color:#dc2626">PDF okunamadı: '+err.message+'</span>';
+    });
+  };
+
+  window._parseFaturaText = function(text){
+    var results = [];
+    var seen = {};
+    var lines = text.split(/\n|\r|(?:\s{3,})/);
+    lines.forEach(function(line){
+      line = line.trim();
+      var m = line.match(/^([\p{L}][\p{L}\s\/\-]{2,35})\s+([\d]+[,\.]?[\d]*)\s*[₺TL]?$/u);
+      if(m){
+        var urun=m[1].trim(), tutar=parseFloat(m[2].replace(',','.'));
+        if(!seen[urun]&&tutar>0&&tutar<999999){seen[urun]=1;results.push({urun:urun,tutar:tutar});}
+      }
+      // Also catch: name  qty  unit_price  total_price
+      var m2 = line.match(/^([\p{L}][\p{L}\s\/\-]{2,30})\s+[\d]+\s+[\d,\.]+\s+([\d,\.]+)\s*[₺]?$/u);
+      if(m2){
+        var urun2=m2[1].trim(), tutar2=parseFloat(m2[2].replace(',','.'));
+        if(!seen[urun2]&&tutar2>0){seen[urun2]=1;results.push({urun:urun2,tutar:tutar2});}
+      }
+    });
+    return results.slice(0,20);
+  };
+
+  window._faturaOtoFill = function(lines, toplam){
+    var tutarInp = document.getElementById('gider-tutar');
+    var acikInp  = document.getElementById('gider-aciklama');
+    if(tutarInp) tutarInp.value = toplam.toFixed(2);
+    if(acikInp)  acikInp.value  = lines.slice(0,3).map(function(l){return l.urun;}).join(', ')+(lines.length>3?' ...':'');
+    document.getElementById('gider-pdf-sonuc').innerHTML='<span style="color:#16a34a">✅ Forma aktarıldı. Kaydet'e basın.</span>';
+    if(typeof _toast==='function') _toast('📄 Fatura verisi forma aktarıldı.');
+  };
 
 window.renderAnasayfa = function(){
   renderHomeKPIs();
