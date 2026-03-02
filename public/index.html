@@ -19978,7 +19978,7 @@ document.addEventListener('DOMContentLoaded', function(){
 <script>
 
   // ════════════════════════════════════════════════════════════
-  // UYSA v92 — KDV Sistemi + SGK + Biriken Haklar + Aylık KDV Raporu + Üretim KDV Sütunu
+  // UYSA v92b — KDV Sistemi + SGK + Biriken Haklar + Aylık KDV Raporu + Üretim KDV Sütunu
   // ════════════════════════════════════════════════════════════
   (function(){
     'use strict';
@@ -20566,6 +20566,46 @@ document.addEventListener('DOMContentLoaded', function(){
           tdKdvli.textContent = kdvliToplam>0 ? kdvliToplam.toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2})+' ₺' : '—';
           row.appendChild(tdKdvli);
         });
+
+        
+
+        // KDV footer toplam satiri
+        var tfoot = table.querySelector('tfoot');
+        if(!tfoot){ tfoot = document.createElement('tfoot'); table.appendChild(tfoot); }
+        var existFr = tfoot.querySelector('.gs-kdv-footer');
+        if(existFr) existFr.remove();
+        var netTotal = 0;
+        table.querySelectorAll('tbody tr').forEach(function(row){
+          var sp = row.querySelector('.gsv76-gunluk');
+          if(sp){ var t=sp.textContent.replace(/[.]/g,'').replace(',','.').replace(/[^\d.]/g,''); netTotal+=parseFloat(t)||0; }
+        });
+        if(netTotal > 0){
+          var kdvTotal   = netTotal * pct / 100;
+          var kdvliTotal = netTotal + kdvTotal;
+          var colCount   = thead ? thead.querySelectorAll('th').length : 6;
+          var _fmtN = function(n){ return Number(n||0).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}); };
+          var footRow = document.createElement('tr');
+          footRow.className = 'gs-kdv-footer';
+          footRow.style.cssText = 'background:#fdf4ff;border-top:3px solid #a855f7';
+          var tdLbl = document.createElement('td');
+          tdLbl.colSpan = Math.max(1, colCount - 3);
+          tdLbl.style.cssText = 'padding:10px 12px;text-align:right;color:#6b21a8;font-weight:800;font-size:13px';
+          tdLbl.textContent = 'Gunluk Toplam (KDV Dahil):';
+          footRow.appendChild(tdLbl);
+          var tdNet = document.createElement('td');
+          tdNet.style.cssText = 'padding:10px 12px;text-align:right;color:#166534;font-weight:800;font-size:13px;border-left:1px solid #e9d5ff';
+          tdNet.innerHTML = _fmtN(netTotal) + ' ₺<br><span style="font-size:10px;color:#64748b;font-weight:400">Net (KDVsiz)</span>';
+          footRow.appendChild(tdNet);
+          var tdKdv = document.createElement('td');
+          tdKdv.style.cssText = 'padding:10px 12px;text-align:right;color:#7c3aed;font-weight:800;font-size:13px;border-left:1px solid #e9d5ff;background:#f5f3ff';
+          tdKdv.innerHTML = _fmtN(kdvTotal) + ' ₺<br><span style="font-size:10px;color:#64748b;font-weight:400">+%' + pct + ' KDV</span>';
+          footRow.appendChild(tdKdv);
+          var tdKdvli = document.createElement('td');
+          tdKdvli.style.cssText = 'padding:10px 12px;text-align:right;color:#4a148c;font-weight:900;font-size:14px;border-left:2px solid #a855f7;background:#ede9fe';
+          tdKdvli.innerHTML = _fmtN(kdvliTotal) + ' ₺<br><span style="font-size:10px;color:#64748b;font-weight:400">KDV Dahil Toplam</span>';
+          footRow.appendChild(tdKdvli);
+          tfoot.appendChild(footRow);
+        }
 
         // Günlük üretim kayıtlarına kdvPct kaydet
         var saveBtn = document.getElementById('gsKaydetBtn');
