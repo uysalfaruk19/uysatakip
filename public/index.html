@@ -7440,7 +7440,19 @@ alert('Tutar giriniz.'); return; }
         <tr style="border-top:2px solid var(--border);font-weight:900;background:#f0fdf4">
           <td style="padding:8px">TOPLAM</td>
           <td style="text-align:right;padding:8px">${totK} kişi</td>
-          <td style="text-align:right;padding:8px;color:#166534">${fmt(totT)} ₺</td>
+          <td style="text-align:right;padding:8px;color:#166534">
+            ${fmt(totT)} ₺
+            ${(function(){
+              var kdvPct = window._gsKdvPct || 0;
+              if(kdvPct > 0){
+                var kdvT = totT * kdvPct / 100;
+                var kdvD = totT + kdvT;
+                return '<br><span style="color:#7c3aed;font-size:10px;font-weight:700">+%' + kdvPct + ' KDV: ' + fmt(kdvT) + ' ₺</span>'
+                     + '<br><span style="color:#4a148c;font-size:11px;font-weight:800">KDV'li: ' + fmt(kdvD) + ' ₺</span>';
+              }
+              return '';
+            })()}
+          </td>
         </tr>
       </tbody></table>`;
   };
@@ -15853,7 +15865,6 @@ window.addEventListener('load', function() {
           }
           return '<span class="gsv76-gunluk" data-idx="'+i+'" style="color:'+(gunlukToplam?'#166534':'#94a3b8')+'">'+(gunlukToplam?_fmt(gunlukToplam)+' ₺':'—')+'</span>';
         })()
-        +(gunlukToplam?_fmt(gunlukToplam)+' ₺':'—')+'</span>'
         +'</td>'
         // Ay toplam kişi
         +'<td style="padding:9px 12px;text-align:center;border-bottom:'+borderStyle+';border-right:1px solid #e2e8f0;min-width:90px">'
@@ -19967,7 +19978,7 @@ document.addEventListener('DOMContentLoaded', function(){
 <script>
 
   // ════════════════════════════════════════════════════════════
-  // UYSA v91 — KDV Sistemi + SGK + Biriken Haklar + Aylık KDV Raporu + Üretim KDV Sütunu
+  // UYSA v92 — KDV Sistemi + SGK + Biriken Haklar + Aylık KDV Raporu + Üretim KDV Sütunu
   // ════════════════════════════════════════════════════════════
   (function(){
     'use strict';
@@ -20006,9 +20017,9 @@ document.addEventListener('DOMContentLoaded', function(){
     });
 
     // ── 2. KDV Seçici — Gider ─────────────────────────────────
-    var _giderKdvPct = 0;
+    window._giderKdvPct = 0;
     window.setGiderKdv = function(pct){
-      _giderKdvPct = pct;
+      window.window._giderKdvPct = pct;
       [0,1,10,20].forEach(function(p){
         var btn = document.getElementById('giderKdv'+p);
         if(btn) btn.style.background = (p===pct) ? '#dc2626' : (p===0?'#e2e8f0':'');
@@ -20029,7 +20040,7 @@ document.addEventListener('DOMContentLoaded', function(){
       }
     };
     document.getElementById('gider-tutar')?.addEventListener('input', function(){
-      if(_giderKdvPct>0) window.setGiderKdv(_giderKdvPct);
+      if(window._giderKdvPct>0) window.setGiderKdv(window._giderKdvPct);
     });
 
     // ── 3. Gelir kaydet: KDV bilgisini dahil et ────────────────
@@ -20081,7 +20092,7 @@ document.addEventListener('DOMContentLoaded', function(){
         var tedarikci= document.getElementById('gider-tedarikci')?.value||'';
         var faturali = document.getElementById('gider-faturali')?.checked||false;
         if(!tutar){ alert('Tutar giriniz.'); return; }
-        var kdvPct   = _giderKdvPct;
+        var kdvPct   = window._giderKdvPct;
         var kdvTutar = tutar * (kdvPct/100);
         var arr = (function(){try{return JSON.parse(localStorage.getItem('uysa_giderler'))||[];}catch(e){return[];}})();
         arr.push({kat:kat,tarih:tarih,tutar:tutar,aciklama:aciklama,belge:belge,tedarikci:tedarikci,kdvPct:kdvPct,kdvTutar:kdvTutar,faturali:faturali});
@@ -20094,7 +20105,7 @@ document.addEventListener('DOMContentLoaded', function(){
         document.getElementById('gider-aciklama').value='';
         var cb=document.getElementById('gider-faturali'); if(cb) cb.checked=false;
         var info=document.getElementById('giderKdvInfo'); if(info) info.style.display='none';
-        _giderKdvPct=0;
+        window._giderKdvPct=0;
         [0,1,10,20].forEach(function(p){var b=document.getElementById('giderKdv'+p);if(b){b.style.background=p===0?'#e2e8f0':'';b.style.color='';b.style.fontWeight='';}});
       });
     }
