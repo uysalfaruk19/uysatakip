@@ -2538,7 +2538,7 @@
 
     <!-- MODULE 3: SATIŞ & MÜŞTERİ YÖNETİMİ -->
     <div class="mod-panel" id="mod-satis">
-      <div class="content">
+      <div class="content" style="overflow-y:auto;height:calc(100vh - 60px)">
         <div class="module-header">
           <h2>🤝 3 — Satış &amp; Müşteri Yönetimi</h2>
         </div>
@@ -3406,6 +3406,30 @@
               <button class="btn primary" id="revizyonAnalizBtn">Analiz Et</button>
             </div>
             <div id="revizyonDiv" style="max-height:300px;overflow:auto;font-size:12px"></div>
+
+          <!-- 6.5b Personel Maliyet Dağılımı Dashboard (FIX-6) -->
+          <div class="panel" style="grid-column:1/-1;margin-top:4px;border:2px solid #6366f1">
+            <h3 style="color:#4338ca">👥 6.6 — Personel Maliyet Dağılımı & 1 Yemek Başı Maliyet</h3>
+            <div class="hint">Toplam personel maliyeti müşterilere porsiyon oranında dağıtılır. Macitler gibi kendi personeli olan projelere ekstra eklenir. Her müşteri için 1 yemek başı gerçek maliyet ve kâr marjı hesaplanır.</div>
+            <div style="display:flex;gap:8px;margin:10px 0;flex-wrap:wrap;align-items:flex-end">
+              <div>
+                <label style="font-size:12px;font-weight:700">Analiz Ayı</label>
+                <select id="perMaliyetAy" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px">
+                  <option value="">Bu Ay</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size:12px;font-weight:700">Toplam Personel Maliyeti (₺) <span style="font-weight:400;color:#64748b">boş=İK'dan otomatik</span></label>
+                <input id="perMaliyetToplam" type="number" min="0" step="1000" placeholder="ör: 170000" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;width:180px"/>
+              </div>
+              <div>
+                <label style="font-size:12px;font-weight:700">Yönetim Giderleri (₺) <span style="font-weight:400;color:#64748b">boş=otomatik</span></label>
+                <input id="yonetimGiderToplam" type="number" min="0" step="1000" placeholder="ör: 25000" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;width:180px"/>
+              </div>
+              <button class="btn primary" onclick="hesaplaPerMaliyet()" style="white-space:nowrap;background:#4338ca">📊 Maliyet Analizi Yap</button>
+            </div>
+            <div id="perMaliyetSonuc" style="margin-top:10px"></div>
+          </div>
           </div>
         </div>
       </div>
@@ -6711,6 +6735,46 @@ alert('Tutar giriniz.'); return; }
   });
   document.getElementById('giderFiltreKat')?.addEventListener('change',e=>renderGiderler(e.target.value));
   renderGelirler(); renderGiderler();
+  // FIX-5: Re-fill tedarikci on every finans module activation via MutationObserver
+  (function _setupTedObserver(){
+    function _fillTed(){
+      var sel = document.getElementById('gider-tedarikci');
+      if(!sel) return;
+      var tedList=(function(){try{return JSON.parse(localStorage.getItem('uysa_tedarikci')||'[]');}catch(e){return[];}})();
+      // Clear existing dynamic options (keep first "Seçin" option)
+      while(sel.options.length>1) sel.remove(1);
+      // Add from tedarikci list
+      tedList.forEach(function(t){
+        var val=t.isim||t.ad||t.name||'';
+        if(!val) return;
+        var o=document.createElement('option'); o.value=val; o.textContent=val;
+        sel.appendChild(o);
+      });
+      // Also add from gider records (unique tedarikci names already entered)
+      var giderler=(function(){try{return JSON.parse(localStorage.getItem('uysa_giderler')||'[]');}catch(e){return[];}})();
+      var existing=new Set(Array.from(sel.options).map(function(o){return o.value;}));
+      giderler.forEach(function(g){
+        if(g.tedarikci&&!existing.has(g.tedarikci)){
+          existing.add(g.tedarikci);
+          var o=document.createElement('option'); o.value=g.tedarikci; o.textContent=g.tedarikci;
+          sel.appendChild(o);
+        }
+      });
+    }
+    // Run immediately
+    _fillTed();
+    // Also run when finans panel becomes visible (MutationObserver on class change)
+    var finansPanel = document.getElementById('mod-finans');
+    if(finansPanel && window.MutationObserver){
+      new MutationObserver(function(muts){
+        muts.forEach(function(m){
+          if(m.type==='attributes'&&m.attributeName==='class'){
+            if(finansPanel.classList.contains('active')) setTimeout(_fillTed,100);
+          }
+        });
+      }).observe(finansPanel,{attributes:true});
+    }
+  })();
   // FIX-C3: Re-fill tedarikci dropdown when finans loads
   (function _reFillTed(){
     var sel = document.getElementById('gider-tedarikci');
@@ -15161,10 +15225,23 @@ window.addEventListener('load', function() {
       var crmFiyat    = crm.fiyat || 0;
       var bugun       = bugunKayitlar[cust];
 
-      // Öncelik: o güne kayıtlı → CRM varsayılanı
-      var kisiVal  = bugun ? bugun.kisi  : crmKisi;
+      // Öncelik: o güne kayıtlı → bir önceki iş günü → CRM varsayılanı
+      var _tarihObj = new Date(tarih);
+      var _haftaGun = _tarihObj.getDay(); // 0=Paz,6=Cmt
+      var _isWeekend = (_haftaGun===0||_haftaGun===6);
+      var oncekiGunKisi = 0;
+      if(!bugun && !_isWeekend) {
+        // Son 14 gün içindeki en yakın hafta içi kaydı bul
+        var _sorted = gunlukArr.filter(function(u){
+          if(u.musteri!==cust||!u.tarih||u.tarih>=tarih) return false;
+          var _d=new Date(u.tarih), _g=_d.getDay();
+          return _g!==0&&_g!==6&&u.kisi>0;
+        }).sort(function(a,b){return b.tarih.localeCompare(a.tarih);});
+        if(_sorted.length>0) oncekiGunKisi = _sorted[0].kisi;
+      }
+      var kisiVal  = bugun ? bugun.kisi  : (_isWeekend ? 0 : (oncekiGunKisi || crmKisi));
       var fiyatVal = bugun ? bugun.fiyat : crmFiyat;
-      var kaydedildi = !!bugun;
+      var kaydedildi = !!bugun; // FIX-3: auto-fill from prev weekday
 
       // Ay başından toplam (bu güne kadar, bu gün HARİÇ)
       var ayOnceki = gunlukArr.filter(function(u){
@@ -17944,13 +18021,13 @@ window.uysaPuantajGenelOzet = function() {
     const maas = parseFloat(per.maas) || 0;
 
     // Puantaj verisi
-    const puantajKey = 'uysa_puantaj_' + perAd.replace(/\s+/g, '_') + '_' + ay;
+    const puantajKey = 'uysa_puantaj_' + ay + '_' + perAd; // FIX-1: correct key order
     let puantaj = {};
     try { puantaj = lsGet(puantajKey, {}); } catch(e){}
 
     // Alternatif key formatı
     if (!Object.keys(puantaj).length) {
-      const altKey = 'puantaj_' + perAd + '_' + ay;
+      const altKey = 'uysa_puantaj_' + ay + '_' + perAd.replace(/\s+/g,'_'); // FIX-1b fallback fix
       try { puantaj = lsGet(altKey, {}); } catch(e){}
     }
 
@@ -17959,12 +18036,12 @@ window.uysaPuantajGenelOzet = function() {
     try {
       const perIzinler = izinler.filter(iz =>
         (iz.personel === perAd || iz.ad === perAd) &&
-        iz.baslangic && iz.bitis &&
-        iz.baslangic.substring(0,7) === ay
-      );
+        (iz.bas || iz.baslangic) &&
+        ((iz.bas||iz.baslangic||'').substring(0,7) === ay)
+      ); // FIX-1c: use iz.bas/iz.bit fields
       perIzinler.forEach(iz => {
-        const bas = new Date(iz.baslangic);
-        const bit = new Date(iz.bitis);
+        const bas = new Date(iz.bas || iz.baslangic);
+        const bit = new Date(iz.bit || iz.bitis || iz.bas || iz.baslangic);
         const diff = Math.ceil((bit - bas) / (1000*60*60*24)) + 1;
         izinGunSay += diff;
       });
@@ -18653,10 +18730,11 @@ function renderSozlesmeUyarilari(){
   window.parseFaturaPDF = function(){
     var fileInput = document.getElementById('gider-pdf-fatura');
     var sonucDiv = document.getElementById('gider-pdf-sonuc');
+    if(!sonucDiv){console.warn('gider-pdf-sonuc not found');return;}
     if(!fileInput||!fileInput.files||!fileInput.files[0]){
       sonucDiv.innerHTML='<span style="color:#dc2626">Lütfen önce bir PDF dosyası seçin.</span>';
       return;
-    }
+    } // FIX-2
     sonucDiv.innerHTML='⏳ PDF okunuyor...';
     var file = fileInput.files[0];
     var reader = new FileReader();
@@ -18739,6 +18817,202 @@ function renderSozlesmeUyarilari(){
     if(acikInp)  acikInp.value  = lines.slice(0,3).map(function(l){return l.urun;}).join(', ')+(lines.length>3?' ...':'');
     document.getElementById('gider-pdf-sonuc').innerHTML='<span style="color:#16a34a">✅ Forma aktarıldı. Kaydet'e basın.</span>';
     if(typeof _toast==='function') _toast('📄 Fatura verisi forma aktarıldı.');
+  };
+
+
+  // FIX-6b: Personel Maliyet Dağılımı hesaplama
+  window.hesaplaPerMaliyet = function(){
+    var sonucDiv = document.getElementById('perMaliyetSonuc');
+    if(!sonucDiv) return;
+
+    // Ay seçimi
+    var ayEl = document.getElementById('perMaliyetAy');
+    var secilenAy = ayEl && ayEl.value ? ayEl.value : (function(){
+      var d=new Date(); return d.getFullYear()+'-'+(String(d.getMonth()+1).padStart(2,'0'));
+    })();
+
+    // Toplam personel maliyeti
+    var toplamPerMaliyet = parseFloat(document.getElementById('perMaliyetToplam')?.value||0);
+    var yonetimGiderleri = parseFloat(document.getElementById('yonetimGiderToplam')?.value||0);
+
+    // Personeller
+    var personeller = (function(){try{return JSON.parse(localStorage.getItem('uysa_personeller')||'[]');}catch(e){return[];}})();
+    var aktifPer = personeller.filter(function(p){return !p.pasif;});
+
+    // Eğer manuel giriş yoksa personel maaşlarından hesapla
+    if(!toplamPerMaliyet && aktifPer.length>0){
+      toplamPerMaliyet = aktifPer.reduce(function(s,p){return s+(parseFloat(p.maas)||0);},0);
+    }
+
+    // Yönetim giderleri de yoksa finans giderlerinden al
+    if(!yonetimGiderleri){
+      var giderler = (function(){try{return JSON.parse(localStorage.getItem('uysa_giderler')||'[]');}catch(e){return[];}})();
+      var ayGiderler = giderler.filter(function(g){return (g.tarih||'').startsWith(secilenAy);});
+      yonetimGiderleri = ayGiderler
+        .filter(function(g){return g.kat&&(g.kat.indexOf('yonetim')>=0||g.kat.indexOf('kira')>=0||g.kat.indexOf('enerji')>=0);})
+        .reduce(function(s,g){return s+(g.tutar||0);},0);
+    }
+
+    // Günlük üretim verileri
+    var gunlukArr = (function(){try{return JSON.parse(localStorage.getItem('uysa_gunluk_uretim')||'[]');}catch(e){return[];}})();
+    var ayKayitlar = gunlukArr.filter(function(u){return (u.tarih||'').startsWith(secilenAy);});
+
+    // Müşteri bazında toplam yemek sayısı
+    var musteriYemek = {};
+    var toplamYemek = 0;
+    ayKayitlar.forEach(function(u){
+      if(!u.musteri||!u.kisi) return;
+      musteriYemek[u.musteri] = (musteriYemek[u.musteri]||0) + (u.kisi||0);
+      toplamYemek += (u.kisi||0);
+    });
+
+    if(!toplamYemek){
+      sonucDiv.innerHTML='<div style="color:#f59e0b;padding:12px;background:#fef9c3;border-radius:8px">⚠️ '+secilenAy+' ayına ait günlük üretim verisi bulunamadı. Önce günlük üretim girişi yapın.</div>';
+      return;
+    }
+
+    // Müşteri listesi
+    var musteriler = (function(){try{return JSON.parse(localStorage.getItem('uysa_musteriler')||'[]');}catch(e){return[];}})();
+
+    // Gelirler
+    var gelirler = (function(){try{return JSON.parse(localStorage.getItem('uysa_gelirler')||'[]');}catch(e){return[];}})();
+    var ayGelirler = gelirler.filter(function(g){return (g.tarih||'').startsWith(secilenAy);});
+
+    // Üretim giderleri
+    var uretimGider = (function(){try{return JSON.parse(localStorage.getItem('uysa_uretim_giderleri')||'[]');}catch(e){return[];}})();
+    var ayUretimGider = uretimGider.filter(function(g){return (g.tarih||'').startsWith(secilenAy);});
+    var toplamUretimGider = ayUretimGider.reduce(function(s,g){return s+(g.tutar||0);},0);
+    var birYemekUretimGider = toplamYemek>0 ? toplamUretimGider/toplamYemek : 0;
+
+    // Müşteri bazında hesapla
+    var rows = Object.keys(musteriYemek).sort(function(a,b){return musteriYemek[b]-musteriYemek[a];}).map(function(mus){
+      var yemekSay = musteriYemek[mus]||0;
+      var oran = toplamYemek>0 ? yemekSay/toplamYemek : 0;
+
+      // Bu müşteriye personel payı
+      var perPay = toplamPerMaliyet * oran;
+
+      // Yönetim giderleri payı
+      var yonetimPay = yonetimGiderleri * oran;
+
+      // Bu müşterinin kendi personeli var mı? (CRM'den proje bilgisi)
+      var crmKey = 'uysa_crm_'+mus;
+      var crm = (function(){try{return JSON.parse(localStorage.getItem(crmKey)||'{}');}catch(e){return{};}})();
+
+      // Projeye bağlı personel maliyeti
+      var projePerMaliyet = 0;
+      aktifPer.forEach(function(p){
+        if(p.proje===mus){ projePerMaliyet += parseFloat(p.maas)||0; }
+      });
+
+      // Bu müşterinin geliri (ay)
+      var musGelir = ayGelirler.filter(function(g){return g.musteri===mus;}).reduce(function(s,g){return s+(g.tutar||0);},0);
+
+      // Üretim maliyeti payı
+      var uretimPay = birYemekUretimGider * yemekSay;
+
+      // Toplam maliyet
+      var toplamMaliyet = perPay + yonetimPay + projePerMaliyet + uretimPay;
+      var birYemekMaliyet = yemekSay>0 ? toplamMaliyet/yemekSay : 0;
+      var birYemekGelir = yemekSay>0 ? musGelir/yemekSay : (crm.fiyat||0);
+      var birYemekKar = birYemekGelir - birYemekMaliyet;
+      var marj = birYemekGelir>0 ? (birYemekKar/birYemekGelir)*100 : 0;
+
+      return {mus,yemekSay,oran,perPay,yonetimPay,projePerMaliyet,uretimPay,toplamMaliyet,musGelir,birYemekMaliyet,birYemekGelir,birYemekKar,marj};
+    });
+
+    // Render
+    var _f = function(n){return Number(n||0).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2});};
+    var _fp = function(n){return Number(n||0).toFixed(1)+'%';};
+
+    var html = '<div style="background:linear-gradient(135deg,#1e293b,#334155);color:#fff;border-radius:12px;padding:14px 18px;margin-bottom:14px;display:flex;flex-wrap:wrap;gap:14px;align-items:center">'
+      +'<div style="flex:1;min-width:140px"><div style="font-size:11px;opacity:.7">Toplam Personel Maliyeti</div><div style="font-size:20px;font-weight:800;color:#34d399">'+_f(toplamPerMaliyet)+' ₺</div></div>'
+      +'<div style="flex:1;min-width:140px"><div style="font-size:11px;opacity:.7">Yönetim Giderleri</div><div style="font-size:20px;font-weight:800;color:#fbbf24">'+_f(yonetimGiderleri)+' ₺</div></div>'
+      +'<div style="flex:1;min-width:140px"><div style="font-size:11px;opacity:.7">Toplam Yemek</div><div style="font-size:20px;font-weight:800;color:#60a5fa">'+toplamYemek.toLocaleString('tr-TR')+' porsiyon</div></div>'
+      +'<div style="flex:1;min-width:140px"><div style="font-size:11px;opacity:.7">1 Yemek Üretim Maliyeti</div><div style="font-size:20px;font-weight:800;color:#f87171">'+_f(birYemekUretimGider)+' ₺</div></div>'
+      +'</div>';
+
+    html += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">'
+      +'<thead><tr style="background:#f1f5f9">'
+      +'<th style="padding:10px 8px;text-align:left;border-bottom:2px solid #e2e8f0">Müşteri</th>'
+      +'<th style="padding:10px 8px;text-align:right;border-bottom:2px solid #e2e8f0">Yemek (adet)</th>'
+      +'<th style="padding:10px 8px;text-align:right;border-bottom:2px solid #e2e8f0">Pay %</th>'
+      +'<th style="padding:10px 8px;text-align:right;border-bottom:2px solid #e2e8f0">Personel Payı</th>'
+      +'<th style="padding:10px 8px;text-align:right;border-bottom:2px solid #e2e8f0">Proje Pers.</th>'
+      +'<th style="padding:10px 8px;text-align:right;border-bottom:2px solid #e2e8f0">Yönetim Payı</th>'
+      +'<th style="padding:10px 8px;text-align:right;border-bottom:2px solid #e2e8f0">Üretim Pay.</th>'
+      +'<th style="padding:10px 8px;text-align:right;border-bottom:2px solid #e2e8f0;background:#fff7ed;color:#c2410c">Toplam Maliyet</th>'
+      +'<th style="padding:10px 8px;text-align:right;border-bottom:2px solid #e2e8f0">Gelir</th>'
+      +'<th style="padding:10px 8px;text-align:right;border-bottom:2px solid #e2e8f0;background:#dcfce7;color:#166534">1 Yemek Maliyet</th>'
+      +'<th style="padding:10px 8px;text-align:right;border-bottom:2px solid #e2e8f0;background:#dcfce7;color:#166534">1 Yemek Fiyat</th>'
+      +'<th style="padding:10px 8px;text-align:right;border-bottom:2px solid #e2e8f0;background:#dcfce7;color:#166534">1 Yemek Kâr</th>'
+      +'<th style="padding:10px 8px;text-align:right;border-bottom:2px solid #e2e8f0">Marj%</th>'
+      +'</tr></thead><tbody>';
+
+    rows.forEach(function(r,i){
+      var karRenk = r.birYemekKar>=0 ? '#166534' : '#dc2626';
+      var bg = i%2===0?'#fff':'#f8faff';
+      html += '<tr style="background:'+bg+(r.projePerMaliyet>0?';border-left:3px solid #f59e0b':'')+'">'
+        +'<td style="padding:9px 8px;font-weight:700">'+r.mus+(r.projePerMaliyet>0?'<span style="font-size:10px;color:#f59e0b;margin-left:4px">★ özel pers.</span>':'')+'</td>'
+        +'<td style="padding:9px 8px;text-align:right;font-weight:600">'+r.yemekSay.toLocaleString('tr-TR')+'</td>'
+        +'<td style="padding:9px 8px;text-align:right;color:#6b7280">'+_fp(r.oran*100)+'</td>'
+        +'<td style="padding:9px 8px;text-align:right;color:#7c3aed">'+_f(r.perPay)+' ₺</td>'
+        +'<td style="padding:9px 8px;text-align:right;color:'+(r.projePerMaliyet>0?'#d97706':'#9ca3af')+'">'+_f(r.projePerMaliyet)+' ₺</td>'
+        +'<td style="padding:9px 8px;text-align:right;color:#0891b2">'+_f(r.yonetimPay)+' ₺</td>'
+        +'<td style="padding:9px 8px;text-align:right;color:#dc2626">'+_f(r.uretimPay)+' ₺</td>'
+        +'<td style="padding:9px 8px;text-align:right;font-weight:800;color:#c2410c;background:#fff7ed">'+_f(r.toplamMaliyet)+' ₺</td>'
+        +'<td style="padding:9px 8px;text-align:right;color:#166534">'+_f(r.musGelir)+' ₺</td>'
+        +'<td style="padding:9px 8px;text-align:right;font-weight:800;color:#c2410c;background:#fef2f2">'+_f(r.birYemekMaliyet)+' ₺</td>'
+        +'<td style="padding:9px 8px;text-align:right;font-weight:800;color:#166534;background:#f0fdf4">'+_f(r.birYemekGelir)+' ₺</td>'
+        +'<td style="padding:9px 8px;text-align:right;font-weight:800;color:'+karRenk+';background:'+(r.birYemekKar>=0?'#f0fdf4':'#fff1f2')+'">'+_f(r.birYemekKar)+' ₺</td>'
+        +'<td style="padding:9px 8px;text-align:right;font-weight:700;color:'+karRenk+'">'+_fp(r.marj)+'</td>'
+        +'</tr>';
+    });
+
+    // Genel toplam
+    var gtYemek = rows.reduce(function(s,r){return s+r.yemekSay;},0);
+    var gtMaliyet = rows.reduce(function(s,r){return s+r.toplamMaliyet;},0);
+    var gtGelir   = rows.reduce(function(s,r){return s+r.musGelir;},0);
+    var gt1Mal = gtYemek>0?gtMaliyet/gtYemek:0;
+    var gt1Gel = gtYemek>0?gtGelir/gtYemek:0;
+    var gt1Kar = gt1Gel - gt1Mal;
+    var gtMarj = gt1Gel>0?(gt1Kar/gt1Gel)*100:0;
+
+    html += '<tr style="background:#1e293b;font-weight:700;font-size:13px">'
+      +'<td style="padding:10px 8px;color:#fff">TOPLAM ('+rows.length+' müşteri)</td>'
+      +'<td style="padding:10px 8px;text-align:right;color:#60a5fa">'+gtYemek.toLocaleString('tr-TR')+'</td>'
+      +'<td style="padding:10px 8px;text-align:right;color:#9ca3af">100%</td>'
+      +'<td colspan="4" style="padding:10px 8px;text-align:right;color:#fbbf24">'+_f(toplamPerMaliyet+yonetimGiderleri)+' ₺</td>'
+      +'<td style="padding:10px 8px;text-align:right;color:#f87171">'+_f(gtMaliyet)+' ₺</td>'
+      +'<td style="padding:10px 8px;text-align:right;color:#34d399">'+_f(gtGelir)+' ₺</td>'
+      +'<td style="padding:10px 8px;text-align:right;color:#f87171;background:#1e3a5f">'+_f(gt1Mal)+' ₺</td>'
+      +'<td style="padding:10px 8px;text-align:right;color:#34d399;background:#1e3a5f">'+_f(gt1Gel)+' ₺</td>'
+      +'<td style="padding:10px 8px;text-align:right;color:'+(gt1Kar>=0?'#34d399':'#f87171')+';background:#1e3a5f">'+_f(gt1Kar)+' ₺</td>'
+      +'<td style="padding:10px 8px;text-align:right;color:'+(gtMarj>=0?'#34d399':'#f87171')+'">'+_fp(gtMarj)+'</td>'
+      +'</tr>';
+
+    html += '</tbody></table></div>';
+
+    // Açıklama notu
+    html += '<div style="margin-top:10px;background:#f0f9ff;border-left:4px solid #0ea5e9;padding:10px 14px;border-radius:0 8px 8px 0;font-size:12px;color:#0369a1">'
+      +'<b>⚡ Not:</b> ★ işaretli müşteriler; İK modülünde kendilerine atanmış personel içeriyor — bu personel maliyeti toplam havuzdan ek olarak eklenir. '
+      +'Yönetim giderleri (kira, enerji vb.) tüm müşterilere porsiyon oranında paylaştırılır.'
+      +'</div>';
+
+    sonucDiv.innerHTML = html;
+
+    // Ay seçicisini doldur (ilk çağrıda)
+    var aySelEl = document.getElementById('perMaliyetAy');
+    if(aySelEl && aySelEl.options.length<=1){
+      var months = new Set();
+      gunlukArr.forEach(function(u){ if(u.tarih) months.add(u.tarih.slice(0,7)); });
+      var sorted = Array.from(months).sort().reverse();
+      sorted.forEach(function(m){
+        if(m !== secilenAy){
+          var o=document.createElement('option'); o.value=m; o.textContent=m; aySelEl.appendChild(o);
+        }
+      });
+    }
   };
 
 window.renderAnasayfa = function(){
