@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23005fcc'/><text x='16' y='23' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='18' fill='white'>U</text></svg>">
-<!-- UYSA ERP v129-Restored | Son Denetim Geçti | Veri Girişine Hazır -->
+<!-- UYSA ERP v131-SyntaxFix | Son Denetim Geçti | Veri Girişine Hazır -->
 <!-- UYSA ERP v118b | Sprint 1: B+C+D+E patches | 2026-03-02 -->
   <meta charset="utf-8"/>
 <!-- UYSA ERP v118 Sprint 1 - COMPLETE: LazyLoadManager + Modal/Toast + SPA Refresh + VirtualScroll + CSS External -->
@@ -134,7 +134,7 @@ window.lsCacheInvalidate = function(key) {
     --shadow-lg: 0 20px 30px rgba(0,0,0,.1),0 8px 12px rgba(0,0,0,.05);
 
     /* Navigation */
-    --nav-h:  52px;
+    --nav-h:  64px;
     --nav-bg: linear-gradient(135deg, #0f1f3d 0%, #1a2d5a 60%, #1e3a5f 100%);
 
     /* Transitions */
@@ -8784,13 +8784,12 @@ _uysaAlert('Malzeme ve miktar giriniz.'); return; }
       }
       win.document.write(html);
     } else {
-      win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Sözleşme — ${t.firma}</title>
-      <link rel="stylesheet" href="style_v118.css"></head><body>'
-      +'<h1>'+baslik+'</h1>'
-      +'<p style="color:#666;font-size:12px">Tarih: '+tarih+'</p>'
-      +'<pre>'+icerik+'</pre>'
-      +'<script>window.onload=function(){window.print();}<\/script>'
-      +'
+      win.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Sozlesme</title>'+'<link rel="stylesheet" href="style_v118.css"></head><body>'+'<button onclick="window.print()" style="position:fixed;top:10px;right:10px;padding:8px 16px;background:#1a56db;color:white;border:none;border-radius:8px;cursor:pointer;z-index:999">Yazdir / PDF</button>'+'<h1>'+baslik+'</h1>'+'<p style="color:#666;font-size:12px">Tarih: '+tarih+'</p>'+'<pre>'+icerik+'</pre>'+'<scr'+'ipt>window.onload=function(){window.print();}<\/scr'+'ipt>'+'</body></html>');
+    }
+    win.document.close();
+  });
+})();
+</script>
 <script>
 (function(){
   'use strict';
