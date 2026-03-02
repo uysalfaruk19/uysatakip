@@ -1,0 +1,36 @@
+{
+    "name": "uysa-erp/tests",
+    "description": "UYSA ERP — Full Test & Security Suite v4.0",
+    "type": "project",
+    "require": {
+        "php": ">=8.2"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0",
+        "roave/security-advisories": "dev-latest"
+    },
+    "autoload": {
+        "psr-4": {
+            "Uysa\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Uysa\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test":             "vendor/bin/phpunit tests/ --testdox --colors=always",
+        "test-unit":        "vendor/bin/phpunit tests/UnitTest.php --testdox --colors=always",
+        "test-integration": "vendor/bin/phpunit tests/IntegrationTest.php --group integration --testdox",
+        "test-coverage":    "vendor/bin/phpunit tests/UnitTest.php --coverage-text --coverage-html coverage/",
+        "test-ci":          "vendor/bin/phpunit tests/ --testdox --log-junit test-results.xml"
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "sort-packages": true,
+        "platform": {
+            "php": "8.2"
+        }
+    }
+}
