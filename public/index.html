@@ -10134,7 +10134,355 @@ window.addEventListener('DOMContentLoaded', function() {
     <tfoot><tr><td><b>TOPLAM</b></td><td><b>${fmt(toplamGider)}</b></td><td>100%</td></tr></tfoot></table>`:''}
 
     <div class="footer">Bu rapor UYSA v51 tarafından oluşturulmuştur.</div>
-    </body></html>`);
+    
+<script>
+/* ══════════════════════════════════════════════════════════════════════
+   UYSA v94 PATCH
+   1. Üretim Özeti — her satıra ✏️ Düzenle butonu (kişi + fiyat güncelle)
+   2. Firma filtresi — seçili firmanın gün gün detayı
+   3. Toplam Göster butonu — seçili firma / dönem özeti
+   ══════════════════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+
+  /* ── mini yardımcılar ─────────────────────────────────────────────── */
+  var _ls = {
+    get: function(k,d){ try{ var v=localStorage.getItem(k); return v===null?d:JSON.parse(v); }catch(e){ return d; } },
+    set: function(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
+  };
+  function _fmt(n){ return Number(n||0).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function _toast(msg){
+    if(typeof window.toast==='function'){ window.toast(msg); return; }
+    var t=document.createElement('div');
+    t.textContent=msg;
+    t.style.cssText='position:fixed;bottom:24px;right:24px;background:#1e293b;color:#fff;padding:12px 20px;border-radius:10px;font-size:13px;z-index:99999;max-width:360px;box-shadow:0 4px 20px rgba(0,0,0,.35)';
+    document.body.appendChild(t);
+    setTimeout(function(){ t.remove(); },3500);
+  }
+  function _today(){
+    var d=new Date();
+    return d.getFullYear()+'-'+(''+(d.getMonth()+1)).padStart(2,'0')+'-'+(''+d.getDate()).padStart(2,'0');
+  }
+  function _getGunluk(){ return _ls.get('uysa_gunluk_uretim',[]); }
+  function _saveGunluk(arr){
+    _ls.set('uysa_gunluk_uretim',arr);
+    try{ if(typeof window.autoSaveToFolder==='function') window.autoSaveToFolder(); }catch(e){}
+  }
+  function _getGelirler(){ return _ls.get('uysa_gelirler',[]); }
+  function _saveGelirler(arr){ _ls.set('uysa_gelirler',arr); }
+  function _getCustomers(){
+    try{
+      var raw=localStorage.getItem('uysa_customers_v1');
+      var pasif=_ls.get('uysa_pasif_musteriler',[]);
+      if(!raw) return [];
+      var obj=JSON.parse(raw);
+      return (obj.customers||[]).filter(function(x){ return x&&x!=='GENEL'&&!pasif.includes(x); });
+    }catch(e){ return []; }
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     FEATURE 1 + 2 + 3: v94 Üretim Özeti Override
+     – Firma filtresi dropdown
+     – Toplam Göster butonu
+     – Her satırda ✏️ Düzenle
+  ══════════════════════════════════════════════════════════════════ */
+
+  /* Global: hangi firma seçili? (null = hepsi) */
+  window._v94FirmaFilter = null;
+  window._v94ShowTotal   = false;
+
+  window.v94RenderAylikRapor = function(){
+    var div = document.getElementById('v75AylikRaporDiv');
+    if(!div) return;
+
+    /* Hangi ay? */
+    var tarihEl = document.getElementById('gs-tarih');
+    var ayEl    = document.getElementById('v77AySecici');
+    var buAy;
+    if(ayEl && ayEl.value) buAy = ayEl.value;
+    else if(tarihEl && tarihEl.value) buAy = tarihEl.value.slice(0,7);
+    else buAy = _today().slice(0,7);
+
+    var gunlukArr = _getGunluk();
+    var ayKayitlar = gunlukArr.filter(function(u){
+      return (u.tarih||'').startsWith(buAy) && u.musteri && u.musteri!=='GENEL';
+    });
+
+    var ayAdlari=['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran',
+                  'Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+    var parts=buAy.split('-');
+    var ayAdi=ayAdlari[parseInt(parts[1],10)-1]+' '+parts[0];
+
+    if(!ayKayitlar.length){
+      div.innerHTML='<div style="color:var(--muted);padding:12px">📭 '+buAy+' ayına ait henüz kayıt bulunmuyor.</div>';
+      return;
+    }
+
+    /* Müşteri listesi */
+    var musteriSet={};
+    ayKayitlar.forEach(function(u){ musteriSet[u.musteri]=true; });
+    var musteriler=Object.keys(musteriSet).sort(function(a,b){ return a.localeCompare(b,'tr'); });
+
+    /* ── Firma Filtresi + Toplam Göster kontrol alanı ──────────── */
+    var firmaFilter = window._v94FirmaFilter;
+    var showTotal   = window._v94ShowTotal;
+
+    var controlHtml =
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;padding:10px 14px;background:#eff6ff;border-radius:10px;border:1.5px solid #c7d2fe">'
+      +'<span style="font-size:12px;font-weight:700;color:#2563eb">🏢 Firma Filtrele:</span>'
+      +'<select id="v94FirmaSelect" onchange="window.v94OnFirmaChange(this.value)" style="padding:6px 12px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:13px;font-weight:600;color:#1e40af;background:#fff;cursor:pointer">'
+      +'<option value="">— Tüm Firmalar —</option>';
+    musteriler.forEach(function(m){
+      controlHtml += '<option value="'+m+'"'+(firmaFilter===m?' selected':'')+'>'+m+'</option>';
+    });
+    controlHtml += '</select>';
+
+    if(firmaFilter){
+      controlHtml +=
+        '<button onclick="window.v94ToggleTotal()" style="padding:6px 14px;border:1.5px solid '+(showTotal?'#16a34a':'#64748b')+';border-radius:8px;font-size:12px;font-weight:700;background:'+(showTotal?'#f0fdf4':'#fff')+';color:'+(showTotal?'#16a34a':'#64748b')+';cursor:pointer">'
+        +'📊 Toplam Göster'
+        +'</button>';
+    }
+    controlHtml += '</div>';
+
+    /* ── Seçili firma özet kartı ──────────────────────────────── */
+    var secilenKayitlar = firmaFilter
+      ? ayKayitlar.filter(function(u){ return u.musteri===firmaFilter; })
+      : ayKayitlar;
+
+    var toplamKisi  = secilenKayitlar.reduce(function(s,u){ return s+(u.kisi||0); },0);
+    var toplamTutar = secilenKayitlar.reduce(function(s,u){ return s+(u.tutar||0); },0);
+    var toplamGun   = new Set(secilenKayitlar.map(function(u){ return u.tarih; })).size;
+    var toplamMust  = firmaFilter ? 1 : Object.keys(musteriSet).length;
+
+    /* ── Özet kartlar ─────────────────────────────────────────── */
+    var cardsHtml =
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px">'
+      +'<div style="background:#eff6ff;border-radius:10px;padding:12px;text-align:center">'
+      +'<div style="font-size:22px">🏢</div><div style="font-weight:800;font-size:18px;color:#2563eb">'+toplamMust+'</div>'
+      +'<div style="font-size:11px;color:#64748b">'+( firmaFilter ? 'Seçili Firma' : 'Müşteri' )+'</div></div>'
+      +'<div style="background:#f0fdf4;border-radius:10px;padding:12px;text-align:center">'
+      +'<div style="font-size:22px">📅</div><div style="font-weight:800;font-size:18px;color:#16a34a">'+toplamGun+'</div>'
+      +'<div style="font-size:11px;color:#64748b">Kayıtlı Gün</div></div>'
+      +'<div style="background:#fef9c3;border-radius:10px;padding:12px;text-align:center">'
+      +'<div style="font-size:22px">👥</div><div style="font-weight:800;font-size:18px;color:#ca8a04">'+toplamKisi.toLocaleString('tr-TR')+'</div>'
+      +'<div style="font-size:11px;color:#64748b">Toplam Kişi</div></div>'
+      +'<div style="background:#fdf4ff;border-radius:10px;padding:12px;text-align:center">'
+      +'<div style="font-size:22px">💰</div><div style="font-weight:800;font-size:16px;color:#7c3aed">'+_fmt(toplamTutar)+' ₺</div>'
+      +'<div style="font-size:11px;color:#64748b">Aylık Toplam</div></div>'
+      +'</div>';
+
+    /* ── Toplam Göster kartı ──────────────────────────────────── */
+    var totalCardHtml = '';
+    if(firmaFilter && showTotal){
+      var kdvPct = window._gsKdvPct || 0;
+      var kdvT   = toplamTutar * kdvPct / 100;
+      var kdvD   = toplamTutar + kdvT;
+      totalCardHtml =
+        '<div style="background:linear-gradient(135deg,#1e40af,#7c3aed);border-radius:14px;padding:16px 20px;margin-bottom:14px;color:#fff">'
+        +'<div style="font-size:13px;font-weight:700;opacity:.85;margin-bottom:6px">📊 '+firmaFilter+' — '+ayAdi+' Teyit Özeti</div>'
+        +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px">'
+        +'<div><div style="font-size:11px;opacity:.7">Kayıtlı Gün</div><div style="font-size:22px;font-weight:900">'+toplamGun+'</div></div>'
+        +'<div><div style="font-size:11px;opacity:.7">Toplam Kişi</div><div style="font-size:22px;font-weight:900">'+toplamKisi.toLocaleString('tr-TR')+'</div></div>'
+        +'<div><div style="font-size:11px;opacity:.7">Net Tutar</div><div style="font-size:20px;font-weight:900">'+_fmt(toplamTutar)+' ₺</div></div>'
+        +(kdvPct>0 ? '<div><div style="font-size:11px;opacity:.7">KDV ('+kdvPct+'%)</div><div style="font-size:18px;font-weight:900">'+_fmt(kdvT)+' ₺</div></div>'
+                   + '<div><div style="font-size:11px;opacity:.7">KDV&#39;li Toplam</div><div style="font-size:20px;font-weight:900">'+_fmt(kdvD)+' ₺</div></div>'
+                   : '')
+        +'</div>'
+        +'</div>';
+    }
+
+    /* ── Tablo satırları ──────────────────────────────────────── */
+    var musteriMap = {};
+    secilenKayitlar.forEach(function(u){
+      if(!musteriMap[u.musteri]) musteriMap[u.musteri]=[];
+      musteriMap[u.musteri].push(u);
+    });
+
+    var tableRows = '';
+    Object.keys(musteriMap).sort(function(a,b){ return a.localeCompare(b,'tr'); }).forEach(function(cust){
+      var kayitlar = musteriMap[cust].sort(function(a,b){ return (a.tarih||'').localeCompare(b.tarih||''); });
+      var altTopKisi  = kayitlar.reduce(function(s,u){ return s+(u.kisi||0); },0);
+      var altTopTutar = kayitlar.reduce(function(s,u){ return s+(u.tutar||0); },0);
+
+      kayitlar.forEach(function(u,i){
+        var isFirst=i===0;
+        /* Tam indeks bul - düzenleme için */
+        var fullArr=_getGunluk();
+        var realIdx=-1;
+        for(var ri=0;ri<fullArr.length;ri++){
+          if(fullArr[ri].musteri===u.musteri && fullArr[ri].tarih===u.tarih){ realIdx=ri; break; }
+        }
+        tableRows +=
+          '<tr id="v94row-'+realIdx+'" style="background:'+(isFirst?'#eff6ff':'#fff')+'">'
+          /* Müşteri */
+          +'<td style="padding:8px 10px;font-weight:'+(isFirst?'700':'400')+';color:'+(isFirst?'#1e40af':'#475569')+';border-bottom:1px solid #e2e8f0">'+(isFirst?cust:'')+'</td>'
+          /* Tarih */
+          +'<td style="padding:8px 10px;text-align:center;border-bottom:1px solid #e2e8f0;color:#64748b">'+u.tarih+'</td>'
+          /* Kişi — inline edit input */
+          +'<td style="padding:6px 8px;text-align:center;border-bottom:1px solid #e2e8f0">'
+          +'<input type="number" min="0" step="1" id="v94kisi-'+realIdx+'" value="'+(u.kisi||0)+'" '
+          +'style="width:72px;padding:5px;border:1.5px solid #c7d2fe;border-radius:7px;text-align:center;font-size:13px;font-weight:700;background:#fff" '
+          +'onchange="window.v94SaveRow('+realIdx+')"/>'
+          +'</td>'
+          /* Fiyat — inline edit input */
+          +'<td style="padding:6px 8px;text-align:right;border-bottom:1px solid #e2e8f0">'
+          +'<input type="number" min="0" step="0.01" id="v94fiyat-'+realIdx+'" value="'+(u.fiyat||0)+'" '
+          +'style="width:80px;padding:5px;border:1.5px solid #c7d2fe;border-radius:7px;text-align:right;font-size:13px;background:#fff" '
+          +'onchange="window.v94SaveRow('+realIdx+')"/>'
+          +'</td>'
+          /* Tutar */
+          +'<td id="v94tutar-'+realIdx+'" style="padding:8px 10px;text-align:right;border-bottom:1px solid #e2e8f0;font-weight:700;color:#166534">'+_fmt(u.tutar||0)+' ₺</td>'
+          /* Kaydet butonu */
+          +'<td style="padding:4px 8px;text-align:center;border-bottom:1px solid #e2e8f0">'
+          +'<button onclick="window.v94SaveRow('+realIdx+')" style="padding:5px 10px;border:none;border-radius:7px;background:#2563eb;color:#fff;font-size:11px;font-weight:700;cursor:pointer">💾 Kaydet</button>'
+          +'</td>'
+          +'</tr>';
+      });
+
+      /* Alt toplam */
+      tableRows +=
+        '<tr style="background:#f0fdf4">'
+        +'<td colspan="2" style="padding:7px 10px;font-weight:800;color:#166534;font-size:12px;border-bottom:2px solid #bbf7d0">📊 '+cust+' Alt Toplam</td>'
+        +'<td style="padding:7px 10px;text-align:center;font-weight:800;color:#166534;border-bottom:2px solid #bbf7d0">'+altTopKisi+'</td>'
+        +'<td style="border-bottom:2px solid #bbf7d0"></td>'
+        +'<td style="padding:7px 10px;text-align:right;font-weight:800;color:#166534;border-bottom:2px solid #bbf7d0">'+_fmt(altTopTutar)+' ₺</td>'
+        +'<td style="border-bottom:2px solid #bbf7d0"></td>'
+        +'</tr>';
+    });
+
+    /* Genel toplam — her zaman göster */
+    tableRows +=
+      '<tr style="background:#1e293b">'
+      +'<td colspan="2" style="padding:10px;font-weight:900;color:#fff;font-size:13px">🏆 '+ayAdi+' — '+(firmaFilter?firmaFilter:'GENEL')+' TOPLAM</td>'
+      +'<td style="padding:10px;text-align:center;font-weight:900;color:#fbbf24;font-size:13px">'+toplamKisi.toLocaleString('tr-TR')+' kişi</td>'
+      +'<td style="padding:10px"></td>'
+      +'<td style="padding:10px;text-align:right;font-weight:900;color:#34d399;font-size:14px">'+_fmt(toplamTutar)+' ₺</td>'
+      +'<td style="padding:10px"></td>'
+      +'</tr>';
+
+    var tableHtml =
+      '<div style="overflow-x:auto">'
+      +'<table style="width:100%;font-size:13px;border-collapse:collapse;border-radius:10px;overflow:hidden;box-shadow:0 1px 6px rgba(0,0,0,.08)">'
+      +'<thead><tr style="background:#eef3ff">'
+      +'<th style="padding:10px;text-align:left;border-bottom:2px solid #c7d2fe">Müşteri</th>'
+      +'<th style="padding:10px;text-align:center;border-bottom:2px solid #c7d2fe">Tarih</th>'
+      +'<th style="padding:10px;text-align:center;border-bottom:2px solid #c7d2fe">Kişi Sayısı</th>'
+      +'<th style="padding:10px;text-align:right;border-bottom:2px solid #c7d2fe">Fiyat (₺/kişi)</th>'
+      +'<th style="padding:10px;text-align:right;border-bottom:2px solid #c7d2fe">Gün Toplamı (₺)</th>'
+      +'<th style="padding:10px;text-align:center;border-bottom:2px solid #c7d2fe">İşlem</th>'
+      +'</tr></thead>'
+      +'<tbody>'+tableRows+'</tbody>'
+      +'</table></div>';
+
+    div.innerHTML = controlHtml + totalCardHtml + cardsHtml + tableHtml;
+    console.log('✅ v94RenderAylikRapor rendered.');
+  };
+
+  /* ── Firma filter change ────────────────────────────────────────────── */
+  window.v94OnFirmaChange = function(val){
+    window._v94FirmaFilter = val || null;
+    window._v94ShowTotal   = false;
+    window.v94RenderAylikRapor();
+  };
+
+  /* ── Toplam göster toggle ───────────────────────────────────────────── */
+  window.v94ToggleTotal = function(){
+    window._v94ShowTotal = !window._v94ShowTotal;
+    window.v94RenderAylikRapor();
+  };
+
+  /* ── Satır kaydet (sayı/fiyat düzelt) ──────────────────────────────── */
+  window.v94SaveRow = function(realIdx){
+    var kisiEl  = document.getElementById('v94kisi-'+realIdx);
+    var fiyatEl = document.getElementById('v94fiyat-'+realIdx);
+    var tutarEl = document.getElementById('v94tutar-'+realIdx);
+    if(!kisiEl||!fiyatEl) return;
+
+    var yeniKisi  = parseInt(kisiEl.value)||0;
+    var yeniFiyat = parseFloat(fiyatEl.value)||0;
+    var yeniTutar = yeniKisi * yeniFiyat;
+
+    /* 1. gunluk_uretim güncelle */
+    var gunlukArr = _getGunluk();
+    if(realIdx < 0 || realIdx >= gunlukArr.length){ _toast('❌ Kayıt bulunamadı.'); return; }
+    var eski = gunlukArr[realIdx];
+    var eskiMusteri = eski.musteri;
+    var eskiTarih   = eski.tarih;
+    var eskiTutar   = eski.tutar||0;
+
+    gunlukArr[realIdx].kisi  = yeniKisi;
+    gunlukArr[realIdx].fiyat = yeniFiyat;
+    gunlukArr[realIdx].tutar = yeniTutar;
+    _saveGunluk(gunlukArr);
+
+    /* 2. gelirler güncelle — aynı gün + aynı müşteri + "Günlük üretim" açıklamalı kaydı bul */
+    var gelirArr = _getGelirler();
+    var gelirBulundu = false;
+    for(var gi=0; gi<gelirArr.length; gi++){
+      var g = gelirArr[gi];
+      if(g.musteri===eskiMusteri && g.tarih===eskiTarih && g.aciklama && g.aciklama.startsWith('Günlük üretim')){
+        gelirArr[gi].tutar = yeniTutar;
+        gelirArr[gi].kisi  = yeniKisi;
+        gelirArr[gi].aciklama = 'Günlük üretim — '+yeniKisi+' kişi × '+yeniFiyat+' ₺';
+        gelirBulundu = true;
+        break;
+      }
+    }
+    if(!gelirBulundu){
+      /* Eğer gelir kaydı yoksa ekle */
+      gelirArr.push({musteri:eskiMusteri, tarih:eskiTarih, tutar:yeniTutar, kisi:yeniKisi,
+        fatura:'', aciklama:'Günlük üretim — '+yeniKisi+' kişi × '+yeniFiyat+' ₺'});
+    }
+    _saveGelirler(gelirArr);
+
+    /* 3. UI güncelle */
+    if(tutarEl) tutarEl.textContent = _fmt(yeniTutar)+' ₺';
+    var rowEl = document.getElementById('v94row-'+realIdx);
+    if(rowEl) rowEl.style.background = '#f0fdf4';
+
+    /* 4. Diğer modüller */
+    if(typeof window.renderGelirler==='function') try{ window.renderGelirler(); }catch(e){}
+    if(typeof window.refreshFinStats==='function') try{ window.refreshFinStats(); }catch(e){}
+
+    _toast('✅ '+eskiMusteri+' ('+eskiTarih+'): '+yeniKisi+' kişi × '+_fmt(yeniFiyat)+' ₺ = '+_fmt(yeniTutar)+' ₺ kaydedildi.');
+    console.log('v94SaveRow idx='+realIdx, eskiMusteri, eskiTarih, yeniKisi, yeniFiyat, yeniTutar);
+
+    /* 5. Tabloyu 1s sonra yenile (toplamları güncelle) */
+    setTimeout(function(){ window.v94RenderAylikRapor(); }, 800);
+  };
+
+  /* ── Override v75RenderAylikRapor → v94 ────────────────────────────── */
+  function _hookRender(){
+    var orig = window.v75RenderAylikRapor;
+    window.v75RenderAylikRapor = function(){
+      window.v94RenderAylikRapor();
+    };
+    console.log('✅ v94: v75RenderAylikRapor hooked');
+  }
+
+  /* ── INIT ─────────────────────────────────────────────────────────── */
+  function _init(){
+    console.log('✅ UYSA v94 patch loading...');
+    _hookRender();
+    /* Eğer panel zaten açıksa hemen render et */
+    var pane = document.getElementById('aylikPane-uretim');
+    if(pane && pane.style.display !== 'none'){
+      setTimeout(window.v94RenderAylikRapor, 300);
+    }
+    console.log('✅ UYSA v94 patch loaded.');
+  }
+
+  if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded', _init);
+  } else {
+    _init();
+  }
+
+})();
+</script>
+
+</body></html>`);
     w.document.close();
   }
 
