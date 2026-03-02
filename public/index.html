@@ -2295,7 +2295,7 @@
             <button class="btn" id="finTabGelir" onclick="switchFinTab('gelir')">📥 Gelir Ekle</button>
             <button class="btn" id="finTabGider" onclick="switchFinTab('gider')">📤 Gider Ekle</button>
             <button class="btn" id="finTabUretim" onclick="switchFinTab('uretim')">🍳 Günlük Üretim Gideri</button>
-            <button class="btn" id="finTabSayi" onclick="switchFinTab('sayi')">📊 Günlük Üretim Sayıları</button>
+            <button class="btn" id="finTabSayi" onclick="switchFinTab('sayi')">📊 Günlük Üretim Sayıları <span style="background:#7c3aed;color:#fff;font-size:10px;padding:1px 6px;border-radius:10px;margin-left:4px">+KDV</span></button>
             <button class="btn" id="finTabOzet" onclick="switchFinTab('ozet')">📊 Gelir/Gider Tablosu</button>
             <button class="btn" id="finTabButce" onclick="switchFinTab('butce')">🎯 Bütçe</button>
           </div>
@@ -2670,19 +2670,19 @@
               </div>
               <div id="gs-tarih-durum" style="align-self:flex-end;font-size:12px;color:#64748b;padding:4px 0"></div>
             </div>
+            <!-- v86: KDV seçici - Günlük Üretim Sayıları (TABLO ÜSTÜ) -->
+            <div style="margin-bottom:10px;padding:10px 14px;background:#fef9c3;border:1.5px solid #fde68a;border-radius:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span style="font-size:13px;font-weight:700;color:#92400e">🧾 KDV Oranı Seç:</span>
+              <div style="display:flex;gap:6px">
+                <button id="gsKdv0"  onclick="setGsKdv(0)"  style="padding:5px 14px;border:1.5px solid #2563eb;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;background:#2563eb;color:#fff">%0</button>
+                <button id="gsKdv1"  onclick="setGsKdv(1)"  style="padding:5px 14px;border:1.5px solid #d1d5db;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;background:#f3f4f6;color:#374151">%1</button>
+                <button id="gsKdv10" onclick="setGsKdv(10)" style="padding:5px 14px;border:1.5px solid #d1d5db;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;background:#f3f4f6;color:#374151">%10</button>
+                <button id="gsKdv20" onclick="setGsKdv(20)" style="padding:5px 14px;border:1.5px solid #d1d5db;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;background:#f3f4f6;color:#374151">%20</button>
+              </div>
+              <span id="gsKdvAktifLabel" style="font-size:12px;color:#1e40af;font-weight:600">Aktif: <b>%0</b> — Tablo yüklenince KDV sütunları görünür</span>
+            </div>
             <div id="gsTableDiv"></div>
             <!-- Günlük özet (canlı) -->
-            <!-- v86: KDV seçici - Günlük Üretim Sayıları -->
-            <div style="margin-top:10px;padding:10px 14px;background:#fef9c3;border:1.5px solid #fde68a;border-radius:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-              <span style="font-size:13px;font-weight:700;color:#92400e">🧾 Günlük Üretim KDV Oranı:</span>
-              <div style="display:flex;gap:6px">
-                <button id="gsKdv0"  onclick="setGsKdv(0)"  style="padding:5px 12px;border:1.5px solid #d1d5db;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;background:#f3f4f6;color:#374151">%0</button>
-                <button id="gsKdv1"  onclick="setGsKdv(1)"  style="padding:5px 12px;border:1.5px solid #d1d5db;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;background:#f3f4f6;color:#374151">%1</button>
-                <button id="gsKdv10" onclick="setGsKdv(10)" style="padding:5px 12px;border:1.5px solid #d1d5db;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;background:#f3f4f6;color:#374151">%10</button>
-                <button id="gsKdv20" onclick="setGsKdv(20)" style="padding:5px 12px;border:1.5px solid #d1d5db;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;background:#f3f4f6;color:#374151">%20</button>
-              </div>
-              <span id="gsKdvAktifLabel" style="font-size:12px;color:#64748b">Aktif: <b>%0</b></span>
-            </div>
             <div id="gsGunOzet" style="margin-top:12px;padding:12px;background:#f0fdf4;border-radius:10px;border:1px solid #bbf7d0;display:none">
               <div style="font-weight:800;color:#166534;margin-bottom:6px">💰 Günlük Gelir Özeti</div>
               <div id="gsGunOzetIcerik" style="font-size:13px"></div>
@@ -2706,13 +2706,13 @@
               </div>
             </div>
             <!-- v86 Tab Başlıkları -->
-            <div style="display:flex;gap:6px;margin-bottom:12px;border-bottom:2px solid #e2e8f0;padding-bottom:6px">
+            <div style="display:flex;gap:8px;margin-bottom:14px;border-bottom:2px solid #c7d2fe;padding-bottom:0">
               <button id="aylikTab-uretim" onclick="switchAylikTab('uretim')"
-                style="padding:7px 16px;border:none;border-radius:8px 8px 0 0;font-size:13px;font-weight:700;cursor:pointer;background:#2563eb;color:#fff">
+                style="padding:9px 20px;border:2px solid #2563eb;border-bottom:none;border-radius:8px 8px 0 0;font-size:13px;font-weight:700;cursor:pointer;background:#2563eb;color:#fff;transform:translateY(2px)">
                 📊 Üretim Özeti
               </button>
               <button id="aylikTab-kdv" onclick="switchAylikTab('kdv')"
-                style="padding:7px 16px;border:none;border-radius:8px 8px 0 0;font-size:13px;font-weight:700;cursor:pointer;background:#f1f5f9;color:#475569">
+                style="padding:9px 20px;border:2px solid #c7d2fe;border-bottom:none;border-radius:8px 8px 0 0;font-size:13px;font-weight:700;cursor:pointer;background:#fff;color:#2563eb;transform:translateY(2px)">
                 🧾 KDV Özeti
               </button>
             </div>
@@ -20326,6 +20326,13 @@ document.addEventListener('DOMContentLoaded', function(){
 
     // ── Günlük Üretim KDV Seçici ─────────────────────────────────
     var _gsKdvPct = 0;
+    // Sayfa yüklenince %0 butonunu vurgula
+    window.addEventListener('load', function(){
+      setTimeout(function(){
+        var b0 = document.getElementById('gsKdv0');
+        if(b0){ b0.style.background='#2563eb'; b0.style.color='#fff'; b0.style.borderColor='#2563eb'; }
+      }, 500);
+    });
     window.setGsKdv = function(pct){
       _gsKdvPct = pct;
       [0,1,10,20].forEach(function(p){
@@ -20343,10 +20350,10 @@ document.addEventListener('DOMContentLoaded', function(){
       if(typeof window.gsRenderTableV76==='function') window.gsRenderTableV76();
     };
 
-    // ── gsRenderTableV76 override: KDV sütunu ekle ────────────────
-    (function(){
+    // ── gsRenderTableV76 override: KDV sütunu ekle (load event ile) ──
+    function _applyGsKdvOverride(){
       var _orig = window.gsRenderTableV76;
-      if(!_orig) return;
+      if(!_orig){ setTimeout(_applyGsKdvOverride, 300); return; }
 
       window.gsRenderTableV76 = function(){
         // Önce orijinali çalıştır
@@ -20428,20 +20435,40 @@ document.addEventListener('DOMContentLoaded', function(){
           }, true);
         }
       };
-    })();
+    }
+    // Override'ı hemen + load sonrası çalıştır
+    _applyGsKdvOverride();
+    window.addEventListener('load', function(){ setTimeout(_applyGsKdvOverride, 200); });
 
     // ── Ay değiştiğinde KDV tab'ını da güncelle ──────────────────
-    (function(){
-      var aySecici = document.getElementById('v77AySecici');
-      if(aySecici){
-        aySecici.addEventListener('change', function(){
-          var kdvPane = document.getElementById('aylikPane-kdv');
-          if(kdvPane && kdvPane.style.display!=='none'){
+    window.addEventListener('load', function(){
+      setTimeout(function(){
+        var aySecici = document.getElementById('v77AySecici');
+        if(aySecici){
+          // Ay değişince KDV paneyi de güncelle
+          aySecici.addEventListener('change', function(){
             if(typeof window.v86RenderAylikKdv==='function') window.v86RenderAylikKdv();
+          });
+          // Varsayılan ay ayarla
+          if(!aySecici.value){
+            var now = new Date();
+            aySecici.value = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
           }
-        });
-      }
-    })();
+        }
+        // Aylık Cari Rapor paneli göründüğünde KDV sekmesini de tetikle
+        var origV75 = window.v75RenderAylikRapor;
+        if(origV75 && !origV75._kdvHooked){
+          window.v75RenderAylikRapor = function(){
+            origV75.apply(this, arguments);
+            var kdvPane = document.getElementById('aylikPane-kdv');
+            if(kdvPane && kdvPane.style.display!=='none'){
+              if(typeof window.v86RenderAylikKdv==='function') window.v86RenderAylikKdv();
+            }
+          };
+          window.v75RenderAylikRapor._kdvHooked = true;
+        }
+      }, 800);
+    });
 
 
     console.log('✅ UYSA v86 yüklendi — KDV Sistemi + SGK + Biriken Haklar + Aylık KDV Raporu + Üretim KDV Sütunu aktif');
