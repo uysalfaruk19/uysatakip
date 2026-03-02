@@ -19431,5 +19431,30 @@ document.addEventListener('DOMContentLoaded', function(){
 })();
 </script>
 
+<script id="v27-top-fix-main-script">
+/* v27-main: mod-panel top pozisyonunu dinamik hesapla — panel nav üstüne binmesin */
+(function() {
+  function fixModPanelTop() {
+    var nav = document.querySelector('.mod-nav');
+    if (!nav) return;
+    var bottom = Math.round(nav.getBoundingClientRect().bottom);
+    if (bottom < 50) return;
+    var s = document.getElementById('v27-top-fix-main');
+    if (!s) {
+      s = document.createElement('style');
+      s.id = 'v27-top-fix-main';
+      document.head.appendChild(s);
+    }
+    s.textContent = '.mod-panel.active { top: ' + bottom + 'px !important; }';
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', fixModPanelTop);
+  } else {
+    fixModPanelTop();
+  }
+  window.addEventListener('resize', fixModPanelTop);
+  setTimeout(fixModPanelTop, 200);
+})();
+</script>
 </body>
 </html>
