@@ -1257,8 +1257,8 @@
       <div>
         <div class="login-logo-text">UYSA ERP</div>
         <div class="login-logo-sub">Yemek Sektörü Yönetim Sistemi · v3.0</div>
-      </div>
-    </div>
+      +'</div>'
+      +'</div>'
     <div class="login-title">Giriş Yapın</div>
     <div class="login-sub">Devam etmek için kullanıcı bilgilerinizi girin.</div>
     <div class="login-error" id="loginError">Kullanıcı adı veya şifre hatalı!</div>
@@ -1308,7 +1308,7 @@
       <div>
         <h1>UYSA — Yemek Sektörü Yönetim Sistemi</h1>
         <div class="sub">Menü · Üretim · HACCP · Lojistik · CRM · Finans · İK · Raporlama · Müşteri Portalı</div>
-      </div>
+      +'</div>'
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;position:relative">
         <!-- B5: Global Arama -->
         <div style="position:relative">
@@ -1318,7 +1318,7 @@
             onfocus="this.select();document.getElementById('aramaPanel').style.display=''"
             onblur="setTimeout(()=>{const p=document.getElementById('aramaPanel');if(p)p.style.display='none'},250)"/>
           <div id="aramaPanel" style="display:none;position:absolute;top:38px;right:0;width:360px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.2);z-index:9999;max-height:360px;overflow:auto"></div>
-        </div>
+      +'</div>'
         <!-- B1: Bildirim -->
         <div style="position:relative">
           <button id="bildirimBtn" onclick="toggleBildirimPanel()" style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:15px;position:relative">
@@ -1552,7 +1552,7 @@
             <label style="display:flex;gap:8px;align-items:center;font-weight:600">
               <input type="checkbox" id="applyGeneralToAll" />
               Genel menüyü tüm müşterilere uygula
-            </label>
+        +'</label>'
             <button class="btn" id="applyGeneralNowBtn" type="button">Şimdi Uygula</button>
           </div>
           <div class="hint" style="margin-top:6px">Genel (GENEL) seçiliyken işaretleyip kaydederseniz, aynı ay/hafta menüsü tüm müşterilere kopyalanır.</div>
@@ -2176,7 +2176,7 @@
               <div style="display:grid;gap:10px">
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:center">
                   <label style="font-size:12px;font-weight:600">Yıl / Ay</label>
-                  <div style="display:flex;gap:6px">
+                +'<div style="display:flex;gap:6px">'
                     <select id="butceYil" style="flex:1;padding:6px;border:1px solid #d1d5db;border-radius:7px;font-size:13px"></select>
                     <select id="butceAy" style="flex:1;padding:6px;border:1px solid #d1d5db;border-radius:7px;font-size:13px">
                       <option value="1">Ocak</option><option value="2">Şubat</option><option value="3">Mart</option>
@@ -14702,19 +14702,19 @@ window.addEventListener('load', function() {
     m.id = 'v75RenameModal';
     m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99999;align-items:center;justify-content:center;';
     m.innerHTML = '<div style="background:#fff;border-radius:16px;padding:28px 32px;width:380px;max-width:95vw;box-shadow:0 8px 40px rgba(0,0,0,.25)">'
-      +'<div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
-      <div id="offlineQueueCard" style="flex:1;background:#fef3c7;border:1px solid #f59e0b;border-radius:10px;padding:10px;min-width:150px;display:none">
-        <div style="font-size:10px;color:#92400e;font-weight:700;margin-bottom:3px">⚠️ OFFLİNE KUYRUK</div>
-        <div id="offlineQueueCount" style="font-size:24px;font-weight:800;color:#b45309">0</div>
-        <div style="font-size:10px;color:#78350f">bekleyen kayıt (sunucuya gönderilmedi)</div>
+      +'<div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">'
+      +'<div id="offlineQueueCard" style="flex:1;background:#fef3c7;border:1px solid #f59e0b;border-radius:10px;padding:10px;min-width:150px;display:none">'
+      +'<div style="font-size:10px;color:#92400e;font-weight:700;margin-bottom:3px">⚠️ OFFLİNE KUYRUK</div>'
+      +'<div id="offlineQueueCount" style="font-size:24px;font-weight:800;color:#b45309">0</div>'
+      +'<div style="font-size:10px;color:#78350f">bekleyen kayıt (sunucuya gönderilmedi)</div>'
       </div>
-      <div style="flex:2;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:10px;min-width:200px">
-        <div style="font-size:10px;color:#166534;font-weight:700;margin-bottom:6px">💾 TAM YEDEKLEME</div>
+      +'<div style="flex:2;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:10px;min-width:200px">'
+      +'<div style="font-size:10px;color:#166534;font-weight:700;margin-bottom:6px">💾 TAM YEDEKLEME</div>'
         <div style="display:flex;gap:6px">
-          <button onclick="window._uysaExportAll()" style="flex:1;padding:7px;background:#16a34a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">📤 JSON İndir</button>
-          <label style="flex:1;padding:7px;background:#0ea5e9;color:#fff;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;text-align:center;display:flex;align-items:center;justify-content:center">
-            📥 Geri Yükle
-            <input type="file" accept=".json" onchange="window._uysaImportAll(this.files[0])" style="display:none">
+      +'<button onclick="window._uysaExportAll()" style="flex:1;padding:7px;background:#16a34a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">📤 JSON İndir</button>'
+      +'<label style="flex:1;padding:7px;background:#0ea5e9;color:#fff;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;text-align:center;display:flex;align-items:center;justify-content:center">'
+      +'📥 Geri Yükle'
+      +'<input type="file" accept=".json" onchange="window._uysaImportAll(this.files[0])" style="display:none">'
           </label>
         </div>
       </div>
@@ -18852,7 +18852,7 @@ function renderSozlesmeUyarilari(){
     var acikInp  = document.getElementById('gider-aciklama');
     if(tutarInp) tutarInp.value = toplam.toFixed(2);
     if(acikInp)  acikInp.value  = lines.slice(0,3).map(function(l){return l.urun;}).join(', ')+(lines.length>3?' ...':'');
-    document.getElementById('gider-pdf-sonuc').innerHTML='<span style="color:#16a34a">✅ Forma aktarıldı. Kaydet'e basın.</span>';
+    document.getElementById('gider-pdf-sonuc').innerHTML='<span style="color:#16a34a">✅ Forma aktarıldı. Kaydet&#39;e basın.</span>';
     if(typeof _toast==='function') _toast('📄 Fatura verisi forma aktarıldı.');
   };
 
