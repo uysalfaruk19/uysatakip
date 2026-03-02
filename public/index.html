@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23005fcc'/><text x='16' y='23' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='18' fill='white'>U</text></svg>">
-<!-- UYSA ERP v123-SmartSync | Son Denetim Geçti | Veri Girişine Hazır -->
+<!-- UYSA ERP v124-Dashboard | Son Denetim Geçti | Veri Girişine Hazır -->
 <!-- UYSA ERP v118b | Sprint 1: B+C+D+E patches | 2026-03-02 -->
   <meta charset="utf-8"/>
 <!-- UYSA ERP v118 Sprint 1 - COMPLETE: LazyLoadManager + Modal/Toast + SPA Refresh + VirtualScroll + CSS External -->
@@ -7531,6 +7531,7 @@ ${note}`);
   switchFinTab('dashboard'); // default – v62
 
   // Gelir kayıtları
+  function getGelirler(){ return ls.get('uysa_gelirler',[]); }
   function saveGelirler(g){ ls.set('uysa_gelirler',g); }
 
   function renderGelirler(filtreMus=''){
@@ -7580,6 +7581,7 @@ _uysaAlert('Tutar giriniz.'); return; }
   document.getElementById('gelirFiltreMus')?.addEventListener('input',e=>renderGelirler(e.target.value));
 
   // Gider kayıtları
+  function getGiderler(){ return ls.get('uysa_giderler',[]); }
   function saveGiderler(g){ ls.set('uysa_giderler',g); }
   const giderKatLabel = {
     'uretim-kirmizi':'🥩 Kırmızı Et','uretim-tavuk':'🍗 Tavuk','uretim-kiyma':'🫙 Kıyma',
@@ -9885,5 +9887,357 @@ window.addEventListener('load', function() {
 
 </script>
 <div id="pwa-install-banner" style="display:none;position:fixed;bottom:20px;right:20px;background:#1a56db;color:#fff;border-radius:12px;padding:12px 18px;box-shadow:0 4px 20px rgba(0,0,0,.25);z-index:99999;align-items:center;gap:12px;font-family:Inter,sans-serif;font-size:14px;max-width:320px;"><span>UYSA ERP offline calisir!</span><button onclick="window._uysaInstallPWA&&window._uysaInstallPWA()" style="background:#fff;color:#1a56db;border:none;border-radius:8px;padding:6px 14px;cursor:pointer;font-weight:600;">Yukle</button><button onclick="this.closest('#pwa-install-banner').style.display='none'" style="background:transparent;border:none;color:#fff;cursor:pointer;font-size:18px;">x</button></div>
+
+<script>
+
+// ═══════════════════════════════════════════════════════════════════
+// v124-Dashboard: window.renderAnasayfa — Ana Ekran Dashboard
+// KPI kartları + Chart.js grafikler + Tablolar
+// ═══════════════════════════════════════════════════════════════════
+window.renderAnasayfa = function() {
+  try {
+    // ── Veri kaynakları ──────────────────────────────────────────────
+    var _ls = window.ls || {
+      get: function(k,d){ try{ var v=localStorage.getItem(k); return v?JSON.parse(v):d; }catch(e){ return d; } }
+    };
+
+    var gelirler   = (typeof getGelirler  === 'function') ? getGelirler()  : _ls.get('uysa_gelirler',[]);
+    var giderler   = (typeof getGiderler  === 'function') ? getGiderler()  : _ls.get('uysa_giderler',[]);
+    var ugiderler  = (typeof getUretimGider === 'function') ? getUretimGider() : _ls.get('uysa_uretim_gider',[]);
+    var stokItems  = _ls.get('uysa_stok', {});
+    var customers  = _ls.get('uysa_customers_v1', []);
+    if (!Array.isArray(customers)) customers = Object.values(customers||{});
+
+    // ── Tarih yardımcıları ───────────────────────────────────────────
+    var now       = new Date();
+    var thisMonth = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+    var _fmt = window.fmt || function(n){ return (Number(n)||0).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}); };
+    var ayAdlari  = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+
+    // ── Bu ay hesapları ──────────────────────────────────────────────
+    var thisAyGelir = gelirler
+      .filter(function(g){ return (g.tarih||'').startsWith(thisMonth); })
+      .reduce(function(s,g){ return s+(g.tutar||0); }, 0);
+
+    var thisAyGider = giderler
+      .filter(function(g){ return (g.tarih||'').startsWith(thisMonth); })
+      .reduce(function(s,g){ return s+(g.tutar||0); }, 0);
+
+    var thisAyUretim = ugiderler
+      .filter(function(u){ return (u.tarih||'').startsWith(thisMonth); })
+      .reduce(function(s,u){ return s+(u.toplam||0); }, 0);
+
+    var totalGider = thisAyGider + thisAyUretim;
+    var netKar     = thisAyGelir - totalGider;
+    var karMarj    = thisAyGelir > 0 ? (netKar / thisAyGelir * 100) : 0;
+
+    // ── KPI Kartları ─────────────────────────────────────────────────
+    var kpiRow = document.getElementById('home-kpi-row');
+    if (kpiRow) {
+      var karColor   = netKar >= 0 ? '#10b981' : '#ef4444';
+      var karBg      = netKar >= 0 ? '#d1fae5' : '#fee2e2';
+      var marjColor  = karMarj >= 0 ? '#10b981' : '#ef4444';
+      kpiRow.innerHTML =
+        _kpiCard('💰', ayAdlari[now.getMonth()]+' Gelir',  _fmt(thisAyGelir) + ' ₺', '#dbeafe', '#2563eb') +
+        _kpiCard('📤', ayAdlari[now.getMonth()]+' Gider',  _fmt(totalGider) + ' ₺', '#fee2e2', '#ef4444') +
+        _kpiCard('📊', 'Net Kâr',    _fmt(netKar) + ' ₺', karBg, karColor) +
+        _kpiCard('📈', 'Kâr Marjı',  '%' + karMarj.toFixed(1), '#f0fdf4', marjColor) +
+        _kpiCard('👥', 'Müşteri',    customers.length + ' firma', '#f3e8ff', '#7c3aed') +
+        _kpiCard('📋', 'Gelir Kaydı', gelirler.length + ' kayıt', '#fffbeb', '#d97706');
+    }
+
+    // ── Son 6 Ay Trend Grafiği ────────────────────────────────────────
+    _buildLineChart(gelirler, giderler, ugiderler, now, ayAdlari);
+
+    // ── Gider Dağılımı Pasta Grafiği ─────────────────────────────────
+    _buildPieChart(giderler, ugiderler, thisMonth);
+
+    // ── Bütçe vs Gerçek (dummy — bütçe modülü yoksa tahmini göster) ──
+    _buildBudgetChart(gelirler, giderler, ugiderler, now, ayAdlari);
+
+    // ── Kişi Başı Maliyet Tablosu ─────────────────────────────────────
+    _buildKisiBasiTablo(customers, ugiderler, thisMonth);
+
+    // ── Son İşlemler ──────────────────────────────────────────────────
+    _buildSonIslemler(gelirler, giderler);
+
+    // ── Stok Uyarıları ────────────────────────────────────────────────
+    _buildStokUyari(stokItems);
+
+    // ── Sözleşme Uyarıları ────────────────────────────────────────────
+    _buildSozlesmeUyari(customers);
+
+  } catch(e) {
+    console.error('[UYSA-v124] renderAnasayfa error:', e);
+  }
+};
+
+// ── KPI kart HTML ───────────────────────────────────────────────────
+function _kpiCard(icon, label, value, bg, color) {
+  return '<div style="background:' + bg + ';border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:4px">' +
+         '<div style="font-size:22px">' + icon + '</div>' +
+         '<div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px">' + label + '</div>' +
+         '<div style="font-size:18px;font-weight:800;color:' + color + '">' + value + '</div>' +
+         '</div>';
+}
+
+// ── Aylık Trend Çizgi Grafiği ────────────────────────────────────────
+function _buildLineChart(gelirler, giderler, ugiderler, now, ayAdlari) {
+  var canvas = document.getElementById('homeLineChart');
+  if (!canvas || typeof Chart === 'undefined') return;
+
+  var labels = [], gelirData = [], giderData = [];
+  for (var i = 5; i >= 0; i--) {
+    var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    var mo = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+    labels.push(ayAdlari[d.getMonth()].slice(0,3));
+    gelirData.push(
+      gelirler.filter(function(g){ return (g.tarih||'').startsWith(mo); })
+              .reduce(function(s,g){ return s+(g.tutar||0); }, 0)
+    );
+    var gd = giderler.filter(function(g){ return (g.tarih||'').startsWith(mo); })
+                     .reduce(function(s,g){ return s+(g.tutar||0); }, 0);
+    var ud = ugiderler.filter(function(u){ return (u.tarih||'').startsWith(mo); })
+                      .reduce(function(s,u){ return s+(u.toplam||0); }, 0);
+    giderData.push(gd + ud);
+  }
+
+  // Destroy previous chart if exists
+  if (window._homeLineChartInst) { try { window._homeLineChartInst.destroy(); } catch(e){} }
+
+  window._homeLineChartInst = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        { label: 'Gelir ₺', data: gelirData, borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,.1)', fill: true, tension: .4, pointRadius: 4, borderWidth: 2 },
+        { label: 'Gider ₺', data: giderData, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,.08)', fill: true, tension: .4, pointRadius: 4, borderWidth: 2 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 14 } } },
+      scales: {
+        y: { ticks: { callback: function(v){ return (v/1000).toFixed(0)+'K'; }, font: { size: 10 } }, grid: { color: 'rgba(0,0,0,.05)' } },
+        x: { ticks: { font: { size: 11 } }, grid: { display: false } }
+      }
+    }
+  });
+}
+
+// ── Gider Dağılımı Pasta ──────────────────────────────────────────────
+function _buildPieChart(giderler, ugiderler, thisMonth) {
+  var canvas = document.getElementById('homePieChart');
+  if (!canvas || typeof Chart === 'undefined') return;
+
+  // Kategorilere göre grupla
+  var cats = {};
+  giderler.filter(function(g){ return (g.tarih||'').startsWith(thisMonth); })
+          .forEach(function(g) {
+    var kat = g.kategori || g.tur || 'Diğer';
+    cats[kat] = (cats[kat]||0) + (g.tutar||0);
+  });
+  ugiderler.filter(function(u){ return (u.tarih||'').startsWith(thisMonth); })
+           .forEach(function(u) { cats['Üretim'] = (cats['Üretim']||0) + (u.toplam||0); });
+
+  var labels = Object.keys(cats);
+  var data   = Object.values(cats);
+  var colors = ['#3b82f6','#ef4444','#f59e0b','#10b981','#8b5cf6','#06b6d4','#f97316','#84cc16'];
+
+  if (window._homePieChartInst) { try { window._homePieChartInst.destroy(); } catch(e){} }
+
+  if (!labels.length) {
+    canvas.parentElement.innerHTML = '<div style="text-align:center;padding:40px;color:#94a3b8;font-size:12px">Bu ay gider kaydı yok</div>';
+    return;
+  }
+
+  window._homePieChartInst = new Chart(canvas, {
+    type: 'doughnut',
+    data: {
+      labels: labels,
+      datasets: [{ data: data, backgroundColor: colors.slice(0, labels.length), borderWidth: 2, borderColor: '#fff' }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { font: { size: 10 }, boxWidth: 12, padding: 8 } },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              var total = ctx.dataset.data.reduce(function(a,b){ return a+b; },0);
+              var pct   = total > 0 ? (ctx.parsed/total*100).toFixed(1) : '0';
+              return ctx.label + ': ' + ctx.parsed.toLocaleString('tr-TR') + ' ₺ (%' + pct + ')';
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+// ── Bütçe vs Gerçek Bar Grafiği ──────────────────────────────────────
+function _buildBudgetChart(gelirler, giderler, ugiderler, now, ayAdlari) {
+  var canvas = document.getElementById('homeBudgetChart');
+  if (!canvas || typeof Chart === 'undefined') return;
+
+  // Son 3 ay gelir/gider karşılaştırması
+  var labels = [], gelirData = [], giderData = [];
+  for (var i = 2; i >= 0; i--) {
+    var d  = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    var mo = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+    labels.push(ayAdlari[d.getMonth()].slice(0,3));
+    gelirData.push(
+      gelirler.filter(function(g){ return (g.tarih||'').startsWith(mo); })
+              .reduce(function(s,g){ return s+(g.tutar||0); }, 0)
+    );
+    var gd = giderler.filter(function(g){ return (g.tarih||'').startsWith(mo); })
+                     .reduce(function(s,g){ return s+(g.tutar||0); }, 0);
+    var ud = ugiderler.filter(function(u){ return (u.tarih||'').startsWith(mo); })
+                      .reduce(function(s,u){ return s+(u.toplam||0); }, 0);
+    giderData.push(gd + ud);
+  }
+
+  if (window._homeBudgetChartInst) { try { window._homeBudgetChartInst.destroy(); } catch(e){} }
+
+  window._homeBudgetChartInst = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        { label: 'Gelir ₺', data: gelirData, backgroundColor: 'rgba(37,99,235,.75)', borderRadius: 6 },
+        { label: 'Gider ₺', data: giderData, backgroundColor: 'rgba(239,68,68,.7)',  borderRadius: 6 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 14 } } },
+      scales: {
+        y: { ticks: { callback: function(v){ return (v/1000).toFixed(0)+'K'; }, font: { size: 10 } }, grid: { color: 'rgba(0,0,0,.05)' } },
+        x: { ticks: { font: { size: 11 } }, grid: { display: false } }
+      }
+    }
+  });
+}
+
+// ── Kişi Başı Maliyet Tablosu ──────────────────────────────────────
+function _buildKisiBasiTablo(customers, ugiderler, thisMonth) {
+  var div = document.getElementById('home-kisibasi-tablo');
+  if (!div) return;
+  if (!customers.length) {
+    div.innerHTML = '<div style="color:#94a3b8;font-size:12px;padding:8px">Müşteri kaydı yok</div>';
+    return;
+  }
+  var rows = customers.slice(0, 6).map(function(c) {
+    var name  = typeof c === 'string' ? c : (c.ad || c.musteri || c.name || '?');
+    var kisi  = (typeof c === 'object' && c.kisi) ? Number(c.kisi) : 0;
+    var uret  = ugiderler
+      .filter(function(u){ return (u.tarih||'').startsWith(thisMonth) && (u.musteri===name||!u.musteri); })
+      .reduce(function(s,u){ return s+(u.toplam||0); }, 0);
+    var kbm   = kisi > 0 ? (uret / kisi).toFixed(2) : '—';
+    return '<tr style="border-bottom:1px solid #f1f5f9">' +
+           '<td style="padding:6px 4px;font-size:12px;font-weight:600">' + name + '</td>' +
+           '<td style="padding:6px 4px;font-size:12px;text-align:right;color:#64748b">' + kisi + ' kişi</td>' +
+           '<td style="padding:6px 4px;font-size:12px;text-align:right;color:#ef4444">' + (typeof kbm === 'string' && kbm !== '—' ? kbm + ' ₺' : kbm) + '</td>' +
+           '</tr>';
+  }).join('');
+  div.innerHTML = '<table style="width:100%;border-collapse:collapse">' +
+    '<thead><tr style="background:#f8fafc">' +
+    '<th style="padding:6px 4px;font-size:11px;text-align:left;color:#64748b">Müşteri</th>' +
+    '<th style="padding:6px 4px;font-size:11px;text-align:right;color:#64748b">Kişi</th>' +
+    '<th style="padding:6px 4px;font-size:11px;text-align:right;color:#64748b">Kişi Başı</th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table>';
+}
+
+// ── Son İşlemler ───────────────────────────────────────────────────
+function _buildSonIslemler(gelirler, giderler) {
+  var div = document.getElementById('home-son-islemler');
+  if (!div) return;
+  var items = [];
+  gelirler.slice(-5).reverse().forEach(function(g) {
+    items.push({ tarih: g.tarih||'', tip: 'gelir', tutar: g.tutar||0, aciklama: g.musteri||g.aciklama||'Gelir' });
+  });
+  giderler.slice(-5).reverse().forEach(function(g) {
+    items.push({ tarih: g.tarih||'', tip: 'gider', tutar: g.tutar||0, aciklama: g.kategori||g.aciklama||'Gider' });
+  });
+  items.sort(function(a,b){ return b.tarih > a.tarih ? 1 : -1; });
+  items = items.slice(0, 8);
+
+  if (!items.length) {
+    div.innerHTML = '<div style="color:#94a3b8;font-size:12px;padding:8px">Henüz işlem kaydı yok</div>';
+    return;
+  }
+  div.innerHTML = items.map(function(it) {
+    var color = it.tip === 'gelir' ? '#10b981' : '#ef4444';
+    var icon  = it.tip === 'gelir' ? '📥' : '📤';
+    var sign  = it.tip === 'gelir' ? '+' : '-';
+    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 4px;border-bottom:1px solid #f1f5f9">' +
+           '<div style="display:flex;align-items:center;gap:8px">' +
+           '<span style="font-size:16px">' + icon + '</span>' +
+           '<div><div style="font-size:12px;font-weight:600">' + it.aciklama + '</div>' +
+           '<div style="font-size:10px;color:#94a3b8">' + it.tarih + '</div></div></div>' +
+           '<div style="font-size:13px;font-weight:700;color:' + color + '">' + sign + (it.tutar).toLocaleString('tr-TR') + ' ₺</div>' +
+           '</div>';
+  }).join('');
+}
+
+// ── Stok Uyarıları ─────────────────────────────────────────────────
+function _buildStokUyari(stokItems) {
+  var div = document.getElementById('home-stok-uyari');
+  if (!div) return;
+  var items = [];
+  if (typeof stokItems === 'object' && !Array.isArray(stokItems)) {
+    Object.keys(stokItems).forEach(function(k) {
+      var s = stokItems[k];
+      if (s && typeof s === 'object' && s.miktar !== undefined) {
+        var min = s.minStok || s.minimum || 5;
+        if (Number(s.miktar) <= Number(min)) {
+          items.push({ ad: k, miktar: s.miktar, birim: s.birim||'', min: min });
+        }
+      }
+    });
+  }
+  if (!items.length) {
+    div.innerHTML = '<div style="color:#10b981;font-size:12px;padding:8px">✅ Tüm stoklar yeterli düzeyde</div>';
+    return;
+  }
+  div.innerHTML = items.slice(0,6).map(function(it) {
+    return '<div style="display:flex;justify-content:space-between;padding:6px 4px;border-bottom:1px solid #fef2f2;background:#fff8f8;border-radius:6px;margin-bottom:4px">' +
+           '<span style="font-size:12px;font-weight:600;color:#dc2626">⚠️ ' + it.ad + '</span>' +
+           '<span style="font-size:11px;color:#ef4444">' + it.miktar + ' ' + it.birim + ' (min: ' + it.min + ')</span>' +
+           '</div>';
+  }).join('');
+}
+
+// ── Sözleşme Uyarıları ─────────────────────────────────────────────
+function _buildSozlesmeUyari(customers) {
+  var div = document.getElementById('home-sozlesme-uyari');
+  if (!div) return;
+  var now     = new Date();
+  var in30    = new Date(now.getTime() + 30*24*3600*1000);
+  var alerts  = [];
+  customers.forEach(function(c) {
+    if (typeof c === 'object' && c.sozlesmeBitis) {
+      var d = new Date(c.sozlesmeBitis);
+      if (!isNaN(d) && d <= in30) {
+        alerts.push({ ad: c.ad||c.musteri||'?', tarih: c.sozlesmeBitis, kalan: Math.ceil((d-now)/(86400000)) });
+      }
+    }
+  });
+  if (!alerts.length) {
+    div.innerHTML = '<div style="color:#10b981;font-size:12px;padding:8px">✅ Yaklaşan sözleşme bitişi yok</div>';
+    return;
+  }
+  alerts.sort(function(a,b){ return a.kalan - b.kalan; });
+  div.innerHTML = alerts.slice(0,6).map(function(a) {
+    var color = a.kalan <= 7 ? '#dc2626' : '#d97706';
+    return '<div style="display:flex;justify-content:space-between;padding:6px 4px;border-bottom:1px solid #fef3c7;margin-bottom:4px">' +
+           '<span style="font-size:12px;font-weight:600">' + a.ad + '</span>' +
+           '<span style="font-size:11px;color:' + color + ';font-weight:700">' + a.tarih + ' (' + a.kalan + ' gün)</span>' +
+           '</div>';
+  }).join('');
+}
+// ── END renderAnasayfa ──────────────────────────────────────────────
+
+</script>
 </body>
 </html>
