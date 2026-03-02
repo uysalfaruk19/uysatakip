@@ -423,7 +423,7 @@ case 'getToken':
     }
 
     // Kullanıcı doğrula
-    $stmt = $pdo->prepare("SELECT * FROM uysa_users WHERE username = ? AND is_active = 1");
+    $stmt = $pdo->prepare("SELECT * FROM uysa_users WHERE username = ?");
     $stmt->execute([$username]);
     $user = $stmt->fetch();
 
@@ -615,7 +615,7 @@ case 'userAuth':
         auditLog($pdo, 'login_ratelimit', $username, null, null, $clientIp);
         jsonResponse(['ok' => false, 'error' => 'Çok fazla giriş denemesi. Bekleyin.', 'retry_after' => $loginLimit['retry_after']], 429);
     }
-    $stmt = $pdo->prepare("SELECT * FROM uysa_users WHERE username = ? AND is_active = 1");
+    $stmt = $pdo->prepare("SELECT * FROM uysa_users WHERE username = ?");
     $stmt->execute([$username]);
     $user = $stmt->fetch();
     $dummy = '$2y$10$invalidhashfortimingattackprevention000000000000000000';
