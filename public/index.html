@@ -1564,20 +1564,9 @@
         </div>
         <!-- B1: Bildirim -->
         <div style="position:relative">
-          <button id="hatirlaticiBtn" onclick="(function(){var p=document.getElementById('hatirlaticiPanel');p.style.display=p.style.display==='none'?'block':'none';window.renderHatirlaticiPanel&&window.renderHatirlaticiPanel();})()" style="background:none;border:none;cursor:pointer;font-size:18px;padding:5px;position:relative">⏰<span id="hatirlaticicBadge" style="display:none;position:absolute;top:-2px;right:-2px;background:#ef4444;color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;font-weight:bold;display:none;align-items:center;justify-content:center;line-height:16px">0</span></button>
-            <button id="bildirimBtn" onclick="toggleBildirimPanel()" style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:15px;position:relative">
+          <button id="bildirimBtn" onclick="toggleBildirimPanel()" style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:15px;position:relative">
             🔔<span id="bildirimSayi" style="display:none;position:absolute;top:-5px;right:-5px;background:#dc2626;color:#fff;border-radius:50%;width:17px;height:17px;font-size:10px;font-weight:800;align-items:center;justify-content:center">0</span>
           </button>
-          <div id="hatirlaticiPanel" style="display:none;position:absolute;top:42px;right:50px;width:360px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.15);z-index:9999;padding:0;overflow:hidden;">
-            <div style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
-              <span style="font-weight:700;font-size:14px">⏰ Hatırlatıcılar</span>
-              <button onclick="document.getElementById('hatirlaticiPanel').style.display='none'" style="border:none;background:rgba(255,255,255,0.3);color:#fff;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:13px">✕</button>
-            </div>
-            <div id="hatirlaticiList" style="max-height:320px;overflow-y:auto;padding:10px"></div>
-            <div style="padding:8px 12px;border-top:1px solid #e5e7eb;background:#f9fafb">
-              <button onclick="window._uysaHatirlaticiEkleForm()" style="width:100%;border:none;background:#f59e0b;color:#fff;border-radius:6px;padding:7px;cursor:pointer;font-size:13px;font-weight:600">+ Yeni Hatırlatıcı Ekle</button>
-            </div>
-          </div>
           <div id="bildirimPanel" style="display:none;position:absolute;top:42px;right:0;width:340px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.2);z-index:9999;max-height:440px;overflow:auto">
             <div style="padding:12px 14px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;background:#f8faff;border-radius:12px 12px 0 0">
               <b style="color:#0b3aa6;font-size:13px">🔔 Bildirim Merkezi</b>
@@ -2683,6 +2672,17 @@
             </div>
             <div id="gsTableDiv"></div>
             <!-- Günlük özet (canlı) -->
+            <!-- v86: KDV seçici - Günlük Üretim Sayıları -->
+            <div style="margin-top:10px;padding:10px 14px;background:#fef9c3;border:1.5px solid #fde68a;border-radius:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span style="font-size:13px;font-weight:700;color:#92400e">🧾 Günlük Üretim KDV Oranı:</span>
+              <div style="display:flex;gap:6px">
+                <button id="gsKdv0"  onclick="setGsKdv(0)"  style="padding:5px 12px;border:1.5px solid #d1d5db;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;background:#f3f4f6;color:#374151">%0</button>
+                <button id="gsKdv1"  onclick="setGsKdv(1)"  style="padding:5px 12px;border:1.5px solid #d1d5db;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;background:#f3f4f6;color:#374151">%1</button>
+                <button id="gsKdv10" onclick="setGsKdv(10)" style="padding:5px 12px;border:1.5px solid #d1d5db;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;background:#f3f4f6;color:#374151">%10</button>
+                <button id="gsKdv20" onclick="setGsKdv(20)" style="padding:5px 12px;border:1.5px solid #d1d5db;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;background:#f3f4f6;color:#374151">%20</button>
+              </div>
+              <span id="gsKdvAktifLabel" style="font-size:12px;color:#64748b">Aktif: <b>%0</b></span>
+            </div>
             <div id="gsGunOzet" style="margin-top:12px;padding:12px;background:#f0fdf4;border-radius:10px;border:1px solid #bbf7d0;display:none">
               <div style="font-weight:800;color:#166534;margin-bottom:6px">💰 Günlük Gelir Özeti</div>
               <div id="gsGunOzetIcerik" style="font-size:13px"></div>
@@ -2693,7 +2693,7 @@
             </div>
           </div>
 
-          <!-- Aylık Cari Rapor Paneli - v77 -->
+          <!-- Aylık Cari Rapor Paneli - v86 KDV Sekmeli -->
           <div class="panel" id="v75AylikPanel" style="margin-top:14px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
               <h3 style="margin:0">📅 Aylık Cari Rapor</h3>
@@ -2701,11 +2701,29 @@
                 <label style="font-size:12px;color:#64748b;margin:0">Ay seç:</label>
                 <input type="month" id="v77AySecici"
                   style="padding:6px 10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:13px;font-weight:600;color:#2563eb;background:#eff6ff;cursor:pointer"
-                  onchange="v75RenderAylikRapor()"/>
-                <button class="btn" onclick="v75RenderAylikRapor()" style="font-size:12px">🔄 Yenile</button>
+                  onchange="v75RenderAylikRapor();v86RenderAylikKdv()"/>
+                <button class="btn" onclick="v75RenderAylikRapor();v86RenderAylikKdv()" style="font-size:12px">🔄 Yenile</button>
               </div>
             </div>
-            <div id="v75AylikRaporDiv"><div style="color:var(--muted);padding:10px">Ay seçin veya kayıt yapın.</div></div>
+            <!-- v86 Tab Başlıkları -->
+            <div style="display:flex;gap:6px;margin-bottom:12px;border-bottom:2px solid #e2e8f0;padding-bottom:6px">
+              <button id="aylikTab-uretim" onclick="switchAylikTab('uretim')"
+                style="padding:7px 16px;border:none;border-radius:8px 8px 0 0;font-size:13px;font-weight:700;cursor:pointer;background:#2563eb;color:#fff">
+                📊 Üretim Özeti
+              </button>
+              <button id="aylikTab-kdv" onclick="switchAylikTab('kdv')"
+                style="padding:7px 16px;border:none;border-radius:8px 8px 0 0;font-size:13px;font-weight:700;cursor:pointer;background:#f1f5f9;color:#475569">
+                🧾 KDV Özeti
+              </button>
+            </div>
+            <!-- Tab: Üretim Özeti -->
+            <div id="aylikPane-uretim">
+              <div id="v75AylikRaporDiv"><div style="color:var(--muted);padding:10px">Ay seçin veya kayıt yapın.</div></div>
+            </div>
+            <!-- Tab: KDV Özeti -->
+            <div id="aylikPane-kdv" style="display:none">
+              <div id="v86AylikKdvDiv"><div style="color:var(--muted);padding:10px">Ay seçin.</div></div>
+            </div>
           </div>
         </div>
 
@@ -10740,214 +10758,6 @@ window.addEventListener('DOMContentLoaded', function() {
   // ─────────────────────────────────────────────
   // B1: Bildirim Merkezi
   // ─────────────────────────────────────────────
-  // ── v86: Gelişmiş Bildirim & Hatırlatıcı sistemi ──────────────────────────
-
-  // Hatırlatıcı verisi yönetimi
-  window._uysaGetHatirlaticilar = function(){
-    try{ return JSON.parse(localStorage.getItem('uysa_hatirlaticilar'))||[]; }catch(e){ return []; }
-  };
-  window._uysaSaveHatirlaticilar = function(list){
-    localStorage.setItem('uysa_hatirlaticilar', JSON.stringify(list));
-  };
-
-  // Hatırlatıcı ekle (genel API)
-  window.uysaHatirlaticiEkle = function(baslik, mesaj, tarih, renk, modId){
-    var list = window._uysaGetHatirlaticilar();
-    var item = {
-      id: Date.now()+'_'+Math.random().toString(36).slice(2,6),
-      baslik: baslik,
-      mesaj: mesaj,
-      tarih: tarih,                    // 'YYYY-MM-DD'
-      renk: renk || '#f59e0b',
-      modId: modId || '',
-      okundu: false,
-      olusturma: new Date().toISOString()
-    };
-    list.push(item);
-    window._uysaSaveHatirlaticilar(list);
-    window.renderHatirlaticiPanel && window.renderHatirlaticiPanel();
-    return item;
-  };
-
-  // Hatırlatıcı panelini render et
-  window.renderHatirlaticiPanel = function(){
-    var panel = document.getElementById('hatirlaticiList');
-    if(!panel) return;
-    var list = (window._uysaGetHatirlaticilar()||[]).filter(function(h){ return !h.okundu; });
-    var today = new Date(); today.setHours(0,0,0,0);
-    var aktif = list.filter(function(h){
-      var d = new Date(h.tarih); d.setHours(0,0,0,0);
-      return d <= new Date(today.getTime() + 7*24*60*60*1000); // 7 gün içinde
-    }).sort(function(a,b){ return a.tarih.localeCompare(b.tarih); });
-    if(!aktif.length){
-      panel.innerHTML = '<div style="text-align:center;padding:16px;color:#888;font-size:13px;">✅ Aktif hatırlatıcı yok</div>';
-      return;
-    }
-    panel.innerHTML = aktif.map(function(h){
-      var d = new Date(h.tarih); d.setHours(0,0,0,0);
-      var diff = Math.round((d-today)/(1000*60*60*24));
-      var badge = diff<0 ? '<span style="background:#ef4444;color:#fff;border-radius:4px;padding:1px 5px;font-size:11px">GEÇTİ</span>'
-                        : diff===0 ? '<span style="background:#f59e0b;color:#fff;border-radius:4px;padding:1px 5px;font-size:11px">BUGÜN</span>'
-                        : '<span style="background:#6b7280;color:#fff;border-radius:4px;padding:1px 5px;font-size:11px">'+diff+' gün</span>';
-      return '<div style="border-left:3px solid '+h.renk+';padding:8px 10px;margin-bottom:6px;background:#f9fafb;border-radius:0 6px 6px 0;font-size:13px">'+
-             '<div style="display:flex;justify-content:space-between;align-items:center">'+
-             '<strong>'+h.baslik+'</strong>'+badge+'</div>'+
-             '<div style="color:#555;margin-top:2px">'+h.mesaj+'</div>'+
-             '<div style="display:flex;gap:6px;margin-top:4px">'+
-             '<button onclick="window._uysaOkunduMark(''+h.id+'')" style="font-size:11px;padding:2px 7px;border:none;background:#10b981;color:#fff;border-radius:4px;cursor:pointer">✓ Okundu</button>'+
-             (h.modId ? '<button onclick="document.querySelector('[data-module='+h.modId+']')?.click()" style="font-size:11px;padding:2px 7px;border:none;background:#3b82f6;color:#fff;border-radius:4px;cursor:pointer">→ Git</button>' : '')+
-             '</div></div>';
-    }).join('');
-    // Badge güncelle
-    var badge = document.getElementById('hatirlaticicBadge');
-    if(badge){ badge.textContent = aktif.length; badge.style.display = aktif.length ? '' : 'none'; }
-  };
-
-  window._uysaOkunduMark = function(id){
-    var list = window._uysaGetHatirlaticilar();
-    list.forEach(function(h){ if(h.id===id) h.okundu=true; });
-    window._uysaSaveHatirlaticilar(list);
-    window.renderHatirlaticiPanel();
-    window.hesaplaBildirimler && window.hesaplaBildirimler();
-  };
-
-  // ── KDV Otomatik Hatırlatıcı (Ayın 26'sı) ────────────────────────────────
-  window._uysaKdvHatirlaticiKontrol = function(){
-    var simdi = new Date();
-    var gun = simdi.getDate();
-    var ay = simdi.getMonth();
-    var yil = simdi.getFullYear();
-    var key = 'uysa_kdv_hat_'+yil+'_'+ay;
-    if(localStorage.getItem(key)) return; // Bu ay zaten eklendi
-
-    // KDV beyan tarihi: her ayın 26'sı
-    var beyanTarih = new Date(yil, ay, 26);
-    var targetDate = beyanTarih.toISOString().slice(0,10);
-
-    // Mevcut KDV ödemesini hesapla
-    var gelirler = [];
-    var giderler = [];
-    try{
-      var keys = Object.keys(localStorage);
-      keys.forEach(function(k){
-        if(k.startsWith('uysa_gelirler_')){ try{ gelirler=gelirler.concat(JSON.parse(localStorage.getItem(k))||[]); }catch(e){} }
-        if(k.startsWith('uysa_giderler_')){ try{ giderler=giderler.concat(JSON.parse(localStorage.getItem(k))||[]); }catch(e){} }
-      });
-      // Bu ayki KDV
-      var ayStr = yil+'-'+(ay+1<10?'0'+(ay+1):(ay+1));
-      var kdvGelir = gelirler.filter(function(g){ return g.tarih&&g.tarih.startsWith(ayStr); })
-                             .reduce(function(s,g){ return s+(parseFloat(g.kdvTutar)||0); },0);
-      var kdvGider = giderler.filter(function(g){ return g.tarih&&g.tarih.startsWith(ayStr); })
-                             .reduce(function(s,g){ return s+(parseFloat(g.kdvTutar)||0); },0);
-      var kdvBorclu = kdvGelir - kdvGider;
-
-      if(gun <= 26){ // Henüz geçmediyse hatırlatıcı ekle
-        window.uysaHatirlaticiEkle(
-          '📋 KDV Beyannamesi — '+ayStr,
-          'Ödenecek KDV: ₺'+(kdvBorclu>0?kdvBorclu.toLocaleString('tr-TR',{minimumFractionDigits:2}):'0,00')+' | Beyan tarihi: 26/'+( ay+1)+'/'+yil,
-          targetDate, '#f59e0b', 'finans'
-        );
-        localStorage.setItem(key, '1');
-      }
-    }catch(e){}
-  };
-
-  // ── Maaş/SGK Hatırlatıcı (Ayın 1-3 arası) ────────────────────────────────
-  window._uysaMaasHatirlaticiKontrol = function(){
-    var simdi = new Date();
-    var gun = simdi.getDate();
-    var ay = simdi.getMonth();
-    var yil = simdi.getFullYear();
-    var key = 'uysa_maas_hat_'+yil+'_'+ay;
-    if(localStorage.getItem(key)) return;
-
-    if(gun <= 5){ // Ayın ilk 5 günü
-      var personeller = [];
-      try{ personeller = JSON.parse(localStorage.getItem('uysa_personeller'))||[]; }catch(e){}
-      var aktif = personeller.filter(function(p){ return !p.pasif; });
-      if(aktif.length > 0){
-        var toplamMaas = aktif.reduce(function(s,p){ return s+(parseFloat(p.maas)||0); },0);
-        var toplamSgk  = aktif.reduce(function(s,p){ return s+(parseFloat(p.sgk)||0); },0);
-        var toplamHak  = aktif.reduce(function(s,p){ return s+((parseFloat(p.maas)||0)*1.3/12); },0);
-        var toplamMaliyet = toplamMaas + toplamSgk + toplamHak;
-        var odeTarih = yil+'-'+(ay+1<10?'0'+(ay+1):(ay+1))+'-05';
-        window.uysaHatirlaticiEkle(
-          '💰 Maaş Ödemesi — '+aktif.length+' Personel',
-          'Toplam: ₺'+toplamMaliyet.toLocaleString('tr-TR',{minimumFractionDigits:2})+
-          ' (Maaş: ₺'+toplamMaas.toLocaleString('tr-TR',{minimumFractionDigits:2})+
-          ' + SGK: ₺'+toplamSgk.toLocaleString('tr-TR',{minimumFractionDigits:2})+')',
-          odeTarih, '#3b82f6', 'ik'
-        );
-        localStorage.setItem(key, '1');
-      }
-    }
-  };
-
-  // ── CRM Takip Hatırlatıcısı ────────────────────────────────────────────────
-  window._uysaCrmHatirlaticiKontrol = function(){
-    try{
-      var musteriler = JSON.parse(localStorage.getItem('uysa_crm_musteriler'))||[];
-      var bugun = new Date(); bugun.setHours(0,0,0,0);
-      musteriler.forEach(function(m){
-        if(!m.sonrakiTakip) return;
-        var takipD = new Date(m.sonrakiTakip); takipD.setHours(0,0,0,0);
-        var diff = Math.round((takipD-bugun)/(1000*60*60*24));
-        var hatKey = 'uysa_crm_hat_'+m.id+'_'+m.sonrakiTakip;
-        if(!localStorage.getItem(hatKey) && diff >= 0 && diff <= 3){
-          window.uysaHatirlaticiEkle(
-            '👤 CRM Takip: '+m.isim,
-            diff===0 ? 'Bugün takip edilmesi gerekiyor!' : diff+' gün içinde takip: '+(m.notlar||m.kategori||''),
-            m.sonrakiTakip, '#8b5cf6', 'satis'
-          );
-          localStorage.setItem(hatKey, '1');
-        }
-      });
-    }catch(e){}
-  };
-
-  // ── İş Emri Hatırlatıcısı ─────────────────────────────────────────────────
-  window._uysaIsEmriHatirlaticiKontrol = function(){
-    try{
-      var isler = JSON.parse(localStorage.getItem('uysa_is_emirleri'))||[];
-      var bugun = new Date(); bugun.setHours(0,0,0,0);
-      isler.forEach(function(is){
-        if(!is.terminTarih || is.durum==='tamamlandi') return;
-        var termin = new Date(is.terminTarih); termin.setHours(0,0,0,0);
-        var diff = Math.round((termin-bugun)/(1000*60*60*24));
-        var hatKey = 'uysa_isemri_hat_'+is.id+'_'+is.terminTarih;
-        if(!localStorage.getItem(hatKey) && diff >= 0 && diff <= 2){
-          window.uysaHatirlaticiEkle(
-            '🔧 İş Emri Termin: #'+is.no,
-            (diff===0?'Bugün teslim! ':''+diff+' gün kaldı! ')+( is.baslik||is.aciklama||''),
-            is.terminTarih, '#ef4444', 'operasyon'
-          );
-          localStorage.setItem(hatKey, '1');
-        }
-      });
-    }catch(e){}
-  };
-
-  // ── Otomatik kontrol — her sayfa yüklenişinde ─────────────────────────────
-  setTimeout(function(){
-    try{
-      window._uysaKdvHatirlaticiKontrol();
-      window._uysaMaasHatirlaticiKontrol();
-      window._uysaCrmHatirlaticiKontrol();
-      window._uysaIsEmriHatirlaticiKontrol();
-      window.renderHatirlaticiPanel && window.renderHatirlaticiPanel();
-    }catch(e){ console.warn('v86 hatirlatici init error:', e); }
-  }, 2000);
-
-  // ── Periyodik kontrol (her 1 saatte bir) ─────────────────────────────────
-  setInterval(function(){
-    try{
-      window._uysaCrmHatirlaticiKontrol();
-      window._uysaIsEmriHatirlaticiKontrol();
-      window.renderHatirlaticiPanel && window.renderHatirlaticiPanel();
-    }catch(e){}
-  }, 60 * 60 * 1000);
-
-  // ─────────────────────────────────────────────────────────────────────────
   function hesaplaBildirimler(){
     const liste=[];
     // 1) Sözleşme bitişleri
@@ -20012,7 +19822,7 @@ document.addEventListener('DOMContentLoaded', function(){
 <script>
 
   // ════════════════════════════════════════════════════════════
-  // UYSA v86 — Phase 2: Otomasyonlar & Hatırlatıcılar + KDV + SGK + Biriken Haklar
+  // UYSA v86 — KDV Sistemi + SGK + Biriken Haklar + Aylık KDV Raporu + Üretim KDV Sütunu
   // ════════════════════════════════════════════════════════════
   (function(){
     'use strict';
@@ -20293,80 +20103,348 @@ document.addEventListener('DOMContentLoaded', function(){
       }
     })();
 
+    
+    // ═══════════════════════════════════════════════════════════════
+    // UYSA v86 — Aylık KDV Raporu + Günlük Üretim KDV Sütunu
+    // ═══════════════════════════════════════════════════════════════
 
-  // Manuel hatırlatıcı ekleme formu
-  window._uysaHatirlaticiEkleForm = function(){
-    var modal = document.createElement('div');
-    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:99999;display:flex;align-items:center;justify-content:center';
-    modal.innerHTML = '<div style="background:#fff;border-radius:12px;padding:24px;width:360px;max-width:90vw">'+
-      '<h3 style="margin:0 0 16px;font-size:16px">⏰ Yeni Hatırlatıcı</h3>'+
-      '<div style="margin-bottom:10px"><label style="font-size:13px;font-weight:600">Başlık</label>'+
-      '<input id="hat-baslik" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:6px;margin-top:4px;box-sizing:border-box" placeholder="Hatırlatıcı başlığı"></div>'+
-      '<div style="margin-bottom:10px"><label style="font-size:13px;font-weight:600">Mesaj</label>'+
-      '<textarea id="hat-mesaj" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:6px;margin-top:4px;box-sizing:border-box;height:70px" placeholder="Hatırlatıcı detayı..."></textarea></div>'+
-      '<div style="margin-bottom:16px"><label style="font-size:13px;font-weight:600">Tarih</label>'+
-      '<input id="hat-tarih" type="date" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:6px;margin-top:4px;box-sizing:border-box" value="'+new Date().toISOString().slice(0,10)+'"></div>'+
-      '<div style="display:flex;gap:8px">'+
-      '<button onclick="(function(){var b=document.getElementById('hat-baslik').value,m=document.getElementById('hat-mesaj').value,t=document.getElementById('hat-tarih').value;if(!b||!t){alert('Başlık ve tarih zorunlu');return;}window.uysaHatirlaticiEkle(b,m||b,t);document.body.removeChild(document.getElementById('hat-modal'));if(typeof _toast==='function')_toast('✅ Hatırlatıcı eklendi','#10b981');})()" style="flex:1;border:none;background:#f59e0b;color:#fff;border-radius:6px;padding:9px;cursor:pointer;font-weight:600">💾 Kaydet</button>'+
-      '<button onclick="document.body.removeChild(document.getElementById('hat-modal'))" style="flex:1;border:1px solid #e5e7eb;background:#f9fafb;border-radius:6px;padding:9px;cursor:pointer">İptal</button>'+
-      '</div></div>';
-    modal.id = 'hat-modal';
-    document.body.appendChild(modal);
-  };
+    // ── Tab geçiş: Aylık Cari Rapor ──────────────────────────────
+    window.switchAylikTab = function(tab){
+      ['uretim','kdv'].forEach(function(t){
+        var pane = document.getElementById('aylikPane-'+t);
+        var btn  = document.getElementById('aylikTab-'+t);
+        if(pane) pane.style.display = (t===tab)?'block':'none';
+        if(btn){
+          if(t===tab){
+            btn.style.background='#2563eb'; btn.style.color='#fff';
+          } else {
+            btn.style.background='#f1f5f9'; btn.style.color='#475569';
+          }
+        }
+      });
+      if(tab==='kdv') window.v86RenderAylikKdv();
+    };
 
-  // ── v86: İş Emri Veri Yönetimi ──────────────────────────────────────────
-  window._uysaGetIsEmirleri = function(){
-    try{ return JSON.parse(localStorage.getItem('uysa_is_emirleri'))||[]; }catch(e){ return []; }
-  };
-  window._uysaSaveIsEmirleri = function(list){
-    localStorage.setItem('uysa_is_emirleri', JSON.stringify(list));
-  };
+    // ── Aylık KDV Raporu render ───────────────────────────────────
+    window.v86RenderAylikKdv = function(){
+      var div = document.getElementById('v86AylikKdvDiv');
+      if(!div) return;
 
-  // İş emri ekle
-  window.uysaIsEmriEkle = function(data){
-    var list = window._uysaGetIsEmirleri();
-    var item = Object.assign({
-      id: Date.now()+'',
-      no: 'IE-'+(list.length+1).toString().padStart(4,'0'),
-      baslik: '',
-      aciklama: '',
-      durum: 'beklemede',
-      oncelik: 'normal',
-      olusturma: new Date().toISOString(),
-      terminTarih: '',
-      atanan: ''
-    }, data);
-    list.push(item);
-    window._uysaSaveIsEmirleri(list);
-    window._uysaIsEmriHatirlaticiKontrol && window._uysaIsEmriHatirlaticiKontrol();
-    return item;
-  };
+      var aySecici = document.getElementById('v77AySecici');
+      var buAy = (aySecici && aySecici.value) ? aySecici.value : _thisMonth();
 
-  // ── v86: Dashboard KPI güncellemesi (Hatırlatıcı sayısı) ────────────────
-  window._v86UpdateDashboard = function(){
-    try{
-      var hat = (window._uysaGetHatirlaticilar()||[]).filter(function(h){ return !h.okundu; });
-      var badge = document.getElementById('hatirlaticicBadge');
-      if(badge){
-        badge.textContent = hat.length;
-        badge.style.display = hat.length > 0 ? 'inline-flex' : 'none';
+      // Gelirler (bu ayın KDV'li girişleri)
+      var gelirler = (function(){try{return JSON.parse(localStorage.getItem('uysa_gelirler'))||[];}catch(e){return[];}})();
+      var ayGelirler = gelirler.filter(function(g){
+        return (g.tarih||'').startsWith(buAy);
+      });
+
+      // Giderler (bu ayın faturalı giderleri)
+      var giderler = (function(){try{return JSON.parse(localStorage.getItem('uysa_giderler'))||[];}catch(e){return[];}})();
+      var ayGiderler = giderler.filter(function(g){
+        return (g.tarih||'').startsWith(buAy) && g.faturali;
+      });
+
+      // Günlük üretim kayıtları (KDV oranı kaydedilmişse)
+      var gunlukArr = (function(){try{return JSON.parse(localStorage.getItem('uysa_gunluk_uretim'))||[];}catch(e){return[];}})();
+      var ayGunluk = gunlukArr.filter(function(u){
+        return (u.tarih||'').startsWith(buAy) && u.musteri && u.musteri!=='GENEL';
+      });
+
+      // Toplam hesaplar
+      var gelirNetToplam  = ayGelirler.reduce(function(s,g){return s+(g.tutar||0);},0);
+      var gelirKdvToplam  = ayGelirler.reduce(function(s,g){return s+(g.kdvTutar||0);},0);
+      var gelirKdvliToplam = gelirNetToplam + gelirKdvToplam;
+
+      var giderNetToplam  = ayGiderler.reduce(function(s,g){return s+(g.tutar||0);},0);
+      var giderKdvToplam  = ayGiderler.reduce(function(s,g){return s+(g.kdvTutar||0);},0);
+
+      // Günlük üretimden KDV
+      var gunlukKdvToplam = ayGunluk.reduce(function(s,u){
+        var net = u.tutar||0;
+        var pct = u.kdvPct||0;
+        return s + (net * pct / 100);
+      },0);
+      var gunlukNetToplam = ayGunluk.reduce(function(s,u){return s+(u.tutar||0);},0);
+
+      // Toplam KDV tahsilatı (gelir + günlük üretim)
+      var toplamKdvTahsilat = gelirKdvToplam + gunlukKdvToplam;
+      var toplamKdvIndirimi = giderKdvToplam;
+      var odenmesiGerekenKdv = Math.max(0, toplamKdvTahsilat - toplamKdvIndirimi);
+      var kdvIadesi = Math.max(0, toplamKdvIndirimi - toplamKdvTahsilat);
+
+      // Gelir vergisi hesabı: (KDV'li gelir - faturalı gider) / 4.1
+      var gelirVergisiMatrah = gelirKdvliToplam - giderNetToplam;
+      var gelirVergisi = gelirVergisiMatrah > 0 ? gelirVergisiMatrah / 4.1 : 0;
+
+      var parts = buAy.split('-');
+      var ayAdlari = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+      var ayAdi = ayAdlari[parseInt(parts[1],10)-1]+' '+parts[0];
+
+      // KDV oran dağılımı — gelirler
+      var gelirOranMap = {};
+      ayGelirler.forEach(function(g){
+        var pct = g.kdvPct||0;
+        if(!gelirOranMap[pct]) gelirOranMap[pct]={net:0,kdv:0,sayi:0};
+        gelirOranMap[pct].net  += g.tutar||0;
+        gelirOranMap[pct].kdv  += g.kdvTutar||0;
+        gelirOranMap[pct].sayi++;
+      });
+
+      // Günlük üretim KDV oran dağılımı
+      var gunlukOranMap = {};
+      ayGunluk.forEach(function(u){
+        var pct = u.kdvPct||0;
+        var net = u.tutar||0;
+        var kdv = net * pct / 100;
+        if(!gunlukOranMap[pct]) gunlukOranMap[pct]={net:0,kdv:0,sayi:0};
+        gunlukOranMap[pct].net  += net;
+        gunlukOranMap[pct].kdv  += kdv;
+        gunlukOranMap[pct].sayi++;
+      });
+
+      // Gider KDV oran dağılımı
+      var giderOranMap = {};
+      ayGiderler.forEach(function(g){
+        var pct = g.kdvPct||0;
+        if(!giderOranMap[pct]) giderOranMap[pct]={net:0,kdv:0,sayi:0};
+        giderOranMap[pct].net  += g.tutar||0;
+        giderOranMap[pct].kdv  += g.kdvTutar||0;
+        giderOranMap[pct].sayi++;
+      });
+
+      function _fmtL(n){ return Number(n||0).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+      function oranSatir(oranMap, renk){
+        var html='';
+        Object.keys(oranMap).sort(function(a,b){return a-b;}).forEach(function(pct){
+          var o=oranMap[pct];
+          html+='<tr><td style="padding:7px 10px;color:#64748b">%'+pct+' KDV ('+o.sayi+' kayıt)</td>'
+               +'<td style="padding:7px 10px;text-align:right">'+_fmtL(o.net)+' ₺</td>'
+               +'<td style="padding:7px 10px;text-align:right;font-weight:700;color:'+renk+'">'+_fmtL(o.kdv)+' ₺</td></tr>';
+        });
+        return html || '<tr><td colspan="3" style="padding:7px 10px;color:#94a3b8">— Kayıt yok —</td></tr>';
       }
-    }catch(e){}
-  };
-  setInterval(window._v86UpdateDashboard, 30000);
-  setTimeout(window._v86UpdateDashboard, 1500);
 
-  // ── v86: Finans KDV panel otomatik güncelleme ────────────────────────────
-  // (KDV paneli her gelir/gider girişinde zaten güncelleniyor; ek periyodik sync)
-  setInterval(function(){
-    try{
-      if(typeof window.guncelleKdvOzet === 'function') window.guncelleKdvOzet();
-      if(typeof window.guncelleGelirVergisi === 'function') window.guncelleGelirVergisi();
-    }catch(e){}
-  }, 5 * 60 * 1000); // 5 dakikada bir
+      var html = ''
+        // Özet kartlar
+        +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px">'
+
+        +'<div style="background:#eff6ff;border-radius:12px;padding:14px;text-align:center;border:1px solid #c7d2fe">'
+        +'<div style="font-size:11px;font-weight:700;color:#3730a3;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">KDV TAHSİLATI</div>'
+        +'<div style="font-size:20px;font-weight:900;color:#2563eb">'+_fmtL(toplamKdvTahsilat)+' ₺</div>'
+        +'<div style="font-size:11px;color:#64748b;margin-top:2px">Gelir + Üretim KDV</div></div>'
+
+        +'<div style="background:#fff7ed;border-radius:12px;padding:14px;text-align:center;border:1px solid #fed7aa">'
+        +'<div style="font-size:11px;font-weight:700;color:#9a3412;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">KDV İNDİRİMİ</div>'
+        +'<div style="font-size:20px;font-weight:900;color:#ea580c">'+_fmtL(toplamKdvIndirimi)+' ₺</div>'
+        +'<div style="font-size:11px;color:#64748b;margin-top:2px">Faturalı gider KDV</div></div>'
+
+        +(odenmesiGerekenKdv>0
+          ?'<div style="background:#fef2f2;border-radius:12px;padding:14px;text-align:center;border:1px solid #fca5a5">'
+           +'<div style="font-size:11px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">ÖDENECEk KDV</div>'
+           +'<div style="font-size:20px;font-weight:900;color:#dc2626">'+_fmtL(odenmesiGerekenKdv)+' ₺</div>'
+           +'<div style="font-size:11px;color:#64748b;margin-top:2px">Tahsilat − İndirim</div></div>'
+          :'<div style="background:#f0fdf4;border-radius:12px;padding:14px;text-align:center;border:1px solid #86efac">'
+           +'<div style="font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">KDV İADE HAKKI</div>'
+           +'<div style="font-size:20px;font-weight:900;color:#16a34a">'+_fmtL(kdvIadesi)+' ₺</div>'
+           +'<div style="font-size:11px;color:#64748b;margin-top:2px">İndirim − Tahsilat</div></div>'
+        )
+
+        +'<div style="background:#fdf4ff;border-radius:12px;padding:14px;text-align:center;border:1px solid #e9d5ff">'
+        +'<div style="font-size:11px;font-weight:700;color:#6b21a8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">GELİR VERGİSİ</div>'
+        +'<div style="font-size:20px;font-weight:900;color:#7c3aed">'+_fmtL(gelirVergisi)+' ₺</div>'
+        +'<div style="font-size:11px;color:#64748b;margin-top:2px">(KDV'li Gelir−Gider)÷4.1</div></div>'
+
+        +'</div>'
+
+        // Detay tablolar
+        +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">'
+
+        // Gelir KDV tablosu
+        +'<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">'
+        +'<div style="background:#eff6ff;padding:10px 14px;font-weight:800;font-size:13px;color:#1e40af">📥 Gelir KDV Dağılımı</div>'
+        +'<table style="width:100%;font-size:12px;border-collapse:collapse">'
+        +'<thead><tr style="background:#f8fafc"><th style="padding:7px 10px;text-align:left;color:#64748b;font-weight:600">Oran</th>'
+        +'<th style="padding:7px 10px;text-align:right;color:#64748b;font-weight:600">Net</th>'
+        +'<th style="padding:7px 10px;text-align:right;color:#64748b;font-weight:600">KDV</th></tr></thead>'
+        +'<tbody>'+oranSatir(gelirOranMap,'#2563eb')+'</tbody>'
+        +'<tfoot><tr style="background:#eff6ff;font-weight:800">'
+        +'<td style="padding:8px 10px">TOPLAM</td>'
+        +'<td style="padding:8px 10px;text-align:right">'+_fmtL(gelirNetToplam)+' ₺</td>'
+        +'<td style="padding:8px 10px;text-align:right;color:#2563eb">'+_fmtL(gelirKdvToplam)+' ₺</td>'
+        +'</tr></tfoot></table></div>'
+
+        // Günlük Üretim KDV tablosu
+        +'<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">'
+        +'<div style="background:#fef9c3;padding:10px 14px;font-weight:800;font-size:13px;color:#92400e">🍳 Günlük Üretim KDV Dağılımı</div>'
+        +'<table style="width:100%;font-size:12px;border-collapse:collapse">'
+        +'<thead><tr style="background:#f8fafc"><th style="padding:7px 10px;text-align:left;color:#64748b;font-weight:600">Oran</th>'
+        +'<th style="padding:7px 10px;text-align:right;color:#64748b;font-weight:600">Net</th>'
+        +'<th style="padding:7px 10px;text-align:right;color:#64748b;font-weight:600">KDV</th></tr></thead>'
+        +'<tbody>'+oranSatir(gunlukOranMap,'#ca8a04')+'</tbody>'
+        +'<tfoot><tr style="background:#fef9c3;font-weight:800">'
+        +'<td style="padding:8px 10px">TOPLAM</td>'
+        +'<td style="padding:8px 10px;text-align:right">'+_fmtL(gunlukNetToplam)+' ₺</td>'
+        +'<td style="padding:8px 10px;text-align:right;color:#ca8a04">'+_fmtL(gunlukKdvToplam)+' ₺</td>'
+        +'</tr></tfoot></table></div>'
+
+        +'</div>'
+
+        // Gider KDV tablosu
+        +'<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:14px">'
+        +'<div style="background:#fff7ed;padding:10px 14px;font-weight:800;font-size:13px;color:#9a3412">📤 Gider KDV Dağılımı (Faturalı)</div>'
+        +'<table style="width:100%;font-size:12px;border-collapse:collapse">'
+        +'<thead><tr style="background:#f8fafc"><th style="padding:7px 10px;text-align:left;color:#64748b;font-weight:600">Oran</th>'
+        +'<th style="padding:7px 10px;text-align:right;color:#64748b;font-weight:600">Net</th>'
+        +'<th style="padding:7px 10px;text-align:right;color:#64748b;font-weight:600">KDV</th></tr></thead>'
+        +'<tbody>'+oranSatir(giderOranMap,'#ea580c')+'</tbody>'
+        +'<tfoot><tr style="background:#fff7ed;font-weight:800">'
+        +'<td style="padding:8px 10px">TOPLAM</td>'
+        +'<td style="padding:8px 10px;text-align:right">'+_fmtL(giderNetToplam)+' ₺</td>'
+        +'<td style="padding:8px 10px;text-align:right;color:#ea580c">'+_fmtL(giderKdvToplam)+' ₺</td>'
+        +'</tr></tfoot></table></div>'
+
+        // Gelir vergisi açıklaması
+        +(gelirVergisiMatrah>0
+          ?'<div style="padding:12px 14px;background:#fdf4ff;border:1px solid #e9d5ff;border-radius:10px;font-size:12px;color:#6b21a8">'
+           +'<b>📐 Gelir Vergisi Hesabı:</b> ('
+           +_fmtL(gelirKdvliToplam)+' ₺ KDV\'li gelir &minus; '+_fmtL(giderNetToplam)+' ₺ faturalı gider) &div; 4.1'
+           +' = <b>'+_fmtL(gelirVergisi)+' ₺</b>'
+           +'<br><span style="color:#94a3b8;font-size:11px">Matrah: '+_fmtL(gelirVergisiMatrah)+' ₺</span>'
+           +'</div>'
+          :'<div style="padding:10px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;font-size:12px;color:#166534">'
+           +'ℹ️ Giderler geliri aştığı için bu ay gelir vergisi hesaplanmıyor.'
+           +'</div>'
+        )
+
+        +'<div style="margin-top:10px;padding:8px 12px;background:#f8fafc;border-radius:8px;font-size:11px;color:#94a3b8">'
+        +'📅 <b>'+ayAdi+'</b> KDV raporu — v86 tarafından otomatik oluşturuldu'
+        +'</div>';
+
+      div.innerHTML = html;
+    };
+
+    // ── Günlük Üretim KDV Seçici ─────────────────────────────────
+    var _gsKdvPct = 0;
+    window.setGsKdv = function(pct){
+      _gsKdvPct = pct;
+      [0,1,10,20].forEach(function(p){
+        var btn = document.getElementById('gsKdv'+p);
+        if(!btn) return;
+        if(p===pct){
+          btn.style.background='#2563eb'; btn.style.color='#fff'; btn.style.borderColor='#2563eb';
+        } else {
+          btn.style.background='#f3f4f6'; btn.style.color='#374151'; btn.style.borderColor='#d1d5db';
+        }
+      });
+      var lbl = document.getElementById('gsKdvAktifLabel');
+      if(lbl) lbl.innerHTML = 'Aktif: <b>%'+pct+'</b>';
+      // Tabloyu güncelle
+      if(typeof window.gsRenderTableV76==='function') window.gsRenderTableV76();
+    };
+
+    // ── gsRenderTableV76 override: KDV sütunu ekle ────────────────
+    (function(){
+      var _orig = window.gsRenderTableV76;
+      if(!_orig) return;
+
+      window.gsRenderTableV76 = function(){
+        // Önce orijinali çalıştır
+        _orig.call(this);
+
+        // Şimdi tabloya KDV sütununu inject et
+        var tableDiv = document.getElementById('gsTableDiv');
+        if(!tableDiv) return;
+
+        var table = tableDiv.querySelector('table');
+        if(!table) return;
+
+        var pct = _gsKdvPct || 0;
+        if(pct===0) return; // %0'da ek sütun gerekmez
+
+        // Başlık ekle
+        var thead = table.querySelector('thead tr');
+        if(thead && !thead.querySelector('.gs-kdv-col')){
+          var th = document.createElement('th');
+          th.className = 'gs-kdv-col';
+          th.innerHTML = 'KDV ('+pct+'%)<br><span style="font-weight:400;font-size:10px;color:#7c3aed">Günlük KDV</span>';
+          th.style.cssText = 'padding:10px 12px;text-align:right;border-bottom:2px solid #c7d2fe;background:#fdf4ff;color:#6b21a8;min-width:100px';
+          thead.appendChild(th);
+
+          var thKdvli = document.createElement('th');
+          thKdvli.className = 'gs-kdv-col';
+          thKdvli.innerHTML = 'KDV\'li Toplam<br><span style="font-weight:400;font-size:10px;color:#7c3aed">Net + KDV</span>';
+          thKdvli.style.cssText = 'padding:10px 12px;text-align:right;border-bottom:2px solid #c7d2fe;background:#fdf4ff;color:#6b21a8;min-width:110px';
+          thead.appendChild(thKdvli);
+        }
+
+        // Her satıra KDV hesapla
+        var rows = table.querySelectorAll('tbody tr');
+        rows.forEach(function(row){
+          if(row.querySelector('.gs-kdv-col')) return; // zaten eklenmiş
+          var gunlukSpan = row.querySelector('.gsv76-gunluk');
+          var netVal = 0;
+          if(gunlukSpan){
+            var txt = gunlukSpan.textContent.replace(/\./g,'').replace(',','.').replace(/[^\d.]/g,'');
+            netVal = parseFloat(txt)||0;
+          }
+          var kdvTutar = netVal * pct / 100;
+          var kdvliToplam = netVal + kdvTutar;
+
+          var tdKdv = document.createElement('td');
+          tdKdv.className = 'gs-kdv-col';
+          tdKdv.style.cssText = 'padding:9px 12px;text-align:right;border-bottom:1px solid #e2e8f0;color:#7c3aed;font-weight:700;background:#fdf4ff';
+          tdKdv.textContent = kdvTutar>0 ? kdvTutar.toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2})+' ₺' : '—';
+          row.appendChild(tdKdv);
+
+          var tdKdvli = document.createElement('td');
+          tdKdvli.className = 'gs-kdv-col';
+          tdKdvli.style.cssText = 'padding:9px 12px;text-align:right;border-bottom:1px solid #e2e8f0;color:#581c87;font-weight:800;background:#faf5ff';
+          tdKdvli.textContent = kdvliToplam>0 ? kdvliToplam.toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2})+' ₺' : '—';
+          row.appendChild(tdKdvli);
+        });
+
+        // Günlük üretim kayıtlarına kdvPct kaydet
+        var saveBtn = document.getElementById('gsKaydetBtn');
+        if(saveBtn && !saveBtn._kdvPatchV86){
+          saveBtn._kdvPatchV86 = true;
+          saveBtn.addEventListener('click', function(){
+            // Kısa gecikmeyle kaydedildikten sonra kdvPct'yi güncelle
+            setTimeout(function(){
+              var tarih = document.getElementById('gsTableDiv')?.dataset.tarih;
+              if(!tarih) return;
+              var arr = (function(){try{return JSON.parse(localStorage.getItem('uysa_gunluk_uretim'))||[];}catch(e){return[];}})();
+              var updated = arr.map(function(u){
+                if(u.tarih===tarih) return Object.assign({},u,{kdvPct:_gsKdvPct, kdvTutar:(u.tutar||0)*_gsKdvPct/100});
+                return u;
+              });
+              try{localStorage.setItem('uysa_gunluk_uretim', JSON.stringify(updated));}catch(e){}
+              // Aylık KDV raporu güncelle
+              if(typeof window.v86RenderAylikKdv==='function'){
+                var kdvPane = document.getElementById('aylikPane-kdv');
+                if(kdvPane && kdvPane.style.display!=='none') window.v86RenderAylikKdv();
+              }
+            }, 500);
+          }, true);
+        }
+      };
+    })();
+
+    // ── Ay değiştiğinde KDV tab'ını da güncelle ──────────────────
+    (function(){
+      var aySecici = document.getElementById('v77AySecici');
+      if(aySecici){
+        aySecici.addEventListener('change', function(){
+          var kdvPane = document.getElementById('aylikPane-kdv');
+          if(kdvPane && kdvPane.style.display!=='none'){
+            if(typeof window.v86RenderAylikKdv==='function') window.v86RenderAylikKdv();
+          }
+        });
+      }
+    })();
 
 
-      console.log('✅ UYSA v86 yüklendi — Phase 2 Otomasyonlar & Hatırlatıcılar aktif');
+    console.log('✅ UYSA v86 yüklendi — KDV Sistemi + SGK + Biriken Haklar + Aylık KDV Raporu + Üretim KDV Sütunu aktif');
   })();
 
 </script>
