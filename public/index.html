@@ -999,15 +999,16 @@
    JS fallback: crmFixedMode ile position:fixed
 ────────────────────────────────────────────────────── */
 .container {
-  overflow: clip !important;  /* overflow:hidden → clip: sticky'yi kırmaz */
+  /* FIX-V18: removed overflow:clip — it blocks position:sticky in sub-panels */
 }
 
 /* CRM grid sütunu sabit kalabilsin */
 #crmOzetPanel {
+  /* FIX-V18: sticky relative to inner .content scroll container */
   position: sticky !important;
-  top: 80px !important;
+  top: 8px !important;
   align-self: start !important;
-  max-height: calc(100vh - 100px) !important;
+  max-height: calc(100vh - 120px) !important;
   overflow-y: auto !important;
   z-index: 10 !important;
 }
@@ -2564,7 +2565,7 @@
           </div>
         </div>
 
-        <div style="display:grid;grid-template-columns:3fr 2fr;gap:16px;align-items:start">
+        <div style="display:grid;grid-template-columns:3fr 2fr;gap:16px;align-items:start;min-height:calc(100vh - 180px)">
 
           <!-- 3.1 CRM -->
           <div class="panel">
@@ -2721,7 +2722,7 @@
           </div>
 
           <!-- 3.1b Müşteri Özet Paneli -->
-          <div class="panel" id="crmOzetPanel" style="overflow:auto;max-height:calc(100vh - 120px);position:sticky;top:70px;align-self:start;z-index:20;background:linear-gradient(135deg,#f0f9ff,#e0f2fe);border:1.5px solid #bae6fd;box-shadow:0 4px 20px rgba(0,0,0,0.1)">
+          <div class="panel" id="crmOzetPanel" style="background:linear-gradient(135deg,#f0f9ff,#e0f2fe);border:1.5px solid #bae6fd;box-shadow:0 4px 20px rgba(0,0,0,0.1)">
             <h3 style="color:#1e40af;border-bottom:2px solid #bae6fd">📋 Müşteri Özeti</h3>
             <div id="crmOzetIcerik" style="font-size:12px;color:#64748b">
               <div style="text-align:center;padding:20px;color:#94a3b8">
@@ -17450,78 +17451,11 @@ setTimeout(function(){
 },800);
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   B) CRM MÜŞTERİ ÖZET — position:fixed (MutationObserver tabanlı)
+   B) CRM MÜŞTERİ ÖZET — FIX-V18: pure CSS sticky (scroll is inside .content)
+   The old fixed-mode JS used window.scroll which never fires for inner-div
+   scrolling. Removed. CSS sticky with min-height grid handles positioning.
    ═══════════════════════════════════════════════════════════════════════════ */
-(function(){
-  var _active=false;
-  function _panel(){return document.getElementById('crmOzetPanel');}
-
-  function _reposition(){
-    // FIX-V17: use setProperty directly — no fragile cssText regex
-    var p=_panel(); if(!p||!_active) return;
-    var container=document.querySelector('.container');
-    var topOff=80; // fixed offset below header/nav
-    var rightOff=container?(window.innerWidth-container.getBoundingClientRect().right+18):18;
-    var grid=p.parentNode;
-    var pWidth=grid?Math.min(grid.getBoundingClientRect().width*0.38,360):340;
-    p.style.setProperty('position','fixed','important');
-    p.style.setProperty('top',topOff+'px','important');
-    p.style.setProperty('right',rightOff+'px','important');
-    p.style.setProperty('left','auto','important');
-    p.style.setProperty('width',pWidth+'px','important');
-    p.style.setProperty('max-height','calc(100vh - '+(topOff+16)+'px)','important');
-    p.style.setProperty('overflow-y','auto','important');
-    p.style.setProperty('z-index','500','important');
-    p.style.setProperty('box-shadow','0 8px 32px rgba(30,58,138,.2)','important');
-    p.style.setProperty('border-radius','14px','important');
-  }
-
-  function _start(){
-    if(_active)return;
-    _active=true;
-    _reposition();
-    window.addEventListener('scroll',_reposition,{passive:true});
-    window.addEventListener('resize',_reposition,{passive:true});
-  }
-
-  function _stop(){
-    if(!_active)return;
-    _active=false;
-    window.removeEventListener('scroll',_reposition);
-    window.removeEventListener('resize',_reposition);
-    var p=_panel();
-    if(p){
-      ['position','top','right','left','width','max-height','overflow-y','z-index','box-shadow','border-radius'].forEach(function(s){
-        p.style.removeProperty(s);
-      });
-    }
-  }
-
-  function _init(){
-    var ms=document.getElementById('mod-satis');
-    if(!ms){setTimeout(_init,500);return;}
-    /* İlk durum */
-    if(ms.classList.contains('active'))_start();
-    /* MutationObserver: class değişimini izle */
-    var obs=new MutationObserver(function(){
-      if(ms.classList.contains('active')){setTimeout(_start,100);}
-      else{_stop();}
-    });
-    obs.observe(ms,{attributes:true,attributeFilter:['class']});
-    /* nav buton tıklamalarını da yakala (cloneNode problemine karşı event delegation) */
-    document.addEventListener('click',function(e){
-      var btn=e.target.closest('.mod-nav-item');
-      if(!btn)return;
-      setTimeout(function(){
-        if(ms.classList.contains('active'))_start();
-        else _stop();
-      },200);
-    });
-  }
-
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){setTimeout(_init,400);});
-  else setTimeout(_init,400);
-})();
+/* FIX-V18: CRM sticky JS removed – handled by CSS */
 
 console.log('✅ UYSA v82 yüklendi — Personel + Pasif/Aktif + CRM Sticky');
 })();
