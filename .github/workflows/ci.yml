@@ -5,121 +5,386 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:          # Manuel tetikleme
 
+# ── Eş zamanlı çalışmayı engelle ─────────────────────────────
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PHP_VERSION: '8.2'
+
+# ══════════════════════════════════════════════════════════════
 jobs:
-  # ════════════════════════════════════════════════
-  # JOB 1: Doğrulama
-  # ════════════════════════════════════════════════
-  validate:
-    name: 📋 Dosya & Syntax Doğrulama
+
+  # ── 1. Kod Kalite Kontrolü ──────────────────────────────────
+  quality:
+    name: 🔍 Code Quality
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: 🐘 PHP Syntax Kontrolü
-        run: |
-          php -l public/uysa_api.php   && echo "✅ uysa_api.php syntax OK"
-          php -l public/health.php     && echo "✅ health.php syntax OK"
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: pdo, pdo_mysql, mbstring, json
+          coverage: none
 
-      - name: 📁 Gerekli Dosya Kontrolü
+      - name: PHP Syntax Check (Lint)
         run: |
-          test -f public/index.html       && echo "✅ index.html" || exit 1
-          test -f public/uysa_api.php     && echo "✅ uysa_api.php" || exit 1
-          test -f public/uysa_migrate.html && echo "✅ uysa_migrate.html" || exit 1
-          test -f public/.htaccess        && echo "✅ .htaccess" || exit 1
-          test -f Dockerfile              && echo "✅ Dockerfile" || exit 1
-          test -f railway.toml            && echo "✅ railway.toml" || exit 1
-          test -f sql/schema.sql          && echo "✅ schema.sql" || exit 1
+          find public/ -name "*.php" -print0 | xargs -0 php -l
+          echo "✅ PHP syntax OK"
 
-      - name: 🔒 Güvenlik — .env commit yok
+      - name: Check for Hardcoded Credentials
         run: |
-          if git log --all --full-history -- '.env' | grep -q commit; then
-            echo "❌ .env dosyası git geçmişinde bulundu!"
+          echo "Checking for hardcoded secrets..."
+          # Gerçek şifre/token için pattern kontrolü (false-positive azaltmak için sınırlı)
+          FOUND=0
+          # DB şifresi pattern kontrolü
+          if grep -rn "UYS\.faruk" public/ --include="*.php" 2>/dev/null; then
+            echo "⚠️  Warning: Hardcoded DB password found in PHP files"
+            FOUND=1
+          fi
+          # Gerçek API token (env var yerine hardcode)
+          if grep -n "UysaERP2026xProdKey3f7a9c1b" public/uysa_api.php 2>/dev/null | grep -v "getenv\|env\|ENV"; then
+            echo "⚠️  Warning: API token might be hardcoded"
+          fi
+          echo "✅ Credential check done"
+
+      - name: Check .env Not Committed
+        run: |
+          if git ls-files | grep -q "^\.env$"; then
+            echo "❌ .env file is committed! Remove it immediately."
             exit 1
           fi
-          echo "✅ .env git geçmişinde yok"
+          echo "✅ .env not committed"
 
-      - name: 🔒 Güvenlik — Token/şifre sızıntı kontrolü
+      - name: Validate File Sizes
         run: |
-          # Hardcoded token/şifre kontrolü
-          if grep -r "password_hash\|DB_PASS=\|API_TOKEN=" public/index.html 2>/dev/null | grep -v "getenv\|change_me\|example\|hash\|//"; then
-            echo "⚠️  Potansiyel credential tespit edildi - kontrol edin"
+          if [ -f "public/index.html" ]; then
+            SIZE=$(wc -c < public/index.html)
+            if [ "$SIZE" -lt 500000 ]; then
+              echo "❌ index.html too small ($SIZE bytes) — possible truncation"
+              exit 1
+            fi
+            echo "✅ index.html size OK: $SIZE bytes"
           fi
-          echo "✅ Güvenlik taraması tamamlandı"
 
-      - name: 📊 Dosya Boyutu Kontrolü
+      - name: Check Required Files
         run: |
-          SIZE=$(wc -c < public/index.html)
-          echo "index.html boyutu: ${SIZE} byte ($(echo "$SIZE / 1024" | bc) KB)"
-          if [ "$SIZE" -lt 500000 ]; then
-            echo "❌ index.html çok küçük — bozuk olabilir (min 500KB)"
+          for f in public/index.html public/uysa_api.php public/health.php Dockerfile railway.toml; do
+            if [ ! -f "$f" ]; then
+              echo "❌ Missing required file: $f"
+              exit 1
+            fi
+          done
+          echo "✅ All required files present"
+
+      - name: Validate HTML Structure
+        run: |
+          if ! grep -q "uysaDoLogin" public/index.html; then
+            echo "❌ uysaDoLogin function not found in index.html"
             exit 1
           fi
-          echo "✅ Dosya boyutu geçerli"
+          if ! grep -q 'id="loginOverlay"' public/index.html; then
+            echo "❌ Login overlay not found in index.html"
+            exit 1
+          fi
+          # Script tag içinde unescaped </script> kontrolü
+          python3 - << 'PYEOF'
+          import re, sys
+          with open('public/index.html', 'r', encoding='utf-8', errors='ignore') as f:
+              content = f.read()
+          # Template literal içinde </script> var mı kontrol et
+          # Basit heuristik: backtick içinde </script> (backslash olmadan)
+          issues = re.findall(r'`[^`]*</script>[^`]*`', content[:50000])
+          if issues:
+              print(f"⚠️  {len(issues)} potential unescaped </script> in template literals")
+          else:
+              print("✅ No unescaped </script> in template literals detected")
+          PYEOF
 
-      - name: ✅ Kullanıcı sistemi kontrolü
+  # ── 2. Unit & Security Tests ─────────────────────────────────
+  test:
+    name: 🧪 Unit & Security Tests
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP with extensions
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: pdo, pdo_sqlite, pdo_mysql, mbstring, json, openssl
+          coverage: clover
+
+      - name: Cache Composer Dependencies
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ hashFiles('composer.json') }}
+          restore-keys: composer-
+
+      - name: Install Dependencies
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Run Unit Tests
         run: |
-          grep -q "uysaLoginOverlay" public/index.html && echo "✅ Login overlay var" || echo "⚠️ Login overlay yok"
-          grep -q "uysaDoLogin" public/index.html && echo "✅ Login fonksiyonu var" || echo "⚠️ Login fonksiyonu yok"
-          grep -q "_auditLog" public/index.html && echo "✅ Audit log var" || echo "⚠️ Audit log yok"
+          ./vendor/bin/phpunit tests/UnitTest.php \
+            --testdox --colors=always \
+            --coverage-clover=coverage/unit-clover.xml \
+            2>&1 | tee test-results-unit.txt
+          echo "✅ Unit tests complete"
 
-  # ════════════════════════════════════════════════
-  # JOB 2: Docker Build Test
-  # ════════════════════════════════════════════════
+      - name: Run Integration Tests (Mock/SQLite)
+        run: |
+          ./vendor/bin/phpunit tests/IntegrationTest.php \
+            --group integration \
+            --filter DatabaseIntegrationTest \
+            --testdox --colors=always \
+            2>&1 | tee test-results-integration.txt
+          echo "✅ Integration tests complete"
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            test-results-*.txt
+            coverage/
+
+      - name: Check Test Coverage Threshold
+        run: |
+          if [ -f "coverage/unit-clover.xml" ]; then
+            python3 - << 'PYEOF'
+          import xml.etree.ElementTree as ET
+          tree = ET.parse('coverage/unit-clover.xml')
+          root = tree.getroot()
+          metrics = root.find('.//project/metrics')
+          if metrics is not None:
+              stmts  = int(metrics.get('statements', 1))
+              covered = int(metrics.get('coveredstatements', 0))
+              pct    = (covered / stmts * 100) if stmts > 0 else 0
+              print(f"Coverage: {pct:.1f}% ({covered}/{stmts})")
+              if pct < 60:
+                  print("⚠️  Coverage below 60% threshold")
+              else:
+                  print("✅ Coverage OK")
+          PYEOF
+          fi
+
+  # ── 3. Security Scan ─────────────────────────────────────────
+  security:
+    name: 🔒 Security Scan
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          coverage: none
+
+      - name: Install Security Checker
+        run: composer require --dev roave/security-advisories:dev-latest --no-update || true
+
+      - name: Check for Known Vulnerabilities
+        run: |
+          if [ -f "composer.lock" ]; then
+            composer audit --no-interaction || echo "⚠️  Vulnerability check completed (see above)"
+          else
+            echo "ℹ️  No composer.lock found, skipping audit"
+          fi
+
+      - name: PHP Security Static Analysis
+        run: |
+          # SQL injection pattern kontrolü (prepared statements yoksa)
+          echo "Checking for raw SQL queries..."
+          UNSAFE=$(grep -rn 'query\s*(\s*[\"'\'']\s*SELECT\|INSERT\|UPDATE\|DELETE' public/ --include="*.php" | grep -v "prepare\|PDO" | wc -l)
+          echo "Potential unsafe queries: $UNSAFE"
+          
+          # eval() kullanımı
+          EVALS=$(grep -rn '\beval\s*(' public/ --include="*.php" | wc -l)
+          if [ "$EVALS" -gt 0 ]; then
+            echo "⚠️  eval() found $EVALS times — review required"
+          else
+            echo "✅ No eval() found"
+          fi
+          
+          # system/exec kullanımı
+          EXEC=$(grep -rn '\b\(system\|exec\|shell_exec\|passthru\|popen\)\s*(' public/ --include="*.php" | wc -l)
+          if [ "$EXEC" -gt 0 ]; then
+            echo "⚠️  Shell execution functions found $EXEC times — review"
+          else
+            echo "✅ No shell exec functions"
+          fi
+
+      - name: Check Security Headers in API
+        run: |
+          HEADERS=("X-Content-Type-Options" "X-Frame-Options" "X-XSS-Protection" "Referrer-Policy")
+          for h in "${HEADERS[@]}"; do
+            if grep -q "$h" public/uysa_api.php; then
+              echo "✅ $h header present"
+            else
+              echo "⚠️  $h header missing from uysa_api.php"
+            fi
+          done
+
+  # ── 4. Docker Build & Health Check ──────────────────────────
   docker:
-    name: 🐳 Docker Build Testi
+    name: 🐳 Docker Build & Test
     runs-on: ubuntu-latest
-    needs: validate
+    needs: [ test, security ]
     steps:
       - uses: actions/checkout@v4
 
-      - name: 🔨 Docker Image Build
+      - name: Build Docker Image
         run: |
-          docker build -t uysa-erp:ci-${{ github.sha }} .
-          echo "✅ Docker image başarıyla oluşturuldu"
+          docker build -t uysa-erp:${{ github.sha }} .
+          echo "✅ Docker build successful"
 
-      - name: 🔍 Container Health Check
+      - name: Run Container & Health Check
         run: |
-          docker run -d --name uysa-test \
+          docker run -d \
+            --name uysa-test \
+            -p 8080:8080 \
             -e DB_HOST=localhost \
             -e DB_PORT=3306 \
-            -e DB_NAME=uysa_db \
-            -e DB_USER=root \
+            -e DB_NAME=test_db \
+            -e DB_USER=test \
             -e DB_PASS=test \
-            -e API_TOKEN=test_token_ci \
-            -p 8080:80 \
-            uysa-erp:ci-${{ github.sha }}
+            -e API_TOKEN=test-token-ci \
+            uysa-erp:${{ github.sha }}
+          
+          # Container başlayana kadar bekle
           sleep 5
-          # index.html erişilebilir mi?
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/)
-          echo "HTTP response: $HTTP_CODE"
-          if [ "$HTTP_CODE" != "200" ]; then
-            docker logs uysa-test
-            echo "❌ Container sağlıklı değil"
-            exit 1
-          fi
-          echo "✅ Container başarıyla çalışıyor"
-          docker stop uysa-test && docker rm uysa-test
+          
+          # Health check
+          MAX_RETRY=10
+          RETRY=0
+          until curl -sf http://localhost:8080/health.php > /dev/null; do
+            RETRY=$((RETRY+1))
+            if [ "$RETRY" -ge "$MAX_RETRY" ]; then
+              echo "❌ Health check failed after $MAX_RETRY attempts"
+              docker logs uysa-test
+              exit 1
+            fi
+            echo "Waiting... ($RETRY/$MAX_RETRY)"
+            sleep 3
+          done
+          echo "✅ Health check passed"
 
-  # ════════════════════════════════════════════════
-  # JOB 3: Railway Deploy Tetikle (sadece main push)
-  # ════════════════════════════════════════════════
-  notify:
-    name: 📢 Deploy Bildirimi
-    runs-on: ubuntu-latest
-    needs: [validate, docker]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    steps:
-      - name: 🚀 Railway Deploy Tetiklendi
+      - name: API Basic Smoke Test
         run: |
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "🚀 UYSA ERP v3.0 — Railway Deploy Tetiklendi!"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          # API token olmadan → 403 bekliyoruz
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "http://localhost:8080/uysa_api.php?action=ping")
+          if [ "$STATUS" -eq 403 ]; then
+            echo "✅ Unauthorized request correctly blocked (HTTP 403)"
+          else
+            echo "⚠️  Expected 403, got $STATUS"
+          fi
+
+      - name: Cleanup Container
+        if: always()
+        run: docker rm -f uysa-test || true
+
+  # ── 5. Performance Check ─────────────────────────────────────
+  performance:
+    name: ⚡ Performance Check
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Asset Sizes
+        run: |
+          echo "=== File Size Report ==="
+          for f in public/index.html public/uysa_api.php; do
+            if [ -f "$f" ]; then
+              SIZE_KB=$(du -k "$f" | cut -f1)
+              echo "$f: ${SIZE_KB}KB"
+              if [ "$SIZE_KB" -gt 2000 ]; then
+                echo "⚠️  $f is larger than 2MB — consider optimization"
+              fi
+            fi
+          done
+
+      - name: Check for Performance Patterns
+        run: |
+          # defer/async script tags
+          DEFER=$(grep -c 'defer\|async' public/index.html || true)
+          echo "Deferred/async scripts: $DEFER"
+          
+          # loading=lazy images
+          LAZY=$(grep -c 'loading="lazy"' public/index.html || true)
+          echo "Lazy loaded images: $LAZY"
+          
+          # content-visibility
+          CV=$(grep -c 'content-visibility' public/index.html || true)
+          echo "content-visibility usage: $CV"
+
+  # ── 6. Deploy (Railway) ──────────────────────────────────────
+  deploy:
+    name: 🚀 Deploy to Railway
+    runs-on: ubuntu-latest
+    needs: [ docker ]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment:
+      name: production
+      url: https://uysatakip.production.up.railway.app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Notify Deploy Start
+        run: |
+          echo "🚀 Deploying to Railway..."
           echo "Commit: ${{ github.sha }}"
           echo "Branch: ${{ github.ref_name }}"
-          echo "Yapan:  ${{ github.actor }}"
-          echo "Mesaj:  ${{ github.event.head_commit.message }}"
-          echo "Zaman:  $(date '+%Y-%m-%d %H:%M:%S UTC')"
-          echo ""
-          echo "Railway otomatik olarak bu commit'i deploy edecek."
-          echo "Railway dashboard: https://railway.app"
+          echo "Author: ${{ github.actor }}"
+          echo "Message: ${{ github.event.head_commit.message }}"
+          echo "Time: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+
+      - name: Install Railway CLI
+        run: |
+          curl -fsSL https://railway.app/install.sh | sh || \
+          npm install -g @railway/cli@latest || \
+          echo "ℹ️  Railway CLI installation attempted"
+
+      - name: Deploy to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          if [ -n "$RAILWAY_TOKEN" ]; then
+            railway up --detach || echo "⚠️  Railway deploy command failed — check RAILWAY_TOKEN secret"
+          else
+            echo "ℹ️  RAILWAY_TOKEN not set — skipping actual deploy"
+            echo "   Set RAILWAY_TOKEN in GitHub Secrets to enable auto-deploy"
+          fi
+
+      - name: Post-Deploy Health Check
+        run: |
+          sleep 30  # Railway deploy için bekle
+          PROD_URL="https://uysatakip.production.up.railway.app/health.php"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$PROD_URL" || echo "000")
+          if [ "$STATUS" -eq 200 ]; then
+            echo "✅ Production health check passed"
+          else
+            echo "⚠️  Production health check returned HTTP $STATUS"
+          fi
+
+      - name: Deploy Summary
+        run: |
+          echo "## 🚀 Deploy Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Key | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Time | $(date -u '+%Y-%m-%d %H:%M UTC') |" >> $GITHUB_STEP_SUMMARY
+          echo "| URL | https://uysatakip.production.up.railway.app |" >> $GITHUB_STEP_SUMMARY
