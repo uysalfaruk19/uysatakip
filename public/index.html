@@ -2,6 +2,7 @@
 <html lang="tr">
 <head>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23005fcc'/><text x='16' y='23' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='18' fill='white'>U</text></svg>">
+<!-- UYSA ERP v119-FINAL | Son Denetim Geçti | Veri Girişine Hazır -->
 <!-- UYSA ERP v118b | Sprint 1: B+C+D+E patches | 2026-03-02 -->
   <meta charset="utf-8"/>
 <!-- UYSA ERP v118 Sprint 1 - COMPLETE: LazyLoadManager + Modal/Toast + SPA Refresh + VirtualScroll + CSS External -->
@@ -23,7 +24,7 @@ window.lsGet = function(key) {
     return window.__uysaCache[key];
   }
   window.__uysaCacheStats.misses++;
-  var val = localStorage.getItem(key);
+  var val = lsGet(key);
   if (val !== null) window.__uysaCache[key] = val;
   return val;
 };
@@ -31,12 +32,12 @@ window.lsGet = function(key) {
 window.lsSet = function(key, val) {
   window.__uysaCacheStats.writes++;
   window.__uysaCache[key] = val;
-  localStorage.setItem(key, val);
+  lsSet(key, val);
 };
 
 window.lsCacheStats = function() {
   var s = window.__uysaCacheStats;
-  console.log('[UYSA Cache] hits=' + s.hits + ' misses=' + s.misses + ' writes=' + s.writes);
+  _LOG('[UYSA Cache] hits=' + s.hits + ' misses=' + s.misses + ' writes=' + s.writes);
   return s;
 };
 
@@ -846,7 +847,7 @@ window.lsCacheInvalidate = function(key) {
     _isOnline = true;
     // Offline kuyruğu gönder (persist edilmiş yazılmamış veriler)
     try {
-      const offlineRaw = localStorage.getItem('uysa_offline_queue');
+      const offlineRaw = lsGet('uysa_offline_queue');
       if (offlineRaw) {
         const offlineQ = JSON.parse(offlineRaw);
         const cnt = Object.keys(offlineQ).length;
@@ -893,7 +894,7 @@ window.lsCacheInvalidate = function(key) {
 
   function _persistOfflineQueue(failedItems) {
     try {
-      const existing = JSON.parse(_orig.getItem ? _orig.getItem('uysa_offline_queue') : (localStorage.getItem('uysa_offline_queue') || '{}')) || {};
+      const existing = JSON.parse(_orig.getItem ? _orig.getItem('uysa_offline_queue') : (lsGet('uysa_offline_queue') || '{}')) || {};
       const merged = Object.assign({}, existing, failedItems);
       _orig.setItem('uysa_offline_queue', JSON.stringify(merged));
       const cnt = Object.keys(merged).length;
@@ -993,7 +994,7 @@ window.lsCacheInvalidate = function(key) {
       let loaded = 0;
       for(const [k, v] of Object.entries(result.data || {})){
         if(AUTH_SKIP.test(k)) continue;
-        localStorage.setItem(k, v);
+        lsSet(k, v);
         loaded++;
       }
       if(btn){ btn.disabled=false; btn.innerHTML='<span>✅</span> ' + loaded + ' kayıt yüklendi'; }
@@ -1059,11 +1060,11 @@ window.lsCacheInvalidate = function(key) {
       // Yeni cihaz kontrolü
         // v91: Reload flag — hem sessionStorage hem de kısa süreli localStorage
         const _justSynced = sessionStorage.getItem('uysa_sync_done') ||
-                            (Date.now() - parseInt(localStorage.getItem('uysa_sync_reload_ts')||'0') < 8000);
+                            (Date.now() - parseInt(lsGet('uysa_sync_reload_ts')||'0') < 8000);
         if (!_justSynced && loaded > 3) {
           toast('☁️ ' + loaded + ' kayıt sunucudan yüklendi, sayfa yenileniyor...', 2500);
           sessionStorage.setItem('uysa_sync_done', Date.now().toString());
-          try { localStorage.setItem('uysa_sync_reload_ts', Date.now().toString()); } catch(e){}
+          try { lsSet('uysa_sync_reload_ts', Date.now().toString()); } catch(e){}
           _uysaSpaRefresh('Ayarlar güncellendi…', 1500);
           return;
         }
@@ -1183,7 +1184,7 @@ window.lsCacheInvalidate = function(key) {
           // 1. Önce mevcut localStorage'dan hash'i bul
           const existingLocal = (() => {
             try {
-              const raw = localStorage.getItem('uysa_users_v6');
+              const raw = lsGet('uysa_users_v6');
               if (!raw) return null;
               const arr = JSON.parse(raw);
               return arr.find(x => x.username === u.username);
@@ -1214,8 +1215,8 @@ window.lsCacheInvalidate = function(key) {
         // Mevcut localStorage kullanıcılarını al (hash'ler burada)
         const localUsers = (() => {
           try {
-            const raw = _orig.setItem ? null : localStorage.getItem('uysa_users_v6');
-            const r2 = localStorage.getItem('uysa_users_v6');
+            const raw = _orig.setItem ? null : lsGet('uysa_users_v6');
+            const r2 = lsGet('uysa_users_v6');
             return r2 ? JSON.parse(r2) : [];
           } catch(e) { return []; }
         })();
@@ -1247,7 +1248,7 @@ window.lsCacheInvalidate = function(key) {
       const k = localStorage.key(i);
       if (!k?.startsWith(CFG.prefix)) continue;
       if (FULL_SYNC_SKIP.test(k)) { skipped++; continue; } // AUTH_SKIP
-      items[k] = localStorage.getItem(k);
+      items[k] = lsGet(k);
     }
     if (!Object.keys(items).length) return;
     api('setBulk', { items }).then(r => {
@@ -1280,8 +1281,8 @@ window.lsCacheInvalidate = function(key) {
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
       if (!k?.startsWith('uysa') || SKIP.test(k)) continue;
-      try { data[k] = JSON.parse(localStorage.getItem(k)); }
-      catch(e) { data[k] = localStorage.getItem(k); }
+      try { data[k] = JSON.parse(lsGet(k)); }
+      catch(e) { data[k] = lsGet(k); }
     }
     const meta = { exportedAt: new Date().toISOString(), version: 'v10', keyCount: Object.keys(data).length };
     const out  = { _meta: meta, data };
@@ -1306,7 +1307,7 @@ window.lsCacheInvalidate = function(key) {
         for (const [k, v] of Object.entries(rows)) {
           if (!k.startsWith('uysa')) continue;
           const str = typeof v === 'string' ? v : JSON.stringify(v);
-          localStorage.setItem(k, str);
+          lsSet(k, str);
           count++;
         }
         window._uysaFullSync && window._uysaFullSync();
@@ -1323,7 +1324,7 @@ window.lsCacheInvalidate = function(key) {
   // Offline kuyruk durumunu sorgula
   window._uysaOfflineQueueStatus = function() {
     try {
-      const q = JSON.parse(localStorage.getItem('uysa_offline_queue') || '{}');
+      const q = JSON.parse(lsGet('uysa_offline_queue') || '{}');
       const cnt = Object.keys(q).length;
       _LOG('[UYSA] Offline kuyruk:', cnt, 'bekleyen anahtar', cnt > 0 ? Object.keys(q) : '');
       return cnt;
@@ -1341,7 +1342,7 @@ window.lsCacheInvalidate = function(key) {
         const k = localStorage.key(i);
         if (!k?.startsWith('uysa')) continue;
         if (BACKUP_SKIP_PATTERNS.some(p => k.startsWith(p))) continue;
-        const v = localStorage.getItem(k);
+        const v = lsGet(k);
         totalSize += (v||'').length;
         if (totalSize > MAX_BACKUP_BYTES) break;
         snap[k] = v;
@@ -1355,7 +1356,7 @@ window.lsCacheInvalidate = function(key) {
       };
       // Son 2 yerel yedeği tut (quota tasarrufu için 3'ten 2'ye düşür)
       const backups = (() => {
-        try { return JSON.parse(localStorage.getItem('uysa_local_backups') || '[]'); } catch(e) { return []; }
+        try { return JSON.parse(lsGet('uysa_local_backups') || '[]'); } catch(e) { return []; }
       })();
       backups.unshift(meta);
       if (backups.length > 2) backups.length = 2;
@@ -1376,7 +1377,7 @@ window.lsCacheInvalidate = function(key) {
   // localStorage yedeği geri yükle (en son)
   window._uysaRestoreLocalBackup = function(index = 0) {
     try {
-      const backups = JSON.parse(localStorage.getItem('uysa_local_backups') || '[]');
+      const backups = JSON.parse(lsGet('uysa_local_backups') || '[]');
       if (!backups[index]) { _uysaAlert('Yedek bulunamadı!'); return false; }
       const snap = backups[index].data;
       let restored = 0;
@@ -4547,7 +4548,7 @@ table.uysa-vs-table td, table.uysa-vs-table th {
     if(!cust || cust==='GENEL') return {anaYemek:1, yardimci:1, corba:1, salata:1, ayran:'menuye_gore'};
     // localStorage'dan oku
     let d = {};
-    try { const raw = localStorage.getItem('uysa_crm_'+cust); if(raw) d = JSON.parse(raw); } catch(e){}
+    try { const raw = lsGet('uysa_crm_'+cust); if(raw) d = JSON.parse(raw); } catch(e){}
     // Eğer CRM panelinde aynı müşteri açıksa DOM'daki anlık değerleri kullan (henüz kaydedilmemiş olabilir)
     const crmCust = document.getElementById('crmCustomerSel')?.value;
     if(crmCust === cust){
@@ -4778,7 +4779,7 @@ table.uysa-vs-table td, table.uysa-vs-table th {
 
   const getCustomerStore = () => {
     try {
-      const raw = localStorage.getItem(CUSTOMER_KEY);
+      const raw = lsGet(CUSTOMER_KEY);
       if (!raw) return window.__uysaCustomerMem;
       const obj = safeParse(raw, window.__uysaCustomerMem);
       // keep mem in sync
@@ -4792,7 +4793,7 @@ table.uysa-vs-table td, table.uysa-vs-table th {
   const setCustomerStore = (obj) => {
     window.__uysaCustomerMem = obj || window.__uysaCustomerMem;
     try {
-      localStorage.setItem(CUSTOMER_KEY, JSON.stringify(window.__uysaCustomerMem));
+      lsSet(CUSTOMER_KEY, JSON.stringify(window.__uysaCustomerMem));
       return true;
     } catch(e){
       // localStorage yazılamadı -> sadece memory'de tut
@@ -4823,7 +4824,7 @@ table.uysa-vs-table td, table.uysa-vs-table th {
       const prev = keep ? sel.value : '';
       // Pasif listesini doğrudan localStorage'dan oku (getPasifler henüz tanımlı olmayabilir)
       let pasifler = [];
-      try { pasifler = JSON.parse(localStorage.getItem('uysa_pasif_musteriler')||'[]'); } catch(e){}
+      try { pasifler = JSON.parse(lsGet('uysa_pasif_musteriler')||'[]'); } catch(e){}
       const allCust = (cs.customers||[]).filter(x=>x && x!=='GENEL');
       const aktifler = allCust.filter(c=>!pasifler.includes(c));
       const pasifSorted = allCust.filter(c=>pasifler.includes(c));
@@ -4907,8 +4908,8 @@ table.uysa-vs-table td, table.uysa-vs-table th {
 
   function updateKey(){ keyEl.textContent = wkKey(); }
 
-  function getStore(){ try { return JSON.parse(localStorage.getItem(STORE_KEY)||'{}'); } catch { return {}; } }
-  function setStore(s){ localStorage.setItem(STORE_KEY, JSON.stringify(s)); }
+  function getStore(){ try { return JSON.parse(lsGet(STORE_KEY)||'{}'); } catch { return {}; } }
+  function setStore(s){ lsSet(STORE_KEY, JSON.stringify(s)); }
 
   function downloadCsv(filename, rows){
   const esc = (v)=> `"${String(v??'').replaceAll('"','""')}"`;
@@ -5624,17 +5625,17 @@ function escapeHtml(s){
 
   function getCatalog(){
     try {
-      const v = JSON.parse(localStorage.getItem(CATALOG_KEY) || 'null');
+      const v = JSON.parse(lsGet(CATALOG_KEY) || 'null');
       if (v && v.soups && v.mainsByType && v.sidesByGroup) return v;
     } catch {}
     const d = defaultCatalog();
-    localStorage.setItem(CATALOG_KEY, JSON.stringify(d));
+    lsSet(CATALOG_KEY, JSON.stringify(d));
     return d;
   }
-  function setCatalog(data){ localStorage.setItem(CATALOG_KEY, JSON.stringify(data)); }
+  function setCatalog(data){ lsSet(CATALOG_KEY, JSON.stringify(data)); }
 
-  function getRecipes(){ try { return JSON.parse(localStorage.getItem(RECIPES_KEY) || '{}'); } catch { return {}; } }
-  function setRecipes(data){ localStorage.setItem(RECIPES_KEY, JSON.stringify(data)); }
+  function getRecipes(){ try { return JSON.parse(lsGet(RECIPES_KEY) || '{}'); } catch { return {}; } }
+  function setRecipes(data){ lsSet(RECIPES_KEY, JSON.stringify(data)); }
 
   
 
@@ -6188,9 +6189,9 @@ ${it.name}`)) return;
   const PRICES_KEY = 'uysa_prices_tl_per_kg_v1';
 
   function getPrices(){
-    try { return JSON.parse(localStorage.getItem(PRICES_KEY) || '{}'); } catch { return {}; }
+    try { return JSON.parse(lsGet(PRICES_KEY) || '{}'); } catch { return {}; }
   }
-  function setPrices(p){ localStorage.setItem(PRICES_KEY, JSON.stringify(p)); }
+  function setPrices(p){ lsSet(PRICES_KEY, JSON.stringify(p)); }
 
   function getAllCatalogDishNames(){
     const cat = getCatalog();
@@ -6486,15 +6487,15 @@ ${it.name}`)) return;
   const ORG_PACKAGES_KEY = 'uysa_org_packages_v1';
 
   function getOrgState(){
-    try { return JSON.parse(localStorage.getItem(ORG_KEY) || '{"items":[],"packageName":"","vatPct":0,"wastePct":0,"overheadPct":0,"profitPct":0}'); }
+    try { return JSON.parse(lsGet(ORG_KEY) || '{"items":[],"packageName":"","vatPct":0,"wastePct":0,"overheadPct":0,"profitPct":0}'); }
     catch { return {items:[], packageName:'', vatPct:0, wastePct:0, overheadPct:0, profitPct:0}; }
   }
-  function setOrgState(s){ localStorage.setItem(ORG_KEY, JSON.stringify(s)); }
+  function setOrgState(s){ lsSet(ORG_KEY, JSON.stringify(s)); }
 
   function getOrgPackages(){
-    try { return JSON.parse(localStorage.getItem(ORG_PACKAGES_KEY) || '[]'); } catch { return []; }
+    try { return JSON.parse(lsGet(ORG_PACKAGES_KEY) || '[]'); } catch { return []; }
   }
-  function setOrgPackages(arr){ localStorage.setItem(ORG_PACKAGES_KEY, JSON.stringify(arr)); }
+  function setOrgPackages(arr){ lsSet(ORG_PACKAGES_KEY, JSON.stringify(arr)); }
 
   function money2(x){ const n=Number(x)||0; return Math.round(n*100)/100; }
   function pctFactor(p){ return (Number(p)||0)/100; }
@@ -7126,8 +7127,8 @@ ${note}`);
 
   // ---- Helpers ----
   const ls = {
-    get(k, def=null){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):def; }catch(e){ return def; } },
-    set(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); return true; }catch(e){ return false; } }
+    get(k, def=null){ try{ const v=lsGet(k); return v?JSON.parse(v):def; }catch(e){ return def; } },
+    set(k,v){ try{ lsSet(k, JSON.stringify(v)); return true; }catch(e){ return false; } }
   };
   const fmt = (n,d=2) => (Number(n)||0).toLocaleString('tr-TR',{minimumFractionDigits:d,maximumFractionDigits:d});
   const fmt0 = n => fmt(n,0);
@@ -7158,7 +7159,7 @@ ${note}`);
   // ---- Shared: Proje (Müşteri) Listesi ----
   function getCustomers(){
     try{
-      const raw = localStorage.getItem('uysa_customers_v1');
+      const raw = lsGet('uysa_customers_v1');
       const pasifler = ls.get('uysa_pasif_musteriler',[]);
       if(!raw) return ['GENEL'];
       const obj = JSON.parse(raw);
@@ -7363,7 +7364,7 @@ document.getElementById('egdKaydet').onclick=function(){
   (function fillGiderTedarikci(){
     const sel = document.getElementById('gider-tedarikci');
     if(!sel) return;
-    const tedList = (function(){try{return JSON.parse(localStorage.getItem('uysa_tedarikci')||'[]');}catch(e){return[];}})();
+    const tedList = (function(){try{return JSON.parse(lsGet('uysa_tedarikci')||'[]');}catch(e){return[];}})();
     const existing = new Set(Array.from(sel.options).map(o=>o.value));
     tedList.forEach(t=>{
       const val = t.firma||t.isim||t.ad||t.name||'';
@@ -7400,7 +7401,7 @@ _uysaAlert('Tutar giriniz.'); return; }
     function _fillTed(){
       var sel = document.getElementById('gider-tedarikci');
       if(!sel) return;
-      var tedList=(function(){try{return JSON.parse(localStorage.getItem('uysa_tedarikci')||'[]');}catch(e){return[];}})();
+      var tedList=(function(){try{return JSON.parse(lsGet('uysa_tedarikci')||'[]');}catch(e){return[];}})();
       // Clear existing dynamic options (keep first "Seçin" option)
       while(sel.options.length>1) sel.remove(1);
       // Add from tedarikci list
@@ -7411,7 +7412,7 @@ _uysaAlert('Tutar giriniz.'); return; }
         sel.appendChild(o);
       });
       // Also add from gider records (unique tedarikci names already entered)
-      var giderler=(function(){try{return JSON.parse(localStorage.getItem('uysa_giderler')||'[]');}catch(e){return[];}})();
+      var giderler=(function(){try{return JSON.parse(lsGet('uysa_giderler')||'[]');}catch(e){return[];}})();
       var existing=new Set(Array.from(sel.options).map(function(o){return o.value;}));
       giderler.forEach(function(g){
         if(g.tedarikci&&!existing.has(g.tedarikci)){
@@ -7440,7 +7441,7 @@ _uysaAlert('Tutar giriniz.'); return; }
     var sel = document.getElementById('gider-tedarikci');
     if(!sel) return;
     var tedList = (function(){
-      try{ return JSON.parse(localStorage.getItem('uysa_tedarikci')||'[]'); }catch(e){ return []; }
+      try{ return JSON.parse(lsGet('uysa_tedarikci')||'[]'); }catch(e){ return []; }
     })();
     // rebuild options (keep first placeholder)
     while(sel.options.length > 1) sel.remove(1);
@@ -7451,7 +7452,7 @@ _uysaAlert('Tutar giriniz.'); return; }
         var o = document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o); }
     });
     // also add from existing gider records
-    (function(){try{return JSON.parse(localStorage.getItem('uysa_giderler')||'[]');}catch(e){return[];}}()).forEach(function(g){
+    (function(){try{return JSON.parse(lsGet('uysa_giderler')||'[]');}catch(e){return[];}}()).forEach(function(g){
       if(g.tedarikci && !seen.has(g.tedarikci)){ seen.add(g.tedarikci);
         var o = document.createElement('option'); o.value=g.tedarikci; o.textContent=g.tedarikci; sel.appendChild(o); }
     });
@@ -7460,7 +7461,7 @@ _uysaAlert('Tutar giriniz.'); return; }
   (function _reFillTed(){
     var sel = document.getElementById('gider-tedarikci');
     if(!sel||sel.options.length>1) return;
-    var tedList=(function(){try{return JSON.parse(localStorage.getItem('uysa_tedarikci')||'[]');}catch(e){return[];}})();
+    var tedList=(function(){try{return JSON.parse(lsGet('uysa_tedarikci')||'[]');}catch(e){return[];}})();
     tedList.forEach(function(t){
       var val=t.firma||t.isim||t.ad||t.name||'';
       if(val){var o=document.createElement('option');o.value=val;o.textContent=val;sel.appendChild(o);}
@@ -7602,14 +7603,14 @@ _uysaAlert('Tutar giriniz.'); return; }
   // Get ingredient price from cost store (maliyetlendirme modülü)
   function getMalzemePrice(malzeme){
     try{
-      const prices = JSON.parse(localStorage.getItem('uysa_prices_v1')||'{}');
+      const prices = JSON.parse(lsGet('uysa_prices_v1')||'{}');
       return prices[malzeme] ? parseFloat(prices[malzeme]) : 0;
     }catch(e){ return 0; }
   }
   // Populate datalist with known ingredients from recipes
   function populateMalzemeDatalists(){
     try{
-      const recipes = JSON.parse(localStorage.getItem('uysa_recipes_v2')||'{}');
+      const recipes = JSON.parse(lsGet('uysa_recipes_v2')||'{}');
       const ingredients = new Set();
       Object.values(recipes).forEach(r=>{
         if(Array.isArray(r.ingredients)) r.ingredients.forEach(ing=>{ if(ing.name) ingredients.add(ing.name); });
@@ -8607,8 +8608,8 @@ _uysaAlert('Malzeme ve miktar giriniz.'); return; }
   'use strict';
 
   var _ls = {
-    get: function(k, d){ try{ var v=localStorage.getItem(k); return v===null?d:JSON.parse(v); }catch(e){ return d; } },
-    set: function(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+    get: function(k, d){ try{ var v=lsGet(k); return v===null?d:JSON.parse(v); }catch(e){ return d; } },
+    set: function(k, v){ try{ lsSet(k, JSON.stringify(v)); }catch(e){} }
   };
 
 
@@ -8766,26 +8767,26 @@ _uysaAlert('Malzeme ve miktar giriniz.'); return; }
 
     // Duplicate check
     var cs = (function(){
-      try{ var r=localStorage.getItem('uysa_customers_v1'); return r?JSON.parse(r):{customers:[]}; }catch(e){ return {customers:[]}; }
+      try{ var r=lsGet('uysa_customers_v1'); return r?JSON.parse(r):{customers:[]}; }catch(e){ return {customers:[]}; }
     })();
     if((cs.customers||[]).includes(newName)){ errDiv.textContent='Bu isim zaten kayıtlı: '+newName; return; }
 
     // 1. CustomerStore
     var idx = (cs.customers||[]).indexOf(current);
     if(idx>=0){ cs.customers[idx]=newName; cs.customers.sort(function(a,b){ return a.localeCompare(b,'tr'); }); }
-    localStorage.setItem('uysa_customers_v1', JSON.stringify(cs));
+    lsSet('uysa_customers_v1', JSON.stringify(cs));
 
     // 2. Menu store keys
     ['uysa_menu_v1','uysa_menu_grid_v2_dates'].forEach(function(sk){
       try{
-        var raw=localStorage.getItem(sk); if(!raw) return;
+        var raw=lsGet(sk); if(!raw) return;
         var store=JSON.parse(raw); var ns={};
         var esc=current.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
         Object.keys(store).forEach(function(k){
           var nk=k.replace(new RegExp('::'+esc+'(::.*)?$'), function(m){ return m.replace('::'+current,'::'+newName); });
           ns[nk]=store[k];
         });
-        localStorage.setItem(sk, JSON.stringify(ns));
+        lsSet(sk, JSON.stringify(ns));
       }catch(e){}
     });
 
@@ -9416,11 +9417,11 @@ function crmSaveBtnClick(){
     var firma = obj.firma||obj['crm-firma']||obj.isim||obj.name||'';
     if(!firma){ if(typeof toast==='function') toast('Firma adi zorunlu','warn'); return; }
     var musteriler = [];
-    try{ musteriler = JSON.parse(localStorage.getItem('uysa_musteriler')||'[]'); }catch(e){}
+    try{ musteriler = JSON.parse(lsGet('uysa_musteriler')||'[]'); }catch(e){}
     obj.id    = 'uysa_crm_'+Date.now();
     obj.tarih = new Date().toISOString().slice(0,10);
     musteriler.push(obj);
-    localStorage.setItem('uysa_musteriler', JSON.stringify(musteriler));
+    lsSet('uysa_musteriler', JSON.stringify(musteriler));
     if(typeof toast==='function') toast('Musteri kaydedildi','success');
     if(typeof v75RenderMusteriListesi==='function') v75RenderMusteriListesi();
     else if(typeof window.renderCrmList==='function') window.renderCrmList();
@@ -9466,7 +9467,7 @@ window._uysaPerfReport = function() {
         window.performance.getEntriesByType('navigation')[0] : null
     } : null
   };
-  console.table ? console.table(report.dom) : console.log(report);
+  console.table ? console.table(report.dom) : _LOG(report);
   _LOG('[UYSA Perf] v118 Sprint 1 Complete | DOM elements: ' + report.dom.elements);
   return report;
 };
@@ -9489,6 +9490,73 @@ window._uysaAutoVS=function(tid,items,rowFn){if(!items||items.length===0){var el
 
 <script>
 if("serviceWorker"in navigator){window.addEventListener("load",function(){navigator.serviceWorker.register("/sw_v119.js",{scope:"/"}).then(function(reg){_LOG("[SW] OK");}).catch(function(e){_LOGE("[SW]",e);});});}
+
+// ── UYSA v119 Data Integrity Validator ──────────────────────────────────────
+window._uysaValidate = {
+  customer: function(c) {
+    if (!c || typeof c !== 'object') return {ok:false, err:'Geçersiz müşteri'};
+    if (!c.id) return {ok:false, err:'ID zorunlu'};
+    return {ok:true};
+  },
+  stok: function(s) {
+    if (!s || typeof s !== 'object') return {ok:false, err:'Geçersiz stok'};
+    if (!s.id) return {ok:false, err:'ID zorunlu'};
+    return {ok:true};
+  },
+  finans: function(f) {
+    if (!f || typeof f !== 'object') return {ok:false, err:'Geçersiz finans'};
+    if (!f.id || !f.tutar) return {ok:false, err:'ID ve tutar zorunlu'};
+    return {ok:true};
+  },
+  personel: function(p) {
+    if (!p || typeof p !== 'object') return {ok:false, err:'Geçersiz personel'};
+    if (!p.id) return {ok:false, err:'ID zorunlu'};
+    return {ok:true};
+  },
+  checkStorageSize: function() {
+    var total = 0;
+    for (var k in localStorage) {
+      if (localStorage.hasOwnProperty(k)) {
+        total += (localStorage[k].length + k.length) * 2;
+      }
+    }
+    var mb = (total / 1024 / 1024).toFixed(2);
+    var pct = ((total / (5 * 1024 * 1024)) * 100).toFixed(1);
+    _LOG('[Storage] ' + mb + ' MB / 5 MB (' + pct + '%)');
+    return {usedMB: parseFloat(mb), usedPct: parseFloat(pct)};
+  },
+  newId: function(prefix) {
+    return (prefix || 'ID') + '_' + Date.now() + '_' + Math.random().toString(36).substr(2,6).toUpperCase();
+  }
+};
+window.addEventListener('load', function() {
+  setTimeout(function() {
+    var info = window._uysaValidate.checkStorageSize();
+    if (info.usedPct > 70) console.warn('[UYSA] Depolama uyarısı: ' + info.usedPct + '%');
+  }, 3000);
+});
+// ─────────────────────────────────────────────────────────────────────────────
+
+
+// ── UYSA v119 Keyboard Shortcuts ────────────────────────────────────────────
+(function() {
+  var shortcuts = {
+    'Alt+1': function() { document.querySelector('[data-mod="anasayfa"]')?.click(); },
+    'Alt+2': function() { document.querySelector('[data-mod="mod-finans"]')?.click(); },
+    'Alt+3': function() { document.querySelector('[data-mod="mod-stok"]')?.click(); },
+    'Alt+4': function() { document.querySelector('[data-mod="mod-crm"]')?.click(); },
+    'Alt+5': function() { document.querySelector('[data-mod="mod-ik"]')?.click(); },
+    'Alt+s': function() { window._uysaLocalBackup?.(); _LOG('[KB] Manuel backup'); },
+    'Alt+r': function() { window._uysaPerfReport?.(); }
+  };
+  document.addEventListener('keydown', function(e) {
+    var key = (e.altKey ? 'Alt+' : '') + e.key.toLowerCase();
+    if (shortcuts[key]) { e.preventDefault(); shortcuts[key](); }
+  });
+  _LOG('[KB] Shortcuts active: Alt+1-5 tabs, Alt+S backup, Alt+R report');
+})();
+// ─────────────────────────────────────────────────────────────────────────────
+
 </script>
 <div id="pwa-install-banner" style="display:none;position:fixed;bottom:20px;right:20px;background:#1a56db;color:#fff;border-radius:12px;padding:12px 18px;box-shadow:0 4px 20px rgba(0,0,0,.25);z-index:99999;align-items:center;gap:12px;font-family:Inter,sans-serif;font-size:14px;max-width:320px;"><span>UYSA ERP offline calisir!</span><button onclick="window._uysaInstallPWA&&window._uysaInstallPWA()" style="background:#fff;color:#1a56db;border:none;border-radius:8px;padding:6px 14px;cursor:pointer;font-weight:600;">Yukle</button><button onclick="this.closest('#pwa-install-banner').style.display='none'" style="background:transparent;border:none;color:#fff;cursor:pointer;font-size:18px;">x</button></div>
 </body>
