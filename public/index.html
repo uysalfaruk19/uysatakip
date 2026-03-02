@@ -3,7 +3,6 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='18' fill='%231a56db'/><text y='72' x='12' font-size='72' font-family='sans-serif' fill='white'>U</text></svg>"/>
   <title>UYSA ERP — Üretim & Yönetim Sistemi</title>
   <!-- PDF.js preloaded for invoice analysis (FIX-V15) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -17458,40 +17457,23 @@ setTimeout(function(){
   function _panel(){return document.getElementById('crmOzetPanel');}
 
   function _reposition(){
-    var p=_panel();if(!p||!_active)return;
-    var header=document.querySelector('header');
-    var nav=document.querySelector('.mod-nav');
-    var topOff=0;
-    if(header)topOff=Math.max(topOff,header.getBoundingClientRect().bottom);
-    if(nav)topOff=Math.max(topOff,nav.getBoundingClientRect().bottom);
-    topOff=Math.max(topOff,10)+8;
+    // FIX-V17: use setProperty directly — no fragile cssText regex
+    var p=_panel(); if(!p||!_active) return;
     var container=document.querySelector('.container');
-    if(!container)return;
-    var cr=container.getBoundingClientRect();
-    /* panel genişliği: tam olarak orijinal grid 2fr sütunu kadar */
+    var topOff=80; // fixed offset below header/nav
+    var rightOff=container?(window.innerWidth-container.getBoundingClientRect().right+18):18;
     var grid=p.parentNode;
-    var gr=grid?grid.getBoundingClientRect():{width:400,right:cr.right};
-    var pWidth=Math.min(gr.width*0.38,360);
-    var rightOff=window.innerWidth-cr.right+18;
-    p.style.cssText=(p.style.cssText||'')
-      .replace(/position\s*:[^;]*/g,'')
-      .replace(/top\s*:[^;]*/g,'')
-      .replace(/right\s*:[^;]*/g,'')
-      .replace(/left\s*:[^;]*/g,'')
-      .replace(/width\s*:[^;]*/g,'')
-      .replace(/max-height\s*:[^;]*/g,'')
-      .replace(/z-index\s*:[^;]*/g,'')
-      .replace(/box-shadow\s*:[^;]*/g,'');
-    p.style.position='fixed';
-    p.style.top=topOff+'px';
-    p.style.right=rightOff+'px';
-    p.style.left='auto';
-    p.style.width=pWidth+'px';
-    p.style.maxHeight='calc(100vh - '+(topOff+16)+'px)';
-    p.style.overflowY='auto';
-    p.style.zIndex='500';
-    p.style.boxShadow='0 8px 32px rgba(30,58,138,.2)';
-    p.style.borderRadius='14px';
+    var pWidth=grid?Math.min(grid.getBoundingClientRect().width*0.38,360):340;
+    p.style.setProperty('position','fixed','important');
+    p.style.setProperty('top',topOff+'px','important');
+    p.style.setProperty('right',rightOff+'px','important');
+    p.style.setProperty('left','auto','important');
+    p.style.setProperty('width',pWidth+'px','important');
+    p.style.setProperty('max-height','calc(100vh - '+(topOff+16)+'px)','important');
+    p.style.setProperty('overflow-y','auto','important');
+    p.style.setProperty('z-index','500','important');
+    p.style.setProperty('box-shadow','0 8px 32px rgba(30,58,138,.2)','important');
+    p.style.setProperty('border-radius','14px','important');
   }
 
   function _start(){
@@ -17509,7 +17491,7 @@ setTimeout(function(){
     window.removeEventListener('resize',_reposition);
     var p=_panel();
     if(p){
-      ['position','top','right','left','width','max-height','z-index','box-shadow'].forEach(function(s){
+      ['position','top','right','left','width','max-height','overflow-y','z-index','box-shadow','border-radius'].forEach(function(s){
         p.style.removeProperty(s);
       });
     }
@@ -18874,27 +18856,45 @@ function renderSozlesmeUyarilari(){
       var d=new Date(); return d.getFullYear()+'-'+(String(d.getMonth()+1).padStart(2,'0'));
     })();
 
-    // Toplam personel maliyeti
-    var toplamPerMaliyet = parseFloat(document.getElementById('perMaliyetToplam')?.value||0);
-    var yonetimGiderleri = parseFloat(document.getElementById('yonetimGiderToplam')?.value||0);
+    // FIX-V17: Personel maliyeti — proje personeli AYRI, merkez → yönetim havuzu
+    var _manuelPer = parseFloat(document.getElementById('perMaliyetToplam')?.value||0);
+    var _manuelYon = parseFloat(document.getElementById('yonetimGiderToplam')?.value||0);
 
     // Personeller
     var personeller = (function(){try{return JSON.parse(localStorage.getItem('uysa_personeller')||'[]');}catch(e){return[];}})();
     var aktifPer = personeller.filter(function(p){return !p.pasif;});
 
-    // Eğer manuel giriş yoksa personel maaşlarından hesapla
-    if(!toplamPerMaliyet && aktifPer.length>0){
-      toplamPerMaliyet = aktifPer.reduce(function(s,p){return s+(parseFloat(p.maas)||0);},0);
-    }
+    // Proje personelini AYIR: merkez (shared) vs. müşteriye atanmış
+    var merkezPerMaliyet = 0;
+    var _projePer = {}; // {musteri_adi: toplam_maas}
+    aktifPer.forEach(function(p){
+      var m = parseFloat(p.maas)||0;
+      var prj = (p.proje||'').trim();
+      if(!prj || prj==='' || prj.toLowerCase()==='merkez'){
+        merkezPerMaliyet += m; // paylaşımlı havuz
+      } else {
+        _projePer[prj] = (_projePer[prj]||0) + m; // doğrudan müşteriye
+      }
+    });
 
-    // Yönetim giderleri de yoksa finans giderlerinden al
-    if(!yonetimGiderleri){
+    // Manuel giriş varsa tüm personel miktarı olarak al (proje ataması yok sayılır)
+    var manuelMod = (_manuelPer > 0);
+    if(manuelMod){ merkezPerMaliyet = _manuelPer; }
+
+    // Yönetim giderleri (kira, enerji vb.) + merkez personel = YÖNETİM HAVUZU
+    var _extYon = _manuelYon;
+    if(!_extYon){
       var giderler = (function(){try{return JSON.parse(localStorage.getItem('uysa_giderler')||'[]');}catch(e){return[];}})();
       var ayGiderler = giderler.filter(function(g){return (g.tarih||'').startsWith(secilenAy);});
-      yonetimGiderleri = ayGiderler
+      _extYon = ayGiderler
         .filter(function(g){return g.kat&&(g.kat.indexOf('yonetim')>=0||g.kat.indexOf('kira')>=0||g.kat.indexOf('enerji')>=0);})
         .reduce(function(s,g){return s+(g.tutar||0);},0);
     }
+    // Yönetim havuzu = dış yönetim giderleri + merkez personel maliyeti
+    var yonetimHavuz = _extYon + merkezPerMaliyet;
+    // Toplam personel maliyeti (gösterim için)
+    var toplamPerMaliyet = merkezPerMaliyet + Object.values(_projePer).reduce(function(s,v){return s+v;},0);
+    var yonetimGiderleri = _extYon; // gösterim: sadece dış giderler
 
     // Günlük üretim verileri
     var gunlukArr = (function(){try{return JSON.parse(localStorage.getItem('uysa_gunluk_uretim')||'[]');}catch(e){return[];}})();
@@ -18932,21 +18932,18 @@ function renderSozlesmeUyarilari(){
       var yemekSay = musteriYemek[mus]||0;
       var oran = toplamYemek>0 ? yemekSay/toplamYemek : 0;
 
-      // Bu müşteriye personel payı
-      var perPay = toplamPerMaliyet * oran;
+      // FIX-V17: perPay=0 (merkez+yönetim havuzunda), yonetimPay=havuz*oran, proje DOĞRUDAN
+      var perPay = 0; // artık yönetim havuzuna dahil
 
-      // Yönetim giderleri payı
-      var yonetimPay = yonetimGiderleri * oran;
+      // Yönetim havuzu payı (merkez personel + dış yönetim giderleri) — porsiyon oranında
+      var yonetimPay = yonetimHavuz * oran;
 
-      // Bu müşterinin kendi personeli var mı? (CRM'den proje bilgisi)
+      // CRM verisi
       var crmKey = 'uysa_crm_'+mus;
       var crm = (function(){try{return JSON.parse(localStorage.getItem(crmKey)||'{}');}catch(e){return{};}})();
 
-      // Projeye bağlı personel maliyeti
-      var projePerMaliyet = 0;
-      aktifPer.forEach(function(p){
-        if(p.proje===mus){ projePerMaliyet += parseFloat(p.maas)||0; }
-      });
+      // Bu müşteriye doğrudan atanmış personel (çift sayım olmaz — havuzda YOK)
+      var projePerMaliyet = manuelMod ? 0 : (_projePer[mus]||0);
 
       // Bu müşterinin geliri (ay)
       var musGelir = ayGelirler.filter(function(g){return g.musteri===mus;}).reduce(function(s,g){return s+(g.tutar||0);},0);
@@ -18954,8 +18951,8 @@ function renderSozlesmeUyarilari(){
       // Üretim maliyeti payı
       var uretimPay = birYemekUretimGider * yemekSay;
 
-      // Toplam maliyet
-      var toplamMaliyet = perPay + yonetimPay + projePerMaliyet + uretimPay;
+      // Toplam maliyet — çift sayım YOK
+      var toplamMaliyet = yonetimPay + projePerMaliyet + uretimPay;
       var birYemekMaliyet = yemekSay>0 ? toplamMaliyet/yemekSay : 0;
       var birYemekGelir = yemekSay>0 ? musGelir/yemekSay : (crm.fiyat||0);
       var birYemekKar = birYemekGelir - birYemekMaliyet;
@@ -18980,9 +18977,9 @@ function renderSozlesmeUyarilari(){
       +'<th style="padding:10px 8px;text-align:left;border-bottom:2px solid #e2e8f0">Müşteri</th>'
       +'<th style="padding:10px 8px;text-align:right;border-bottom:2px solid #e2e8f0">Yemek (adet)</th>'
       +'<th style="padding:10px 8px;text-align:right;border-bottom:2px solid #e2e8f0">Pay %</th>'
-      +'<th style="padding:10px 8px;text-align:right;border-bottom:2px solid #e2e8f0">Personel Payı</th>'
+      +'<th style="padding:10px 8px;text-align:right;border-bottom:2px solid #e2e8f0;display:none">Personel Payı</th>'
       +'<th style="padding:10px 8px;text-align:right;border-bottom:2px solid #e2e8f0">Proje Pers.</th>'
-      +'<th style="padding:10px 8px;text-align:right;border-bottom:2px solid #e2e8f0">Yönetim Payı</th>'
+      +'<th style="padding:10px 8px;text-align:right;border-bottom:2px solid #e2e8f0">Yönetim Payı<br><span style="font-size:10px;font-weight:400;color:#94a3b8">(Merkez+Gider)</span></th>'
       +'<th style="padding:10px 8px;text-align:right;border-bottom:2px solid #e2e8f0">Üretim Pay.</th>'
       +'<th style="padding:10px 8px;text-align:right;border-bottom:2px solid #e2e8f0;background:#fff7ed;color:#c2410c">Toplam Maliyet</th>'
       +'<th style="padding:10px 8px;text-align:right;border-bottom:2px solid #e2e8f0">Gelir</th>'
@@ -18999,7 +18996,7 @@ function renderSozlesmeUyarilari(){
         +'<td style="padding:9px 8px;font-weight:700">'+r.mus+(r.projePerMaliyet>0?'<span style="font-size:10px;color:#f59e0b;margin-left:4px">★ özel pers.</span>':'')+'</td>'
         +'<td style="padding:9px 8px;text-align:right;font-weight:600">'+r.yemekSay.toLocaleString('tr-TR')+'</td>'
         +'<td style="padding:9px 8px;text-align:right;color:#6b7280">'+_fp(r.oran*100)+'</td>'
-        +'<td style="padding:9px 8px;text-align:right;color:#7c3aed">'+_f(r.perPay)+' ₺</td>'
+        +'<td style="padding:9px 8px;text-align:right;color:#7c3aed;display:none">'+_f(r.perPay)+' ₺</td>'
         +'<td style="padding:9px 8px;text-align:right;color:'+(r.projePerMaliyet>0?'#d97706':'#9ca3af')+'">'+_f(r.projePerMaliyet)+' ₺</td>'
         +'<td style="padding:9px 8px;text-align:right;color:#0891b2">'+_f(r.yonetimPay)+' ₺</td>'
         +'<td style="padding:9px 8px;text-align:right;color:#dc2626">'+_f(r.uretimPay)+' ₺</td>'
@@ -19025,7 +19022,7 @@ function renderSozlesmeUyarilari(){
       +'<td style="padding:10px 8px;color:#fff">TOPLAM ('+rows.length+' müşteri)</td>'
       +'<td style="padding:10px 8px;text-align:right;color:#60a5fa">'+gtYemek.toLocaleString('tr-TR')+'</td>'
       +'<td style="padding:10px 8px;text-align:right;color:#9ca3af">100%</td>'
-      +'<td colspan="4" style="padding:10px 8px;text-align:right;color:#fbbf24">'+_f(toplamPerMaliyet+yonetimGiderleri)+' ₺</td>'
+      +'<td colspan="4" style="padding:10px 8px;text-align:right;color:#fbbf24">'+_f(yonetimHavuz+Object.values(_projePer).reduce(function(s,v){return s+v;},0))+' ₺</td>'
       +'<td style="padding:10px 8px;text-align:right;color:#f87171">'+_f(gtMaliyet)+' ₺</td>'
       +'<td style="padding:10px 8px;text-align:right;color:#34d399">'+_f(gtGelir)+' ₺</td>'
       +'<td style="padding:10px 8px;text-align:right;color:#f87171;background:#1e3a5f">'+_f(gt1Mal)+' ₺</td>'
@@ -19039,7 +19036,7 @@ function renderSozlesmeUyarilari(){
     // Açıklama notu
     html += '<div style="margin-top:10px;background:#f0f9ff;border-left:4px solid #0ea5e9;padding:10px 14px;border-radius:0 8px 8px 0;font-size:12px;color:#0369a1">'
       +'<b>⚡ Not:</b> ★ işaretli müşteriler; İK modülünde kendilerine atanmış personel içeriyor — bu personel maliyeti toplam havuzdan ek olarak eklenir. '
-      +'Yönetim giderleri (kira, enerji vb.) tüm müşterilere porsiyon oranında paylaştırılır.'
+      +'Yönetim Havuzu = Merkez personel + dış yönetim giderleri (kira, enerji vb.) — tüm müşterilere porsiyon sayısına oranla paylaştırılır. ★ işaretli müşterilerin kendi personel maliyeti ayrıca eklenir.'
       +'</div>';
 
     sonucDiv.innerHTML = html;
