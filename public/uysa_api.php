@@ -305,7 +305,7 @@ $action = trim($_GET['action'] ?? '');
 $body   = json_decode(file_get_contents('php://input'), true) ?? [];
 
 // ── Auth Bypass: fileDownload public ─────────────────────────
-$publicActions = ['fileDownload', 'ping', 'health'];
+$publicActions = ['fileDownload', 'ping', 'health', 'getToken', 'userAuth'];
 
 // ── Kimlik Doğrulama ─────────────────────────────────────────
 $authedUser = null;
