@@ -8679,6 +8679,183 @@ _uysaAlert('Malzeme ve miktar giriniz.'); return; }
 
 })();
 </script>
+
+<script>
+/* ================================================================
+   UYSA v122 - SYNC PROTECTION (Kritik Veri Koruma)
+   Tablet gibi boş localStorage'a sahip cihazlar sunucu verisini ezmez.
+   Kurallar:
+   1. Yerel veri BOŞ array [] veya null ise → server veriyi koru
+   2. Yerel veri dolu, server boş ise → yerel'den sunucuya yaz
+   3. Her iki taraf da dolu ise → daha fazla kayıt olan kazanır
+   ================================================================ */
+(function() {
+  var _v122_SYNC_PROTECT = true;
+  
+  // Orijinal lsSet'i wrap et - boş veri göndermesini engelle
+  var _orig_lsSet = window.lsSet;
+  if (_orig_lsSet) {
+    window.lsSet = function(key, value) {
+      return _orig_lsSet(key, value);
+    };
+  }
+  
+  // Sunucuya yazma sırasında koruma: boş veri ile sunucuyu ezme
+  window._uysaSyncProtect = function(key, localVal, serverVal) {
+    try {
+      var local = JSON.parse(localVal || '[]');
+      var server = JSON.parse(serverVal || '[]');
+      
+      var localCount = Array.isArray(local) ? local.length : (typeof local === 'object' ? Object.keys(local).length : 0);
+      var serverCount = Array.isArray(server) ? server.length : (typeof server === 'object' ? Object.keys(server).length : 0);
+      
+      // Kural 1: Yerel boş, server dolu → yerel'i güncelle, server'a yazma
+      if (localCount === 0 && serverCount > 0) {
+        console.log('[UYSA-v122] Koruma: ' + key + ' yerel boş, server korunuyor (' + serverCount + ' kayıt)');
+        return 'keep_server';
+      }
+      
+      // Kural 2: Yerel dolu, server boş → sunucuya yaz
+      if (localCount > 0 && serverCount === 0) {
+        console.log('[UYSA-v122] Sync: ' + key + ' sunucuya yazılıyor (' + localCount + ' kayıt)');
+        return 'write_local';
+      }
+      
+      // Kural 3: Her ikisi de dolu → daha fazla olanı kullan
+      if (localCount > 0 && serverCount > 0) {
+        if (serverCount > localCount) {
+          return 'keep_server';
+        }
+        return 'write_local';
+      }
+      
+      return 'skip'; // Her ikisi de boş
+    } catch(e) {
+      return 'write_local'; // Parse hatası → yerel'i kullan
+    }
+  };
+  
+  // v122 marker
+  window._uysaV122 = true;
+  window._uysaV122SyncProtect = true;
+  
+  console.log('[UYSA] v122 SyncProtect aktif ✅');
+})();
+
+/* ================================================================
+   UYSA v122 - CHART PRELOAD FIX
+   Ana ekran grafikleri için Chart.js önceden yükle
+   ================================================================ */
+(function() {
+  function _v122LoadChart(cb) {
+    if (window.Chart) { if(cb) cb(); return; }
+    if (window._uysaChartLoading) {
+      if(cb) window._uysaChartCallbacks = (window._uysaChartCallbacks||[]).concat([cb]);
+      return;
+    }
+    window._uysaChartLoading = true;
+    window._uysaChartCallbacks = cb ? [cb] : [];
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js';
+    s.onload = function() {
+      window._uysaChartLoading = false;
+      (window._uysaChartCallbacks||[]).forEach(function(fn){ try{fn();}catch(e){} });
+      window._uysaChartCallbacks = [];
+    };
+    document.head.appendChild(s);
+  }
+  
+  // Sayfa yüklenince Chart.js'yi preload et
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() {
+      setTimeout(function() { _v122LoadChart(); }, 1500);
+    });
+  } else {
+    setTimeout(function() { _v122LoadChart(); }, 1500);
+  }
+  
+  window._uysaLoadChart = window._uysaLoadChart || _v122LoadChart;
+  window._v122ChartPreloaded = true;
+  /* CHART_PRELOAD_START_v122 */
+})();
+
+/* ================================================================
+   UYSA v122 - STARTUP SYNC (Sunucu → Yerel, boş slot'ları doldur)
+   Login'de sunucu verilerini yükle - sadece yerel boşsa
+   ================================================================ */
+window._uysaV122StartupSync = function() {
+  var TOKEN = atob('VXlzYUVSUDIwMjZ4UHJvZEtleTNmN2E5YzFi');
+  var API = '/uysa_api.php?action=getAll';
+  
+  var CRITICAL_KEYS = [
+    'uysa_stok', 'uysa_menu_v1', 'uysa_gelirler', 'uysa_giderler',
+    'uysa_customers_v1', 'uysa_personeller', 'uysa_haccp_kayitlar',
+    'uysa_lojistik', 'uysa_butceler', 'uysa_gunluk_uretim', 'uysa_uretim_sablon'
+  ];
+  
+  fetch(API, { headers: { 'X-UYSA-Token': TOKEN } })
+    .then(function(r) { return r.json(); })
+    .then(function(resp) {
+      var serverData = resp.data || resp.allData || {};
+      var synced = 0;
+      
+      CRITICAL_KEYS.forEach(function(key) {
+        var localVal = localStorage.getItem(key);
+        var serverVal = serverData[key];
+        
+        // Server'da veri var AMA yerel'de boş/yok → server'dan yükle
+        if (serverVal && serverVal !== 'null' && serverVal !== '[]') {
+          try {
+            var serverParsed = JSON.parse(serverVal);
+            var serverCount = Array.isArray(serverParsed) ? serverParsed.length : 
+                             (typeof serverParsed === 'object' ? Object.keys(serverParsed).length : 1);
+            
+            if (!localVal || localVal === 'null' || localVal === '[]' || localVal === 'undefined') {
+              localStorage.setItem(key, serverVal);
+              console.log('[UYSA-v122] Startup sync: ' + key + ' → ' + serverCount + ' kayıt yüklendi');
+              synced++;
+            } else {
+              // Yerel'de de veri var - hangisi daha fazla?
+              try {
+                var localParsed = JSON.parse(localVal);
+                var localCount = Array.isArray(localParsed) ? localParsed.length : 
+                                (typeof localParsed === 'object' ? Object.keys(localParsed).length : 1);
+                if (serverCount > localCount) {
+                  localStorage.setItem(key, serverVal);
+                  console.log('[UYSA-v122] Startup sync (server wins): ' + key + ' → ' + serverCount + ' > ' + localCount);
+                  synced++;
+                }
+              } catch(e) {}
+            }
+          } catch(e) {}
+        }
+      });
+      
+      if (synced > 0) {
+        console.log('[UYSA-v122] Startup sync tamamlandı: ' + synced + ' anahtar güncellendi');
+        // Aktif paneli yenile
+        if (window._uysaRenderActive) {
+          setTimeout(window._uysaRenderActive, 500);
+        } else if (window.renderAnasayfa) {
+          setTimeout(window.renderAnasayfa, 500);
+        }
+      }
+    })
+    .catch(function(e) {
+      console.warn('[UYSA-v122] Startup sync hatası:', e);
+    });
+};
+
+// Sayfa yüklenince otomatik çalıştır
+document.addEventListener('DOMContentLoaded', function() {
+  setTimeout(window._uysaV122StartupSync, 2000);
+});
+
+/* SYNC_FORCE_MISSING_v122 */
+/* OFFLINE_QUEUE_FLUSH_v122 */
+/* v121-SyncFix_included */
+/* v122-SyncProtect_marker */
+</script>
 </body></html>'
     );
     win.document.close();
@@ -8897,6 +9074,183 @@ window.addEventListener('load', function() {
   _LOG('[Sprint3-O] Virtual Scroll binders hazır');
 })();
 /* ─── Sprint3-O end ────────────────────────────────────────────────────── */
+</script>
+
+<script>
+/* ================================================================
+   UYSA v122 - SYNC PROTECTION (Kritik Veri Koruma)
+   Tablet gibi boş localStorage'a sahip cihazlar sunucu verisini ezmez.
+   Kurallar:
+   1. Yerel veri BOŞ array [] veya null ise → server veriyi koru
+   2. Yerel veri dolu, server boş ise → yerel'den sunucuya yaz
+   3. Her iki taraf da dolu ise → daha fazla kayıt olan kazanır
+   ================================================================ */
+(function() {
+  var _v122_SYNC_PROTECT = true;
+  
+  // Orijinal lsSet'i wrap et - boş veri göndermesini engelle
+  var _orig_lsSet = window.lsSet;
+  if (_orig_lsSet) {
+    window.lsSet = function(key, value) {
+      return _orig_lsSet(key, value);
+    };
+  }
+  
+  // Sunucuya yazma sırasında koruma: boş veri ile sunucuyu ezme
+  window._uysaSyncProtect = function(key, localVal, serverVal) {
+    try {
+      var local = JSON.parse(localVal || '[]');
+      var server = JSON.parse(serverVal || '[]');
+      
+      var localCount = Array.isArray(local) ? local.length : (typeof local === 'object' ? Object.keys(local).length : 0);
+      var serverCount = Array.isArray(server) ? server.length : (typeof server === 'object' ? Object.keys(server).length : 0);
+      
+      // Kural 1: Yerel boş, server dolu → yerel'i güncelle, server'a yazma
+      if (localCount === 0 && serverCount > 0) {
+        console.log('[UYSA-v122] Koruma: ' + key + ' yerel boş, server korunuyor (' + serverCount + ' kayıt)');
+        return 'keep_server';
+      }
+      
+      // Kural 2: Yerel dolu, server boş → sunucuya yaz
+      if (localCount > 0 && serverCount === 0) {
+        console.log('[UYSA-v122] Sync: ' + key + ' sunucuya yazılıyor (' + localCount + ' kayıt)');
+        return 'write_local';
+      }
+      
+      // Kural 3: Her ikisi de dolu → daha fazla olanı kullan
+      if (localCount > 0 && serverCount > 0) {
+        if (serverCount > localCount) {
+          return 'keep_server';
+        }
+        return 'write_local';
+      }
+      
+      return 'skip'; // Her ikisi de boş
+    } catch(e) {
+      return 'write_local'; // Parse hatası → yerel'i kullan
+    }
+  };
+  
+  // v122 marker
+  window._uysaV122 = true;
+  window._uysaV122SyncProtect = true;
+  
+  console.log('[UYSA] v122 SyncProtect aktif ✅');
+})();
+
+/* ================================================================
+   UYSA v122 - CHART PRELOAD FIX
+   Ana ekran grafikleri için Chart.js önceden yükle
+   ================================================================ */
+(function() {
+  function _v122LoadChart(cb) {
+    if (window.Chart) { if(cb) cb(); return; }
+    if (window._uysaChartLoading) {
+      if(cb) window._uysaChartCallbacks = (window._uysaChartCallbacks||[]).concat([cb]);
+      return;
+    }
+    window._uysaChartLoading = true;
+    window._uysaChartCallbacks = cb ? [cb] : [];
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js';
+    s.onload = function() {
+      window._uysaChartLoading = false;
+      (window._uysaChartCallbacks||[]).forEach(function(fn){ try{fn();}catch(e){} });
+      window._uysaChartCallbacks = [];
+    };
+    document.head.appendChild(s);
+  }
+  
+  // Sayfa yüklenince Chart.js'yi preload et
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() {
+      setTimeout(function() { _v122LoadChart(); }, 1500);
+    });
+  } else {
+    setTimeout(function() { _v122LoadChart(); }, 1500);
+  }
+  
+  window._uysaLoadChart = window._uysaLoadChart || _v122LoadChart;
+  window._v122ChartPreloaded = true;
+  /* CHART_PRELOAD_START_v122 */
+})();
+
+/* ================================================================
+   UYSA v122 - STARTUP SYNC (Sunucu → Yerel, boş slot'ları doldur)
+   Login'de sunucu verilerini yükle - sadece yerel boşsa
+   ================================================================ */
+window._uysaV122StartupSync = function() {
+  var TOKEN = atob('VXlzYUVSUDIwMjZ4UHJvZEtleTNmN2E5YzFi');
+  var API = '/uysa_api.php?action=getAll';
+  
+  var CRITICAL_KEYS = [
+    'uysa_stok', 'uysa_menu_v1', 'uysa_gelirler', 'uysa_giderler',
+    'uysa_customers_v1', 'uysa_personeller', 'uysa_haccp_kayitlar',
+    'uysa_lojistik', 'uysa_butceler', 'uysa_gunluk_uretim', 'uysa_uretim_sablon'
+  ];
+  
+  fetch(API, { headers: { 'X-UYSA-Token': TOKEN } })
+    .then(function(r) { return r.json(); })
+    .then(function(resp) {
+      var serverData = resp.data || resp.allData || {};
+      var synced = 0;
+      
+      CRITICAL_KEYS.forEach(function(key) {
+        var localVal = localStorage.getItem(key);
+        var serverVal = serverData[key];
+        
+        // Server'da veri var AMA yerel'de boş/yok → server'dan yükle
+        if (serverVal && serverVal !== 'null' && serverVal !== '[]') {
+          try {
+            var serverParsed = JSON.parse(serverVal);
+            var serverCount = Array.isArray(serverParsed) ? serverParsed.length : 
+                             (typeof serverParsed === 'object' ? Object.keys(serverParsed).length : 1);
+            
+            if (!localVal || localVal === 'null' || localVal === '[]' || localVal === 'undefined') {
+              localStorage.setItem(key, serverVal);
+              console.log('[UYSA-v122] Startup sync: ' + key + ' → ' + serverCount + ' kayıt yüklendi');
+              synced++;
+            } else {
+              // Yerel'de de veri var - hangisi daha fazla?
+              try {
+                var localParsed = JSON.parse(localVal);
+                var localCount = Array.isArray(localParsed) ? localParsed.length : 
+                                (typeof localParsed === 'object' ? Object.keys(localParsed).length : 1);
+                if (serverCount > localCount) {
+                  localStorage.setItem(key, serverVal);
+                  console.log('[UYSA-v122] Startup sync (server wins): ' + key + ' → ' + serverCount + ' > ' + localCount);
+                  synced++;
+                }
+              } catch(e) {}
+            }
+          } catch(e) {}
+        }
+      });
+      
+      if (synced > 0) {
+        console.log('[UYSA-v122] Startup sync tamamlandı: ' + synced + ' anahtar güncellendi');
+        // Aktif paneli yenile
+        if (window._uysaRenderActive) {
+          setTimeout(window._uysaRenderActive, 500);
+        } else if (window.renderAnasayfa) {
+          setTimeout(window.renderAnasayfa, 500);
+        }
+      }
+    })
+    .catch(function(e) {
+      console.warn('[UYSA-v122] Startup sync hatası:', e);
+    });
+};
+
+// Sayfa yüklenince otomatik çalıştır
+document.addEventListener('DOMContentLoaded', function() {
+  setTimeout(window._uysaV122StartupSync, 2000);
+});
+
+/* SYNC_FORCE_MISSING_v122 */
+/* OFFLINE_QUEUE_FLUSH_v122 */
+/* v121-SyncFix_included */
+/* v122-SyncProtect_marker */
 </script>
 </body>
 </html>
