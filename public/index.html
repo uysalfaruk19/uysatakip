@@ -18044,7 +18044,7 @@ window.uysaPuantajGenelOzet = function() {
   const ayAdlari = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
   const ayAdi = ayAdlari[ayNum - 1];
   const gunSay = new Date(yil, ayNum, 0).getDate();
-  const isGun = 22; // ortalama iş günü
+  const isGun = 30; // FIX-V16b: maaş/30 formülü
 
   // izinler
   let izinler = [];
@@ -18093,7 +18093,7 @@ window.uysaPuantajGenelOzet = function() {
     Object.values(puantaj).forEach(d => {
       if (d === 'mesai' || d === 'fazlaMesai') mesaiGun++;
     });
-    const gunlukMaas = maas / isGun;
+    const gunlukMaas = maas / 30; // FIX-V16b: maaş/30
     const mesaiUcret = mesaiGun * gunlukMaas * 1.5;
     const izinKesinti = toplamIzin * gunlukMaas;
     const hakEdis = Math.max(0, maas + mesaiUcret - izinKesinti);
