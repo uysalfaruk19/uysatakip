@@ -942,18 +942,30 @@
     var btn = document.getElementById('syncPullBtn');
     if(btn){ btn.disabled=true; btn.innerHTML='<span>⏳</span> Yükleniyor...'; }
     try {
-      await window._uysaSyncLoad();
-      // Tüm render fonksiyonlarını tekrar çağır
-      var allFns = [
-        'renderAnasayfa','refreshFinStats','gsRenderTableV76','v75RenderAylikRapor',
-        'renderCrmList','_menuRebuildRows','renderStokTablo',
-        'renderPersonelTablo','renderLojistikTablo'
-      ];
-      allFns.forEach(fn => { try { if(typeof window[fn]==='function') window[fn](); } catch(e){} });
-      if(btn){ btn.disabled=false; btn.innerHTML='<span>✅</span> Yüklendi'; }
-      setTimeout(()=>{ if(btn) btn.innerHTML='<span>☁️</span> Sunucudan Yükle'; }, 2000);
+      // Sunucudan tüm verileri çek
+      const CFG_URL = '/uysa_api.php';
+      const CFG_TK  = atob('VXlzYUVSUDIwMjZ4UHJvZEtleTNmN2E5YzFi');
+      const resp = await fetch(CFG_URL + '?action=getAll', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json','X-UYSA-Token': CFG_TK},
+        body: JSON.stringify({})
+      });
+      const result = await resp.json();
+      if(!result.ok) throw new Error(result.error || 'API hatası');
+
+      const AUTH_SKIP = /^uysa_(users_|migrated_|session|audit_logs)/;
+      let loaded = 0;
+      for(const [k, v] of Object.entries(result.data || {})){
+        if(AUTH_SKIP.test(k)) continue;
+        localStorage.setItem(k, v);
+        loaded++;
+      }
+      if(btn){ btn.disabled=false; btn.innerHTML='<span>✅</span> ' + loaded + ' kayıt yüklendi'; }
+      // Reload ile temiz render
+      sessionStorage.setItem('uysa_sync_done', Date.now().toString());
+      setTimeout(function(){ window.location.reload(); }, 800);
     } catch(e) {
-      if(btn){ btn.disabled=false; btn.innerHTML='<span>❌</span> Hata'; }
+      if(btn){ btn.disabled=false; btn.innerHTML='<span>❌</span> Hata: ' + e.message; }
       console.error('[UYSA] ForcePull error:', e);
     }
   };
@@ -985,7 +997,16 @@
     }
 
     if (loaded > 0) {
-      toast(`☁️ Sunucu senkronizasyonu tamamlandı: ${loaded} kayıt yüklendi. Sayfa yenileniyor...`, 4000);
+      // Yeni cihaz kontrolü
+        const _justSynced = sessionStorage.getItem('uysa_sync_done');
+        if (!_justSynced && loaded > 3) {
+          toast('☁️ ' + loaded + ' kayıt sunucudan yüklendi, sayfa yenileniyor...', 2500);
+          sessionStorage.setItem('uysa_sync_done', Date.now().toString());
+          setTimeout(function(){ window.location.reload(); }, 1500);
+          return;
+        }
+        sessionStorage.removeItem('uysa_sync_done');
+        toast('☁️ Sunucudan yüklendi: ' + loaded + ' kayıt', 4000);
       // Tüm modül render fonksiyonları — cross-device sync için genişletildi
       const fns = [
         // Finans
@@ -19918,7 +19939,7 @@ document.addEventListener('DOMContentLoaded', function(){
 <script>
 
   // ════════════════════════════════════════════════════════════
-  // UYSA v88 — KDV Sistemi + SGK + Biriken Haklar + Aylık KDV Raporu + Üretim KDV Sütunu
+  // UYSA v89 — KDV Sistemi + SGK + Biriken Haklar + Aylık KDV Raporu + Üretim KDV Sütunu
   // ════════════════════════════════════════════════════════════
   (function(){
     'use strict';
