@@ -1349,11 +1349,6 @@
         <span>FİNANS</span>
         <span class="mod-label">Gelir &amp; Gider</span>
       </button>
-      <button class="mod-nav-item" data-module="stok">
-        <span class="mod-icon">🏭</span>
-        <span>DEPO</span>
-        <span class="mod-label">Stok &amp; Depo</span>
-      </button>
       <button class="mod-nav-item" data-module="satis">
         <span class="mod-icon">🤝</span>
         <span>SATIŞ &amp; CRM</span>
@@ -1385,7 +1380,7 @@
         <span>ÜRETİM</span>
         <span class="mod-label">KDS &amp; Alerjen</span>
       </button>
-      <button class="mod-nav-item" data-module="haccp">
+      <button class="mod-nav-item" data-module="haccp" style="display:none" id="haccpNavBtn">
         <span class="mod-icon">🛡️</span>
         <span>HACCP</span>
         <span class="mod-label">Gıda Güvenliği</span>
@@ -1395,10 +1390,15 @@
         <span>LOJİSTİK</span>
         <span class="mod-label">Sefer &amp; Teslimat</span>
       </button>
-      <button class="mod-nav-item" data-module="bildirim">
+      <button class="mod-nav-item" data-module="bildirim" style="display:none" id="bildirimNavBtn">
         <span class="mod-icon">🔔</span>
         <span>BİLDİRİM</span>
         <span class="mod-label">Bildirim Merkezi</span>
+      </button>
+      <button class="mod-nav-item" data-module="stok">
+        <span class="mod-icon">🏭</span>
+        <span>DEPO</span>
+        <span class="mod-label">Stok &amp; Depo</span>
       </button>
       <button class="mod-nav-item" data-module="portal">
         <span class="mod-icon">🌐</span>
@@ -2266,13 +2266,13 @@
                   <div><label>Tarih</label><input id="gider-tarih" type="date"/></div>
                   <div><label>Tutar (₺)</label><input id="gider-tutar" type="number" min="0" step="0.01" placeholder="0.00"/></div>
                 </div>
-                <div><label>Açıklama</label><input <div>
+                <div>
                   <label>🏪 Tedarikçi (opsiyonel)</label>
                   <select id="gider-tedarikci" style="width:100%;padding:7px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px">
                     <option value="">— Tedarikçi seçin —</option>
                   </select>
                 </div>
-                id="gider-aciklama" placeholder="Et alımı, elektrik faturası, maaş vb."/></div>
+                <div><label>Açıklama</label><input id="gider-aciklama" placeholder="Et alımı, elektrik faturası, maaş vb." style="width:100%;padding:7px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px"/></div>
                 <div><label>Belge No (isteğe bağlı)</label><input id="gider-belge" placeholder="FAT/İRS no"/></div>
                 <button class="btn danger" id="giderKaydetBtn" type="button">Gider Kaydet</button>
               </div>
@@ -3405,6 +3405,11 @@
 
     <!-- MODULE 7: DOKÜMAN YÖNETİMİ -->
     <div class="mod-panel" id="mod-dokuman">
+    <!-- HACCP Erişim Linki -->
+    <div id="haccpDokumanLink" style="background:linear-gradient(135deg,#ecfdf5,#d1fae5);border:1.5px solid #6ee7b7;border-radius:12px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:12px;cursor:pointer" onclick="document.querySelector('[data-module=haccp]') && (document.querySelector('[data-module=haccp]').style.display='',document.querySelector('[data-module=haccp]').click())">
+      <span style="font-size:22px">🛡️</span>
+      <div><div style="font-weight:800;color:#065f46;font-size:14px">HACCP Gıda Güvenliği</div><div style="font-size:11px;color:#047857">HACCP kayıt ve kontrol formlarına erişin →</div></div>
+    </div>
       <div class="content">
         <div class="module-header">
           <h2>🗂️ Doküman Yönetimi</h2>
@@ -3668,8 +3673,8 @@
       <div id="lojistikForm" style="display:none;background:#f8faff;border:1px solid #dbe4ff;border-radius:10px;padding:16px;margin-bottom:14px">
         <h4 style="margin:0 0 12px;color:#0b3aa6">🚚 Yeni Sefer Kaydı</h4>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
-          <div><label style="font-size:12px;font-weight:600">Tarih</label>
-            <input id="lojistikTarih" type="date" class="inp"/></div>
+          <div><label style="font-size:12px;font-weight:600">Tarih <span style="font-weight:400;color:#64748b;font-size:11px">(opsiyonel)</span></label>
+            <input id="lojistikTarih" type="date" class="inp" placeholder="Boş bırakılabilir"/></div>
           <div><label style="font-size:12px;font-weight:600">Araç Plakası</label>
             <input id="lojistikPlaka" class="inp" placeholder="34 ABC 123"/></div>
           <div><label style="font-size:12px;font-weight:600">Şoför</label>
@@ -3679,9 +3684,10 @@
           <div><label style="font-size:12px;font-weight:600">Çıkış Noktası</label>
             <input id="lojistikCikis" class="inp" placeholder="Mutfak/Merkez"/></div>
           <div><label style="font-size:12px;font-weight:600">Varış Noktası (Müşteri)</label>
-            <select id="lojistikVaris" class="inp" style="min-width:120px">
-              <option value="">-- Müşteri Seç --</option>
+            <select id="lojistikVaris" class="inp" style="min-width:120px" multiple size="3" title="Ctrl+Click ile birden fazla müşteri seçebilirsiniz">
+              <option value="">-- Müşteri Seç (Ctrl+tıkla: çoklu) --</option>
             </select>
+            <div style="font-size:10px;color:#64748b;margin-top:2px">Ctrl+tıkla ile birden fazla müşteri seç</div>
             <button type="button" onclick="lojistikVarisDoldur()" style="margin-top:4px;font-size:11px;padding:3px 8px;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;background:#f9fafb">🔄 Müşterileri Yükle</button></div>
           <div><label style="font-size:12px;font-weight:600">Yemek Sayısı (porsiyon)</label>
             <input id="lojistikPorsiyon" type="number" class="inp" placeholder="0"/></div>
@@ -3769,6 +3775,11 @@
 
     <!-- MOD: MÜŞTERİ PORTALI -->
     <div class="mod-panel" id="mod-portal">
+    <!-- Bildirim Merkezi Erişim Linki -->
+    <div id="bildirimPortalLink" style="background:linear-gradient(135deg,#eff6ff,#dbeafe);border:1.5px solid #93c5fd;border-radius:12px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:12px;cursor:pointer" onclick="document.querySelector('[data-module=bildirim]') && (document.querySelector('[data-module=bildirim]').style.display='',document.querySelector('[data-module=bildirim]').click())">
+      <span style="font-size:22px">🔔</span>
+      <div><div style="font-weight:800;color:#1e40af;font-size:14px">Bildirim Merkezi</div><div style="font-size:11px;color:#2563eb">Sistem bildirimlerine ve uyarılara erişin →</div></div>
+    </div>
       <div class="bar">
         <div class="left"><h2 style="margin:0;font-size:18px">🌐 Müşteri Portalı</h2></div>
         <div class="right">
@@ -3848,7 +3859,8 @@
     {key:'mainDish2',label:'Ana Yemek 2',  optional:true},
     {key:'side',   label:'Yardımcı Yemek 1'},
     {key:'side2',  label:'Yardımcı Yemek 2', optional:true},
-    {key:'dessertFruit', label:'Tatlı / Meyve'},
+    {key:'dessert', label:'🍮 Tatlı'},
+{key:'fruit', label:'🍑 Meyve'},
     {key:'dessertOrFruitName', label:'Tatlı / Meyve Adı'},
     {key:'salad',  label:'Salata'},
     {key:'ayran',  label:'Ayran / Yoğurt'},
@@ -6614,6 +6626,23 @@ alert('Tutar giriniz.'); return; }
     refreshFinStats();
   }
   window.silGider = function(i){ const arr=getGiderler(); arr.splice(i,1); saveGiderler(arr); renderGiderler(); };
+
+  
+  // Tedarikçi select'ini dinamik doldur (FIX-E)
+  (function fillGiderTedarikci(){
+    const sel = document.getElementById('gider-tedarikci');
+    if(!sel) return;
+    const tedList = (function(){try{return JSON.parse(localStorage.getItem('uysa_tedarikci')||'[]');}catch(e){return[];}})();
+    const existing = new Set(Array.from(sel.options).map(o=>o.value));
+    tedList.forEach(t=>{
+      const val = t.isim||t.ad||t.name||'';
+      if(val && !existing.has(val)){
+        const o = document.createElement('option');
+        o.value = val; o.textContent = val;
+        sel.appendChild(o);
+      }
+    });
+  })();
 
   document.getElementById('giderKaydetBtn')?.addEventListener('click',()=>{
     const kat = document.getElementById('gider-kat')?.value||'diger';
@@ -10148,17 +10177,26 @@ window.addEventListener('DOMContentLoaded', function() {
     });
   };
 
-  // Sayfa yüklendiğinde önceki durumu geri yükle
+  // Sayfa yüklendiğinde önceki durumu geri yükle (FIX-J)
   (function(){
     const wknd = ls.get('uysa_weekend_mode', false);
     window._weekendOn = wknd;
     const el = document.getElementById('weekendToggle');
     if(el) el.checked = wknd;
-    if(wknd) toggleWeekend(true);
+    if(wknd) setTimeout(()=>toggleWeekend(true), 500);
   })();
   document.getElementById('weekendToggle')?.addEventListener('change', e=>{
     window._weekendOn = e.target.checked;
     ls.set('uysa_weekend_mode', e.target.checked);
+    toggleWeekend(e.target.checked);
+  });
+  // Menü modülü aktifleşince weekend durumunu koruma
+  document.addEventListener('uysa-module-change', function(ev){
+    if(ev.detail && ev.detail.module === 'operasyon'){
+      setTimeout(()=>{
+        if(window._weekendOn) toggleWeekend(true);
+      }, 300);
+    }
   });
 
   // ─────────────────────────────────────────────
