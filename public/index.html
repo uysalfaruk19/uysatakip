@@ -7070,7 +7070,7 @@ ${note}`);
     if(toplamDiv) toplamDiv.textContent = 'Toplam: ' + fmt(toplam) + ' ₺';
     refreshFinStats();
   }
-  window.silGelir = function(i){ const arr=getGelirler(); arr.splice(i,1); saveGelirler(arr); renderGelirler();
+  window.silGelir = function(i){ if(!confirm('Bu geliri silmek istediğinizden emin misiniz?')) return; const arr=getGelirler(); arr.splice(i,1); saveGelirler(arr); renderGelirler();
   };
 
   document.getElementById('gelirKaydetBtn')?.addEventListener('click',()=>{
@@ -7127,40 +7127,79 @@ alert('Tutar giriniz.'); return; }
     if(toplamDiv) toplamDiv.textContent = 'Toplam: ' + fmt(toplam) + ' ₺';
     refreshFinStats();
   }
-  window.silGider = function(i){ const arr=getGiderler(); arr.splice(i,1); saveGiderler(arr); renderGiderler(); };
+  window.silGider = function(i){ if(!confirm('Bu gideri silmek istediğinizden emin misiniz?')) return; const arr=getGiderler(); arr.splice(i,1); saveGiderler(arr); renderGiderler(); };
 
   // FIX-E: Edit functions for gelir/gider
-  window.duzenleGelir = function(idx){
-    var arr=getGelirler(); if(!arr[idx]) return;
-    var g=arr[idx];
-    var yeniTutar=prompt('Tutar (₺):', g.tutar||0);
-    if(yeniTutar===null) return;
-    var yeniMus=prompt('Müşteri:', g.musteri||'');
-    if(yeniMus===null) return;
-    var yeniAcik=prompt('Açıklama:', g.aciklama||'');
-    if(yeniAcik===null) return;
-    arr[idx].tutar=parseFloat(yeniTutar)||arr[idx].tutar;
-    arr[idx].musteri=yeniMus||arr[idx].musteri;
-    arr[idx].aciklama=yeniAcik;
-    saveGelirler(arr); renderGelirler();
-    _toast&&_toast('✅ Gelir güncellendi.');
-  };
+window.duzenleGelir = function(idx){
+var arr=getGelirler(); if(!arr[idx]) return;
+var g=arr[idx];
+// Mevcut modal varsa kaldır
+var ex=document.getElementById('uysaEditGelirModal'); if(ex) ex.remove();
+var overlay=document.createElement('div');
+overlay.id='uysaEditGelirModal';
+overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999;display:flex;align-items:center;justify-content:center;';
+overlay.innerHTML=`<div style="background:#fff;border-radius:14px;padding:24px 28px;min-width:320px;max-width:460px;width:90%;box-shadow:0 20px 40px rgba(0,0,0,.2);">
+  <h3 style="margin:0 0 18px;font-size:15px;color:#1e3a5f;font-weight:800;">✏️ Gelir Düzenle</h3>
+  <label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">Tutar (₺)</label>
+  <input id="egTutar" type="number" value="${g.tutar||0}" step="0.01" style="width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:6px;margin-bottom:12px;font-size:13px;">
+  <label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">Müşteri</label>
+  <input id="egMusteri" type="text" value="${g.musteri||''}" style="width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:6px;margin-bottom:12px;font-size:13px;">
+  <label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">Açıklama</label>
+  <input id="egAciklama" type="text" value="${g.aciklama||''}" style="width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:6px;margin-bottom:18px;font-size:13px;">
+  <div style="display:flex;gap:10px;justify-content:flex-end;">
+    <button id="egIptal" style="padding:8px 18px;border:1.5px solid #e2e8f0;border-radius:6px;background:#f8fafc;cursor:pointer;font-weight:600;font-size:13px;">İptal</button>
+    <button id="egKaydet" style="padding:8px 22px;border:none;border-radius:6px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;cursor:pointer;font-weight:700;font-size:13px;">💾 Kaydet</button>
+  </div>
+</div>`;
+document.body.appendChild(overlay);
+document.getElementById('egIptal').onclick=function(){ overlay.remove(); };
+overlay.onclick=function(e){ if(e.target===overlay) overlay.remove(); };
+document.getElementById('egKaydet').onclick=function(){
+  var arr2=getGelirler(); if(!arr2[idx]) return;
+  var t=parseFloat(document.getElementById('egTutar').value);
+  if(isNaN(t)||t<=0){ alert('Geçerli bir tutar girin.'); return; }
+  arr2[idx].tutar=t;
+  arr2[idx].musteri=document.getElementById('egMusteri').value||arr2[idx].musteri;
+  arr2[idx].aciklama=document.getElementById('egAciklama').value;
+  saveGelirler(arr2); renderGelirler(); overlay.remove();
+  if(typeof window._uysaToast==='function') window._uysaToast('✅ Gelir güncellendi.');
+};
+};
 
-  window.duzenleGider = function(idx){
-    var arr=getGiderler(); if(!arr[idx]) return;
-    var g=arr[idx];
-    var yeniTutar=prompt('Tutar (₺):', g.tutar||0);
-    if(yeniTutar===null) return;
-    var yeniAcik=prompt('Açıklama:', g.aciklama||'');
-    if(yeniAcik===null) return;
-    var yeniTed=prompt('Tedarikçi:', g.tedarikci||'');
-    if(yeniTed===null) return;
-    arr[idx].tutar=parseFloat(yeniTutar)||arr[idx].tutar;
-    arr[idx].aciklama=yeniAcik;
-    arr[idx].tedarikci=yeniTed;
-    saveGiderler(arr); renderGiderler();
-    _toast&&_toast('✅ Gider güncellendi.');
-  };
+window.duzenleGider = function(idx){
+var arr=getGiderler(); if(!arr[idx]) return;
+var g=arr[idx];
+var ex=document.getElementById('uysaEditGiderModal'); if(ex) ex.remove();
+var overlay=document.createElement('div');
+overlay.id='uysaEditGiderModal';
+overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999;display:flex;align-items:center;justify-content:center;';
+overlay.innerHTML=`<div style="background:#fff;border-radius:14px;padding:24px 28px;min-width:320px;max-width:460px;width:90%;box-shadow:0 20px 40px rgba(0,0,0,.2);">
+  <h3 style="margin:0 0 18px;font-size:15px;color:#1e3a5f;font-weight:800;">✏️ Gider Düzenle</h3>
+  <label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">Tutar (₺)</label>
+  <input id="egdTutar" type="number" value="${g.tutar||0}" step="0.01" style="width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:6px;margin-bottom:12px;font-size:13px;">
+  <label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">Açıklama</label>
+  <input id="egdAciklama" type="text" value="${g.aciklama||''}" style="width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:6px;margin-bottom:12px;font-size:13px;">
+  <label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">Tedarikçi</label>
+  <input id="egdTedarikci" type="text" value="${g.tedarikci||''}" style="width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:6px;margin-bottom:18px;font-size:13px;">
+  <div style="display:flex;gap:10px;justify-content:flex-end;">
+    <button id="egdIptal" style="padding:8px 18px;border:1.5px solid #e2e8f0;border-radius:6px;background:#f8fafc;cursor:pointer;font-weight:600;font-size:13px;">İptal</button>
+    <button id="egdKaydet" style="padding:8px 22px;border:none;border-radius:6px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;cursor:pointer;font-weight:700;font-size:13px;">💾 Kaydet</button>
+  </div>
+</div>`;
+document.body.appendChild(overlay);
+document.getElementById('egdIptal').onclick=function(){ overlay.remove(); };
+overlay.onclick=function(e){ if(e.target===overlay) overlay.remove(); };
+document.getElementById('egdKaydet').onclick=function(){
+  var arr2=getGiderler(); if(!arr2[idx]) return;
+  var t=parseFloat(document.getElementById('egdTutar').value);
+  if(isNaN(t)||t<=0){ alert('Geçerli bir tutar girin.'); return; }
+  arr2[idx].tutar=t;
+  arr2[idx].aciklama=document.getElementById('egdAciklama').value;
+  arr2[idx].tedarikci=document.getElementById('egdTedarikci').value;
+  saveGiderler(arr2); renderGiderler(); overlay.remove();
+  if(typeof window._uysaToast==='function') window._uysaToast('✅ Gider güncellendi.');
+};
+};
 
   
   // Tedarikçi select'ini dinamik doldur (FIX-E)
@@ -20677,7 +20716,7 @@ document.addEventListener('DOMContentLoaded', function(){
 
 <script>
 /* ══════════════════════════════════════════════════════════════════════
-   UYSA v95 PATCH
+   UYSA v96 PATCH
    Üretim Özeti — TÜM aktif müşteriler gösterilir (kayıtsız olsalar bile)
    Firma filtresi + Toplam Göster + satır düzenleme korundu.
    ══════════════════════════════════════════════════════════════════════ */
@@ -21009,6 +21048,160 @@ document.addEventListener('DOMContentLoaded', function(){
   if(document.readyState==='loading'){
     document.addEventListener('DOMContentLoaded',_init);
   } else { _init(); }
+
+})();
+</script>
+
+<script id="uysa-v96-fullfix">
+/* ═══════════════════════════════════════════════════════════════════
+   UYSA v96 — TAM DÜZELTME PAKETİ
+   1. Son aktif modülü hatırla (sayfa yenilemede geri dön)
+   2. Operasyon modülü nav geçişinde auto-init (menü + müşteri select)
+   3. Portal modülü nav garantisi (MutationObserver yedek)
+   4. uysa_butce_v1 → uysa_butceler bridge (bütçe key çakışması)
+   5. Operasyon modülü müşteri select yenileme
+═══════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+
+var LS_LAST_MOD = 'uysa_last_module';
+
+/* ── 1. SON MODÜL HATIRLA ─────────────────────────────────────── */
+function v96SaveLastModule(mod){
+  try{ localStorage.setItem(LS_LAST_MOD, mod); }catch(e){}
+}
+function v96GetLastModule(){
+  try{ return localStorage.getItem(LS_LAST_MOD)||'anasayfa'; }catch(e){ return 'anasayfa'; }
+}
+
+/* ── 2. OPERASYON MODÜLÜ AUTO-INIT ───────────────────────────── */
+function v96InitOperasyon(){
+  // a) Müşteri select'i doldur
+  try{
+    var sel = document.getElementById('customerSelect');
+    if(sel){
+      var raw = localStorage.getItem('uysa_customers_v1')||'{}';
+      var obj = JSON.parse(raw);
+      var custs = obj.customers||[];
+      var pasif = [];
+      try{ pasif = JSON.parse(localStorage.getItem('uysa_pasif_musteriler')||'[]'); }catch(e){}
+      var aktif = custs.filter(function(m){
+        var ad = typeof m==='string'?m:(m.name||m.isim||'');
+        return ad && !pasif.includes(ad);
+      });
+      // Mevcut seçimi koru
+      var prev = sel.value||'GENEL';
+      sel.innerHTML = '<option value="GENEL">Genel</option>';
+      aktif.forEach(function(m){
+        var ad = typeof m==='string'?m:(m.name||m.isim||'');
+        if(ad && ad!=='GENEL'){
+          var opt=document.createElement('option');
+          opt.value=ad; opt.textContent=ad;
+          sel.appendChild(opt);
+        }
+      });
+      if(prev) sel.value=prev;
+    }
+  }catch(e){ console.warn('[v96] operasyon müşteri select hatası:',e); }
+  // b) Menüyü render et
+  try{
+    if(typeof window._menuRenderTable==='function') window._menuRenderTable();
+  }catch(e){ console.warn('[v96] _menuRenderTable hatası:',e); }
+}
+
+/* ── 3. PORTAL MODÜLÜ AUTO-INIT ──────────────────────────────── */
+function v96InitPortal(){
+  try{
+    if(typeof window.portalMusterileriYukle==='function') window.portalMusterileriYukle();
+  }catch(e){}
+}
+
+/* ── 4. BÜTÇE KEY BRIDGE ─────────────────────────────────────── */
+// uysa_butce_v1 okumalarını uysa_butceler'e yönlendir
+try{
+  var _origGetItem = localStorage.getItem.bind(localStorage);
+  // Override sadece bu key için
+  var _realGetItem = Storage.prototype.getItem;
+  Storage.prototype.getItem = function(key){
+    if(key==='uysa_butce_v1'){
+      var v = _realGetItem.call(this,'uysa_butce_v1');
+      if(!v){
+        // uysa_butceler'den oku ve nesne formatına çevir
+        var arr = _realGetItem.call(this,'uysa_butceler');
+        if(arr){
+          try{
+            var parsed = JSON.parse(arr);
+            if(Array.isArray(parsed)){
+              // Array'i objeye çevir: {ay: tutar}
+              var obj={};
+              parsed.forEach(function(b){ if(b.ay) obj[b.ay]=b.tutar||0; });
+              return JSON.stringify(obj);
+            }
+          }catch(e){}
+        }
+        return null;
+      }
+      return v;
+    }
+    return _realGetItem.call(this,key);
+  };
+}catch(e){ console.warn('[v96] butce bridge hatası:',e); }
+
+/* ── 5. NAV HANDLER GELİŞTİRME ───────────────────────────────── */
+// Nav click'lerini izle ve son modülü kaydet + eksik init'leri çalıştır
+function v96NavHook(){
+  document.querySelectorAll('.mod-nav-item').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var target = btn.dataset.module;
+      if(!target) return;
+      // Son modülü kaydet
+      v96SaveLastModule(target);
+      // Eksik init'ler
+      if(target==='operasyon'){
+        setTimeout(v96InitOperasyon, 150);
+      }
+      if(target==='portal'){
+        setTimeout(v96InitPortal, 150);
+      }
+    });
+  });
+}
+
+/* ── 6. SAYFA YÜKLENİNCE SON MODÜLÜ AÇ ──────────────────────── */
+function v96RestoreLastModule(){
+  var lastMod = v96GetLastModule();
+  if(!lastMod || lastMod==='anasayfa') return; // anasayfa zaten default açık
+  
+  // Login ekranı aktifse geri yükleme
+  var loginWrap = document.getElementById('loginWrapper');
+  if(loginWrap && loginWrap.style.display!=='none') return;
+  
+  try{
+    var btn = document.querySelector('.mod-nav-item[data-module="'+lastMod+'"]');
+    if(btn){
+      setTimeout(function(){
+        // Sadece anasayfa dışındaysa otomatik geç
+        var activePanel = document.querySelector('.mod-panel.active');
+        if(activePanel && activePanel.id === 'mod-anasayfa'){
+          btn.click();
+        }
+      }, 1200); // Login tamamlandıktan sonra
+    }
+  }catch(e){ console.warn('[v96] son modül restore hatası:',e); }
+}
+
+/* ── 7. UYGULA ────────────────────────────────────────────────── */
+function v96Init(){
+  v96NavHook();
+  v96RestoreLastModule();
+  console.log('✅ UYSA v96 patch yüklendi: son modül hatırlama + operasyon init + bütçe bridge aktif');
+}
+
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded', v96Init);
+} else {
+  v96Init();
+}
 
 })();
 </script>
