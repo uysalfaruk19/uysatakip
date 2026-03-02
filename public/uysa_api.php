@@ -272,9 +272,13 @@ if (!in_array($action, $publicActions, true)) {
     }
 }
 
-// ── Rate Limiting (auth sonrası) ──────────────────────────────
-$rateLimitKey = 'ip:' . $clientIp;
-if (!in_array($action, $publicActions, true)) {
+// ── Rate Limiting — SADECE auth/güvenlik endpoint'leri ──────
+// Normal veri işlemleri (setBulk, get, set vb.) kısıtlanmaz.
+// Kısıtlanan: login, getToken, apiKeyCreate, userSave
+$AUTH_RATE_ACTIONS = ['getToken', 'userAuth', 'apiKeyCreate', 'userSave'];
+
+if (in_array($action, $AUTH_RATE_ACTIONS, true)) {
+    $rateLimitKey = 'login:' . md5($clientIp . ':' . $action);
     $limit = $rateLimiter->attempt($rateLimitKey);
     if (!$limit['allowed']) {
         header('X-RateLimit-Limit: 10');
@@ -282,7 +286,7 @@ if (!in_array($action, $publicActions, true)) {
         header('Retry-After: ' . $limit['retry_after']);
         jsonResponse([
             'ok'          => false,
-            'error'       => 'Çok fazla istek. Lütfen bekleyin.',
+            'error'       => 'Çok fazla giriş denemesi. Lütfen bekleyin.',
             'retry_after' => $limit['retry_after'],
         ], 429);
     }
