@@ -155,6 +155,12 @@ function ensureSchema(PDO $pdo): void
         UNIQUE KEY `uk_username` (`username`),
         KEY `idx_role` (`role`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    // Mevcut DB'ye eksik kolonları ekle (ALTER TABLE IF NOT EXISTS kolonu yoksa)
+    try {
+        $pdo->exec("ALTER TABLE `uysa_users` ADD COLUMN IF NOT EXISTS `is_active` TINYINT(1) NOT NULL DEFAULT 1");
+        $pdo->exec("ALTER TABLE `uysa_users` ADD COLUMN IF NOT EXISTS `display_name` VARCHAR(100) DEFAULT NULL");
+        $pdo->exec("ALTER TABLE `uysa_users` ADD COLUMN IF NOT EXISTS `last_login` DATETIME DEFAULT NULL");
+    } catch (\Throwable $ignored) {}
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_files` (
         `id`           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -622,7 +628,7 @@ case 'userAuth':
 // ── User List ─────────────────────────────────────────────────
 case 'userList':
     try {
-        $rows = $pdo->query("SELECT id, username, role, display_name, last_login, is_active, created_at FROM uysa_users ORDER BY created_at DESC")->fetchAll();
+        $rows = $pdo->query("SELECT id, username, role, display_name, last_login, IFNULL(is_active, 1) as is_active, created_at FROM uysa_users ORDER BY created_at DESC")->fetchAll();
         jsonResponse(['ok' => true, 'users' => $rows]);
     } catch (\Throwable $e) {
         error_log('[UYSA] userList error: ' . $e->getMessage());
