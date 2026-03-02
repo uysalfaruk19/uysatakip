@@ -1905,8 +1905,8 @@
               <label>Ayran / Yoğurt (opsiyonel)</label>
               <select id="orgDairyDrink">
                 <option value="">Boş</option>
-                <option value="Ayran">Ayran</option>
-                <option value="Yoğurt">Yoğurt</option>
+                <option value="Ayran">Yoğurt/Ayran</option>
+                <option value="Yoğurt">Yoğurt/Ayran</option>
               </select>
               <div class="hint">Reçete varsa maliyete dahil edilir.</div>
             </div>
@@ -2266,7 +2266,13 @@
                   <div><label>Tarih</label><input id="gider-tarih" type="date"/></div>
                   <div><label>Tutar (₺)</label><input id="gider-tutar" type="number" min="0" step="0.01" placeholder="0.00"/></div>
                 </div>
-                <div><label>Açıklama</label><input id="gider-aciklama" placeholder="Et alımı, elektrik faturası, maaş vb."/></div>
+                <div><label>Açıklama</label><input <div>
+                  <label>🏪 Tedarikçi (opsiyonel)</label>
+                  <select id="gider-tedarikci" style="width:100%;padding:7px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px">
+                    <option value="">— Tedarikçi seçin —</option>
+                  </select>
+                </div>
+                id="gider-aciklama" placeholder="Et alımı, elektrik faturası, maaş vb."/></div>
                 <div><label>Belge No (isteğe bağlı)</label><input id="gider-belge" placeholder="FAT/İRS no"/></div>
                 <button class="btn danger" id="giderKaydetBtn" type="button">Gider Kaydet</button>
               </div>
@@ -2689,7 +2695,7 @@
               </div>
             </div>
             <!-- Müşteri gelir özeti -->
-            <div id="crmGelirOzetDiv" style="display:none;margin-top:12px">
+            <div id="crmGelirOzetDiv" style="position:sticky;top:8px;z-index:10" style="display:none;margin-top:12px">
               <div class="divider"></div>
               <h3 style="margin:8px 0 6px">📊 Müşteri Bazlı Gelir Özeti</h3>
               <div id="crmGelirOzetIcerik" style="font-size:12px"></div>
@@ -3519,6 +3525,9 @@
             <div><label style="font-size:12px;font-weight:600">Kategori</label>
               <select id="alerjenKategori" class="inp">
                 <option>Ana Yemek</option><option>Çorba</option><option>Salata</option>
+                  <option value="salatabar2">Salatabar 2</option>
+                  <option value="salatabar3">Salatabar 3</option>
+                  <option value="salatabar4">Salatabar 4</option>
                 <option>Tatlı</option><option>İçecek</option><option>Ara Öğün</option>
               </select></div>
           </div>
@@ -4841,7 +4850,7 @@ function escapeHtml(s){
               <tr><th>Yardımcı Yemek</th>${rowSide}</tr>
               <tr><th>Meyve / Tatlı / Meşrubat</th>${rowDess}</tr>
               <tr><th>Salata</th>${rowSalad}</tr>
-              <tr><th>Ayran</th>${rowAyran}</tr>
+              <tr><th>Yoğurt/Ayran</th>${rowAyran}</tr>
             </tbody>
           </table>
         </div>
@@ -6955,17 +6964,70 @@ alert('Malzeme ve miktar giriniz.'); return; }
   function refreshFinStats(){
     const gelirler = getGelirler();
     const giderler = getGiderler();
+    const ugiderler = getUretimGider ? getUretimGider() : [];
+
+    // Tarih hesaplamaları
+    const now = new Date();
+    const thisMonth = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+    const prevMonth = (function(){
+      var d = new Date(now.getFullYear(), now.getMonth()-1, 1);
+      return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+    })();
+
+    // Bu ay gelir
+    const thisAyGelir = gelirler
+      .filter(g => (g.tarih||'').startsWith(thisMonth))
+      .reduce((s,g)=>s+(g.tutar||0),0);
+    // Bu ay gider (işletme)
+    const thisAyGider = giderler
+      .filter(g => (g.tarih||'').startsWith(thisMonth))
+      .reduce((s,g)=>s+(g.tutar||0),0);
+    // Bu ay üretim gideri
+    const thisAyUretim = ugiderler
+      .filter(u => (u.tarih||'').startsWith(thisMonth))
+      .reduce((s,u)=>s+(u.toplam||0),0);
+    // Toplam gider = işletme + üretim
+    const totalGider = thisAyGider + thisAyUretim;
+    // Net kâr
+    const netKar = thisAyGelir - totalGider;
+    const karMarj = thisAyGelir > 0 ? (netKar/thisAyGelir*100) : 0;
+
+    // Üretim sayısı (kişi başı maliyet için)
+    const uretimSayilari = ls ? ls.get('uysa_uretim_sayilari',[]) : [];
+    const thisAyUretimKisi = uretimSayilari
+      .filter(u=>(u.tarih||'').startsWith(thisMonth))
+      .reduce((s,u)=>s+(u.kisi||0),0);
+    const kisiBasiMaliyet = thisAyUretimKisi>0 ? (thisAyUretim/thisAyUretimKisi) : 0;
+    const maliyetGelirOran = thisAyGelir>0 ? ((totalGider/thisAyGelir)*100) : 0;
+
+    // Tüm dönem toplamları (Finans dashboard için)
     const topGelir = gelirler.reduce((s,g)=>s+(g.tutar||0),0);
     const topGider = giderler.reduce((s,g)=>s+(g.tutar||0),0);
     const net = topGelir - topGider;
     const margin = topGelir>0 ? (net/topGelir*100) : 0;
+
     const el = (id,v) => { const e=document.getElementById(id); if(e) e.textContent=v; };
+
+    // Anasayfa kartları (bu ay)
+    el('kpi-bu-ay-gelir',   fmt(thisAyGelir)+' ₺');
+    el('kpi-bu-ay-gider',   fmt(totalGider)+' ₺');
+    el('kpi-net-kar',       fmt(netKar)+' ₺');
+    el('kpi-kar-marji',     '%'+karMarj.toFixed(1));
+    el('kpi-kar-durum',     netKar>=0 ? '✅ Kârlı' : '⚠️ Zararda');
+    el('kpi-uretim-maliyet',fmt(thisAyUretim)+' ₺');
+    el('kpi-kisi-basi',     kisiBasiMaliyet>0 ? fmt(kisiBasiMaliyet)+' ₺/kişi' : '—');
+    el('kpi-maliyet-oran',  maliyetGelirOran>0 ? '%'+maliyetGelirOran.toFixed(1) : '—');
+
+    // Ay adı
+    const ayAdlari = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
+    const ayAd = ayAdlari[now.getMonth()] || '';
+    el('kpi-ay-adi', ayAd);
+
+    // Eski element isimleri (finans sekmesi için)
     el('fin-revenue', fmt(topGelir)+' ₺');
     el('fin-expense', fmt(topGider)+' ₺');
     el('fin-net', fmt(net)+' ₺');
     el('fin-margin', '%'+fmt(margin,1));
-    // Raporlama günlük
-    const ugiderler = getUretimGider();
     const todayUg = ugiderler.filter(u=>u.tarih===today()).reduce((s,u)=>s+(u.toplam||0),0);
     el('bi-gunluk', fmt(todayUg)+' ₺');
     el('bi-karlilik', '%'+fmt(margin,1));
@@ -15990,8 +16052,41 @@ window.addEventListener('load', function() {
 
   window.izinOnayla = function(i){
     var arr=_getIzinler(); if(!arr[i]) return;
-    arr[i].onay='onaylandi'; _saveIzinler(arr);
-    renderIzinListesi(); _toast('✅ İzin onaylandı.');
+    arr[i].onay='onaylandi';
+    _saveIzinler(arr);
+    // Ücretsiz izin ise puantaja otomatik yaz
+    var izin = arr[i];
+    if(izin.tip === 'ucretsiz' || izin.tip === 'Ücretsiz İzin') {
+      _puantajIzinYaz(izin, 'ucretsiz');
+    } else if(izin.tip === 'ucretli' || izin.tip === 'Ücretli İzin' || izin.tip === 'Yıllık İzin') {
+      _puantajIzinYaz(izin, 'ucretli');
+    } else if(izin.tip === 'raporlu' || izin.tip === 'Hastalık Raporu') {
+      _puantajIzinYaz(izin, 'raporlu');
+    }
+    renderIzinListesi();
+    _toast('✅ İzin onaylandı — puantaj güncellendi.');
+  };
+
+  // İzin onayında puantaj günlerini yaz
+  function _puantajIzinYaz(izin, durum) {
+    if(!izin.baslangic || !izin.gun || !izin.personel) return;
+    try {
+      var bas = new Date(izin.baslangic);
+      var gunSay = parseInt(izin.gun) || 1;
+      var ad = izin.personel.replace(/[^a-zA-Z0-9çÇğĞıİöÖşŞüÜ]/g,'_');
+      for(var g=0; g<gunSay; g++) {
+        var d = new Date(bas);
+        d.setDate(d.getDate() + g);
+        var ay = d.getFullYear() + '_' + String(d.getMonth()+1).padStart(2,'0');
+        var key = 'uysa_puantaj_' + ay + '_' + ad;
+        var tarihStr = d.toISOString().slice(0,10);
+        var kayit = {};
+        try { kayit = JSON.parse(localStorage.getItem(key)||'{}'); } catch(e){}
+        kayit[tarihStr] = durum;
+        localStorage.setItem(key, JSON.stringify(kayit));
+      }
+      console.log('[UYSA-Puantaj] İzin puantaja yazıldı:', izin.personel, gunSay, 'gün →', durum);
+    } catch(e) { console.warn('[UYSA-Puantaj] Yazma hatası:', e); }
   };
   window.izinReddet = function(i){
     var arr=_getIzinler(); if(!arr[i]) return;
@@ -18114,12 +18209,12 @@ function calcKPIs(){
   // Bu ay
   const thisAyGelir  = gelirler.filter(g=>g.tarih?.startsWith(ym)).reduce((s,g)=>s+Number(g.tutar||0),0);
   const thisAyGider  = giderler.filter(g=>g.tarih?.startsWith(ym)).reduce((s,g)=>s+Number(g.tutar||0),0);
-  const thisAyUretim = uretim.filter(u=>u.tarih?.startsWith(ym)).reduce((s,u)=>s+Number(u.tutar||0),0);
+  const thisAyUretim = uretim.filter(u=>u.tarih?.startsWith(ym)).reduce((s,u)=>s+Number(u.toplam||u.tutar||0),0);
   const totalGider   = thisAyGider + thisAyUretim;
 
   // Toplam tüm zamanlar
   const tumGelir = gelirler.reduce((s,g)=>s+Number(g.tutar||0),0);
-  const tumGider = giderler.reduce((s,g)=>s+Number(g.tutar||0),0)+uretim.reduce((s,u)=>s+Number(u.tutar||0),0);
+  const tumGider = giderler.reduce((s,g)=>s+Number(g.tutar||0),0)+uretim.reduce((s,u)=>s+Number(u.toplam||u.tutar||0),0);
 
   // Kişi başı maliyet (bu ay — üretim gideri / toplam kişi sayısı)
   const thisAySayilar = sayilar.filter(s=>s.tarih?.startsWith(ym));
