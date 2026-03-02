@@ -911,7 +911,10 @@ window.lsCacheInvalidate = function(key) {
 
   function _persistOfflineQueue(failedItems) {
     try {
-      const existing = JSON.parse(_orig.getItem ? _orig.getItem('uysa_offline_queue') : (lsGet('uysa_offline_queue') || '{}')) || {};
+      const _rawQ = localStorage.getItem('uysa_offline_queue');
+      const existing = (_rawQ && typeof _rawQ === 'string' && _rawQ !== '[object Object]')
+        ? (() => { try { return JSON.parse(_rawQ); } catch(e2) { return {}; } })()
+        : {};
       const merged = Object.assign({}, existing, failedItems);
       _orig.setItem('uysa_offline_queue', JSON.stringify(merged));
       const cnt = Object.keys(merged).length;
@@ -946,7 +949,16 @@ window.lsCacheInvalidate = function(key) {
 
   function flushQueue() {
     if (!Object.keys(_queue).length) return;
-    const items = Object.assign({}, _queue);
+    const _allItems = Object.assign({}, _queue);
+    // Fix: filter oversized items (>50KB) to prevent setBulk 500
+    const items = {};
+    Object.keys(_allItems).forEach(function(k) {
+      const v = _allItems[k];
+      const sz = typeof v === 'string' ? v.length : JSON.stringify(v).length;
+      if (sz < 51200) items[k] = v;
+      else if (typeof console !== 'undefined') console.warn('[UYSA-Sync] ⚠️ Büyük kayıt atlandı:', k, sz + ' char');
+    });
+    if (!Object.keys(items).length) return;
     // ATOMIC: kuyrugu temizleme, önce gönder
     api('setBulk', { items }).then(r => {
       if (r && r.ok) {
@@ -8806,7 +8818,7 @@ _uysaAlert('Malzeme ve miktar giriniz.'); return; }
       +'<p style="color:#666;font-size:12px">Tarih: '+tarih+'</p>'
       +'<pre>'+icerik+'</pre>'
       +'<script>window.onload=function(){window.print();}<\/script>'
-      +'
+      +'</body></html>');
 <script>
 (function(){
   'use strict';
@@ -9929,6 +9941,15 @@ window.addEventListener('load', function() {
           _pruned++;
         }
       }
+      // Also prune offline queue if large (>20KB)
+      try {
+        var _oq = localStorage.getItem('uysa_offline_queue');
+        if (_oq && _oq.length > 20480) {
+          localStorage.removeItem('uysa_offline_queue');
+          _pruned++;
+          console.log('[UYSA] Büyük offline queue temizlendi (' + _oq.length + ' char)');
+        }
+      } catch(e2) {}
       if (_pruned > 0) console.log('[UYSA] Depolama temizlendi: ' + _pruned + ' anahtar silindi');
     } catch(e) { console.warn('[UYSA] Depolama temizleme hatası:', e); }
   }
