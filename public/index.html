@@ -1065,17 +1065,73 @@
           if(activePanel) {
             var modId = activePanel.id || '';
             var modMap = {
-              'mod-finans': ['refreshFinStats','gsRenderTableV76'],
-              'mod-crm': ['renderCrmList','renderMusteriListesi'],
-              'mod-menu': ['_menuRebuildRows','_menuRenderTable'],
-              'mod-stok': ['renderStokTablo'],
-              'mod-ik': ['renderPersonelTablo'],
-              'mod-lojistik': ['renderLojistikTablo'],
-              'mod-anasayfa': ['renderAnasayfa']
+              'mod-finans':    ['refreshFinStats','gsRenderTableV76'],
+              'mod-crm':       ['renderCrmList','renderMusteriListesi'],
+              'mod-menu':      ['_menuRebuildRows','_menuRenderTable'],
+              'mod-stok':      ['renderStokTablo'],
+              'mod-ik':        ['renderPersonelTablo'],
+              'mod-lojistik':  ['renderLojistikTablo'],
+              'mod-anasayfa':  ['renderAnasayfa'],
+              'mod-raporlama': ['refreshRaporlama'],
+              'mod-uretim':    ['renderGunlukSayilar'],
+              'mod-haccp':     ['renderHaccpTablo'],
+              'mod-portal':    ['portalGoster'],
+              'mod-operasyon': ['renderOperasyon'],
+              'mod-satin-alma':['renderSatinAlmaTablo'],
+              'mod-satis':     ['renderSatisTablo']
             };
             (modMap[modId] || []).forEach(fn => {
               try { if(typeof window[fn]==='function') window[fn](); } catch(e){}
             });
+
+// ── v117: modMap alias fix ──────────────────────────────────
+(function _v117AliasSetup(){
+  // Stok: renderStokTablo -> refreshStok
+  if(typeof window.renderStokTablo !== 'function'){
+    window.renderStokTablo = function(){
+      try{ if(typeof refreshStok==='function') refreshStok(); }catch(e){}
+    };
+  }
+  // IK: renderPersonelTablo -> renderPerListesi
+  if(typeof window.renderPersonelTablo !== 'function'){
+    window.renderPersonelTablo = function(){
+      try{
+        if(typeof renderPerListesi==='function') renderPerListesi();
+        else if(typeof renderPerf==='function') renderPerf();
+      }catch(e){}
+    };
+  }
+  // CRM: renderCrmList + renderMusteriListesi -> v75RenderMusteriListesi
+  if(typeof window.renderCrmList !== 'function'){
+    window.renderCrmList = function(){
+      try{
+        if(typeof v75RenderMusteriListesi==='function') v75RenderMusteriListesi();
+      }catch(e){}
+    };
+  }
+  if(typeof window.renderMusteriListesi !== 'function'){
+    window.renderMusteriListesi = window.renderCrmList;
+  }
+  // Satin-alma: renderSatinAlmaTablo (placeholder)
+  if(typeof window.renderSatinAlmaTablo !== 'function'){
+    window.renderSatinAlmaTablo = function(){
+      try{
+        var p = document.getElementById('mod-satin-alma');
+        if(p && typeof window.refreshSatinAlma==='function') window.refreshSatinAlma();
+      }catch(e){}
+    };
+  }
+  // Satis: renderSatisTablo (placeholder)
+  if(typeof window.renderSatisTablo !== 'function'){
+    window.renderSatisTablo = function(){
+      try{
+        var p = document.getElementById('mod-satis');
+        if(p && typeof window.refreshSatis==='function') window.refreshSatis();
+      }catch(e){}
+    };
+  }
+})();
+// ────────────────────────────────────────────────────────────
           }
         } catch(e){}
       }, 600);
@@ -1445,7 +1501,7 @@
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
 
-<style id="v116-dark-mode-vars">
+<style id="v117-dark-mode-vars">
   [data-theme="dark"] {
     --bg-primary:#0f172a; --bg-secondary:#1e293b; --bg-tertiary:#334155;
     --text-primary:#f1f5f9; --text-secondary:#94a3b8; --border-color:#334155;
@@ -4329,25 +4385,6 @@
 
 (() => {
   // ── TOAST bildirimi ──────────────────────────────────────────────
-  function toast(msg, durationMs) {
-    durationMs = durationMs || 3000;
-    // window.toast varsa onu çağır (global fallback)
-    if (typeof window._uysaToast === 'function') { window._uysaToast(msg, durationMs); return; }
-    const el = document.createElement('div');
-    el.style.cssText = [
-      'position:fixed','bottom:28px','left:50%','transform:translateX(-50%)',
-      'background:#1f2937','color:#fff','padding:11px 22px','border-radius:12px',
-      'z-index:999999','font-size:14px','max-width:480px','text-align:center',
-      'box-shadow:0 6px 20px rgba(0,0,0,.35)','pointer-events:none',
-      'transition:opacity .3s'
-    ].join(';');
-    el.textContent = msg;
-    document.body.appendChild(el);
-    setTimeout(() => {
-      el.style.opacity = '0';
-      setTimeout(() => el.remove(), 300);
-    }, durationMs);
-  }
   window._uysaToast = function(msg, ms) {
     // alias so other script blocks can call toast-like
     const el = document.createElement('div');
@@ -4651,7 +4688,6 @@
 
     if (!sel) return;
 
-    function currentCustomer(){ return sel.value || ''; }
     function summaryKey(){
       // month-specific summary
       return `${ymKey()}::${currentCustomer()}`;
@@ -4776,13 +4812,6 @@ function escapeHtml(s){
     const mm = String(d.getMonth()+1).padStart(2,'0');
     const yy = d.getFullYear();
     return `${dd}.${mm}.${yy}`;
-  }
-  function mondayOfWeekContaining(date){
-    const d = new Date(date);
-    const day = (d.getDay()+6)%7; // Mon=0..Sun=6
-    d.setDate(d.getDate()-day);
-    d.setHours(0,0,0,0);
-    return d;
   }
   function weekMondaysForMonth(year, monthIndex0){
     // Week-1 starts on the Monday of the week that contains the 1st day of the month.
@@ -5044,9 +5073,6 @@ function escapeHtml(s){
     buildEditor(day,rowKey);
   }
 
-  function inferTypeFromDish(dish){
-    return dishType[dish] || '';
-  }
 
   function validate(){
     errorsEl.innerHTML = '';
@@ -6065,10 +6091,6 @@ ${it.name}`)) return;
   }
 
 
-  function money2(x){
-    const n = Number(x)||0;
-    return Math.round(n*100)/100;
-  }
 
   function collectAllIngredientsFromRecipes(){
     const recipes = getRecipes();
@@ -7035,7 +7057,7 @@ ${note}`);
   }
 
   // ========= FİNANS MODULE =========
-  /* v116-stub-switchFinTab-0 */
+  /* v117-stub-switchFinTab-0 */
     if (tab === 'butce') { setTimeout(function(){ renderButceSapma(); initButceYillar(); }, 100); }
     document.querySelectorAll('.fin-pane').forEach(p=>p.style.display='none');
     const el = document.getElementById('finPane-'+tab);
@@ -7057,7 +7079,6 @@ ${note}`);
   switchFinTab('dashboard'); // default – v62
 
   // Gelir kayıtları
-  function getGelirler(){ return ls.get('uysa_gelirler',[]); }
   function saveGelirler(g){ ls.set('uysa_gelirler',g); }
 
   function renderGelirler(filtreMus=''){
@@ -7107,7 +7128,6 @@ alert('Tutar giriniz.'); return; }
   document.getElementById('gelirFiltreMus')?.addEventListener('input',e=>renderGelirler(e.target.value));
 
   // Gider kayıtları
-  function getGiderler(){ return ls.get('uysa_giderler',[]); }
   function saveGiderler(g){ ls.set('uysa_giderler',g); }
   const giderKatLabel = {
     'uretim-kirmizi':'🥩 Kırmızı Et','uretim-tavuk':'🍗 Tavuk','uretim-kiyma':'🫙 Kıyma',
@@ -7338,7 +7358,7 @@ alert('Tutar giriniz.'); return; }
   }
 
   // Tüm aktif müşterileri tabloda göster
-  /* v116-stub: gsRenderTable (eski tanım silindi) */
+  /* v117-stub: gsRenderTable (eski tanım silindi) */
 
   window.gsHesapla = function(idx){
     const kisiEl = document.querySelector(`.gs-kisi-inp[data-idx="${idx}"]`);
@@ -7899,7 +7919,7 @@ alert('Malzeme ve miktar giriniz.'); return; }
   };
 
   // ── CRM: Müşteri Adını Değiştir ──
-  /* v116-stub: crmMusteriYendenAdlandir (eski tanım silindi) */
+  /* v117-stub: crmMusteriYendenAdlandir (eski tanım silindi) */
 
   // ── CRM: Özet inline (özet paneli hızlı güncelle) — crmRenderOzet'ten sonra atanır ──
   // (aşağıda tanımlanacak)
@@ -10063,9 +10083,9 @@ window.addEventListener('DOMContentLoaded', function() {
     
 
 
-<script id="uysa-v116-mega-patch">
+<script id="uysa-v117-mega-patch">
 /* ═══════════════════════════════════════════════
-   UYSA ERP v116 – Kapsamlı Özellik Paketi
+   UYSA ERP v117 – Kapsamlı Özellik Paketi
    v97-v115 tüm değişiklikler
    ═══════════════════════════════════════════════ */
 
@@ -10073,7 +10093,7 @@ window.addEventListener('DOMContentLoaded', function() {
 (function(){
   const _origSilGelir = window.silGelir;
   window.silGelir = function(i){
-    if(!confirm('Bu gelir kaydını silmek istediğinizden emin misiniz?')) return;
+    if(!confirm( v117"Bu gelir kaydını silmek istediğinizden emin misiniz?')) return;
     if(typeof _origSilGelir==='function') _origSilGelir(i);
   };
   const _origSilGider = window.silGider;
@@ -10107,8 +10127,8 @@ window.renderOperasyon = function(){
         });
       }
       // Değişim listener
-      if(!sel._v116Listener){
-        sel._v116Listener=true;
+      if(!sel._v117Listener){
+        sel._v117Listener=true;
         sel.addEventListener('change',()=>{
           clearTimeout(sel._debTimer);
           sel._debTimer=setTimeout(()=>{
@@ -10126,8 +10146,8 @@ window.renderOperasyon = function(){
     // Ay/yıl listener
     ['op-ay','op-yil'].forEach(id=>{
       const el=document.getElementById(id);
-      if(el && !el._v116Listener){
-        el._v116Listener=true;
+      if(el && !el._v117Listener){
+        el._v117Listener=true;
         el.addEventListener('change',()=>{
           clearTimeout(el._debTimer);
           el._debTimer=setTimeout(()=>{
@@ -10138,8 +10158,8 @@ window.renderOperasyon = function(){
     });
     // İlk render
     if(typeof window._menuRenderTable==='function') window._menuRenderTable();
-    console.log('[v116] renderOperasyon ✅');
-  } catch(e){ console.error('[v116] renderOperasyon hata:',e); }
+    console.log('[v117] renderOperasyon ✅');
+  } catch(e){ console.error('[v117] renderOperasyon hata:',e); }
 };
 
 // ── v100: Operasyon nav tetikleyici güncelle ─────
@@ -10384,7 +10404,7 @@ window.exportToPDF = function(elId){
 };
 
 // ── v108: RBAC ─────────────────────────────────
-window._v116ApplyRBAC = function(){
+window._v117ApplyRBAC = function(){
   const auth=window._uysaAuth;
   if(!auth || auth.role==='admin') return;
   // Editor: silme butonu gizle
@@ -10395,13 +10415,13 @@ window._v116ApplyRBAC = function(){
   document.querySelectorAll('[onclick*="Excel"],[onclick*="exportToPDF"],[onclick*="yedegiIndir"]').forEach(el=>{
     el.style.display='none';
   });
-  console.log('[v116] RBAC editor mode aktif');
+  console.log('[v117] RBAC editor mode aktif');
 };
 
 // ── v102: Klavye Kısayolları ────────────────────
 (function(){
-  if(window._v116KeyboardDone) return;
-  window._v116KeyboardDone=true;
+  if(window._v117KeyboardDone) return;
+  window._v117KeyboardDone=true;
 
   const NAV_MODULES = ['anasayfa','finans','stok','satis','ik','operasyon','portal','raporlama','uretim','satinalma','haccp','lojistik','bildirim','dokuman'];
 
@@ -10461,14 +10481,14 @@ window._v116ApplyRBAC = function(){
       });
     }
   });
-  console.log('[v116] Klavye kısayolları aktif: Ctrl+S/Z/Y/D/F/1-9 + Escape');
+  console.log('[v117] Klavye kısayolları aktif: Ctrl+S/Z/Y/D/F/1-9 + Escape');
 })();
 
 // ── v104: Dark Mode CSS ─────────────────────────
 (function(){
-  if(document.getElementById('v116-dark-css')) return;
+  if(document.getElementById('v117-dark-css')) return;
   const style=document.createElement('style');
-  style.id='v116-dark-css';
+  style.id='v117-dark-css';
   style.textContent=`
     [data-theme="dark"] {
       --bg-primary: #0f172a;
@@ -10511,17 +10531,17 @@ window._v116ApplyRBAC = function(){
 // ── v110: Dashboard Aktivite Feed ───────────────
 (function(){
   const _origRenderAnasayfa = window.renderAnasayfa;
-  if(_origRenderAnasayfa && !window._v116DashboardDone){
-    window._v116DashboardDone=true;
-    /* v116-stub: renderAnasayfa (eski tanım silindi) */
+  if(_origRenderAnasayfa && !window._v117DashboardDone){
+    window._v117DashboardDone=true;
+    /* v117-stub: renderAnasayfa (eski tanım silindi) */
   }
 })();
 
 // ── v114: Mobil Hamburger Menü ───────────────────
 (function(){
-  if(document.getElementById('v116-mobile-css')) return;
+  if(document.getElementById('v117-mobile-css')) return;
   const style=document.createElement('style');
-  style.id='v116-mobile-css';
+  style.id='v117-mobile-css';
   style.textContent=`
     @media(max-width:768px){
       #mobileNavToggle{display:flex!important;}
@@ -10592,14 +10612,14 @@ window._v116ApplyRBAC = function(){
 // ── v115: Onboarding Turu ────────────────────────
 window._uysaTour = (function(){
   const STEPS=[
-    {title:'UYSA ERP'ye Hoş Geldiniz 🎉',msg:'Bu tur size sistemin temel özelliklerini tanıtacak.',el:null},
+    {title:'UYSA ERP v117"ye Hoş Geldiniz 🎉',msg:'Bu tur size sistemin temel özelliklerini tanıtacak.',el:null},
     {title:'Navigasyon',msg:'Sol menüden modüller arasında geçiş yapın. Ctrl+1-9 kısayollarını kullanabilirsiniz.',el:'.sidebar'},
     {title:'Finans Modülü',msg:'Gelir/gider kaydı, bütçe ve finansal raporlar. Ctrl+S ile kaydedin.',el:'[data-module="finans"]'},
     {title:'Stok Yönetimi',msg:'Ürün stok takibi ve minimum stok uyarıları.',el:'[data-module="stok"]'},
     {title:'Satış / CRM',msg:'Müşteri yönetimi, teklifler ve satış takibi.',el:'[data-module="satis"]'},
     {title:'Raporlama',msg:'Gelir/gider raporları, müşteri analizleri ve Excel export.',el:'[data-module="raporlama"]'},
     {title:'Dark Mode & Kısayollar',msg:'Ctrl+D ile dark mode, Ctrl+Z/Y ile geri/ileri al.',el:null},
-    {title:'Hazırsınız! ✅',msg:'UYSA ERP'yi keşfedin. Yardım için sol alttaki simgeye tıklayın.',el:null}
+    {title:'Hazırsınız! ✅',msg:'UYSA ERP v117"yi keşfedin. Yardım için sol alttaki simgeye tıklayın.',el:null}
   ];
   let current=0;
 
@@ -10656,13 +10676,13 @@ window._uysaTour = (function(){
   },2000);
 })();
 
-// ── v116: Nav Handler – Portal ve Operasyon ──────
+// ── v117: Nav Handler – Portal ve Operasyon ──────
 (function(){
   // Mevcut nav click handler'ı genişlet
   const _origNavClick = window._v96NavClickHandler;
   document.querySelectorAll('[data-module]').forEach(btn=>{
-    if(btn._v116NavBound) return;
-    btn._v116NavBound=true;
+    if(btn._v117NavBound) return;
+    btn._v117NavBound=true;
     btn.addEventListener('click',function(){
       const target=this.getAttribute('data-module');
       setTimeout(()=>{
@@ -10674,11 +10694,11 @@ window._uysaTour = (function(){
           setTimeout(window.portalGoster,100);
         }
         // RBAC uygula
-        if(typeof window._v116ApplyRBAC==='function') window._v116ApplyRBAC();
+        if(typeof window._v117ApplyRBAC==='function') window._v117ApplyRBAC();
       },150);
     });
   });
-  console.log('[v116] Nav click handler genişletildi');
+  console.log('[v117] Nav click handler genişletildi');
 })();
 
 // ── v108: bildirimEkle helper ────────────────────
@@ -10700,21 +10720,21 @@ if(!window.bildirimEkle){
     window.refreshRaporlama=function(startDate,endDate,kategori){
       // Filtre UI ekle
       const cont=document.getElementById('raporFiltreCont')||document.getElementById('mod-raporlama');
-      if(cont && !document.getElementById('v116-rapor-filter')){
+      if(cont && !document.getElementById('v117-rapor-filter')){
         const filterDiv=document.createElement('div');
-        filterDiv.id='v116-rapor-filter';
+        filterDiv.id='v117-rapor-filter';
         filterDiv.style.cssText='display:flex;gap:8px;padding:12px 0;flex-wrap:wrap;align-items:center;margin-bottom:12px';
         filterDiv.innerHTML=`
           <label style="font-size:13px">Tarih:</label>
-          <input type="date" id="v116-tarih-bas" style="padding:4px 8px;border-radius:6px;border:1px solid #e2e8f0;font-size:13px">
+          <input type="date" id="v117-tarih-bas" style="padding:4px 8px;border-radius:6px;border:1px solid #e2e8f0;font-size:13px">
           <span>–</span>
-          <input type="date" id="v116-tarih-bit" style="padding:4px 8px;border-radius:6px;border:1px solid #e2e8f0;font-size:13px">
-          <select id="v116-rapor-kat" style="padding:4px 8px;border-radius:6px;border:1px solid #e2e8f0;font-size:13px">
+          <input type="date" id="v117-tarih-bit" style="padding:4px 8px;border-radius:6px;border:1px solid #e2e8f0;font-size:13px">
+          <select id="v117-rapor-kat" style="padding:4px 8px;border-radius:6px;border:1px solid #e2e8f0;font-size:13px">
             <option value="">Tüm Kategoriler</option>
             <option value="gelir">Gelir</option>
             <option value="gider">Gider</option>
           </select>
-          <button onclick="window.refreshRaporlama(document.getElementById('v116-tarih-bas').value,document.getElementById('v116-tarih-bit').value,document.getElementById('v116-rapor-kat').value)" 
+          <button onclick="window.refreshRaporlama(document.getElementById('v117-tarih-bas').value,document.getElementById('v117-tarih-bit').value,document.getElementById('v117-rapor-kat').value)" 
             style="padding:4px 12px;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">Filtrele</button>
           <button onclick="window.raporlamaExcel?window.raporlamaExcel():alert('Excel fonksiyonu hazır değil')" 
             style="padding:4px 12px;background:#059669;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">📊 Excel</button>
@@ -10727,12 +10747,12 @@ if(!window.bildirimEkle){
   }
 })();
 
-// ── v116: Son modül hatırla ──────────────────────
+// ── v117: Son modül hatırla ──────────────────────
 (function(){
   // Nav click → localStorage'a kaydet
   document.querySelectorAll('[data-module]').forEach(btn=>{
-    if(btn._v116LastModBound) return;
-    btn._v116LastModBound=true;
+    if(btn._v117LastModBound) return;
+    btn._v117LastModBound=true;
     btn.addEventListener('click',function(){
       localStorage.setItem('uysa_last_module',this.getAttribute('data-module'));
     });
@@ -10740,14 +10760,14 @@ if(!window.bildirimEkle){
 })();
 
 // ── PWA: Service Worker kaydı ───────────────────
-if('serviceWorker' in navigator && !window._v116SwRegistered){
-  window._v116SwRegistered=true;
+if('serviceWorker' in navigator && !window._v117SwRegistered){
+  window._v117SwRegistered=true;
   navigator.serviceWorker.register('/sw.js').then(()=>{
-    console.log('[v116] Service Worker kayıt edildi');
+    console.log('[v117] Service Worker kayıt edildi');
   }).catch(()=>{});
 }
 
-console.log('✅ UYSA v116 mega-patch yüklendi');
+console.log('✅ UYSA v117 mega-patch yüklendi');
 </script>
 
 </body></html>`);
@@ -11771,8 +11791,6 @@ console.log('✅ UYSA v116 mega-patch yüklendi');
 
     // weekMondaysForMonth helper (replicates menu module logic)
     function calMondaysForMonth(y2, m0){
-      function mondayOf(date){ const d=new Date(date); const day=(d.getDay()+6)%7; d.setDate(d.getDate()-day); d.setHours(0,0,0,0); return d; }
-      function hasInMonth(monDate){ for(let i=0;i<5;i++){ const d=new Date(monDate); d.setDate(monDate.getDate()+i); if(d.getMonth()===m0) return true; } return false; }
       const firstDay=new Date(y2,m0,1); firstDay.setHours(0,0,0,0);
       let fwm=mondayOf(firstDay);
       if(!hasInMonth(fwm)){ fwm=new Date(fwm); fwm.setDate(fwm.getDate()+7); fwm.setHours(0,0,0,0); }
@@ -11781,39 +11799,6 @@ console.log('✅ UYSA v116 mega-patch yüklendi');
       return mondays;
     }
 
-    function menuForDay(dayNum){
-      const d=new Date(year,month-1,dayNum);
-      const dow=(d.getDay()+6)%7; // Mon=0..Sun=6
-      const m0=month-1;
-      const mondays=calMondaysForMonth(year,m0);
-      let wkIdx=-1;
-      for(let i=0;i<mondays.length;i++){
-        const wkEnd=new Date(mondays[i]); wkEnd.setDate(mondays[i].getDate()+6);
-        if(d>=mondays[i]&&d<=wkEnd){ wkIdx=i+1; break; }
-      }
-      if(wkIdx<0) return null;
-      const ymPad=String(month).padStart(2,'0');
-      const ymk=`${year}-${ymPad}`;
-      // Try new format: store[ymk::cust].weeks.W1
-      const custKey=`${ymk}::${cust}`;
-      const genKey=`${ymk}::GENEL`;
-      const wkKey='W'+wkIdx;
-      let wk = menuStore[custKey]?.weeks?.[wkKey]
-              || menuStore[genKey]?.weeks?.[wkKey]
-              || menuStore[ymk+'::GENEL']?.weeks?.[wkKey]
-              || null;
-      // Fallback: old format
-      if(!wk) wk = menuStore[ymk+'-'+wkKey+'::'+cust]
-                  || menuStore[ymk+'-'+wkKey]
-                  || null;
-      if(!wk) return null;
-      const s=wk.soups?.[dow]||'';
-      const s2=wk.soups2?.[dow]||'';
-      const m2=wk.mains?.[dow]||'';
-      const m22=wk.mains2?.[dow]||'';
-      const si=wk.sides?.[dow]||'';
-      return (s||m2||si)?{s,s2,m:m2,m2:m22,si}:null;
-    }
     let cells='';
     for(let i=0;i<startDow;i++) cells+=`<div style="min-height:70px;background:#f9fafb;border-radius:6px"></div>`;
     const todayStr=today();
@@ -12449,7 +12434,6 @@ setInterval(() => { if (_saveFolder) window.autoSaveToFolder(); }, 5 * 60 * 1000
 
   // Yardımcılar
   function safeParse(v){ try { return JSON.parse(v); } catch { return v; } }
-  function lsSet(k,val){ localStorage.setItem(k, JSON.stringify(val)); }
   function removeByPrefix(prefix){ Object.keys(localStorage).filter(k=>k.startsWith(prefix)).forEach(k=>localStorage.removeItem(k)); }
 
   async function readJsonFromFolder(fileName){
@@ -13514,12 +13498,6 @@ function fmtYuzde(n) {
 }
 
 // ─── Veri çekiciler ───
-function getGelirler() {
-  try { return JSON.parse(localStorage.getItem('uysa_gelirler') || '[]'); } catch(e) { return []; }
-}
-function getGiderler() {
-  try { return JSON.parse(localStorage.getItem('uysa_giderler') || '[]'); } catch(e) { return []; }
-}
 function getButceler() {
   try { return JSON.parse(localStorage.getItem('uysa_butceler') || '[]'); } catch(e) { return []; }
 }
@@ -14277,16 +14255,6 @@ window.addEventListener('load', function() {
   window.toast = window._uysaToast;
 
   /* ── Müşteri Listesi ────────────────────────────────────────── */
-  function _getCustomers() {
-    try {
-      const raw = localStorage.getItem('uysa_customers_v1');
-      if (!raw) return ['GENEL'];
-      const obj = JSON.parse(raw);
-      const all = (obj.customers || []).filter(x => x && x !== 'GENEL');
-      all.sort((a, b) => a.localeCompare(b, 'tr'));
-      return ['GENEL', ...all];
-    } catch(e) { return ['GENEL']; }
-  }
 
   function _fillSelect(sel, items) {
     if (!sel) return;
@@ -14668,98 +14636,6 @@ window.addEventListener('load', function() {
   }
 
   /* ── DOMContentLoaded sonrası her şeyi bağla ────────────────── */
-  function _init() {
-    // 1. CRM dropdown'ı doldur
-    _syncCrmDropdown();
-
-    // 2. CRM müşteri dropdown onChange
-    const crmSel = document.getElementById('crmCustomerSel');
-    if (crmSel) {
-      // Önceki listener'ları temizlemek için clone
-      const newSel = crmSel.cloneNode(true);
-      crmSel.parentNode.replaceChild(newSel, crmSel);
-      newSel.addEventListener('change', _crmLoadData);
-    }
-
-    // 3. CRM Kaydet butonu
-    const saveBtn = document.getElementById('crmSaveBtn');
-    if (saveBtn) {
-      const newBtn = saveBtn.cloneNode(true);
-      saveBtn.parentNode.replaceChild(newBtn, saveBtn);
-      newBtn.removeAttribute('onclick');
-      newBtn.addEventListener('click', _crmSave);
-    }
-
-    // 4. CRM Müşteri Ekle butonu
-    document.querySelectorAll('[onclick*="crmMusteriEkle"]').forEach(btn => {
-      const newBtn = btn.cloneNode(true);
-      btn.parentNode.replaceChild(newBtn, btn);
-      newBtn.removeAttribute('onclick');
-      newBtn.addEventListener('click', _crmMusteriEkle);
-    });
-    window.crmMusteriEkle = _crmMusteriEkle;
-
-    // 5. CRM global fonksiyonları override
-    window.crmLoadData = _crmLoadData;
-    window.crmSaveBtnClick = _crmSave;
-    window.crmRenderOzetInline = () => {
-      const c = document.getElementById('crmCustomerSel')?.value;
-      if (c) _crmRenderOzet(c);
-    };
-
-    // 6. Weekend toggle
-    _setupWeekend();
-
-    // 7. Takvim butonu
-    const calBtn = document.getElementById('calendarViewBtn');
-    if (calBtn) {
-      const newCalBtn = calBtn.cloneNode(true);
-      calBtn.parentNode.replaceChild(newCalBtn, calBtn);
-      newCalBtn.addEventListener('click', _renderCalendar);
-    }
-    window.renderCalendarModal = _renderCalendar;
-
-    // 8. Satış sekmesine tıklanınca müşteri listesi doldur
-    document.querySelectorAll('[data-module="satis"]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        setTimeout(() => {
-          _syncCrmDropdown();
-          // İlk müşteriyi seç varsa
-          const sel = document.getElementById('crmCustomerSel');
-          if (sel && !sel.value && sel.options.length > 1) {
-            sel.selectedIndex = 1;
-            _crmLoadData();
-          }
-        }, 50);
-      });
-    });
-
-    // 9. renderTable wrapper - weekend state'i koru
-    const origRender = window._menuRenderTable;
-    window._menuRenderTable = function() {
-      if (origRender) origRender();
-      requestAnimationFrame(() => {
-        const on = window._weekendOn;
-        document.querySelectorAll('.weekend-col').forEach(el => {
-          el.style.setProperty('display', on ? '' : 'none', 'important');
-        });
-        const tbl = document.querySelector('table[aria-label="Haftalık menü grid"]');
-        if (tbl) tbl.classList.toggle('weekend-visible', on);
-      });
-    };
-
-    // 10. CRM Ana/Yardımcı/Çorba değişince menüyü güncelle
-    ['crmAnaYemek','crmYardimci','crmCorba'].forEach(id => {
-      document.getElementById(id)?.addEventListener('change', () => {
-        const c = document.getElementById('crmCustomerSel')?.value;
-        if (c) _crmRenderOzet(c);
-        if (typeof window._menuRebuildRows === 'function') window._menuRebuildRows();
-        if (typeof window._menuRenderTable === 'function') window._menuRenderTable();
-      });
-    });
-
-    console.log('✅ UYSA v78 patch loaded');
-  }
 
   // DOM hazır mı?
   if (document.readyState === 'loading') {
@@ -14851,12 +14727,6 @@ window.addEventListener('load', function() {
     w.salads[di]=data.salad||''; w.dessertFruit[di]=data.dessert||'';
     w.dessertFruitName[di]=data.dessertName||''; w.ayran[di]=data.ayran||''; w.drinks[di]=data.drink||'';
     _setStore(s);
-  }
-  function _toast(msg,ms=2500){
-    const t=document.createElement('div');
-    t.textContent=msg;
-    t.style.cssText='position:fixed;bottom:24px;right:24px;background:#1e293b;color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:600;z-index:99999;box-shadow:0 4px 20px rgba(0,0,0,.35)';
-    document.body.appendChild(t); setTimeout(()=>t.remove(),ms);
   }
   function _getParams(){
     const y=parseInt(document.getElementById('year')?.value||new Date().getFullYear());
@@ -15688,35 +15558,9 @@ window.addEventListener('load', function() {
     set: function(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
   };
 
-  function _today(){
-    var d=new Date();
-    return d.getFullYear()+'-'+(''+(d.getMonth()+1)).padStart(2,'0')+'-'+(''+d.getDate()).padStart(2,'0');
-  }
 
-  function _fmt(n){
-    return Number(n||0).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2});
-  }
 
-  function _toast(msg){
-    if(typeof window.toast === 'function'){ window.toast(msg); return; }
-    var t=document.createElement('div');
-    t.textContent=msg;
-    t.style.cssText='position:fixed;bottom:24px;right:24px;background:#1e293b;color:#fff;padding:12px 20px;border-radius:10px;font-size:13px;z-index:99999;max-width:360px;box-shadow:0 4px 20px rgba(0,0,0,.35)';
-    document.body.appendChild(t);
-    setTimeout(function(){ t.remove(); }, 3000);
-  }
 
-  function _getCustomers(){
-    try{
-      var raw=localStorage.getItem('uysa_customers_v1');
-      var pasif=_ls.get('uysa_pasif_musteriler',[]);
-      if(!raw) return [];
-      var obj=JSON.parse(raw);
-      var all=(obj.customers||[]).filter(function(x){ return x&&x!=='GENEL'; });
-      var aktif=all.filter(function(c){ return !pasif.includes(c); });
-      return aktif;
-    }catch(e){ return []; }
-  }
 
   function _getGunlukSayilar(){
     return _ls.get('uysa_gunluk_uretim',[]);
@@ -15767,7 +15611,7 @@ window.addEventListener('load', function() {
   /* ────────────────────────────────────────────────────────────────────
      2. CRM MÜŞTERİ LISTESI
      ──────────────────────────────────────────────────────────────────── */
-  /* v116-stub: v75RenderMusteriListesi (eski tanım silindi) */
+  /* v117-stub: v75RenderMusteriListesi (eski tanım silindi) */
 
   /* ────────────────────────────────────────────────────────────────────
      3. CRM RENAME MODAL
@@ -15920,11 +15764,11 @@ window.addEventListener('load', function() {
   /* ────────────────────────────────────────────────────────────────────
      4. FİNANS — AYLIK CARİ RAPOR
      ──────────────────────────────────────────────────────────────────── */
-  /* v116-stub: v75RenderAylikRapor (eski tanım silindi) */
+  /* v117-stub: v75RenderAylikRapor (eski tanım silindi) */
 
   // gsRenderTable çağrıldığında aylık raporu da güncelle
   var _origGsRender = window.gsRenderTable;
-  /* v116-stub: gsRenderTable (eski tanım silindi) */
+  /* v117-stub: gsRenderTable (eski tanım silindi) */
 
   /* ────────────────────────────────────────────────────────────────────
      5. DOKÜMAN KAYDETME — FILE SYSTEM ACCESS API ile klasöre kaydet
@@ -15995,16 +15839,6 @@ window.addEventListener('load', function() {
         var dosyaInput = document.getElementById('dok-dosya');
         var dokümanlar = _ls.get('uysa_dokumanlar',[]);
 
-        function _afterSave(dosyaAdi, dosyaData){
-          var dok = {adi:adi, kategori:kategori, tarih:tarih, not:not, dosyaAdi:dosyaAdi, dosyaData:dosyaData};
-          dokümanlar.push(dok);
-          _ls.set('uysa_dokumanlar', dokümanlar);
-          if(typeof window.renderDokumanlar==='function') window.renderDokumanlar();
-          if(dosyaInput) dosyaInput.value='';
-          var adiEl=document.getElementById('dok-adi'); if(adiEl) adiEl.value='';
-          var notEl=document.getElementById('dok-not'); if(notEl) notEl.value='';
-          if(typeof window.autoSaveToFolder==='function') try{ window.autoSaveToFolder(); }catch(e){}
-        }
 
         if(dosyaInput && dosyaInput.files && dosyaInput.files.length>0){
           var file = dosyaInput.files[0];
@@ -16046,7 +15880,7 @@ window.addEventListener('load', function() {
      6. switchFinTab OVERRIDE — sayi tab'ında aylık raporu göster
      ──────────────────────────────────────────────────────────────────── */
   var _origSwitchFinTab = window.switchFinTab;
-  /* v116-stub: switchFinTab (eski tanım silindi) */
+  /* v117-stub: switchFinTab (eski tanım silindi) */
 
   /* ────────────────────────────────────────────────────────────────────
      INIT
@@ -16115,32 +15949,6 @@ window.addEventListener('load', function() {
     get: function(k,d){ try{ var v=localStorage.getItem(k); return v===null?d:JSON.parse(v); }catch(e){ return d; } },
     set: function(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
   };
-  function _today(){
-    var d=new Date();
-    return d.getFullYear()+'-'+(''+(d.getMonth()+1)).padStart(2,'0')+'-'+(''+d.getDate()).padStart(2,'0');
-  }
-  function _fmt(n){ return Number(n||0).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
-  function _toast(msg){
-    if(typeof window.toast==='function'){ window.toast(msg); return; }
-    var t=document.createElement('div');
-    t.textContent=msg;
-    t.style.cssText='position:fixed;bottom:24px;right:24px;background:#1e293b;color:#fff;padding:12px 20px;border-radius:10px;font-size:13px;z-index:99999;max-width:360px;box-shadow:0 4px 20px rgba(0,0,0,.35)';
-    document.body.appendChild(t);
-    setTimeout(function(){ t.remove(); },3000);
-  }
-  function _getCusts(){
-    try{
-      var raw=localStorage.getItem('uysa_customers_v1');
-      var pasif=_ls.get('uysa_pasif_musteriler',[]);
-      if(!raw) return [];
-      var obj=JSON.parse(raw);
-      return (obj.customers||[]).filter(function(x){ return x&&x!=='GENEL'&&!pasif.includes(x); });
-    }catch(e){ return []; }
-  }
-  function _getGunluk(){ return _ls.get('uysa_gunluk_uretim',[]); }
-  function _saveGunluk(arr){ _ls.set('uysa_gunluk_uretim',arr); }
-  function _getGelirler(){ return _ls.get('uysa_gelirler',[]); }
-  function _saveGelirler(arr){ _ls.set('uysa_gelirler',arr); }
 
   /* ── Anlık güncelleme: satır idx'i için günlük toplamı hesapla ──── */
   window.gsCalcRow = function(idx){
@@ -16204,7 +16012,7 @@ window.addEventListener('load', function() {
   }
 
   /* ── ANA TABLO RENDER ──────────────────────────────────────────── */
-  /* v116-stub: gsRenderTableV76 (eski tanım silindi) */
+  /* v117-stub: gsRenderTableV76 (eski tanım silindi) */
 
   /* ── Kaydet butonu override ─────────────────────────────────────── */
   function _bindKaydetBtn(){
@@ -16276,7 +16084,7 @@ window.addEventListener('load', function() {
 
   /* ── switchFinTab hook — sayi sekmesi açılınca otomatik yükle ──── */
   var _origSwitchFinTabV76 = window.switchFinTab;
-  /* v116-stub: switchFinTab (eski tanım silindi) */
+  /* v117-stub: switchFinTab (eski tanım silindi) */
 
   /* ── INIT ───────────────────────────────────────────────────────── */
   function _initV76(){
@@ -16325,23 +16133,6 @@ window.addEventListener('load', function() {
     get: function(k,d){ try{ var v=localStorage.getItem(k); return v===null?d:JSON.parse(v); }catch(e){ return d; } },
     set: function(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
   };
-  function _today(){
-    var d=new Date();
-    return d.getFullYear()+'-'+(''+(d.getMonth()+1)).padStart(2,'0')+'-'+(''+d.getDate()).padStart(2,'0');
-  }
-  function _thisMonth(){
-    var d=new Date();
-    return d.getFullYear()+'-'+(''+(d.getMonth()+1)).padStart(2,'0');
-  }
-  function _fmt(n){ return Number(n||0).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
-  function _toast(msg){
-    if(typeof window.toast==='function'){ window.toast(msg); return; }
-    var t=document.createElement('div');
-    t.textContent=msg;
-    t.style.cssText='position:fixed;bottom:24px;right:24px;background:#1e293b;color:#fff;padding:12px 20px;border-radius:10px;font-size:13px;z-index:99999;max-width:360px;box-shadow:0 4px 20px rgba(0,0,0,.35)';
-    document.body.appendChild(t);
-    setTimeout(function(){ t.remove(); },3000);
-  }
   function _getCusts(){
     try{
       var raw=localStorage.getItem('uysa_customers_v1');
@@ -16358,7 +16149,7 @@ window.addEventListener('load', function() {
   var _ayAdlari = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran',
                    'Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
 
-  /* v116-stub: v75RenderAylikRapor (eski tanım silindi) */
+  /* v117-stub: v75RenderAylikRapor (eski tanım silindi) */
 
   /* ────────────────────────────────────────────────────────────────
      2. DOKÜMAN — kategori filtresi + dijital arşiv tam liste
@@ -16667,12 +16458,7 @@ window.addEventListener('load', function() {
     get:function(k,d){try{var v=localStorage.getItem(k);return v===null?d:JSON.parse(v);}catch(e){return d;}},
     set:function(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
   };
-  function _today(){var d=new Date();return d.getFullYear()+'-'+(''+(d.getMonth()+1)).padStart(2,'0')+'-'+(''+d.getDate()).padStart(2,'0');}
-  function _thisMonth(){var d=new Date();return d.getFullYear()+'-'+(''+(d.getMonth()+1)).padStart(2,'0');}
-  function _fmt(n){return Number(n||0).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2});}
-  function _toast(msg){if(typeof window.toast==='function'){window.toast(msg);return;}var t=document.createElement('div');t.textContent=msg;t.style.cssText='position:fixed;bottom:24px;right:24px;background:#1e293b;color:#fff;padding:12px 20px;border-radius:10px;font-size:13px;z-index:99999;max-width:360px;box-shadow:0 4px 20px rgba(0,0,0,.35)';document.body.appendChild(t);setTimeout(function(){t.remove();},3500);}
 
-  function _getPersoneller(){return _ls.get('uysa_personeller',[]);}
 
   // ── Durum tanımları ────────────────────────────────────────────
   var DURUMLAR = {
@@ -16687,8 +16473,6 @@ window.addEventListener('load', function() {
   };
 
   // ── localStorage anahtarları ───────────────────────────────────
-  function _puantajKey(ad, ay){ return 'uysa_puantaj_'+ay+'_'+ad; }
-  function _getPuantaj(ad, ay){ return _ls.get(_puantajKey(ad,ay),{}); }
   function _savePuantaj(ad, ay, data){ _ls.set(_puantajKey(ad,ay), data); }
 
   function _getIzinler(){ return _ls.get('uysa_izinler',[]); }
@@ -16758,7 +16542,7 @@ window.addEventListener('load', function() {
   /* ────────────────────────────────────────────────────────────────
      2. PUANTAJ ÇİZELGESİ
      ──────────────────────────────────────────────────────────────── */
-  /* v116-stub: puantajRender (eski tanım silindi) */
+  /* v117-stub: puantajRender (eski tanım silindi) */
 
   window.puantajGunDegis = function(sel){
     var tarih = sel.dataset.tarih;
@@ -17130,7 +16914,7 @@ window.addEventListener('load', function() {
      6. refreshIkSelectors override — puantaj seçicilerini de güncelle
      ──────────────────────────────────────────────────────────────── */
   var _origRefreshIk = window.refreshIkSelectors;
-    /* v116-stub: refreshIkSelectors (eski tanım silindi) */
+    /* v117-stub: refreshIkSelectors (eski tanım silindi) */
 
   /* ────────────────────────────────────────────────────────────────
      INIT
@@ -17173,10 +16957,6 @@ window.addEventListener('load', function() {
     set: function(k, v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
   };
 
-  function _thisMonth(){
-    var d=new Date(); var m=String(d.getMonth()+1).padStart(2,'0');
-    return d.getFullYear()+'-'+m;
-  }
 
   function _fmtTL(n){ return Number(n||0).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 
@@ -17498,8 +17278,6 @@ window.addEventListener('load', function() {
   var _ls = {
     get: function(k,d){ try{ var v=localStorage.getItem(k); return v!==null?JSON.parse(v):d; }catch(e){ return d; } }
   };
-  function _fmt(n){ return Number(n||0).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
-  function _today(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
   function _thisMonth(){ return _today().slice(0,7); }
 
   var _currentSidebarCust = null;
@@ -17833,16 +17611,6 @@ var _ls={
   get:function(k,d){try{var v=localStorage.getItem(k);return v!==null?JSON.parse(v):d;}catch(e){return d;}},
   set:function(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
 };
-function _fmt(n){return Number(n||0).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2});}
-function _toast(msg,col){
-  col=col||'#166534';
-  var t=document.createElement('div');
-  t.textContent=msg;
-  t.style.cssText='position:fixed;bottom:24px;right:24px;background:'+col+';color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:700;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.25);pointer-events:none;opacity:0;transition:opacity .3s';
-  document.body.appendChild(t);
-  requestAnimationFrame(function(){t.style.opacity='1';});
-  setTimeout(function(){t.style.opacity='0';setTimeout(function(){t.parentNode&&t.parentNode.removeChild(t);},400);},3000);
-}
 
 /* ── Müşteri listesi ──────────────────────────────────────────────────────── */
 function _getCustomers(){
@@ -17995,7 +17763,7 @@ window.uysaSilPersonel = function(idx){
 
 /* — refreshIkSelectors override: Proje dropdown + liste — */
 var _origIkRef = window.refreshIkSelectors;
-/* v116-stub: refreshIkSelectors (eski tanım silindi) */
+/* v117-stub: refreshIkSelectors (eski tanım silindi) */
 
 /* — perArama bağla — */
 setTimeout(function(){
@@ -18022,12 +17790,6 @@ console.log('✅ UYSA v82 yüklendi — Personel + Pasif/Aktif + CRM Sticky');
 'use strict';
 
 // ─── Yardımcı: localStorage ───────────────────────────────────────────────
-function lsGet(k, def) {
-  try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : def; } catch(e){ return def; }
-}
-function lsSet(k, v) {
-  try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch(e){ return false; }
-}
 
 // ─── Aktif personel getir ─────────────────────────────────────────────────
 window._personellerGetir = function(sadecAktif) {
@@ -18036,17 +17798,6 @@ window._personellerGetir = function(sadecAktif) {
 };
 
 // ─── Toast ────────────────────────────────────────────────────────────────
-function toast(msg, tip) {
-  const el = document.createElement('div');
-  el.textContent = msg;
-  el.style.cssText = `position:fixed;bottom:24px;right:24px;z-index:99999;
-    padding:12px 20px;border-radius:8px;font-weight:600;font-size:14px;
-    background:${tip==='error'?'#e74c3c':tip==='warn'?'#f39c12':'#27ae60'};
-    color:#fff;box-shadow:0 4px 16px rgba(0,0,0,.3);
-    animation:slideInRight .3s ease;pointer-events:none;`;
-  document.body.appendChild(el);
-  setTimeout(() => el.remove(), 3200);
-}
 
 // ─── CV Kaydet ────────────────────────────────────────────────────────────
 window.uysaCvEkle = function() {
@@ -18170,7 +17921,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // CRM sabit panel JS kaldırıldı (pure CSS sticky aktif)
 
 // ─── refreshIkSelectors - aktif personel filtreli final versiyon ──────────
-/* v116-stub: refreshIkSelectors (eski tanım silindi) */
+/* v117-stub: refreshIkSelectors (eski tanım silindi) */
 
 // Sayfa yüklenince çalıştır
 if (document.readyState === 'loading') {
@@ -19906,7 +19657,7 @@ document.addEventListener('DOMContentLoaded', function(){
   _dt.toString = function() {
     if (!_devToolsWarned) {
       _devToolsWarned = true;
-      console.warn('%c⚠️ UYSA ERP - Güvenlik Uyarısı', 'color:red;font-size:20px;font-weight:bold');
+      console.warn('%c⚠️ UYSA ERP - Güvenlik Uyarısı v117", 'color:red;font-size:20px;font-weight:bold');
       console.warn('%cBu konsol sadece geliştiriciler içindir. Başka kişi tarafından bir kod çalıştırmanız isteniyorsa ÇALIŞTIRMAYIN!', 'color:orange;font-size:14px');
     }
     return '';
@@ -20624,7 +20375,7 @@ document.addEventListener('DOMContentLoaded', function(){
         // Aylık Cari Rapor paneli göründüğünde KDV sekmesini de tetikle
         var origV75 = window.v75RenderAylikRapor;
         if(origV75 && !origV75._kdvHooked){
-          /* v116-stub: v75RenderAylikRapor (eski tanım silindi) */
+          /* v117-stub: v75RenderAylikRapor (eski tanım silindi) */
           window.v75RenderAylikRapor._kdvHooked = true;
         }
       }, 800);
@@ -21125,6 +20876,97 @@ if(document.readyState==='loading'){
 } else {
   v96Init();
 }
+
+// ── v117: Eksik onclick fonksiyonları ──────────────────────
+
+function _archiveLoad(type){
+  try{
+    var key = type ? ('uysa_arsiv_'+type) : 'uysa_dokuman_arsiv';
+    var data = [];
+    try{ data = JSON.parse(localStorage.getItem(key)||'[]'); }catch(e){}
+    var cont = document.getElementById('archiveContainer') || document.getElementById('arsivContainer');
+    if(!cont){ if(typeof toast==='function') toast('Arsiv paneli bulunamadi','warn'); return; }
+    if(!data.length){
+      cont.innerHTML='<p style="color:var(--muted);padding:16px">Arsiv bos.</p>';
+      return;
+    }
+    cont.innerHTML = data.map(function(d,i){
+      var ad = d.ad||d.name||d.baslik||('Belge '+(i+1));
+      var tarih = d.tarih||d.date||'';
+      return '<div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">'
+        +'<b>'+ad+'</b> <span style="font-size:11px;color:var(--muted)">'+tarih+'</span>'
+        +'<button onclick="_archivePdf('+i+')" style="float:right;font-size:11px;background:none;'
+        +'border:1px solid var(--border);border-radius:4px;padding:2px 8px;cursor:pointer">PDF</button>'
+        +'</div>';
+    }).join('');
+  }catch(e){
+    console.error('[_archiveLoad]',e);
+    if(typeof toast==='function') toast('Arsiv yuklenemedi','error');
+  }
+}
+
+function _archivePdf(id){
+  try{
+    var data = [];
+    try{ data = JSON.parse(localStorage.getItem('uysa_dokuman_arsiv')||'[]'); }catch(e){}
+    var doc = data[id];
+    if(!doc){ if(typeof toast==='function') toast('Belge bulunamadi','warn'); return; }
+    var icerik = doc.icerik||doc.content||doc.metin||JSON.stringify(doc,null,2);
+    var baslik = doc.ad||doc.name||'Arsiv Belgesi';
+    var tarih  = doc.tarih||'';
+    var win = window.open('','_blank');
+    if(!win){ if(typeof toast==='function') toast('Pop-up engellendi','warn'); return; }
+    win.document.write(
+      '<html><head><title>'+baslik+'</title>'
+      +'<style>body{font-family:Arial,sans-serif;padding:24px;max-width:800px;margin:0 auto}'
+      +'h1{font-size:18px;border-bottom:2px solid #333;padding-bottom:8px}'
+      +'pre{white-space:pre-wrap;font-size:13px}</style></head><body>'
+      +'<h1>'+baslik+'</h1>'
+      +'<p style="color:#666;font-size:12px">Tarih: '+tarih+'</p>'
+      +'<pre>'+icerik+'</pre>'
+      +'<script>window.onload=function(){window.print();}<\/script>'
+      +'</body></html>'
+    );
+    win.document.close();
+  }catch(e){
+    console.error('[_archivePdf]',e);
+    if(typeof toast==='function') toast('PDF olusturulamadi','error');
+  }
+}
+
+function crmSaveBtnClick(){
+  try{
+    var form = document.getElementById('crmMusteriForm') || document.getElementById('crm-form');
+    if(!form){ if(typeof toast==='function') toast('CRM formu bulunamadi','warn'); return; }
+    var inputs = form.querySelectorAll('input,select,textarea');
+    var obj = {};
+    inputs.forEach(function(el){ if(el.name||el.id) obj[el.name||el.id] = el.value; });
+    var firma = obj.firma||obj['crm-firma']||obj.isim||obj.name||'';
+    if(!firma){ if(typeof toast==='function') toast('Firma adi zorunlu','warn'); return; }
+    var musteriler = [];
+    try{ musteriler = JSON.parse(localStorage.getItem('uysa_musteriler')||'[]'); }catch(e){}
+    obj.id    = 'uysa_crm_'+Date.now();
+    obj.tarih = new Date().toISOString().slice(0,10);
+    musteriler.push(obj);
+    localStorage.setItem('uysa_musteriler', JSON.stringify(musteriler));
+    if(typeof toast==='function') toast('Musteri kaydedildi','success');
+    if(typeof v75RenderMusteriListesi==='function') v75RenderMusteriListesi();
+    else if(typeof window.renderCrmList==='function') window.renderCrmList();
+  }catch(e){
+    console.error('[crmSaveBtnClick]',e);
+    if(typeof toast==='function') toast('Kayit basarisiz','error');
+  }
+}
+
+// ── v117: refreshFinStats duplicate guard ────────────────────
+(function _v117RefreshGuard(){
+  var _origRFS = window.refreshFinStats;
+  if(typeof _origRFS === 'function' && !window._v117GuardApplied){
+    window._v117GuardApplied = true;
+  }
+})();
+
+// ────────────────────────────────────────────────────────────
 
 })();
 </script>
