@@ -157,9 +157,14 @@ function ensureSchema(PDO $pdo): void
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     // Mevcut DB'ye eksik kolonları ekle (ALTER TABLE IF NOT EXISTS kolonu yoksa)
     try {
-        $pdo->exec("ALTER TABLE `uysa_users` ADD COLUMN IF NOT EXISTS `is_active` TINYINT(1) NOT NULL DEFAULT 1");
-        $pdo->exec("ALTER TABLE `uysa_users` ADD COLUMN IF NOT EXISTS `display_name` VARCHAR(100) DEFAULT NULL");
-        $pdo->exec("ALTER TABLE `uysa_users` ADD COLUMN IF NOT EXISTS `last_login` DATETIME DEFAULT NULL");
+        // MySQL 5.7 compatible — information_schema column check instead of IF NOT EXISTS
+        $migrCols = $pdo->query(
+            "SELECT COLUMN_NAME FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'uysa_users'"
+        )->fetchAll(PDO::FETCH_COLUMN);
+        if (!in_array('is_active',    $migrCols)) $pdo->exec("ALTER TABLE `uysa_users` ADD COLUMN `is_active` TINYINT(1) NOT NULL DEFAULT 1");
+        if (!in_array('display_name', $migrCols)) $pdo->exec("ALTER TABLE `uysa_users` ADD COLUMN `display_name` VARCHAR(100) DEFAULT NULL");
+        if (!in_array('last_login',   $migrCols)) $pdo->exec("ALTER TABLE `uysa_users` ADD COLUMN `last_login` DATETIME DEFAULT NULL");
     } catch (\Throwable $ignored) {}
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_files` (
@@ -628,11 +633,18 @@ case 'userAuth':
 // ── User List ─────────────────────────────────────────────────
 case 'userList':
     try {
-        $rows = $pdo->query("SELECT id, username, role, display_name, last_login, IFNULL(is_active, 1) as is_active, created_at FROM uysa_users ORDER BY created_at DESC")->fetchAll();
+        // Dynamic SHOW COLUMNS — MySQL 5.7+ compatible, no crash on missing columns
+        $colStmt = $pdo->query('SHOW COLUMNS FROM `uysa_users`');
+        $existingCols = array_column($colStmt->fetchAll(PDO::FETCH_ASSOC), 'Field');
+        $sel = ['`id`', '`username`', '`role`', '`created_at`'];
+        $sel[] = in_array('display_name', $existingCols) ? '`display_name`' : "'' as `display_name`";
+        $sel[] = in_array('last_login',   $existingCols) ? '`last_login`'   : 'NULL as `last_login`';
+        $sel[] = in_array('is_active',    $existingCols) ? '`is_active`'    : '1 as `is_active`';
+        $rows  = $pdo->query('SELECT ' . implode(', ', $sel) . ' FROM `uysa_users` ORDER BY `created_at` DESC')->fetchAll();
         jsonResponse(['ok' => true, 'users' => $rows]);
     } catch (\Throwable $e) {
         error_log('[UYSA] userList error: ' . $e->getMessage());
-        jsonResponse(['ok' => false, 'error' => 'Kullanıcı listesi alınamadı: ' . $e->getMessage()], 500);
+        jsonResponse(['ok' => false, 'error' => 'Kullanici listesi alinamadi: ' . $e->getMessage()], 500);
     }
 
 // ── User Save ─────────────────────────────────────────────────
