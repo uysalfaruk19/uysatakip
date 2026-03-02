@@ -1564,9 +1564,20 @@
         </div>
         <!-- B1: Bildirim -->
         <div style="position:relative">
-          <button id="bildirimBtn" onclick="toggleBildirimPanel()" style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:15px;position:relative">
+          <button id="hatirlaticiBtn" onclick="(function(){var p=document.getElementById('hatirlaticiPanel');p.style.display=p.style.display==='none'?'block':'none';window.renderHatirlaticiPanel&&window.renderHatirlaticiPanel();})()" style="background:none;border:none;cursor:pointer;font-size:18px;padding:5px;position:relative">⏰<span id="hatirlaticicBadge" style="display:none;position:absolute;top:-2px;right:-2px;background:#ef4444;color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;font-weight:bold;display:none;align-items:center;justify-content:center;line-height:16px">0</span></button>
+            <button id="bildirimBtn" onclick="toggleBildirimPanel()" style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:15px;position:relative">
             🔔<span id="bildirimSayi" style="display:none;position:absolute;top:-5px;right:-5px;background:#dc2626;color:#fff;border-radius:50%;width:17px;height:17px;font-size:10px;font-weight:800;align-items:center;justify-content:center">0</span>
           </button>
+          <div id="hatirlaticiPanel" style="display:none;position:absolute;top:42px;right:50px;width:360px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.15);z-index:9999;padding:0;overflow:hidden;">
+            <div style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
+              <span style="font-weight:700;font-size:14px">⏰ Hatırlatıcılar</span>
+              <button onclick="document.getElementById('hatirlaticiPanel').style.display='none'" style="border:none;background:rgba(255,255,255,0.3);color:#fff;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:13px">✕</button>
+            </div>
+            <div id="hatirlaticiList" style="max-height:320px;overflow-y:auto;padding:10px"></div>
+            <div style="padding:8px 12px;border-top:1px solid #e5e7eb;background:#f9fafb">
+              <button onclick="window._uysaHatirlaticiEkleForm()" style="width:100%;border:none;background:#f59e0b;color:#fff;border-radius:6px;padding:7px;cursor:pointer;font-size:13px;font-weight:600">+ Yeni Hatırlatıcı Ekle</button>
+            </div>
+          </div>
           <div id="bildirimPanel" style="display:none;position:absolute;top:42px;right:0;width:340px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.2);z-index:9999;max-height:440px;overflow:auto">
             <div style="padding:12px 14px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;background:#f8faff;border-radius:12px 12px 0 0">
               <b style="color:#0b3aa6;font-size:13px">🔔 Bildirim Merkezi</b>
@@ -10729,6 +10740,214 @@ window.addEventListener('DOMContentLoaded', function() {
   // ─────────────────────────────────────────────
   // B1: Bildirim Merkezi
   // ─────────────────────────────────────────────
+  // ── v86: Gelişmiş Bildirim & Hatırlatıcı sistemi ──────────────────────────
+
+  // Hatırlatıcı verisi yönetimi
+  window._uysaGetHatirlaticilar = function(){
+    try{ return JSON.parse(localStorage.getItem('uysa_hatirlaticilar'))||[]; }catch(e){ return []; }
+  };
+  window._uysaSaveHatirlaticilar = function(list){
+    localStorage.setItem('uysa_hatirlaticilar', JSON.stringify(list));
+  };
+
+  // Hatırlatıcı ekle (genel API)
+  window.uysaHatirlaticiEkle = function(baslik, mesaj, tarih, renk, modId){
+    var list = window._uysaGetHatirlaticilar();
+    var item = {
+      id: Date.now()+'_'+Math.random().toString(36).slice(2,6),
+      baslik: baslik,
+      mesaj: mesaj,
+      tarih: tarih,                    // 'YYYY-MM-DD'
+      renk: renk || '#f59e0b',
+      modId: modId || '',
+      okundu: false,
+      olusturma: new Date().toISOString()
+    };
+    list.push(item);
+    window._uysaSaveHatirlaticilar(list);
+    window.renderHatirlaticiPanel && window.renderHatirlaticiPanel();
+    return item;
+  };
+
+  // Hatırlatıcı panelini render et
+  window.renderHatirlaticiPanel = function(){
+    var panel = document.getElementById('hatirlaticiList');
+    if(!panel) return;
+    var list = (window._uysaGetHatirlaticilar()||[]).filter(function(h){ return !h.okundu; });
+    var today = new Date(); today.setHours(0,0,0,0);
+    var aktif = list.filter(function(h){
+      var d = new Date(h.tarih); d.setHours(0,0,0,0);
+      return d <= new Date(today.getTime() + 7*24*60*60*1000); // 7 gün içinde
+    }).sort(function(a,b){ return a.tarih.localeCompare(b.tarih); });
+    if(!aktif.length){
+      panel.innerHTML = '<div style="text-align:center;padding:16px;color:#888;font-size:13px;">✅ Aktif hatırlatıcı yok</div>';
+      return;
+    }
+    panel.innerHTML = aktif.map(function(h){
+      var d = new Date(h.tarih); d.setHours(0,0,0,0);
+      var diff = Math.round((d-today)/(1000*60*60*24));
+      var badge = diff<0 ? '<span style="background:#ef4444;color:#fff;border-radius:4px;padding:1px 5px;font-size:11px">GEÇTİ</span>'
+                        : diff===0 ? '<span style="background:#f59e0b;color:#fff;border-radius:4px;padding:1px 5px;font-size:11px">BUGÜN</span>'
+                        : '<span style="background:#6b7280;color:#fff;border-radius:4px;padding:1px 5px;font-size:11px">'+diff+' gün</span>';
+      return '<div style="border-left:3px solid '+h.renk+';padding:8px 10px;margin-bottom:6px;background:#f9fafb;border-radius:0 6px 6px 0;font-size:13px">'+
+             '<div style="display:flex;justify-content:space-between;align-items:center">'+
+             '<strong>'+h.baslik+'</strong>'+badge+'</div>'+
+             '<div style="color:#555;margin-top:2px">'+h.mesaj+'</div>'+
+             '<div style="display:flex;gap:6px;margin-top:4px">'+
+             '<button onclick="window._uysaOkunduMark(''+h.id+'')" style="font-size:11px;padding:2px 7px;border:none;background:#10b981;color:#fff;border-radius:4px;cursor:pointer">✓ Okundu</button>'+
+             (h.modId ? '<button onclick="document.querySelector('[data-module='+h.modId+']')?.click()" style="font-size:11px;padding:2px 7px;border:none;background:#3b82f6;color:#fff;border-radius:4px;cursor:pointer">→ Git</button>' : '')+
+             '</div></div>';
+    }).join('');
+    // Badge güncelle
+    var badge = document.getElementById('hatirlaticicBadge');
+    if(badge){ badge.textContent = aktif.length; badge.style.display = aktif.length ? '' : 'none'; }
+  };
+
+  window._uysaOkunduMark = function(id){
+    var list = window._uysaGetHatirlaticilar();
+    list.forEach(function(h){ if(h.id===id) h.okundu=true; });
+    window._uysaSaveHatirlaticilar(list);
+    window.renderHatirlaticiPanel();
+    window.hesaplaBildirimler && window.hesaplaBildirimler();
+  };
+
+  // ── KDV Otomatik Hatırlatıcı (Ayın 26'sı) ────────────────────────────────
+  window._uysaKdvHatirlaticiKontrol = function(){
+    var simdi = new Date();
+    var gun = simdi.getDate();
+    var ay = simdi.getMonth();
+    var yil = simdi.getFullYear();
+    var key = 'uysa_kdv_hat_'+yil+'_'+ay;
+    if(localStorage.getItem(key)) return; // Bu ay zaten eklendi
+
+    // KDV beyan tarihi: her ayın 26'sı
+    var beyanTarih = new Date(yil, ay, 26);
+    var targetDate = beyanTarih.toISOString().slice(0,10);
+
+    // Mevcut KDV ödemesini hesapla
+    var gelirler = [];
+    var giderler = [];
+    try{
+      var keys = Object.keys(localStorage);
+      keys.forEach(function(k){
+        if(k.startsWith('uysa_gelirler_')){ try{ gelirler=gelirler.concat(JSON.parse(localStorage.getItem(k))||[]); }catch(e){} }
+        if(k.startsWith('uysa_giderler_')){ try{ giderler=giderler.concat(JSON.parse(localStorage.getItem(k))||[]); }catch(e){} }
+      });
+      // Bu ayki KDV
+      var ayStr = yil+'-'+(ay+1<10?'0'+(ay+1):(ay+1));
+      var kdvGelir = gelirler.filter(function(g){ return g.tarih&&g.tarih.startsWith(ayStr); })
+                             .reduce(function(s,g){ return s+(parseFloat(g.kdvTutar)||0); },0);
+      var kdvGider = giderler.filter(function(g){ return g.tarih&&g.tarih.startsWith(ayStr); })
+                             .reduce(function(s,g){ return s+(parseFloat(g.kdvTutar)||0); },0);
+      var kdvBorclu = kdvGelir - kdvGider;
+
+      if(gun <= 26){ // Henüz geçmediyse hatırlatıcı ekle
+        window.uysaHatirlaticiEkle(
+          '📋 KDV Beyannamesi — '+ayStr,
+          'Ödenecek KDV: ₺'+(kdvBorclu>0?kdvBorclu.toLocaleString('tr-TR',{minimumFractionDigits:2}):'0,00')+' | Beyan tarihi: 26/'+( ay+1)+'/'+yil,
+          targetDate, '#f59e0b', 'finans'
+        );
+        localStorage.setItem(key, '1');
+      }
+    }catch(e){}
+  };
+
+  // ── Maaş/SGK Hatırlatıcı (Ayın 1-3 arası) ────────────────────────────────
+  window._uysaMaasHatirlaticiKontrol = function(){
+    var simdi = new Date();
+    var gun = simdi.getDate();
+    var ay = simdi.getMonth();
+    var yil = simdi.getFullYear();
+    var key = 'uysa_maas_hat_'+yil+'_'+ay;
+    if(localStorage.getItem(key)) return;
+
+    if(gun <= 5){ // Ayın ilk 5 günü
+      var personeller = [];
+      try{ personeller = JSON.parse(localStorage.getItem('uysa_personeller'))||[]; }catch(e){}
+      var aktif = personeller.filter(function(p){ return !p.pasif; });
+      if(aktif.length > 0){
+        var toplamMaas = aktif.reduce(function(s,p){ return s+(parseFloat(p.maas)||0); },0);
+        var toplamSgk  = aktif.reduce(function(s,p){ return s+(parseFloat(p.sgk)||0); },0);
+        var toplamHak  = aktif.reduce(function(s,p){ return s+((parseFloat(p.maas)||0)*1.3/12); },0);
+        var toplamMaliyet = toplamMaas + toplamSgk + toplamHak;
+        var odeTarih = yil+'-'+(ay+1<10?'0'+(ay+1):(ay+1))+'-05';
+        window.uysaHatirlaticiEkle(
+          '💰 Maaş Ödemesi — '+aktif.length+' Personel',
+          'Toplam: ₺'+toplamMaliyet.toLocaleString('tr-TR',{minimumFractionDigits:2})+
+          ' (Maaş: ₺'+toplamMaas.toLocaleString('tr-TR',{minimumFractionDigits:2})+
+          ' + SGK: ₺'+toplamSgk.toLocaleString('tr-TR',{minimumFractionDigits:2})+')',
+          odeTarih, '#3b82f6', 'ik'
+        );
+        localStorage.setItem(key, '1');
+      }
+    }
+  };
+
+  // ── CRM Takip Hatırlatıcısı ────────────────────────────────────────────────
+  window._uysaCrmHatirlaticiKontrol = function(){
+    try{
+      var musteriler = JSON.parse(localStorage.getItem('uysa_crm_musteriler'))||[];
+      var bugun = new Date(); bugun.setHours(0,0,0,0);
+      musteriler.forEach(function(m){
+        if(!m.sonrakiTakip) return;
+        var takipD = new Date(m.sonrakiTakip); takipD.setHours(0,0,0,0);
+        var diff = Math.round((takipD-bugun)/(1000*60*60*24));
+        var hatKey = 'uysa_crm_hat_'+m.id+'_'+m.sonrakiTakip;
+        if(!localStorage.getItem(hatKey) && diff >= 0 && diff <= 3){
+          window.uysaHatirlaticiEkle(
+            '👤 CRM Takip: '+m.isim,
+            diff===0 ? 'Bugün takip edilmesi gerekiyor!' : diff+' gün içinde takip: '+(m.notlar||m.kategori||''),
+            m.sonrakiTakip, '#8b5cf6', 'satis'
+          );
+          localStorage.setItem(hatKey, '1');
+        }
+      });
+    }catch(e){}
+  };
+
+  // ── İş Emri Hatırlatıcısı ─────────────────────────────────────────────────
+  window._uysaIsEmriHatirlaticiKontrol = function(){
+    try{
+      var isler = JSON.parse(localStorage.getItem('uysa_is_emirleri'))||[];
+      var bugun = new Date(); bugun.setHours(0,0,0,0);
+      isler.forEach(function(is){
+        if(!is.terminTarih || is.durum==='tamamlandi') return;
+        var termin = new Date(is.terminTarih); termin.setHours(0,0,0,0);
+        var diff = Math.round((termin-bugun)/(1000*60*60*24));
+        var hatKey = 'uysa_isemri_hat_'+is.id+'_'+is.terminTarih;
+        if(!localStorage.getItem(hatKey) && diff >= 0 && diff <= 2){
+          window.uysaHatirlaticiEkle(
+            '🔧 İş Emri Termin: #'+is.no,
+            (diff===0?'Bugün teslim! ':''+diff+' gün kaldı! ')+( is.baslik||is.aciklama||''),
+            is.terminTarih, '#ef4444', 'operasyon'
+          );
+          localStorage.setItem(hatKey, '1');
+        }
+      });
+    }catch(e){}
+  };
+
+  // ── Otomatik kontrol — her sayfa yüklenişinde ─────────────────────────────
+  setTimeout(function(){
+    try{
+      window._uysaKdvHatirlaticiKontrol();
+      window._uysaMaasHatirlaticiKontrol();
+      window._uysaCrmHatirlaticiKontrol();
+      window._uysaIsEmriHatirlaticiKontrol();
+      window.renderHatirlaticiPanel && window.renderHatirlaticiPanel();
+    }catch(e){ console.warn('v86 hatirlatici init error:', e); }
+  }, 2000);
+
+  // ── Periyodik kontrol (her 1 saatte bir) ─────────────────────────────────
+  setInterval(function(){
+    try{
+      window._uysaCrmHatirlaticiKontrol();
+      window._uysaIsEmriHatirlaticiKontrol();
+      window.renderHatirlaticiPanel && window.renderHatirlaticiPanel();
+    }catch(e){}
+  }, 60 * 60 * 1000);
+
+  // ─────────────────────────────────────────────────────────────────────────
   function hesaplaBildirimler(){
     const liste=[];
     // 1) Sözleşme bitişleri
@@ -19793,7 +20012,7 @@ document.addEventListener('DOMContentLoaded', function(){
 <script>
 
   // ════════════════════════════════════════════════════════════
-  // UYSA v85 — KDV Sistemi + SGK + Biriken Haklar
+  // UYSA v86 — Phase 2: Otomasyonlar & Hatırlatıcılar + KDV + SGK + Biriken Haklar
   // ════════════════════════════════════════════════════════════
   (function(){
     'use strict';
@@ -20074,7 +20293,80 @@ document.addEventListener('DOMContentLoaded', function(){
       }
     })();
 
-    console.log('✅ UYSA v85 yüklendi — KDV Sistemi + SGK + Biriken Haklar aktif');
+
+  // Manuel hatırlatıcı ekleme formu
+  window._uysaHatirlaticiEkleForm = function(){
+    var modal = document.createElement('div');
+    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:99999;display:flex;align-items:center;justify-content:center';
+    modal.innerHTML = '<div style="background:#fff;border-radius:12px;padding:24px;width:360px;max-width:90vw">'+
+      '<h3 style="margin:0 0 16px;font-size:16px">⏰ Yeni Hatırlatıcı</h3>'+
+      '<div style="margin-bottom:10px"><label style="font-size:13px;font-weight:600">Başlık</label>'+
+      '<input id="hat-baslik" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:6px;margin-top:4px;box-sizing:border-box" placeholder="Hatırlatıcı başlığı"></div>'+
+      '<div style="margin-bottom:10px"><label style="font-size:13px;font-weight:600">Mesaj</label>'+
+      '<textarea id="hat-mesaj" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:6px;margin-top:4px;box-sizing:border-box;height:70px" placeholder="Hatırlatıcı detayı..."></textarea></div>'+
+      '<div style="margin-bottom:16px"><label style="font-size:13px;font-weight:600">Tarih</label>'+
+      '<input id="hat-tarih" type="date" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:6px;margin-top:4px;box-sizing:border-box" value="'+new Date().toISOString().slice(0,10)+'"></div>'+
+      '<div style="display:flex;gap:8px">'+
+      '<button onclick="(function(){var b=document.getElementById('hat-baslik').value,m=document.getElementById('hat-mesaj').value,t=document.getElementById('hat-tarih').value;if(!b||!t){alert('Başlık ve tarih zorunlu');return;}window.uysaHatirlaticiEkle(b,m||b,t);document.body.removeChild(document.getElementById('hat-modal'));if(typeof _toast==='function')_toast('✅ Hatırlatıcı eklendi','#10b981');})()" style="flex:1;border:none;background:#f59e0b;color:#fff;border-radius:6px;padding:9px;cursor:pointer;font-weight:600">💾 Kaydet</button>'+
+      '<button onclick="document.body.removeChild(document.getElementById('hat-modal'))" style="flex:1;border:1px solid #e5e7eb;background:#f9fafb;border-radius:6px;padding:9px;cursor:pointer">İptal</button>'+
+      '</div></div>';
+    modal.id = 'hat-modal';
+    document.body.appendChild(modal);
+  };
+
+  // ── v86: İş Emri Veri Yönetimi ──────────────────────────────────────────
+  window._uysaGetIsEmirleri = function(){
+    try{ return JSON.parse(localStorage.getItem('uysa_is_emirleri'))||[]; }catch(e){ return []; }
+  };
+  window._uysaSaveIsEmirleri = function(list){
+    localStorage.setItem('uysa_is_emirleri', JSON.stringify(list));
+  };
+
+  // İş emri ekle
+  window.uysaIsEmriEkle = function(data){
+    var list = window._uysaGetIsEmirleri();
+    var item = Object.assign({
+      id: Date.now()+'',
+      no: 'IE-'+(list.length+1).toString().padStart(4,'0'),
+      baslik: '',
+      aciklama: '',
+      durum: 'beklemede',
+      oncelik: 'normal',
+      olusturma: new Date().toISOString(),
+      terminTarih: '',
+      atanan: ''
+    }, data);
+    list.push(item);
+    window._uysaSaveIsEmirleri(list);
+    window._uysaIsEmriHatirlaticiKontrol && window._uysaIsEmriHatirlaticiKontrol();
+    return item;
+  };
+
+  // ── v86: Dashboard KPI güncellemesi (Hatırlatıcı sayısı) ────────────────
+  window._v86UpdateDashboard = function(){
+    try{
+      var hat = (window._uysaGetHatirlaticilar()||[]).filter(function(h){ return !h.okundu; });
+      var badge = document.getElementById('hatirlaticicBadge');
+      if(badge){
+        badge.textContent = hat.length;
+        badge.style.display = hat.length > 0 ? 'inline-flex' : 'none';
+      }
+    }catch(e){}
+  };
+  setInterval(window._v86UpdateDashboard, 30000);
+  setTimeout(window._v86UpdateDashboard, 1500);
+
+  // ── v86: Finans KDV panel otomatik güncelleme ────────────────────────────
+  // (KDV paneli her gelir/gider girişinde zaten güncelleniyor; ek periyodik sync)
+  setInterval(function(){
+    try{
+      if(typeof window.guncelleKdvOzet === 'function') window.guncelleKdvOzet();
+      if(typeof window.guncelleGelirVergisi === 'function') window.guncelleGelirVergisi();
+    }catch(e){}
+  }, 5 * 60 * 1000); // 5 dakikada bir
+
+
+      console.log('✅ UYSA v86 yüklendi — Phase 2 Otomasyonlar & Hatırlatıcılar aktif');
   })();
 
 </script>
