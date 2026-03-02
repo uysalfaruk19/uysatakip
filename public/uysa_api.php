@@ -466,7 +466,7 @@ case 'setBulk':
         }
         $pdo->commit();
         auditLog($pdo, 'setBulk', $actor, null, json_encode(['count' => count($data)]), $clientIp);
-        jsonResponse(['ok' => true, 'count' => count($data)]);
+        jsonResponse(['ok' => true, 'saved' => count($data), 'count' => count($data)]);
     } catch (\Throwable $e) {
         $pdo->rollBack();
         error_log('[UYSA] setBulk error: ' . $e->getMessage());
