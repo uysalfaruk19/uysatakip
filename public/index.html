@@ -4,6 +4,16 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>UYSA ERP — Üretim & Yönetim Sistemi</title>
+  <!-- PDF.js preloaded for invoice analysis (FIX-V15) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    window.addEventListener('load', function(){
+      if(typeof pdfjsLib !== 'undefined'){
+        pdfjsLib.GlobalWorkerOptions.workerSrc =
+          'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      }
+    });
+  </script>
   <style>
     :root{
       --primary:#1a56db; --success:#16a34a; --danger:#dc2626; --muted:#6b7280;
