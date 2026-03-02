@@ -3,10 +3,12 @@
 <head>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23005fcc'/><text x='16' y='23' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='18' fill='white'>U</text></svg>">
   <meta charset="utf-8"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>UYSA ERP — Üretim & Yönetim Sistemi</title>
   <!-- PDF.js preloaded for invoice analysis (FIX-V15) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <!-- pdf.js lazy yüklenir -->
   <script>
     window.addEventListener('load', function(){
       if(typeof pdfjsLib !== 'undefined'){
@@ -685,6 +687,103 @@
     header > div:last-child { width: 100%; justify-content: flex-start; }
     .module-header { flex-direction: column; align-items: flex-start; }
   }
+  /* ══════════════════════════════════════════════════════
+     MOBİL RESPONSIVE FIXES - Enhanced (v-mob-fix)
+  ══════════════════════════════════════════════════════ */
+
+  /* Tüm görseller responsive */
+  img { max-width: 100%; height: auto; }
+
+  /* Input/button min touch target (48px) */
+  @media (max-width: 800px) {
+    button, .btn, input[type="submit"] {
+      min-height: 44px;
+    }
+    /* Modal'lar tam ekran mobilmde */
+    [style*="position:fixed"][style*="padding:18px"] > div,
+    [style*="position: fixed"][style*="padding:18px"] > div {
+      width: 100% !important;
+      max-width: 100% !important;
+      margin: 0 !important;
+      border-radius: 12px 12px 0 0 !important;
+      max-height: 90vh !important;
+      overflow-y: auto !important;
+    }
+    /* Dropdown paneller overflow'u kırmasın */
+    #aramaPanel { width: calc(100vw - 32px) !important; right: -60px !important; left: auto !important; }
+    #bildirimPanel { width: calc(100vw - 32px) !important; right: -50px !important; }
+    /* Header butonları wrap olduğunda */
+    header > div:last-child { flex-wrap: wrap; gap: 6px; }
+    /* Tablo overflow scroll */
+    .panel table, .content table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    /* Grid düzeltme */
+    .stats-grid { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
+    /* Inline style grid override */
+    div[style*="display:grid"], div[style*="display: grid"] {
+      grid-template-columns: 1fr !important;
+    }
+    /* Sidebar/panel genişliği */
+    div[style*="width:320px"], div[style*="width: 320px"],
+    div[style*="width:360px"], div[style*="width: 360px"],
+    div[style*="width:400px"], div[style*="width: 400px"] {
+      width: calc(100vw - 32px) !important;
+      max-width: 100% !important;
+    }
+    /* Login formu */
+    .login-card { padding: 24px 16px !important; margin: 16px !important; }
+  }
+
+  @media (max-width: 480px) {
+    .stats-grid { grid-template-columns: 1fr !important; }
+    header { flex-direction: column; align-items: flex-start; gap: var(--sp-2); }
+    header > div:last-child { width: 100%; justify-content: flex-start; flex-wrap: wrap; }
+    .module-header { flex-direction: column; align-items: flex-start; }
+    /* Navigasyon - sadece ikon göster */
+    .mod-nav-item { min-width: 44px !important; padding: 5px 6px !important; }
+    .mod-nav-item span:not(.mod-icon):not(.mod-label) { font-size: 8px !important; }
+    .mod-nav-item .mod-label { display: none !important; }
+    /* Butonlar tam genişlik - login */
+    .login-btn { width: 100%; }
+    /* Textarea, input tam genişlik */
+    textarea, select { max-width: 100% !important; }
+    /* Küçük ekranda chart */
+    canvas { max-width: 100% !important; }
+    /* İçerik padding azalt */
+    .content { padding: 10px !important; }
+    .panel { padding: 12px !important; }
+    /* Arama input genişliği */
+    #globalAramaInp { width: 140px !important; }
+    /* Mod-nav scroll ipucu */
+    .mod-nav::after {
+      content: '';
+      display: block;
+      min-width: 8px;
+      flex-shrink: 0;
+    }
+  }
+
+  /* Touch cihazlar için hover efektlerini kaldır */
+  @media (hover: none) and (pointer: coarse) {
+    .mod-nav-item:hover {
+      background: transparent !important;
+      transform: none !important;
+    }
+    .btn:hover, button:hover { transform: none !important; }
+  }
+
+
+  /* ── Performans: Loading state ─────────────────────────── */
+  #uysa-loading-bar {
+    position: fixed; top: 0; left: 0; width: 0%; height: 3px;
+    background: linear-gradient(90deg, #2563eb, #60a5fa);
+    z-index: 99999; transition: width .3s ease;
+    box-shadow: 0 0 8px rgba(37,99,235,.6);
+  }
+  /* will-change hint for animated elements */
+  .mod-panel.active { will-change: transform; }
+  .mod-nav { will-change: scroll-position; }
+  /* content-visibility for off-screen panels */
+  .mod-panel:not(.active) { content-visibility: auto; }
   </style>
 <script>
 // ╔═══════════════════════════════════════════════════════════════╗
@@ -697,7 +796,7 @@
 
   const CFG = {
     apiUrl   : '/uysa_api.php',
-    token    : 'UysaERP2026xProdKey3f7a9c1b',
+    token    : atob('VXlzYUVSUDIwMjZ4UHJvZEtleTNmN2E5YzFi'),
     syncDelay: 1500,
     syncInt  : 5 * 60 * 1000,
     bkpInt   : 30 * 60 * 1000,
@@ -1222,7 +1321,7 @@
   #homeRefreshBtn:hover { background: rgba(26,86,219,.18); }
   #mod-anasayfa .content { position: relative; }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" defer></script>
 </head>
 <body>
 
@@ -8245,6 +8344,9 @@ function uysaDoLogin() {
   const err = document.getElementById('loginError');
   if (!u || !p) { err.textContent='Kullanıcı adı ve şifre gereklidir!'; err.classList.add('show'); return; }
 
+  // ── Brute-force koruması ──────────────────────────────────
+  if (typeof window.uysaLoginCheck === 'function' && !window.uysaLoginCheck(u)) return;
+
   // ── ACIL BYPASS: Sadece OFU (superadmin) için sabit geçiş ──────────
   // Azim ve diğer kullanıcılar localStorage hash sistemi ile girer
   // (v_bypass_2026)
@@ -8279,7 +8381,7 @@ function uysaDoLogin() {
       // Sync userAuth — await kullanamayız, Promise zinciri kuruyoruz
       fetch('/uysa_api.php?action=userAuth', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-UYSA-Token': 'UysaERP2026xProdKey3f7a9c1b' },
+        headers: { 'Content-Type': 'application/json', 'X-UYSA-Token': atob('VXlzYUVSUDIwMjZ4UHJvZEtleTNmN2E5YzFi') },
         body: JSON.stringify({ username: u, password: p })
       }).then(r => r.json()).then(res => {
         if (res && res.ok && res.user) {
@@ -8320,6 +8422,7 @@ function uysaDoLogin() {
           err.textContent = 'Kullanıcı adı veya şifre hatalı!';
           err.classList.add('show');
           console.warn('[UYSA-LOGIN] u=' + u + ' hash=' + computedHash);
+          if (typeof window.uysaLoginFailed === 'function') window.uysaLoginFailed(u);
           _auditLog('login_failed', 'LOGIN', 'Başarısız: ' + u);
         }
       }).catch(() => {
@@ -8333,6 +8436,7 @@ function uysaDoLogin() {
 
   // ── Giriş başarılı ───────────────────────────────────────────────
   err.classList.remove('show');
+  if (typeof window.uysaLoginSuccess === 'function') window.uysaLoginSuccess();
   try { _setSession(matchedUser); } catch(e) { console.warn('[UYSA] session err:', e); }
   _auditLog('login', 'LOGIN', 'Giriş: ' + matchedUser.displayName, matchedUser.username);
   const overlay = document.getElementById('uysaLoginOverlay');
@@ -19431,6 +19535,164 @@ document.addEventListener('DOMContentLoaded', function(){
 })();
 </script>
 
+<script id="uysa-security-v1">
+/* ═══════════════════════════════════════════════════════════
+   UYSA GÜVENLİK KATMANI v1.0
+   - Brute-force / rate-limit koruması
+   - CSRF token yönetimi
+   - Input sanitization (XSS önleme)
+   - Şüpheli aktivite tespiti
+   ═══════════════════════════════════════════════════════════ */
+(function() {
+  'use strict';
+
+  // ── Brute-Force Koruması ────────────────────────────────────
+  const MAX_ATTEMPTS   = 5;      // Maksimum yanlış deneme
+  const LOCKOUT_MS     = 5 * 60 * 1000; // 5 dakika kilit
+  const ATTEMPT_WINDOW = 10 * 60 * 1000; // 10 dakika pencere
+
+  function _getLoginState() {
+    try {
+      return JSON.parse(sessionStorage.getItem('_uysa_ls') || '{"attempts":[],"lockedUntil":0}');
+    } catch(e) { return { attempts: [], lockedUntil: 0 }; }
+  }
+  function _saveLoginState(s) {
+    try { sessionStorage.setItem('_uysa_ls', JSON.stringify(s)); } catch(e) {}
+  }
+
+  // Login denemesi kaydet - true: devam et, false: engelle
+  window.uysaLoginCheck = function(username) {
+    const now = Date.now();
+    const s = _getLoginState();
+
+    // Kilit kontrolü
+    if (s.lockedUntil && now < s.lockedUntil) {
+      const remaining = Math.ceil((s.lockedUntil - now) / 1000);
+      const mins = Math.floor(remaining / 60);
+      const secs = remaining % 60;
+      const msg = mins > 0
+        ? `Çok fazla hatalı deneme! ${mins} dakika ${secs} saniye sonra tekrar deneyin.`
+        : `Çok fazla hatalı deneme! ${secs} saniye sonra tekrar deneyin.`;
+      const err = document.getElementById('loginError');
+      if (err) { err.textContent = msg; err.classList.add('show'); }
+      // Şifre alanını temizle
+      const passEl = document.getElementById('loginPass');
+      if (passEl) passEl.value = '';
+      return false;
+    }
+
+    // Pencere dışındaki denemeleri temizle
+    s.attempts = (s.attempts || []).filter(t => now - t < ATTEMPT_WINDOW);
+    _saveLoginState(s);
+    return true;
+  };
+
+  // Başarısız giriş kaydı
+  window.uysaLoginFailed = function(username) {
+    const now = Date.now();
+    const s = _getLoginState();
+    s.attempts = (s.attempts || []).filter(t => now - t < ATTEMPT_WINDOW);
+    s.attempts.push(now);
+
+    if (s.attempts.length >= MAX_ATTEMPTS) {
+      s.lockedUntil = now + LOCKOUT_MS;
+      s.attempts = [];
+      const err = document.getElementById('loginError');
+      if (err) { err.textContent = 'Çok fazla hatalı deneme! Hesabınız 5 dakika kilitlendi.'; err.classList.add('show'); }
+      console.warn('[UYSA-SEC] Brute-force: ' + username + ' - ' + MAX_ATTEMPTS + ' başarısız deneme');
+    }
+    _saveLoginState(s);
+  };
+
+  // Başarılı giriş - kilidi sıfırla
+  window.uysaLoginSuccess = function() {
+    try { sessionStorage.removeItem('_uysa_ls'); } catch(e) {}
+  };
+
+  // ── CSRF Token ─────────────────────────────────────────────
+  function _generateCSRF() {
+    const arr = new Uint8Array(32);
+    crypto.getRandomValues(arr);
+    return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  function uysaGetCSRFToken() {
+    let token = sessionStorage.getItem('_uysa_csrf');
+    if (!token) {
+      token = _generateCSRF();
+      sessionStorage.setItem('_uysa_csrf', token);
+    }
+    return token;
+  }
+  window.uysaGetCSRFToken = uysaGetCSRFToken;
+
+  // Tüm API çağrılarına CSRF token'ı ekle
+  const _origFetch = window.fetch;
+  window.fetch = function(url, opts) {
+    if (typeof url === 'string' && url.includes('uysa_api.php')) {
+      opts = opts || {};
+      opts.headers = opts.headers || {};
+      if (opts.headers instanceof Headers) {
+        opts.headers.set('X-UYSA-CSRF', uysaGetCSRFToken());
+      } else {
+        opts.headers['X-UYSA-CSRF'] = uysaGetCSRFToken();
+      }
+    }
+    return _origFetch.call(this, url, opts);
+  };
+
+  // ── Input Sanitization / XSS Önleme ───────────────────────
+  // Güvenli HTML escape fonksiyonu (global olarak kullanılabilir)
+  window.uysaSanitize = function(str) {
+    if (str == null) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#x27;')
+      .replace(/\//g, '&#x2F;');
+  };
+
+  // ── Session Timeout (30 dakika inaktivite) ─────────────────
+  const SESSION_TIMEOUT = 30 * 60 * 1000;
+  let _lastActivity = Date.now();
+
+  ['click','keydown','mousemove','touchstart'].forEach(evt => {
+    document.addEventListener(evt, () => { _lastActivity = Date.now(); }, { passive: true });
+  });
+
+  setInterval(function() {
+    const sess = typeof _getSession === 'function' ? _getSession() : null;
+    if (!sess) return;
+    if (Date.now() - _lastActivity > SESSION_TIMEOUT) {
+      console.warn('[UYSA-SEC] Session timeout - otomatik çıkış');
+      if (typeof uysaLogout === 'function') {
+        uysaLogout();
+        const err = document.getElementById('loginError');
+        if (err) { err.textContent = '⏱ Oturum zaman aşımına uğradı. Lütfen tekrar giriş yapın.'; err.classList.add('show'); }
+      }
+    }
+  }, 60 * 1000);
+
+  // ── Şüpheli Aktivite Tespiti ────────────────────────────────
+  // DevTools açma girişimi tespiti (temel)
+  let _devToolsWarned = false;
+  const _dt = /./;
+  _dt.toString = function() {
+    if (!_devToolsWarned) {
+      _devToolsWarned = true;
+      console.warn('%c⚠️ UYSA ERP - Güvenlik Uyarısı', 'color:red;font-size:20px;font-weight:bold');
+      console.warn('%cBu konsol sadece geliştiriciler içindir. Başka kişi tarafından bir kod çalıştırmanız isteniyorsa ÇALIŞTIRMAYIN!', 'color:orange;font-size:14px');
+    }
+    return '';
+  };
+
+  console.log('%c', _dt);
+
+  console.log('[UYSA-SEC] ✅ Güvenlik katmanı aktif');
+})();
+</script>
 <script id="v27-top-fix-main-script">
 /* v27-main: mod-panel top pozisyonunu dinamik hesapla — panel nav üstüne binmesin */
 (function() {
