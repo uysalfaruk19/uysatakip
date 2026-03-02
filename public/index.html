@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23005fcc'/><text x='16' y='23' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='18' fill='white'>U</text></svg>">
-<!-- UYSA ERP v125-BugFix | Son Denetim Geçti | Veri Girişine Hazır -->
+<!-- UYSA ERP v127-SyntaxFix | Son Denetim Geçti | Veri Girişine Hazır -->
 <!-- UYSA ERP v118b | Sprint 1: B+C+D+E patches | 2026-03-02 -->
   <meta charset="utf-8"/>
 <!-- UYSA ERP v118 Sprint 1 - COMPLETE: LazyLoadManager + Modal/Toast + SPA Refresh + VirtualScroll + CSS External -->
@@ -13,6 +13,20 @@
   <!-- PDF.js preloaded for invoice analysis (FIX-V15) -->
   <!-- pdf.js lazy yüklenir -->
   <script>
+
+// ── _uysaSpaRefresh stub (defined early to prevent ReferenceError) ──────
+window._uysaSpaRefresh = window._uysaSpaRefresh || function(msg, delay) {
+  delay = delay || 800;
+  setTimeout(function() {
+    var splash = document.getElementById('splash');
+    if (splash) splash.style.display = 'none';
+    var loginPanel = document.getElementById('loginPanel');
+    var mainApp = document.getElementById('mainApp') || document.getElementById('app');
+    if (loginPanel) loginPanel.style.display = 'none';
+    if (mainApp) mainApp.style.display = '';
+    if (msg && typeof _uysaToast === 'function') _uysaToast(msg, 'info');
+  }, delay);
+};
 
 // ── UYSA localStorage Cache Layer (v118) ─────────────────────────────────
 window.__uysaCache = Object.create(null);
@@ -1574,10 +1588,11 @@ window.lsCacheInvalidate = function(key) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" defer></script>
 
 <meta name="theme-color" content="#2563eb">
-<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="/manifest.json">
-<link rel="apple-touch-icon" href="/icons/icon-192.png">
+
 
 <style id="v117-dark-mode-vars">
   [data-theme="dark"] {
@@ -8785,7 +8800,7 @@ _uysaAlert('Malzeme ve miktar giriniz.'); return; }
       }
       win.document.write(html);
     } else {
-      win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Sözleşme — ${t.firma}</title>
+      win.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Sözleşme</title>
       <link rel="stylesheet" href="style_v118.css"></head><body>'
       +'<h1>'+baslik+'</h1>'
       +'<p style="color:#666;font-size:12px">Tarih: '+tarih+'</p>'
@@ -9886,6 +9901,37 @@ window.addEventListener('load', function() {
   setTimeout(function() {
     var info = window._uysaValidate.checkStorageSize();
     if (info.usedPct > 70) console.warn('[UYSA] Depolama uyarısı: ' + info.usedPct + '%');
+  // Auto-prune when storage > 100%
+  if (info.usedPct > 100) {
+    try {
+      var _pruneKeys = ['uysa_log_', 'uysa_debug_', 'uysa_temp_', 'uysa_cache_'];
+      var _allKeys = Object.keys(localStorage);
+      var _pruned = 0;
+      // Remove old log/temp/cache entries first
+      _allKeys.forEach(function(k) {
+        if (_pruneKeys.some(function(p){ return k.startsWith(p); })) {
+          localStorage.removeItem(k);
+          _pruned++;
+        }
+      });
+      // If still critical (>120%), prune old sync timestamps
+      if (info.usedPct > 120) {
+        _allKeys.forEach(function(k) {
+          if (k.endsWith('_ts') || k.endsWith('_lastSync') || k === 'uysa_sync_reload_ts') {
+            localStorage.removeItem(k);
+            _pruned++;
+          }
+        });
+        // Also remove uysa_offline_queue if large
+        var oq = localStorage.getItem('uysa_offline_queue');
+        if (oq && oq.length > 5000) {
+          localStorage.removeItem('uysa_offline_queue');
+          _pruned++;
+        }
+      }
+      if (_pruned > 0) console.log('[UYSA] Depolama temizlendi: ' + _pruned + ' anahtar silindi');
+    } catch(e) { console.warn('[UYSA] Depolama temizleme hatası:', e); }
+  }
   }, 3000);
 });
 // ─────────────────────────────────────────────────────────────────────────────
