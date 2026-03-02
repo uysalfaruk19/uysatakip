@@ -15723,7 +15723,18 @@ window.addEventListener('load', function() {
         +'</td>'
         // Günlük toplam (hesaplanmış, otomatik)
         +'<td style="padding:9px 12px;text-align:right;font-weight:800;border-bottom:'+borderStyle+';border-right:1px solid #e2e8f0;min-width:110px">'
-        +'<span class="gsv76-gunluk" data-idx="'+i+'" style="color:'+(gunlukToplam?'#166534':'#94a3b8')+'">'
+        +(function(){
+          var _kp = window._gsKdvPct||0;
+          if(gunlukToplam>0 && _kp>0){
+            var _kdvT=gunlukToplam*_kp/100, _kdvD=gunlukToplam+_kdvT;
+            return '<span class="gsv76-gunluk" data-idx="'+i+'" style="display:block">'
+              +'<span style="color:#166534;font-weight:700">'+_fmt(gunlukToplam)+' ₺</span>'
+              +'<br><span style="color:#7c3aed;font-size:10px">+%'+_kp+' KDV: '+_fmt(_kdvT)+' ₺</span>'
+              +'<br><span style="color:#4a148c;font-size:10px;font-weight:800">Toplam: '+_fmt(_kdvD)+' ₺</span>'
+              +'</span>';
+          }
+          return '<span class="gsv76-gunluk" data-idx="'+i+'" style="color:'+(gunlukToplam?'#166534':'#94a3b8')+'">'+(gunlukToplam?_fmt(gunlukToplam)+' ₺':'—')+'</span>';
+        })()
         +(gunlukToplam?_fmt(gunlukToplam)+' ₺':'—')+'</span>'
         +'</td>'
         // Ay toplam kişi
