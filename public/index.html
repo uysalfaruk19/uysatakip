@@ -2537,7 +2537,7 @@
     </div>
 
     <!-- MODULE 3: SATIŞ & MÜŞTERİ YÖNETİMİ -->
-    <div class="mod-panel" id="mod-satis">
+    <div class="mod-panel" id="mod-satis" style="overflow-y:auto;">
       <div class="content" style="overflow-y:auto;height:calc(100vh - 60px)">
         <div class="module-header">
           <h2>🤝 3 — Satış &amp; Müşteri Yönetimi</h2>
@@ -6775,6 +6775,27 @@ alert('Tutar giriniz.'); return; }
       }).observe(finansPanel,{attributes:true});
     }
   })();
+  // FIX-V15-4: expose _fillTedarikciDropdown so main-nav can call it on finans activation
+  window._fillTedarikciDropdown = function(){
+    var sel = document.getElementById('gider-tedarikci');
+    if(!sel) return;
+    var tedList = (function(){
+      try{ return JSON.parse(localStorage.getItem('uysa_tedarikci')||'[]'); }catch(e){ return []; }
+    })();
+    // rebuild options (keep first placeholder)
+    while(sel.options.length > 1) sel.remove(1);
+    var seen = new Set();
+    tedList.forEach(function(t){
+      var v = t.isim||t.ad||t.name||'';
+      if(v && !seen.has(v)){ seen.add(v);
+        var o = document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o); }
+    });
+    // also add from existing gider records
+    (function(){try{return JSON.parse(localStorage.getItem('uysa_giderler')||'[]');}catch(e){return[];}}()).forEach(function(g){
+      if(g.tedarikci && !seen.has(g.tedarikci)){ seen.add(g.tedarikci);
+        var o = document.createElement('option'); o.value=g.tedarikci; o.textContent=g.tedarikci; sel.appendChild(o); }
+    });
+  };
   // FIX-C3: Re-fill tedarikci dropdown when finans loads
   (function _reFillTed(){
     var sel = document.getElementById('gider-tedarikci');
@@ -16071,10 +16092,8 @@ window.addEventListener('load', function() {
       if(mevcut==='iste') isteSay++;
       else if(mevcut==='ucretli'||mevcut==='raporlu'||mevcut==='tatil'||mevcut==='dogum'||mevcut==='evlilik'||mevcut==='olum') izinSay++;
       else if(mevcut==='devsz') devszSay++;
-      // FIX-B: blank weekdays (hb) count as full worked day; weekends = 0
-      if(mevcut==='hb'){
-        if(!isWeekend2) maasKat += 1;
-      } else {
+      // FIX-V15: weekends never count toward maasKat (isGunSay only counts weekdays)
+      if(!isWeekend2){
         maasKat += (DURUMLAR[mevcut]||{maas:1}).maas;
       }
     }
@@ -17600,7 +17619,7 @@ window.uysaCvSil = function(i) {
 // ─── Personel Maliyet Dağılımı - tüm müşterileri göster ──────────────────
 window.uysaPerMalHesapla = function() {
   const secilenMus = (document.getElementById('perMalMusteriSel')||{}).value;
-  const personeller = lsGet('uysa_personeller', []).filter(p => !p.pasif);
+  const personeller = (function(){try{return JSON.parse(localStorage.getItem('uysa_personeller')||'[]');}catch(e){return[];}}()).filter(p => !p.pasif);
   const div = document.getElementById('perMalDiv');
   if (!div) return;
 
@@ -18014,7 +18033,7 @@ window.uysaPuantajGenelOzet = function() {
 
   // izinler
   let izinler = [];
-  try { izinler = lsGet('uysa_izinler', []); } catch(e){}
+  try { izinler = JSON.parse(localStorage.getItem('uysa_izinler')||'[]'); } catch(e){}
 
   const rows = personeller.map(per => {
     const perAd = (per.ad || '') + ' ' + (per.soyad || '');
@@ -18023,12 +18042,12 @@ window.uysaPuantajGenelOzet = function() {
     // Puantaj verisi
     const puantajKey = 'uysa_puantaj_' + ay + '_' + perAd; // FIX-1: correct key order
     let puantaj = {};
-    try { puantaj = lsGet(puantajKey, {}); } catch(e){}
+    try { puantaj = JSON.parse(localStorage.getItem(puantajKey)||'{}'); } catch(e){}
 
     // Alternatif key formatı
     if (!Object.keys(puantaj).length) {
       const altKey = 'uysa_puantaj_' + ay + '_' + perAd.replace(/\s+/g,'_'); // FIX-1b fallback fix
-      try { puantaj = lsGet(altKey, {}); } catch(e){}
+      try { puantaj = JSON.parse(localStorage.getItem(altKey)||'{}'); } catch(e){}
     }
 
     // İzin günleri hesapla
@@ -18136,6 +18155,9 @@ window.uysaPuantajGenelOzet = function() {
     }
     if (typeof origRender === 'function') origRender();
     else if (typeof window._puantajRenderOrig === 'function') window._puantajRenderOrig();
+    // FIX-V15: after render, if still no person selected show genelOzet
+    const _pv = (document.getElementById('puantaj-personel')||{}).value||'';
+    if(!_pv && typeof window.uysaPuantajGenelOzet === 'function') window.uysaPuantajGenelOzet();
   };
   // Ay değiştiğinde de güncelle
   const ayEl = document.getElementById('puantaj-ay');
@@ -18753,10 +18775,15 @@ function renderSozlesmeUyarilari(){
       }
     };
     reader.readAsArrayBuffer(file);
-    setTimeout(function(){ fileInput.value=''; }, 100);
+    // FIX-V15: do NOT clear fileInput — may interrupt FileReader
   };
 
   window._doPDFParse = function(typedArr, sonucDiv){
+    try{
+      if(typeof pdfjsLib !== 'undefined')
+        pdfjsLib.GlobalWorkerOptions.workerSrc =
+          'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }catch(e){}
     pdfjsLib.getDocument({data: typedArr}).promise.then(function(pdf){
       var totalPages = pdf.numPages;
       var textPromises = [];
