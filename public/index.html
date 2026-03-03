@@ -128,11 +128,15 @@
     display: flex;
     align-items: center;
     background: var(--nav-bg) !important;
-    height: var(--nav-h);
+    height: auto;
+    min-height: var(--nav-h);
     padding: 0 var(--sp-4);
     gap: 2px;
-    overflow-x: auto;
+    overflow-x: visible;
     flex-shrink: 0;
+    flex-wrap: wrap;
+    height: auto;
+    min-height: var(--nav-h);
     border-bottom: 1px solid rgba(255,255,255,.06);
     box-shadow: 0 2px 12px rgba(0,0,0,.25);
     -webkit-overflow-scrolling: touch;
@@ -664,7 +668,7 @@
   /* ── Responsive ───────────────────────────────────────────── */
   @media (max-width: 800px) {
     body { font-size: 12px; }
-    .mod-nav { padding: 0 var(--sp-2); height: 48px; }
+    .mod-nav { padding: 0 var(--sp-2); height: auto; min-height: 48px; flex-wrap: wrap; }
     .mod-nav-item { min-width: 60px; padding: 6px 8px; font-size: 10px; }
     .mod-nav-item .mod-label { display: none; }
     .mod-nav-item .mod-icon { font-size: 17px; }
@@ -1028,8 +1032,10 @@
           toast('☁️ ' + loaded + ' kayıt sunucudan yüklendi, sayfa yenileniyor...', 2500);
           sessionStorage.setItem('uysa_sync_done', Date.now().toString());
           try { localStorage.setItem('uysa_sync_reload_ts', Date.now().toString()); } catch(e){}
-          setTimeout(function(){ window.location.reload(); }, 1500);
-          return;
+          // v135: reload yerine in-place render
+          setTimeout(function(){
+            try { if(typeof window.renderAnasayfa==='function') window.renderAnasayfa(); } catch(e){}
+          }, 300);
         }
         sessionStorage.removeItem('uysa_sync_done');
         toast('☁️ Sunucudan yüklendi: ' + loaded + ' kayıt', 4000);
@@ -1438,6 +1444,7 @@
   #mod-anasayfa .content { position: relative; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" defer></script>
+<!-- /* v135-NavRenderFix */ -->
 </head>
 <body>
 
@@ -8645,6 +8652,11 @@ function uysaDoLogin() {
           if (overlay) overlay.classList.remove('active');
           try { _updateUserBadge(); } catch(e) {}
           if (typeof toast === 'function') toast('👋 Hoş geldiniz, ' + (sessUser.displayName || su.username) + '!');
+          // v135: login sonrası render tetikle
+          setTimeout(function(){
+            try { if(typeof window.renderAnasayfa==='function') window.renderAnasayfa(); } catch(e){}
+            try { if(typeof window._uysaSyncLoad==='function') window._uysaSyncLoad(); } catch(e){}
+          }, 300);
         } else {
           // Sunucu da reddetti
           err.textContent = 'Kullanıcı adı veya şifre hatalı!';
@@ -8671,6 +8683,11 @@ function uysaDoLogin() {
   if (overlay) overlay.classList.remove('active');
   try { _updateUserBadge(); } catch(e) {}
   if (typeof toast === 'function') toast('👋 Hoş geldiniz, ' + matchedUser.displayName + '!');
+  // v135: yerel login sonrası render + sync
+  setTimeout(function(){
+    try { if(typeof window.renderAnasayfa==='function') window.renderAnasayfa(); } catch(e){}
+    try { if(typeof window._uysaSyncLoad==='function') window._uysaSyncLoad(); } catch(e){}
+  }, 300);
 }
 
 // ── Çıkış ────────────────────────────────────────────────
@@ -9195,7 +9212,14 @@ window.addEventListener('DOMContentLoaded', function() {
 
   // Oturum var mı?
   if (uysaCheckAuth()) {
-    // Oturum var, devam et
+    // v135: Oturum var — veri varsa 200ms içinde render et
+    setTimeout(function(){
+      try { if(typeof window.renderAnasayfa==='function') window.renderAnasayfa(); } catch(e){}
+    }, 200);
+    // 600ms sonra sync + tekrar render
+    setTimeout(function(){
+      try { if(typeof window._uysaSyncLoad==='function') window._uysaSyncLoad(); } catch(e){}
+    }, 600);
   }
   // Login overlay zaten active olarak açık, uysaCheckAuth kapatacak
 });
