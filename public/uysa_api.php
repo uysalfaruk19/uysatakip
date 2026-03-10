@@ -305,7 +305,7 @@ $action = trim($_GET['action'] ?? '');
 $body   = json_decode(file_get_contents('php://input'), true) ?? [];
 
 // ── Auth Bypass: fileDownload public ─────────────────────────
-$publicActions = ['fileDownload', 'ping', 'health', 'getToken', 'userAuth'];
+$publicActions = ['fileDownload', 'ping', 'health', 'stats', 'getToken', 'userAuth'];
 
 // ── Kimlik Doğrulama ─────────────────────────────────────────
 $authedUser = null;
@@ -400,6 +400,37 @@ switch ($action) {
 // ── Ping ────────────────────────────────────────────────────
 case 'ping':
     jsonResponse(['ok' => true, 'msg' => 'UYSA API v4.0', 'time' => date('c')]);
+
+// ── Health ──────────────────────────────────────────────────
+case 'health':
+    try {
+        $pdo->query('SELECT 1');
+        $uploadsOk = is_dir(UPLOAD_DIR) || @mkdir(UPLOAD_DIR, 0755, true);
+        jsonResponse([
+            'ok' => true,
+            'db' => 'ok',
+            'uploads_dir' => UPLOAD_DIR,
+            'uploads_writable' => $uploadsOk && is_writable(UPLOAD_DIR),
+            'time' => date('c'),
+        ]);
+    } catch (\Throwable $e) {
+        jsonResponse(['ok' => false, 'db' => 'fail', 'error' => 'health check failed'], 503);
+    }
+
+// ── Stats ───────────────────────────────────────────────────
+case 'stats':
+    try {
+        $counts = [
+            'storage_keys' => (int)$pdo->query('SELECT COUNT(*) FROM uysa_storage')->fetchColumn(),
+            'files'        => (int)$pdo->query('SELECT COUNT(*) FROM uysa_files')->fetchColumn(),
+            'users'        => (int)$pdo->query('SELECT COUNT(*) FROM uysa_users')->fetchColumn(),
+            'audits'       => (int)$pdo->query('SELECT COUNT(*) FROM uysa_audit')->fetchColumn(),
+            'backups'      => (int)$pdo->query('SELECT COUNT(*) FROM uysa_backups')->fetchColumn(),
+        ];
+        jsonResponse(['ok' => true, 'counts' => $counts, 'time' => date('c')]);
+    } catch (\Throwable $e) {
+        jsonResponse(['ok' => false, 'error' => 'stats failed'], 500);
+    }
 
 // ── JWT: Token Al ────────────────────────────────────────────
 case 'getToken':
@@ -555,7 +586,24 @@ case 'delete':
 
 // ── Storage: getAll ──────────────────────────────────────────
 case 'getAll':
-    $rows = $pdo->query("SELECT store_key, store_value, updated_at FROM uysa_storage ORDER BY store_key")->fetchAll();
+    // Optional filters for performance
+    $prefix = sanitizeInput($_GET['prefix'] ?? '', 255);
+    $limit  = min((int)($_GET['limit'] ?? 0), 5000);
+    $offset = max((int)($_GET['offset'] ?? 0), 0);
+
+    if ($prefix !== '') {
+        $sql = "SELECT store_key, store_value, updated_at FROM uysa_storage WHERE store_key LIKE ? ORDER BY store_key";
+        $params = [$prefix . '%'];
+        if ($limit > 0) { $sql .= " LIMIT {$limit} OFFSET {$offset}"; }
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll();
+    } else {
+        $sql = "SELECT store_key, store_value, updated_at FROM uysa_storage ORDER BY store_key";
+        if ($limit > 0) { $sql .= " LIMIT {$limit} OFFSET {$offset}"; }
+        $rows = $pdo->query($sql)->fetchAll();
+    }
+
     $out  = [];
     foreach ($rows as $r) $out[$r['store_key']] = $r['store_value'];
     jsonResponse(['ok' => true, 'data' => $out, 'count' => count($out)]);
@@ -620,7 +668,6 @@ case 'userAuth':
     $user = $stmt->fetch();
     $dummy = '$2y$10$invalidhashfortimingattackprevention000000000000000000';
     $hash  = $user ? $user['password'] : $dummy;
-    usleep(500000); // 0.5 sn sabit bekleme (timing attack önlemi)
     if (!$user || !password_verify($password, $hash)) {
         auditLog($pdo, 'login_fail', $username, null, null, $clientIp);
         jsonResponse(['ok' => false, 'error' => 'Kullanıcı adı veya şifre hatalı'], 401);
@@ -695,10 +742,59 @@ case 'auditLog':
 
 case 'auditList':
     $limit = min((int)($_GET['limit'] ?? 100), 500);
-    $rows  = $pdo->prepare("SELECT * FROM uysa_audit ORDER BY created_at DESC LIMIT ?")->execute([$limit]) ? null : null;
     $stmt  = $pdo->prepare("SELECT * FROM uysa_audit ORDER BY created_at DESC LIMIT ?");
     $stmt->execute([$limit]);
     jsonResponse(['ok' => true, 'logs' => $stmt->fetchAll()]);
+
+// ── File List ───────────────────────────────────────────────
+case 'fileList':
+    $category = sanitizeInput($_GET['category'] ?? $body['category'] ?? '', 100);
+    $date     = sanitizeInput($_GET['date'] ?? $body['date'] ?? '', 20);
+    $includeDeleted = (($_GET['includeDeleted'] ?? $body['includeDeleted'] ?? false) ? true : false);
+    $limit = min((int)($_GET['limit'] ?? $body['limit'] ?? 200), 500);
+
+    $where = [];
+    $params = [];
+    if ($category !== '') { $where[] = 'category = ?'; $params[] = $category; }
+    if ($date !== '')     { $where[] = '`date` = ?';   $params[] = $date; }
+    if (!$includeDeleted) { $where[] = 'deleted_at IS NULL'; }
+
+    $sql = 'SELECT id, filename, original, mime, size_bytes, uploaded_by, category, `date`, deleted_at, created_at FROM uysa_files';
+    if ($where) $sql .= ' WHERE ' . implode(' AND ', $where);
+    $sql .= ' ORDER BY created_at DESC LIMIT ' . (int)$limit;
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    jsonResponse(['ok' => true, 'files' => $stmt->fetchAll()]);
+
+// ── File Download (public) ───────────────────────────────────
+case 'fileDownload':
+    $filename = sanitizeInput($_GET['filename'] ?? '', 255);
+    if (!$filename) jsonResponse(['ok' => false, 'error' => 'filename gerekli'], 400);
+
+    $stmt = $pdo->prepare('SELECT original, mime, size_bytes, deleted_at FROM uysa_files WHERE filename = ? LIMIT 1');
+    $stmt->execute([$filename]);
+    $row = $stmt->fetch();
+    if (!$row) jsonResponse(['ok' => false, 'error' => 'Dosya bulunamadı'], 404);
+    if ($row['deleted_at'] !== null) jsonResponse(['ok' => false, 'error' => 'Dosya silinmiş'], 410);
+
+    $path = rtrim(UPLOAD_DIR, '/') . '/' . $filename;
+    if (!is_file($path)) jsonResponse(['ok' => false, 'error' => 'Dosya disk üzerinde bulunamadı'], 404);
+
+    header_remove('Content-Type');
+    header('Content-Type: ' . ($row['mime'] ?: 'application/octet-stream'));
+    header('Content-Length: ' . (string)filesize($path));
+    header('Content-Disposition: attachment; filename="' . addslashes($row['original'] ?: $filename) . '"');
+    readfile($path);
+    exit;
+
+// ── File Delete (soft delete) ────────────────────────────────
+case 'fileDelete':
+    $id = (int)($body['id'] ?? $_GET['id'] ?? 0);
+    if (!$id) jsonResponse(['ok' => false, 'error' => 'id gerekli'], 400);
+    $pdo->prepare('UPDATE uysa_files SET deleted_at = NOW() WHERE id = ?')->execute([$id]);
+    auditLog($pdo, 'file_delete', $actor, (string)$id, null, $clientIp);
+    jsonResponse(['ok' => true]);
 
 // ── File Upload ───────────────────────────────────────────────
 case 'fileUpload':
