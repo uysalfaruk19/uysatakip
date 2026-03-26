@@ -3078,7 +3078,7 @@
                   </label>
                   <span style="font-size:11px;color:#78350f">(Bu müşteriye yemek dışarıdan temin ediliyor)</span>
                 </div>
-                <div id="crmAlSatFields" style="display:none;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                <div id="crmAlSatFields" style="display:none;grid-template-columns:1fr 1fr;gap:8px">
                   <div>
                     <label style="font-size:12px">Alış Fiyatı (₺/kişi/gün)</label>
                     <input id="crmAlisFiyat" type="number" min="0" step="0.01" placeholder="Tedarikçiden alış fiyatı" oninput="crmPreviewOzet()" style="border-color:#fbbf24"/>
@@ -8110,6 +8110,10 @@ alert('Malzeme ve miktar giriniz.'); return; }
     const buAyKisi = uretimArr.reduce((s,u)=>s+(u.kisi||0),0);
     const buAyCiro = uretimArr.reduce((s,u)=>s+(u.tutar||0),0);
     const tahminliAy = kisi*fiyat*22;
+    const isAlSat = d.alSat||false;
+    const alisFiyat = d.alisFiyat||0;
+    const tahminliMaliyet = isAlSat && alisFiyat>0 ? kisi*alisFiyat*22 : 0;
+    const tahminliKar = tahminliAy - tahminliMaliyet;
     const diet = d.diet||'';
     const diff = d.diff||'';
 
@@ -8168,11 +8172,22 @@ alert('Malzeme ve miktar giriniz.'); return; }
       <div style="background:#f0fdf4;border-radius:10px;padding:10px;border:1px solid #bbf7d0">
         <div style="font-weight:800;color:#166534;margin-bottom:4px">💰 Finansal Özet</div>
         <div style="font-size:12px;line-height:1.9">
-          <div>📅 <b>Tahmini Aylık Ciro:</b> <span style="color:#166534;font-weight:800">${tahminliAy?fmt(tahminliAy)+' ₺':'—'}</span></div>
+          <div>📅 <b>Aylık Tahmini Ciro:</b> <span style="color:#166534;font-weight:800">${tahminliAy?fmt(tahminliAy)+' ₺':'—'}</span></div>
+          ${isAlSat?`<div>📦 <b>Aylık Tahmini Maliyet:</b> <span style="color:#dc2626;font-weight:800">${tahminliMaliyet?fmt(tahminliMaliyet)+' ₺':'—'}</span> <span style="font-size:10px;color:#64748b">(${alisFiyat} ₺ × ${kisi} kişi × 22 gün)</span></div>
+          <div>📊 <b>Aylık Tahmini Kâr:</b> <span style="color:${tahminliKar>=0?'#166534':'#dc2626'};font-weight:900;font-size:14px">${fmt(tahminliKar)} ₺</span></div>`:''}
           <div>✅ <b>Toplam Tahsilat:</b> <span style="color:#15803d;font-weight:800">${fmt(toplamTahsilat)} ₺</span></div>
           <div>📦 <b>Bu Ay Üretim:</b> ${buAyKisi} kişi / <b style="color:#166534">${fmt(buAyCiro)} ₺</b></div>
         </div>
       </div>
+      ${isAlSat?`<div style="background:#fef3c7;border-radius:10px;padding:10px;border:1px solid #fbbf24">
+        <div style="font-weight:800;color:#92400e;margin-bottom:4px">🔄 Al/Sat Bilgisi</div>
+        <div style="font-size:12px;line-height:1.8">
+          <div>💰 <b>Alış Fiyatı:</b> <span style="font-weight:800">${fmt(alisFiyat)} ₺/kişi</span></div>
+          <div>💰 <b>Satış Fiyatı:</b> <span style="font-weight:800">${fmt(fiyat)} ₺/kişi</span></div>
+          <div>📈 <b>Birim Kâr:</b> <span style="color:${(fiyat-alisFiyat)>=0?'#166534':'#dc2626'};font-weight:800">${fmt(fiyat-alisFiyat)} ₺/kişi</span></div>
+          ${d.tedarikci?`<div>🏪 <b>Tedarikçi:</b> ${d.tedarikci}</div>`:''}
+        </div>
+      </div>`:''}
       ${diet?`<div style="background:#fefce8;border-radius:10px;padding:10px;border:1px solid #fde68a"><div style="font-weight:800;color:#854d0e;margin-bottom:3px">🍽️ Menü Tercihleri</div><div style="font-size:11px;color:#78350f;line-height:1.5">${diet.replace(/\n/g,'<br>')}</div></div>`:''}
       ${diff?`<div style="background:#fff7ed;border-radius:10px;padding:10px;border:1px solid #fed7aa"><div style="font-weight:800;color:#9a3412;margin-bottom:3px">📝 Fark Notları</div><div style="font-size:11px;color:#7c2d12;line-height:1.5">${diff.replace(/\n/g,'<br>')}</div></div>`:''}
       ${gelirler.length?`<div style="background:#f8fafc;border-radius:10px;padding:10px;border:1px solid #e2e8f0"><div style="font-weight:800;color:#334155;margin-bottom:4px">📋 Son Ödemeler</div>${gelirler.slice(-3).reverse().map(g=>`<div style="font-size:11px;border-bottom:1px solid #e2e8f0;padding:3px 0"><span style="color:#6b7280">${g.tarih}</span> — <b style="color:#166534">${fmt(g.tutar)} ₺</b>${g.kisi?' ('+g.kisi+' kişi)':''}</div>`).join('')}</div>`:''}
@@ -14020,7 +14035,31 @@ window.addEventListener('load', function() {
         <div style="background:#fefce8;border-radius:10px;padding:10px;border:1px solid #fde047">
           <div style="font-size:10px;color:#854d0e;font-weight:700">📊 AYLIK TAHMİN (22 gün)</div>
           <div style="font-size:20px;font-weight:900;color:#92400e">${fmt(ayTahmin)} ₺</div>
+          ${d.alSat && d.alisFiyat ? `
+          <div style="margin-top:6px;padding-top:6px;border-top:1px solid #fde047">
+            <div style="font-size:11px;color:#dc2626;font-weight:700">Tahmini Maliyet: <span style="font-size:14px">${fmt(kisi * d.alisFiyat * 22)} ₺</span></div>
+            <div style="font-size:11px;color:${(fiyat - d.alisFiyat) >= 0 ? '#166534' : '#dc2626'};font-weight:900;margin-top:2px">Tahmini Kâr: <span style="font-size:16px">${fmt((fiyat - d.alisFiyat) * kisi * 22)} ₺</span></div>
+          </div>` : ''}
           ${toplamTahsilat > 0 ? `<div style="font-size:10px;color:#6b7280;margin-top:2px">Toplam Tahsilat: <b>${fmt(toplamTahsilat)} ₺</b></div>` : ''}
+        </div>` : ''}
+
+        <!-- Al/Sat Bilgisi -->
+        ${d.alSat ? `
+        <div style="background:#fef3c7;border-radius:10px;padding:10px;border:1px solid #fbbf24">
+          <div style="font-size:10px;font-weight:800;color:#92400e;margin-bottom:4px">🔄 AL/SAT MÜŞTERİSİ</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+            <div style="text-align:center;background:#fff;border-radius:8px;padding:6px;border:1px solid #fde68a">
+              <div style="font-size:9px;color:#92400e;font-weight:700">ALIŞ</div>
+              <div style="font-size:18px;font-weight:900;color:#dc2626">${d.alisFiyat ? fmt(d.alisFiyat) : '—'}</div>
+              <div style="font-size:9px;color:#6b7280">₺/kişi</div>
+            </div>
+            <div style="text-align:center;background:#fff;border-radius:8px;padding:6px;border:1px solid #fde68a">
+              <div style="font-size:9px;color:#92400e;font-weight:700">BİRİM KÂR</div>
+              <div style="font-size:18px;font-weight:900;color:${(fiyat-(d.alisFiyat||0))>=0?'#166534':'#dc2626'}">${fmt(fiyat-(d.alisFiyat||0))}</div>
+              <div style="font-size:9px;color:#6b7280">₺/kişi</div>
+            </div>
+          </div>
+          ${d.tedarikci ? `<div style="font-size:11px;color:#78350f;margin-top:6px">🏪 Tedarikçi: <b>${d.tedarikci}</b></div>` : ''}
         </div>` : ''}
 
         <!-- Servis Konfigürasyonu -->
@@ -14093,6 +14132,15 @@ window.addEventListener('load', function() {
     set('crmVardiya',        d.vardiya   || 'tek');
     set('crmAyran',          d.ayran     || 'menuye_gore');
     set('crmOdemeDurum',     d.odemeDurum || '');
+    // Al/Sat alanları
+    var alSatCb = document.getElementById('crmAlSat');
+    if(alSatCb) alSatCb.checked = d.alSat || false;
+    set('crmAlisFiyat', d.alisFiyat || '');
+    set('crmTedarikci', d.tedarikci || '');
+    if(typeof crmAlSatToggle === 'function') crmAlSatToggle();
+    // Personel listesi
+    window._crmSeciliPersoneller = d.personelListesi || [];
+    if(typeof crmRenderSeciliPersoneller === 'function') crmRenderSeciliPersoneller();
     // Özeti güncelle
     _crmRenderOzet(cust);
     // Menü dropdown'ını senkronize et
@@ -14116,9 +14164,13 @@ window.addEventListener('load', function() {
       diff:           get('crmDiffNotes'),
       kisi:           parseInt(get('crmKisi'))    || 0,
       fiyat:          parseFloat(get('crmFiyat')) || 0,
+      alSat:          document.getElementById('crmAlSat')?.checked || false,
+      alisFiyat:      parseFloat(get('crmAlisFiyat')) || 0,
+      tedarikci:      get('crmTedarikci'),
       ilgili:         get('crmIlgili'),
       telefon:        get('crmTelefon'),
       personel:       parseInt(get('crmPersonel')) || 0,
+      personelListesi: window._crmSeciliPersoneller || [],
       mevcutEkipman:  get('crmMevcutEkipman'),
       talepEkipman:   get('crmTalepEkipman'),
       ekstraTalep:    get('crmEkstraTalep'),
