@@ -1369,7 +1369,59 @@ case 'telegram.setup':
     curl_close($ch);
     jsonResponse(['ok' => $result['ok'] ?? false, 'result' => $result]);
 
-// ── AI Chat (ERP içi asistan — Provider-Agnostic) ───────────
+// ── AI Auth Login (OpenClaw auth destekli) ──────────────────
+case 'ai.authLogin':
+    $email = sanitizeInput($body['email'] ?? '', 200);
+    $password = $body['password'] ?? '';
+    if (!$email || !$password) {
+        jsonResponse(['ok' => false, 'error' => 'E-posta ve şifre gerekli'], 400);
+    }
+
+    require_once __DIR__ . '/src/modules/TelegramBot.php';
+    $aiCfg = getAIProvider();
+
+    // OpenClaw / OpenAI uyumlu auth endpoint
+    $authUrl = getenv('AI_AUTH_URL') ?: '';
+    if (!$authUrl) {
+        // AI_BASE_URL'den auth URL tahmin et (örn: https://api.openclaw.com/v1/chat/completions -> https://api.openclaw.com/v1/auth/login)
+        $baseUrl = $aiCfg['url'] ?? '';
+        if ($baseUrl) {
+            $parsed = parse_url($baseUrl);
+            $authUrl = ($parsed['scheme'] ?? 'https') . '://' . ($parsed['host'] ?? '') . '/v1/auth/login';
+        }
+    }
+    if (!$authUrl) {
+        jsonResponse(['ok' => false, 'error' => 'AI auth URL yapılandırılmamış'], 503);
+    }
+
+    $ch = curl_init($authUrl);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST           => true,
+        CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+        CURLOPT_POSTFIELDS     => json_encode(['email' => $email, 'password' => $password]),
+        CURLOPT_TIMEOUT        => 15,
+        CURLOPT_SSL_VERIFYPEER => true,
+    ]);
+    $authResp = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($httpCode >= 200 && $httpCode < 300 && $authResp) {
+        $authData = json_decode($authResp, true);
+        $token = $authData['token'] ?? $authData['access_token'] ?? $authData['data']['token'] ?? '';
+        if ($token) {
+            jsonResponse(['ok' => true, 'token' => $token]);
+        }
+    }
+    $errMsg = 'Giriş başarısız';
+    if ($authResp) {
+        $errData = json_decode($authResp, true);
+        $errMsg = $errData['error'] ?? $errData['message'] ?? $errMsg;
+    }
+    jsonResponse(['ok' => false, 'error' => $errMsg], 401);
+
+// ── AI Chat (ERP içi asistan — Provider-Agnostic + Auth) ────
 case 'ai.chat':
     $question = sanitizeInput($body['message'] ?? '', 2000);
     if (!$question) {
@@ -1378,9 +1430,13 @@ case 'ai.chat':
 
     require_once __DIR__ . '/src/modules/TelegramBot.php';
 
+    // Auth token varsa kullanıcının kendi token'ıyla çağrı yap
+    $userAiToken = $body['ai_auth_token'] ?? '';
+
     $aiCfg = getAIProvider();
-    if (!$aiCfg['key']) {
-        jsonResponse(['ok' => false, 'error' => 'AI servisi yapılandırılmamış. AI_API_KEY veya ANTHROPIC_API_KEY env gerekli.'], 503);
+    // Kullanıcı auth token'ı varsa veya sunucu API key'i varsa devam et
+    if (!$aiCfg['key'] && !$userAiToken) {
+        jsonResponse(['ok' => false, 'error' => 'AI servisi yapılandırılmamış. Giriş yapın veya sunucu API anahtarı ayarlayın.'], 503);
     }
 
     // Kullanıcı mesajını kaydet
@@ -1410,8 +1466,13 @@ case 'ai.chat':
                   . "Kullanıcının ERP verileri hakkında sorularını yanıtla. "
                   . "Güncel ERP verileri:\n\n{$context}";
 
-    // Provider-agnostic AI çağrısı
-    $aiResponse = callAI($question, $systemPrompt, $messages);
+    // Provider-agnostic AI çağrısı (kullanıcı auth token varsa onu kullan)
+    if ($userAiToken) {
+        // Kullanıcının kendi auth token'ıyla doğrudan çağrı
+        $aiResponse = callAIWithToken($question, $systemPrompt, $messages, $userAiToken);
+    } else {
+        $aiResponse = callAI($question, $systemPrompt, $messages);
+    }
 
     if (!$aiResponse) {
         jsonResponse(['ok' => false, 'error' => 'AI yanıt veremedi'], 503);

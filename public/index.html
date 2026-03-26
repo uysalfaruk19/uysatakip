@@ -3095,8 +3095,13 @@
                     </select>
                   </div>
                   <div>
-                    <label>Personel</label>
+                    <label>Personel Sayısı</label>
                     <input id="crmPersonel" type="number" min="0" placeholder="Kaç kişi"/>
+                  </div>
+                  <div style="grid-column:1/-1">
+                    <label>Atanan Personeller <span style="color:#64748b;font-size:11px">(İK listesinden seç)</span></label>
+                    <div id="crmPersonelSecim" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px;border:1px solid #e2e8f0;border-radius:8px;min-height:38px;background:#f8fafc"></div>
+                    <button type="button" class="btn" style="margin-top:6px;padding:4px 12px;font-size:12px" onclick="crmPersonelSecModal()">+ Personel Seç/Değiştir</button>
                   </div>
                   <div>
                     <label>Vardiya</label>
@@ -7997,6 +8002,9 @@ alert('Malzeme ve miktar giriniz.'); return; }
     set('crmIlgili',    d.ilgili);
     set('crmTelefon',   d.telefon);
     set('crmPersonel',  d.personel||'');
+    // Atanan personelleri yükle
+    window._crmSeciliPersoneller = d.personelListesi || [];
+    crmRenderSeciliPersoneller();
     set('crmMevcutEkipman',  d.mevcutEkipman);
     set('crmTalepEkipman',   d.talepEkipman);
     set('crmEkstraTalep',    d.ekstraTalep);
@@ -8121,6 +8129,7 @@ alert('Malzeme ve miktar giriniz.'); return; }
       ilgili:     get('crmIlgili'),
       telefon:    get('crmTelefon'),
       personel:   parseInt(get('crmPersonel'))||0,
+      personelListesi: window._crmSeciliPersoneller || [],
       mevcutEkipman: get('crmMevcutEkipman'),
       talepEkipman:  get('crmTalepEkipman'),
       ekstraTalep:   get('crmEkstraTalep'),
@@ -8147,10 +8156,130 @@ alert('Malzeme ve miktar giriniz.'); return; }
     // Özet içeriğinin görünür olduğundan emin ol
     const ozetIcerik = document.getElementById('crmOzetIcerik');
     if(ozetIcerik) ozetIcerik.style.display = '';
-    toast('✅ Müşteri kaydedildi: '+cust);
+    // Günlük üretim tablosunu ve müşteri listesini senkronize et
+    if(typeof window.gsRenderTableV76==='function') try{ setTimeout(window.gsRenderTableV76, 100); }catch(e){}
+    if(typeof window.v75RenderMusteriListesi==='function') try{ setTimeout(window.v75RenderMusteriListesi, 200); }catch(e){}
+    if(typeof window.refreshFinStats==='function') try{ setTimeout(window.refreshFinStats, 300); }catch(e){}
+    toast('✅ Müşteri kaydedildi: '+cust+' (Üretim sayıları güncellendi)');
   }
   window.crmSaveBtnClick = _doCrmSave;
   document.getElementById('crmSaveBtn')?.addEventListener('click', _doCrmSave);
+
+  // ── CRM: Personel Seçim Fonksiyonları ──
+  window.crmRenderSeciliPersoneller = function(){
+    const container = document.getElementById('crmPersonelSecim');
+    if(!container) return;
+    const secili = window._crmSeciliPersoneller || [];
+    if(!secili.length){
+      container.innerHTML = '<span style="color:#94a3b8;font-size:12px">Henüz personel atanmadı</span>';
+      return;
+    }
+    container.innerHTML = secili.map(function(p, i){
+      return '<span style="display:inline-flex;align-items:center;gap:4px;background:#e0e7ff;color:#3730a3;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:500">'
+        + (p.ad || p.name || 'Personel')
+        + '<button type="button" onclick="crmPersonelSil('+i+')" style="background:none;border:none;color:#6366f1;cursor:pointer;font-size:14px;padding:0 2px;line-height:1">&times;</button>'
+        + '</span>';
+    }).join('');
+  };
+  window.crmRenderSeciliPersoneller(); // İlk çağrı
+
+  window.crmPersonelSil = function(idx){
+    var secili = window._crmSeciliPersoneller || [];
+    secili.splice(idx, 1);
+    window._crmSeciliPersoneller = secili;
+    crmRenderSeciliPersoneller();
+    // Personel sayısını da güncelle
+    var el = document.getElementById('crmPersonel');
+    if(el) el.value = secili.length;
+  };
+
+  window.crmPersonelSecModal = function(){
+    // Mevcut personel listesini al
+    var personeller = [];
+    try { personeller = JSON.parse(localStorage.getItem('uysa_personeller') || '[]'); } catch(e){}
+    var aktif = personeller.filter(function(p){ return !p.pasif; });
+    var secili = (window._crmSeciliPersoneller || []).map(function(p){ return p.id || p.ad || p.name; });
+
+    // Modal oluştur
+    var overlay = document.createElement('div');
+    overlay.id = 'crmPerSecOverlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:100000;display:flex;align-items:center;justify-content:center;';
+    var modal = document.createElement('div');
+    modal.style.cssText = 'background:#fff;border-radius:16px;width:90%;max-width:480px;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.2);';
+
+    // Header
+    var header = '<div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between">'
+      + '<h3 style="margin:0;font-size:16px;color:#1e293b">Personel Seç</h3>'
+      + '<button onclick="document.getElementById(\'crmPerSecOverlay\').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#64748b">&times;</button>'
+      + '</div>';
+
+    // Arama
+    var search = '<div style="padding:12px 20px;border-bottom:1px solid #f1f5f9">'
+      + '<input id="crmPerSearch" type="text" placeholder="Personel ara..." oninput="crmPerSecFilter(this.value)" style="width:100%;border:1px solid #d1d5db;border-radius:8px;padding:8px 12px;font-size:13px;outline:none;box-sizing:border-box">'
+      + '</div>';
+
+    // Liste
+    var liste = '<div id="crmPerSecListe" style="flex:1;overflow-y:auto;padding:8px 12px">';
+    if(!aktif.length){
+      liste += '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px">Henüz İK modülünde personel eklenmemiş.<br>Önce İnsan Kaynakları bölümünden personel ekleyin.</div>';
+    } else {
+      aktif.forEach(function(p){
+        var pId = p.id || p.ad || p.isim || '';
+        var pAd = p.ad || p.isim || p.name || 'İsimsiz';
+        var pGorev = p.gorev || p.pozisyon || p.departman || '';
+        var checked = secili.indexOf(pId) !== -1 || secili.indexOf(pAd) !== -1 ? ' checked' : '';
+        liste += '<label class="crm-per-item" data-ad="' + pAd.toLowerCase() + '" style="display:flex;align-items:center;gap:10px;padding:10px 8px;border-bottom:1px solid #f8fafc;cursor:pointer;border-radius:8px;transition:background .15s" onmouseover="this.style.background=\'#f1f5f9\'" onmouseout="this.style.background=\'transparent\'">'
+          + '<input type="checkbox" value="' + encodeURIComponent(JSON.stringify({id:pId,ad:pAd,gorev:pGorev})) + '"' + checked + ' style="width:18px;height:18px;accent-color:#4f46e5">'
+          + '<div><div style="font-weight:600;font-size:13px;color:#1e293b">' + pAd + '</div>'
+          + (pGorev ? '<div style="font-size:11px;color:#64748b">' + pGorev + '</div>' : '')
+          + '</div></label>';
+      });
+    }
+    liste += '</div>';
+
+    // Footer
+    var footer = '<div style="padding:12px 20px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">'
+      + '<span id="crmPerSecCount" style="font-size:12px;color:#64748b">Seçili: ' + secili.length + '</span>'
+      + '<div style="display:flex;gap:8px">'
+      + '<button onclick="document.getElementById(\'crmPerSecOverlay\').remove()" style="padding:8px 16px;border:1px solid #d1d5db;border-radius:8px;background:#fff;cursor:pointer;font-size:13px">İptal</button>'
+      + '<button onclick="crmPerSecKaydet()" style="padding:8px 20px;border:none;border-radius:8px;background:#4f46e5;color:#fff;cursor:pointer;font-size:13px;font-weight:600">Kaydet</button>'
+      + '</div></div>';
+
+    modal.innerHTML = header + search + liste + footer;
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    // Checkbox change event
+    overlay.addEventListener('change', function(){
+      var checks = overlay.querySelectorAll('input[type=checkbox]:checked');
+      var countEl = document.getElementById('crmPerSecCount');
+      if(countEl) countEl.textContent = 'Seçili: ' + checks.length;
+    });
+  };
+
+  window.crmPerSecFilter = function(val){
+    val = val.toLowerCase();
+    var items = document.querySelectorAll('#crmPerSecListe .crm-per-item');
+    items.forEach(function(el){
+      el.style.display = el.getAttribute('data-ad').indexOf(val) !== -1 ? 'flex' : 'none';
+    });
+  };
+
+  window.crmPerSecKaydet = function(){
+    var overlay = document.getElementById('crmPerSecOverlay');
+    if(!overlay) return;
+    var checks = overlay.querySelectorAll('input[type=checkbox]:checked');
+    var secili = [];
+    checks.forEach(function(cb){
+      try { secili.push(JSON.parse(decodeURIComponent(cb.value))); } catch(e){}
+    });
+    window._crmSeciliPersoneller = secili;
+    crmRenderSeciliPersoneller();
+    // Personel sayısını da güncelle
+    var el = document.getElementById('crmPersonel');
+    if(el) el.value = secili.length;
+    overlay.remove();
+  };
 
   document.getElementById('crmOpenMenuBtn')?.addEventListener('click',()=>{
     document.querySelector('[data-module="operasyon"]')?.click();
@@ -21145,12 +21274,24 @@ document.addEventListener('DOMContentLoaded', function(){
       <button onclick="event.stopPropagation();uysaAI.close()" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;">×</button>
     </div>
   </div>
+  <!-- AI Auth Login Panel -->
+  <div id="uysa-ai-auth" style="display:none;padding:20px;background:#f8fafc;flex-direction:column;gap:12px;">
+    <div style="text-align:center;margin-bottom:4px">
+      <div style="font-size:14px;font-weight:600;color:#1e293b">AI Asistan Girişi</div>
+      <div style="font-size:11px;color:#64748b;margin-top:4px">OpenClaw hesabınızla giriş yapın</div>
+    </div>
+    <input id="uysa-ai-auth-email" type="email" placeholder="E-posta" style="border:1px solid #d1d5db;border-radius:8px;padding:10px 12px;font-size:13px;outline:none;width:100%;box-sizing:border-box">
+    <input id="uysa-ai-auth-pass" type="password" placeholder="Şifre" style="border:1px solid #d1d5db;border-radius:8px;padding:10px 12px;font-size:13px;outline:none;width:100%;box-sizing:border-box" onkeydown="if(event.key==='Enter')uysaAI.authLogin()">
+    <button onclick="uysaAI.authLogin()" style="background:linear-gradient(135deg,#1a56db,#7c3aed);color:#fff;border:none;border-radius:8px;padding:10px;cursor:pointer;font-weight:600;font-size:13px;width:100%">Giriş Yap</button>
+    <div id="uysa-ai-auth-error" style="display:none;color:#dc2626;font-size:12px;text-align:center"></div>
+    <button onclick="uysaAI.skipAuth()" style="background:none;border:none;color:#64748b;font-size:11px;cursor:pointer;text-decoration:underline">Sunucu API anahtarıyla devam et</button>
+  </div>
   <div id="uysa-ai-messages" style="flex:1;overflow-y:auto;padding:12px;min-height:280px;max-height:360px;display:flex;flex-direction:column;gap:8px;background:#f8fafc;">
     <div class="ai-msg ai-assistant" style="background:#e8f0fe;padding:10px 12px;border-radius:12px;font-size:13px;line-height:1.5;max-width:90%;">
       Merhaba! Ben UYSA ERP AI asistanınızım. Stok, finans, personel veya herhangi bir ERP konusunda soru sorabilirsiniz.
     </div>
   </div>
-  <div style="padding:10px 12px;border-top:1px solid #e2e8f0;display:flex;gap:8px;background:#fff;">
+  <div id="uysa-ai-input-area" style="padding:10px 12px;border-top:1px solid #e2e8f0;display:flex;gap:8px;background:#fff;">
     <input id="uysa-ai-input" type="text" placeholder="Sorunuzu yazın..." style="flex:1;border:1px solid #d1d5db;border-radius:10px;padding:10px 14px;font-size:13px;outline:none;font-family:inherit;" onkeydown="if(event.key==='Enter')uysaAI.send()">
     <button onclick="uysaAI.send()" style="background:linear-gradient(135deg,#1a56db,#7c3aed);color:#fff;border:none;border-radius:10px;padding:10px 16px;cursor:pointer;font-weight:600;font-size:13px;">Gönder</button>
   </div>
@@ -21193,12 +21334,21 @@ async function apiCall(action, body, method) {
   }
 }
 
-/* ── AI Chat Widget ──────────────────────────────────────────── */
+/* ── AI Chat Widget (Auth destekli) ─────────────────────────── */
 window.uysaAI = {
+  _aiToken: localStorage.getItem('uysa_ai_auth_token') || '',
+  _aiAuthMode: localStorage.getItem('uysa_ai_auth_mode') || '', // 'auth' veya 'server'
+
   open() {
     document.getElementById('uysa-ai-chat').style.display = 'flex';
     document.getElementById('uysa-ai-fab').style.display = 'none';
-    document.getElementById('uysa-ai-input').focus();
+    // Auth durumuna göre panel göster
+    if (!this._aiToken && this._aiAuthMode !== 'server') {
+      this._showAuth(true);
+    } else {
+      this._showAuth(false);
+      document.getElementById('uysa-ai-input').focus();
+    }
   },
   close() {
     document.getElementById('uysa-ai-chat').style.display = 'none';
@@ -21208,6 +21358,56 @@ window.uysaAI = {
     const chat = document.getElementById('uysa-ai-chat');
     if (chat.style.display === 'none' || !chat.style.display) this.open();
     else this.close();
+  },
+  _showAuth(show) {
+    const auth = document.getElementById('uysa-ai-auth');
+    const msgs = document.getElementById('uysa-ai-messages');
+    const input = document.getElementById('uysa-ai-input-area');
+    if (auth) auth.style.display = show ? 'flex' : 'none';
+    if (msgs) msgs.style.display = show ? 'none' : 'flex';
+    if (input) input.style.display = show ? 'none' : 'flex';
+  },
+  async authLogin() {
+    const email = document.getElementById('uysa-ai-auth-email')?.value?.trim();
+    const pass = document.getElementById('uysa-ai-auth-pass')?.value;
+    const errEl = document.getElementById('uysa-ai-auth-error');
+    if (!email || !pass) {
+      if (errEl) { errEl.textContent = 'E-posta ve şifre gerekli'; errEl.style.display = 'block'; }
+      return;
+    }
+    if (errEl) errEl.style.display = 'none';
+
+    // OpenClaw auth endpoint'ine giriş yap
+    try {
+      const result = await apiCall('ai.authLogin', { email: email, password: pass }, 'POST');
+      if (result.ok && result.token) {
+        this._aiToken = result.token;
+        this._aiAuthMode = 'auth';
+        localStorage.setItem('uysa_ai_auth_token', result.token);
+        localStorage.setItem('uysa_ai_auth_mode', 'auth');
+        this._showAuth(false);
+        this.addMsg('assistant', 'Giriş başarılı! AI asistan kullanıma hazır.');
+        document.getElementById('uysa-ai-input').focus();
+      } else {
+        if (errEl) { errEl.textContent = result.error || 'Giriş başarısız'; errEl.style.display = 'block'; }
+      }
+    } catch(e) {
+      if (errEl) { errEl.textContent = 'Bağlantı hatası: ' + e.message; errEl.style.display = 'block'; }
+    }
+  },
+  skipAuth() {
+    this._aiAuthMode = 'server';
+    localStorage.setItem('uysa_ai_auth_mode', 'server');
+    this._showAuth(false);
+    this.addMsg('assistant', 'Sunucu API anahtarıyla devam ediliyor.');
+    document.getElementById('uysa-ai-input').focus();
+  },
+  logout() {
+    this._aiToken = '';
+    this._aiAuthMode = '';
+    localStorage.removeItem('uysa_ai_auth_token');
+    localStorage.removeItem('uysa_ai_auth_mode');
+    this._showAuth(true);
   },
   clear() {
     const msgs = document.getElementById('uysa-ai-messages');
@@ -21220,7 +21420,6 @@ window.uysaAI = {
     const isUser = role === 'user';
     div.style.cssText = 'padding:10px 12px;border-radius:12px;font-size:13px;line-height:1.6;max-width:90%;word-wrap:break-word;'
       + (isUser ? 'background:#1a56db;color:#fff;align-self:flex-end;margin-left:auto;' : 'background:#e8f0fe;color:#1e293b;');
-    // Basit markdown: **bold**, `code`, \n -> <br>
     let html = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     html = html.replace(/`(.*?)`/g, '<code style="background:#f1f5f9;padding:1px 4px;border-radius:4px;font-size:12px;">$1</code>');
@@ -21236,18 +21435,25 @@ window.uysaAI = {
     input.value = '';
     this.addMsg('user', msg);
 
-    // Loading
     const loadDiv = document.createElement('div');
     loadDiv.className = 'ai-loading';
     loadDiv.style.cssText = 'padding:10px;font-size:13px;color:#94a3b8;';
     loadDiv.innerHTML = '<span style="animation:pulse 1.5s infinite;">Düşünüyorum...</span>';
     document.getElementById('uysa-ai-messages').appendChild(loadDiv);
 
-    const result = await apiCall('ai.chat', { message: msg }, 'POST');
+    // Auth moduna göre istek gönder
+    const body = { message: msg };
+    if (this._aiAuthMode === 'auth' && this._aiToken) {
+      body.ai_auth_token = this._aiToken;
+    }
+    const result = await apiCall('ai.chat', body, 'POST');
     loadDiv.remove();
 
     if (result.ok && result.response) {
       this.addMsg('assistant', result.response);
+    } else if (result.error && result.error.indexOf('token') !== -1) {
+      this.addMsg('assistant', 'Oturum süresi dolmuş. Lütfen tekrar giriş yapın.');
+      this.logout();
     } else {
       this.addMsg('assistant', 'Üzgünüm, yanıt alınamadı. ' + (result.error || ''));
     }

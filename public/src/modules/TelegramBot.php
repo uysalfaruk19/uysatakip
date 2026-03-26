@@ -480,6 +480,48 @@ function callOpenAICompatible(array $cfg, string $question, string $systemPrompt
     return $data['choices'][0]['message']['content'] ?? null;
 }
 
+// Auth token ile AI çağrısı (kullanıcı kendi hesabıyla giriş yapmış)
+function callAIWithToken(string $question, string $systemPrompt, array $messages, string $authToken): ?string
+{
+    $cfg = getAIProvider();
+    // Auth token ile OpenAI-uyumlu API çağrısı yap
+    $apiMessages = [['role' => 'system', 'content' => $systemPrompt]];
+    if (!empty($messages)) {
+        foreach ($messages as $m) {
+            $apiMessages[] = ['role' => $m['role'], 'content' => $m['content']];
+        }
+    } else {
+        $apiMessages[] = ['role' => 'user', 'content' => $question];
+    }
+
+    $payload = [
+        'model'      => $cfg['model'],
+        'max_tokens' => 1024,
+        'messages'   => $apiMessages,
+    ];
+
+    $ch = curl_init($cfg['url']);
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => json_encode($payload),
+        CURLOPT_HTTPHEADER     => [
+            'Content-Type: application/json',
+            "Authorization: Bearer {$authToken}",
+        ],
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 30,
+    ]);
+
+    $result = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($httpCode !== 200 || !$result) return null;
+
+    $data = json_decode($result, true);
+    return $data['choices'][0]['message']['content'] ?? null;
+}
+
 // Eski API uyumluluğu (Telegram bot kullanıyor)
 function callClaudeAPI(string $apiKey, string $question, string $context): string
 {
