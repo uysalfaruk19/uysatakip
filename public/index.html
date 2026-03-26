@@ -5843,9 +5843,11 @@ function escapeHtml(s){
       try {
         const wb = XLSX.read(e.target.result, {type:'array'});
         const ws = wb.Sheets[wb.SheetNames[0]];
-        const data = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+        // raw:false → formatted strings (dates come as "6/4/26" not serial numbers)
+        const data = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:false});
 
-        console.log('[Excel Import] Parsed rows:', data.length, data.slice(0,15));
+        console.log('[Excel Import] Rows:', data.length);
+        console.log('[Excel Import] First 15:', JSON.stringify(data.slice(0,15)));
 
         const y = parseInt(yearEl.value,10);
         const m1 = parseInt(monthEl.value,10);
@@ -5855,19 +5857,41 @@ function escapeHtml(s){
         const store = getStore();
         if (!store[storeKey]) store[storeKey] = {weeks:{}};
 
-        // Helper: parse date from various formats (d/m/yy, dd/mm/yy, dd/mm/yyyy, d.m.yy, dd.mm.yyyy)
+        // Helper: parse date from various formats
         function parseDate(val) {
-          const s = String(val||'').trim();
-          // Try d/m/yy or dd/mm/yy or dd/mm/yyyy
-          let m = s.match(/^(\d{1,2})[\/\.](\d{1,2})[\/\.](\d{2,4})$/);
+          if (val === null || val === undefined || val === '') return null;
+
+          // If SheetJS returns a number (Excel serial date), convert it
+          if (typeof val === 'number' && val > 40000 && val < 60000) {
+            const d = new Date((val - 25569) * 86400000);
+            if (!isNaN(d.getTime())) return d;
+          }
+
+          const s = String(val).trim();
+          if (!s) return null;
+
+          // Try d/m/yy or dd/mm/yy or dd/mm/yyyy (slash or dot separator)
+          let m = s.match(/^(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{2,4})$/);
           if (m) {
             let yr = parseInt(m[3],10);
             if (yr < 100) yr += 2000;
             return new Date(yr, parseInt(m[2],10)-1, parseInt(m[1],10));
           }
+          // Try yyyy-mm-dd or yyyy/mm/dd (ISO format that SheetJS might return)
+          m = s.match(/^(\d{4})[\/\.\-](\d{1,2})[\/\.\-](\d{1,2})/);
+          if (m) {
+            return new Date(parseInt(m[1],10), parseInt(m[2],10)-1, parseInt(m[3],10));
+          }
           // Try dd.mm format (no year)
           m = s.match(/^(\d{1,2})[\/\.](\d{1,2})$/);
           if (m) return new Date(y, parseInt(m[2],10)-1, parseInt(m[1],10));
+          // Try "dd/mm/yyyy HH:MM" (date with time)
+          m = s.match(/^(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{2,4})\s/);
+          if (m) {
+            let yr = parseInt(m[3],10);
+            if (yr < 100) yr += 2000;
+            return new Date(yr, parseInt(m[2],10)-1, parseInt(m[1],10));
+          }
           return null;
         }
 
@@ -5945,26 +5969,46 @@ function escapeHtml(s){
           'AYRAN':'ayran', 'AYRAN/YOĞURT':'ayran', 'AYRAN / YOĞURT':'ayran', 'YOĞURT':'ayran'
         };
 
+        // Also read raw data for date serial numbers
+        const dataRaw = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:true});
+
         for (let i=0; i<data.length; i++){
           const row = data[i];
+          const rowR = dataRaw[i] || row; // raw version for date detection
           if (!row || row.length === 0) { rowAfterDates = 99; continue; }
 
           // Skip day name header rows
-          if (isDayNameRow(row)) { continue; }
+          if (isDayNameRow(row)) {
+            console.log('[Excel Import] Row', i, ': DAY NAMES (skipped)', row.slice(0,4));
+            continue;
+          }
 
-          // Detect date row — this starts a new week block
-          if (isDateRow(row)) {
+          // Detect date row — check both formatted and raw versions
+          // Use raw row for date detection (handles Excel serial numbers)
+          const dateRowCheck = isDateRow(row) || isDateRow(rowR);
+          if (dateRowCheck) {
             currentDates = [];
-            for (let c=0; c<row.length; c++){
-              const dt = parseDate(row[c]);
+            for (let c=0; c<Math.max(row.length, rowR.length); c++){
+              // Try formatted first, then raw
+              let dt = parseDate(row[c]) || parseDate(rowR[c]);
               if (dt) currentDates.push({col:c, date:dt});
             }
+            console.log('[Excel Import] Row', i, ': DATE ROW, found', currentDates.length, 'dates',
+              currentDates.map(d => d.date.toLocaleDateString('tr-TR')));
             if (currentDates.length > 0) {
               currentWeekIdx = getWeekIndex(currentDates[0].date);
+              console.log('[Excel Import] Week index for', currentDates[0].date.toLocaleDateString('tr-TR'), '=', currentWeekIdx);
               if (currentWeekIdx > 0) {
                 const wk = `W${currentWeekIdx}`;
                 if (!store[storeKey].weeks[wk]) store[storeKey].weeks[wk] = makeEmptyWeek();
                 totalWeeks++;
+              } else {
+                console.warn('[Excel Import] Could not find week for date, trying month weeks...');
+                // Fallback: just assign incrementally
+                totalWeeks++;
+                currentWeekIdx = totalWeeks;
+                const wk = `W${currentWeekIdx}`;
+                if (!store[storeKey].weeks[wk]) store[storeKey].weeks[wk] = makeEmptyWeek();
               }
             }
             rowAfterDates = 0;
