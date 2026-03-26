@@ -578,14 +578,13 @@
   .mutedCell { opacity: .5; }
 
   /* ── Excel-style monthly view ─────────────────────────────── */
-  .mx-wrap { display: flex; flex-direction: column; gap: var(--sp-4); }
-  .mx-week { border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; background: var(--card); }
+  .mx-wrap { display: flex; flex-direction: column; gap: 0; }
   .mx-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-  .mx-table th, .mx-table td { border: 1px solid var(--border); padding: 6px; vertical-align: top; font-size: var(--text-xs); }
-  .mx-table th { background: linear-gradient(135deg, #1e3a5f, #1a2d4a) !important; color: #e2e8f0 !important; font-weight: 800; text-align: center; }
-  .mx-rowhead { background: var(--soft); font-weight: 800; width: 150px; }
-  .mx-date { font-weight: 800; text-align: center; background: #f8fafc; }
-  .mx-cell { min-height: 44px; white-space: pre-wrap; }
+  .mx-table th, .mx-table td { border: 1px solid #7a9cc6; padding: 5px 8px; vertical-align: middle; font-size: 11px; text-align: center; font-weight: 700; }
+  .mx-table th { background: linear-gradient(180deg, #1a3a6b, #102a52) !important; color: #fff !important; font-weight: 900; font-size: 12px; letter-spacing: .5px; padding: 8px 6px; }
+  .mx-date-row td { background: linear-gradient(180deg, #2563eb, #1d4ed8) !important; color: #fff !important; font-weight: 900; font-size: 11px; padding: 6px 4px; }
+  .mx-food-row td { background: #fff; color: #1e293b; font-weight: 700; font-size: 11px; padding: 5px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mx-food-row:nth-child(even) td { background: #f1f5f9; }
 
   /* ── Weekend columns ──────────────────────────────────────── */
   .weekend-col { display: none !important; }
@@ -663,7 +662,8 @@
     body { background: #fff !important; padding: 0; }
     #monthlyExcelModal { position: static; inset: auto; background: #fff; padding: 0; }
     #closeMonthlyExcelBtn, #monthlyExcelPrintBtn { display: none !important; }
-    .mx-week { break-inside: avoid; }
+    .mx-table { font-size: 9px; }
+    .mx-table th, .mx-table td { padding: 3px 2px; }
   }
 
   /* ── Responsive ───────────────────────────────────────────── */
@@ -2690,10 +2690,9 @@
 <!-- Monthly Excel-like View Modal -->
 <div id="monthlyExcelModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:90;padding:18px;overflow:auto">
   <div style="max-width:1300px;margin:0 auto;background:#fff;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.25);overflow:hidden">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:14px 16px;border-bottom:1px solid var(--border);background:var(--soft)">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 16px;border-bottom:2px solid #1a3a6b;background:linear-gradient(135deg,#e8eef6,#d4dff0)">
       <div>
-        <div style="font-weight:900;color:#0b3aa6" id="monthlyExcelTitle">AYLIK MENÜ</div>
-        <div class="hint">Excel şablonuna benzer 7 gün (Pzt–Paz) blok görünüm</div>
+        <div style="font-weight:900;color:#1a3a6b;font-size:16px;letter-spacing:.5px" id="monthlyExcelTitle">UYSA AYLIK MENÜ</div>
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
         <button class="btn" id="monthlyExcelPrintBtn">Yazdır</button>
@@ -7601,68 +7600,61 @@ ${p.name}`)) return;
     if (!monthlyExcelBody) return;
     const y = Number(yearEl.value);
     const m0 = Number(monthEl.value) - 1;
-    if (monthlyExcelTitle) monthlyExcelTitle.textContent = `UYSA YEMEK ${MONTH_TR[m0]} ${y} YEMEK MENÜSÜ`;
+    if (monthlyExcelTitle) monthlyExcelTitle.textContent = `UYSA ${MONTH_TR[m0].toUpperCase()} ${y} .xlsx`;
 
     const store = getStore();
     const monthObj = store?.[ymKey()] || {weeks:{}};
     const weeks = buildMonthWeeksMatrix(y, m0);
 
-    const wrap = document.createElement('div');
-    wrap.className = 'mx-wrap';
+    const tbl = document.createElement('table');
+    tbl.className = 'mx-table';
+
+    // Single header row with day names (only once at top)
+    const thead = document.createElement('thead');
+    const hr = document.createElement('tr');
+    const dayNames = ['PAZARTESİ','SALI','ÇARŞAMBA','PERŞEMBE','CUMA','CUMARTESİ','PAZAR'];
+    dayNames.forEach(d=>{ const th=document.createElement('th'); th.textContent=d; hr.appendChild(th); });
+    thead.appendChild(hr);
+    tbl.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    const foodKeys = ['soup','main','side','salad','extras','ayran'];
 
     weeks.forEach((weekDates, wi)=>{
-      const weekDiv = document.createElement('div');
-      weekDiv.className = 'mx-week';
-
-      const tbl = document.createElement('table');
-      tbl.className = 'mx-table';
-
-      const thead = document.createElement('thead');
-      const hr = document.createElement('tr');
-      const blank = document.createElement('th'); blank.textContent=''; hr.appendChild(blank);
-      TR_DOW7.forEach(d=>{ const th=document.createElement('th'); th.textContent=d; hr.appendChild(th); });
-      thead.appendChild(hr);
-      tbl.appendChild(thead);
-
-      const tbody = document.createElement('tbody');
-
-      // Date row
+      // Date row (blue background)
       const trDate = document.createElement('tr');
-      const rhDate = document.createElement('td'); rhDate.className='mx-rowhead'; rhDate.textContent='TARİH';
-      trDate.appendChild(rhDate);
+      trDate.className = 'mx-date-row';
       weekDates.forEach(d=>{
-        const td=document.createElement('td'); td.className='mx-date';
-        td.textContent = `${pad2(d.getDate())}.${pad2(d.getMonth()+1)}`;
+        const td = document.createElement('td');
+        // Show date only if it's in this month, otherwise empty
+        if (d.getMonth() === m0) {
+          td.textContent = `${d.getDate()}/${d.getMonth()+1}/${String(d.getFullYear()).slice(-2)}`;
+        }
         trDate.appendChild(td);
       });
       tbody.appendChild(trDate);
 
-      const rowDefs = [
-        {k:'soup', label:'ÇORBA'},
-        {k:'main', label:'ANA YEMEK'},
-        {k:'side', label:'YARDIMCI YEMEK'},
-        {k:'salad', label:'SALATA'},
-        {k:'extras', label:'TATLI / MEYVE / MEŞRUBAT'},
-        {k:'ayran', label:'AYRAN'}
-      ];
-
-      rowDefs.forEach(rd=>{
-        const tr=document.createElement('tr');
-        const rh=document.createElement('td'); rh.className='mx-rowhead'; rh.textContent=rd.label;
-        tr.appendChild(rh);
-        weekDates.forEach((d,di)=>{
-          const td=document.createElement('td'); td.className='mx-cell';
-          const v = getCellValueForDate(monthObj, wi+1, di)[rd.k] || '';
-          td.textContent = v;
+      // 6 food rows (no labels, just values)
+      foodKeys.forEach(key=>{
+        const tr = document.createElement('tr');
+        tr.className = 'mx-food-row';
+        weekDates.forEach((d, di)=>{
+          const td = document.createElement('td');
+          if (d.getMonth() === m0) {
+            const vals = getCellValueForDate(monthObj, wi+1, di);
+            td.textContent = vals[key] || '';
+          }
           tr.appendChild(td);
         });
         tbody.appendChild(tr);
       });
-
-      tbl.appendChild(tbody);
-      weekDiv.appendChild(tbl);
-      wrap.appendChild(weekDiv);
     });
+
+    tbl.appendChild(tbody);
+
+    const wrap = document.createElement('div');
+    wrap.className = 'mx-wrap';
+    wrap.appendChild(tbl);
 
     monthlyExcelBody.innerHTML='';
     monthlyExcelBody.appendChild(wrap);
