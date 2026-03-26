@@ -5918,12 +5918,36 @@ function escapeHtml(s){
         // Helper: determine week index for a date
         function getWeekIndex(dt) {
           const mondays = weekMondaysForMonth(y, m1-1);
+          // First: exact match (date falls within Mon-Sun range)
           for (let i=0; i<mondays.length; i++){
-            const end = new Date(mondays[i]);
-            end.setDate(mondays[i].getDate()+6);
+            const mon = new Date(mondays[i]);
+            mon.setHours(0,0,0,0);
+            const end = new Date(mon);
+            end.setDate(mon.getDate()+6);
             end.setHours(23,59,59);
-            if (dt >= mondays[i] && dt <= end) return i+1;
+            if (dt >= mon && dt <= end) return i+1;
           }
+          // Fallback: find closest monday (for dates that might be slightly outside range)
+          let bestIdx = -1, bestDist = Infinity;
+          for (let i=0; i<mondays.length; i++){
+            const dist = Math.abs(dt.getTime() - mondays[i].getTime());
+            if (dist < bestDist) { bestDist = dist; bestIdx = i+1; }
+          }
+          // Only use fallback if within 7 days
+          if (bestDist < 7*24*60*60*1000) return bestIdx;
+          return -1;
+        }
+        // Helper: find week index using ALL dates in a row (not just first)
+        function getWeekIndexFromDates(dates) {
+          // Try each date, prefer ones in the target month
+          for (const d of dates) {
+            if (d.date.getMonth() === m1-1) {
+              const wi = getWeekIndex(d.date);
+              if (wi > 0) return wi;
+            }
+          }
+          // Fallback: use first date
+          if (dates.length > 0) return getWeekIndex(dates[0].date);
           return -1;
         }
 
@@ -5996,7 +6020,7 @@ function escapeHtml(s){
             console.log('[Excel Import] Row', i, ': DATE ROW, found', currentDates.length, 'dates',
               currentDates.map(d => d.date.toLocaleDateString('tr-TR')));
             if (currentDates.length > 0) {
-              currentWeekIdx = getWeekIndex(currentDates[0].date);
+              currentWeekIdx = getWeekIndexFromDates(currentDates);
               console.log('[Excel Import] Week index for', currentDates[0].date.toLocaleDateString('tr-TR'), '=', currentWeekIdx);
               if (currentWeekIdx > 0) {
                 const wk = `W${currentWeekIdx}`;
@@ -15488,18 +15512,31 @@ window.addEventListener('load', function() {
   function _openEditModal(year,mo1,cust,dateObj,menu,onSaved){
     const cat=_getCatalog();
     const dayLbl=`${_p2(dateObj.getDate())}.${_p2(mo1)}.${year} ${TR_DAYS_FULL[_dow(dateObj)]}`;
-    const sOpts=(arr,cur)=>arr.map(s=>`<option value="${s}"${cur===s?' selected':''}>${s}</option>`).join('');
+    const sOpts=(arr,cur)=>{
+      let html=arr.map(s=>`<option value="${s}"${cur===s?' selected':''}>${s}</option>`).join('');
+      // If current value exists but not in catalog, add as custom option
+      if(cur && !arr.includes(cur)) html+=`<option value="${cur}" selected style="color:#7c3aed">${cur} (Excel)</option>`;
+      return html;
+    };
     const mGroups=(cur)=>{
       const GL={meat:'🥩 Et',legume:'🫘 Bakliyat',chicken:'🍗 Tavuk',vegetable:'🥦 Sebze',kebab:'🧆 Köfte'};
-      return Object.entries(cat.mainsByType||{}).map(([t,a])=>
-        `<optgroup label="${GL[t]||t}">${(a||[]).map(n=>`<option value="${n}"${cur===n?' selected':''}>${n}</option>`).join('')}</optgroup>`
-      ).join('');
+      let allMains=[];
+      let html=Object.entries(cat.mainsByType||{}).map(([t,a])=>{
+        allMains=allMains.concat(a||[]);
+        return `<optgroup label="${GL[t]||t}">${(a||[]).map(n=>`<option value="${n}"${cur===n?' selected':''}>${n}</option>`).join('')}</optgroup>`;
+      }).join('');
+      if(cur && !allMains.includes(cur)) html+=`<option value="${cur}" selected style="color:#7c3aed">${cur} (Excel)</option>`;
+      return html;
     };
     const sgOpts=(cur,empty='— Seçiniz —')=>{
       let r=`<option value="">${empty}</option>`;
+      let allSides=[];
       Object.entries(cat.sidesByGroup||{}).forEach(([g,a])=>{
+        allSides=allSides.concat(a||[]);
         r+=`<optgroup label="${g}">${(a||[]).map(n=>`<option value="${n}"${cur===n?' selected':''}>${n}</option>`).join('')}</optgroup>`;
-      }); return r;
+      });
+      if(cur && cur!==empty && !allSides.includes(cur)) r+=`<option value="${cur}" selected style="color:#7c3aed">${cur} (Excel)</option>`;
+      return r;
     };
     const saladList=['1 Çeşit','2 Çeşit','3 Çeşit','4 Çeşit','5 Çeşit','6 Çeşit'];
     const dessertList=['Sütlaç','Kemalpaşa','Revani','Şekerpare','İrmik Helvası','Kadayıf','Elma','Portakal','Muz','Armut','Mandalina'];
