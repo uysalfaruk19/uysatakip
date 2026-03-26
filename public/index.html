@@ -7664,6 +7664,7 @@ ${p.name}`)) return;
     renderMonthlyExcelLike();
     if (monthlyExcelModal) monthlyExcelModal.style.display='block';
   }
+  window.openMonthlyExcelModal = openMonthlyExcelModal;
 
   // Use capture to block any older monthlyView handlers
   if (monthlyViewBtn){
@@ -16146,7 +16147,11 @@ window.addEventListener('load', function() {
     if(mBtn){
       const nb=mBtn.cloneNode(true);
       mBtn.parentNode.replaceChild(nb,mBtn);
-      nb.addEventListener('click',e=>{e.stopImmediatePropagation();_renderMonthlyFull();},true);
+      nb.addEventListener('click',e=>{
+        e.stopImmediatePropagation();
+        if(typeof openMonthlyExcelModal==='function') openMonthlyExcelModal();
+        else _renderMonthlyFull();
+      },true);
     }
     window._renderMonthlyFull=_renderMonthlyFull;
 
