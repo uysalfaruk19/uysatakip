@@ -88,8 +88,18 @@ try {
         PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci",
     ]);
 } catch (PDOException $e) {
-    error_log('[UYSA] DB Error: ' . $e->getMessage());
-    jsonResponse(['ok' => false, 'error' => 'Veritabanı bağlantı hatası'], 503);
+    error_log('[UYSA] DB Error: ' . $e->getMessage() . ' | DSN: mysql:host=' . DB_HOST . ':' . DB_PORT . ' db=' . DB_NAME . ' user=' . DB_USER);
+    jsonResponse([
+        'ok'    => false,
+        'error' => 'Veritabanı bağlantı hatası',
+        'debug' => [
+            'host' => DB_HOST,
+            'port' => DB_PORT,
+            'name' => DB_NAME,
+            'user' => DB_USER,
+            'hint' => $e->getMessage(),
+        ]
+    ], 503);
 }
 
 // ── Schema ────────────────────────────────────────────────────
