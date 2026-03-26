@@ -17,6 +17,7 @@
       }
     });
   </script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <style id="uysa-design-system">
   /* ═══════════════════════════════════════════════════════════════
      UYSA Design System — Single Source of Truth
@@ -788,6 +789,303 @@
   .mod-nav { will-change: scroll-position; }
   /* content-visibility for off-screen panels */
   .mod-panel:not(.active) { content-visibility: auto; }
+
+  /* ══════════════════════════════════════════════════════════
+     KAPSAMLI MOBİL RESPONSIVE - v5.0 (Enhanced)
+  ══════════════════════════════════════════════════════════ */
+
+  /* ── Tablet (max 900px) ──────────────────────────────── */
+  @media (max-width: 900px) {
+    /* Navigation: horizontal scroll, single row */
+    .mod-nav {
+      flex-wrap: nowrap !important;
+      overflow-x: auto !important;
+      overflow-y: hidden !important;
+      -webkit-overflow-scrolling: touch;
+      scroll-snap-type: x mandatory;
+      scrollbar-width: none;
+      gap: 1px !important;
+      padding: 0 6px !important;
+    }
+    .mod-nav::-webkit-scrollbar { display: none; }
+    .mod-nav-item {
+      flex-shrink: 0 !important;
+      scroll-snap-align: start;
+      min-width: auto !important;
+      padding: 6px 10px !important;
+    }
+
+    /* Header compactness */
+    header {
+      padding: 8px 12px !important;
+      gap: 6px !important;
+    }
+    header > div:last-child {
+      flex-wrap: wrap !important;
+      gap: 4px !important;
+    }
+    header > div:last-child > button,
+    header > div:last-child > label {
+      font-size: 11px !important;
+      padding: 6px 8px !important;
+    }
+
+    /* Module headers: stack vertically */
+    .module-header {
+      flex-direction: column !important;
+      align-items: stretch !important;
+      gap: 8px !important;
+    }
+    .module-header > div {
+      flex-wrap: wrap !important;
+      gap: 4px !important;
+    }
+
+    /* Toolbar buttons (bar right) */
+    .bar .right, .bar > .right {
+      flex-wrap: wrap !important;
+      gap: 4px !important;
+    }
+    .bar .right .btn, .bar > .right .btn {
+      font-size: 11px !important;
+      padding: 6px 8px !important;
+      white-space: nowrap !important;
+    }
+
+    /* Finans tab buttons */
+    #mod-finans .module-header > div[style*="flex"] {
+      overflow-x: auto !important;
+      flex-wrap: nowrap !important;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      padding-bottom: 4px;
+    }
+    #mod-finans .module-header > div[style*="flex"]::-webkit-scrollbar { display: none; }
+    #mod-finans .module-header > div[style*="flex"] .btn {
+      flex-shrink: 0 !important;
+      font-size: 11px !important;
+      padding: 6px 10px !important;
+    }
+
+    /* Tables: horizontal scroll wrapper */
+    .panel { overflow-x: auto !important; }
+    table {
+      min-width: 600px;
+    }
+
+    /* Form fields full width */
+    .field, input[type="text"], input[type="number"], input[type="date"],
+    input[type="email"], input[type="tel"], select, textarea {
+      max-width: 100% !important;
+      width: 100% !important;
+    }
+
+    /* Grid override for inline-style grids */
+    div[style*="grid-template-columns: repeat(3"] {
+      grid-template-columns: 1fr 1fr !important;
+    }
+    div[style*="grid-template-columns: repeat(4"] {
+      grid-template-columns: 1fr 1fr !important;
+    }
+
+    /* AI Chat widget - responsive */
+    #uysa-ai-chat {
+      width: calc(100vw - 24px) !important;
+      right: 12px !important;
+      bottom: 12px !important;
+      max-height: 85vh !important;
+    }
+
+    /* Monthly Excel modal */
+    #monthlyExcelModal > div,
+    #monthlyModal > div {
+      max-width: 100% !important;
+      margin: 0 !important;
+      border-radius: 12px 12px 0 0 !important;
+    }
+  }
+
+  /* ── Phone (max 640px) ───────────────────────────────── */
+  @media (max-width: 640px) {
+    /* Navigation: icon-only mode */
+    .mod-nav {
+      min-height: 44px !important;
+      padding: 0 4px !important;
+    }
+    .mod-nav-item {
+      padding: 5px 7px !important;
+      font-size: 9px !important;
+    }
+    .mod-nav-item span:not(.mod-icon) {
+      display: none !important;
+    }
+    .mod-nav-item .mod-icon {
+      font-size: 18px !important;
+    }
+
+    /* Header: stack logo & buttons */
+    header {
+      flex-direction: column !important;
+      align-items: stretch !important;
+      padding: 6px 10px !important;
+    }
+    header > div:first-child {
+      display: flex !important;
+      justify-content: space-between !important;
+      align-items: center !important;
+    }
+    header > div:last-child {
+      display: flex !important;
+      flex-wrap: wrap !important;
+      gap: 4px !important;
+    }
+    /* Hide backup buttons and version badge on small phones */
+    header > div:last-child > button[onclick*="yedeg"],
+    header > div:last-child > label[style*="Geri"],
+    #userBadge {
+      display: none !important;
+    }
+
+    /* Fix mod-panel top for smaller header */
+    .mod-panel.active {
+      top: 90px !important;
+    }
+
+    /* Content: tighter padding */
+    .content { padding: 8px !important; }
+    .panel { padding: 10px !important; }
+
+    /* Stat cards: single column */
+    .stats-grid {
+      grid-template-columns: 1fr !important;
+      gap: 6px !important;
+    }
+    .stat-card {
+      padding: 10px 12px !important;
+    }
+    .sc-value { font-size: 20px !important; }
+
+    /* Module header buttons */
+    .module-header h2 { font-size: 16px !important; }
+    .module-header .btn {
+      font-size: 10px !important;
+      padding: 5px 8px !important;
+    }
+
+    /* Finans tabs scroll */
+    #mod-finans .module-header > div[style*="flex"] .btn {
+      font-size: 10px !important;
+      padding: 5px 8px !important;
+    }
+
+    /* Bar (menü toolbar) */
+    .bar {
+      flex-direction: column !important;
+      align-items: stretch !important;
+      gap: 6px !important;
+      padding: 8px !important;
+    }
+    .bar .left, .bar .right {
+      flex-wrap: wrap !important;
+      gap: 4px !important;
+    }
+    .bar select, .bar input {
+      min-width: 0 !important;
+      flex: 1 1 80px !important;
+    }
+    .bar .btn {
+      font-size: 10px !important;
+      padding: 5px 7px !important;
+    }
+
+    /* Tables even more compact */
+    table { font-size: 10px !important; min-width: 500px; }
+    th, td { padding: 4px 6px !important; }
+
+    /* Modals: full screen on phone */
+    [style*="position:fixed"][style*="padding:18px"] {
+      padding: 0 !important;
+    }
+    [style*="position:fixed"][style*="padding:18px"] > div {
+      width: 100% !important;
+      max-width: 100% !important;
+      margin: 0 !important;
+      border-radius: 0 !important;
+      max-height: 100vh !important;
+      height: 100vh !important;
+    }
+
+    /* AI Chat: full width */
+    #uysa-ai-chat {
+      width: calc(100vw - 16px) !important;
+      right: 8px !important;
+      bottom: 8px !important;
+      max-height: 80vh !important;
+    }
+    #uysa-ai-fab {
+      bottom: 12px !important;
+      right: 12px !important;
+      width: 48px !important;
+      height: 48px !important;
+    }
+
+    /* CRM sidebar */
+    #crmDetailSidebar,
+    div[id*="Sidebar"] {
+      position: fixed !important;
+      left: 0 !important;
+      right: 0 !important;
+      top: auto !important;
+      bottom: 0 !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      max-height: 80vh !important;
+      border-radius: 16px 16px 0 0 !important;
+      z-index: 100 !important;
+    }
+
+    /* Calendar grid: scroll horizontally */
+    #inlineCalendarGrid {
+      overflow-x: auto !important;
+      -webkit-overflow-scrolling: touch;
+    }
+    #inlineCalendarGrid table {
+      min-width: 700px;
+    }
+
+    /* Monthly view: scroll */
+    #monthlyContent, #monthlyExcelBody {
+      overflow-x: auto !important;
+      -webkit-overflow-scrolling: touch;
+    }
+    .monthTable, .mx-table {
+      min-width: 600px !important;
+    }
+
+    /* Toast: narrower */
+    div[style*="bottom:28px"][style*="left:50%"] {
+      max-width: calc(100vw - 32px) !important;
+      font-size: 12px !important;
+    }
+  }
+
+  /* ── Very small phones (max 380px) ────────────────────── */
+  @media (max-width: 380px) {
+    .mod-nav-item { padding: 4px 5px !important; }
+    .mod-nav-item .mod-icon { font-size: 16px !important; }
+    header > div:first-child img,
+    header > div:first-child svg { max-width: 100px !important; }
+    .sc-value { font-size: 18px !important; }
+    .module-header h2 { font-size: 14px !important; }
+    .bar select { font-size: 11px !important; }
+  }
+
+  /* ── Safe area insets (notch phones) ──────────────────── */
+  @supports (padding: env(safe-area-inset-bottom)) {
+    .mod-nav { padding-left: max(6px, env(safe-area-inset-left)) !important; padding-right: max(6px, env(safe-area-inset-right)) !important; }
+    header { padding-top: max(8px, env(safe-area-inset-top)) !important; }
+    #uysa-ai-fab { bottom: max(12px, env(safe-area-inset-bottom)) !important; right: max(12px, env(safe-area-inset-right)) !important; }
+  }
   </style>
 <script>
 // ╔═══════════════════════════════════════════════════════════════╗
@@ -1939,6 +2237,9 @@
         <button class="btn success" id="saveBtn" style="display:none" disabled>Kaydet</button>
         <button class="btn" id="exportWeekJsonBtn">Hafta JSON</button>
         <button class="btn" id="exportMonthJsonBtn">Ay JSON</button>
+        <button class="btn success" id="exportMonthExcelBtn" style="background:#047857;color:#fff">📥 Excel İndir</button>
+        <button class="btn" id="importMenuExcelBtn" style="background:#2563eb;color:#fff">📤 Excel Yükle</button>
+        <input type="file" id="menuExcelFileInput" accept=".xlsx,.xls" style="display:none">
       </div>
     </div>
 
@@ -5466,6 +5767,171 @@ function escapeHtml(s){
     downloadJson(`UYSA_${ymKey()}_AY.json`, {month: ymKey(), data:mo});
   }
 
+  // --- Excel Export (UYSA Format) ---
+  function exportMonthExcel(){
+    if (typeof XLSX === 'undefined') { toast('Excel kütüphanesi yüklenemedi'); return; }
+    const y = parseInt(yearEl.value,10);
+    const m0 = parseInt(monthEl.value,10)-1;
+    const weeks = getMonthWeeksFromStore();
+    const monthNames = ['OCAK','ŞUBAT','MART','NİSAN','MAYIS','HAZİRAN','TEMMUZ','AĞUSTOS','EYLÜL','EKİM','KASIM','ARALIK'];
+    const cust = currentCustomer();
+    const title = `UYSA YEMEK ${monthNames[m0]} ${y} YEMEK MENÜSÜ` + (cust !== 'GENEL' ? ' - ' + cust : '');
+
+    const rows = [];
+    // Title row
+    rows.push([title,'','','','','','']);
+    rows.push(['']); // blank row
+
+    for (let w=1; w<=5; w++){
+      const wk = weeks[`W${w}`];
+      const dates = buildWeekDates(y, m0, w);
+
+      // Header: Hafta N + date range
+      const haftaLabel = `${w}. HAFTA`;
+      const dayHeaders = [''].concat(dates.map((d,i) => ddmmyyyy(d) + ' ' + TR_DAY[DAYS[i]]));
+      rows.push(dayHeaders);
+
+      // Data rows
+      const rowLabels = ['ÇORBA','ANA YEMEK','YARDIMCI YEMEK','MEYVE / TATLI','SALATA','AYRAN'];
+      const rowKeys = ['soups','mains','sides','dessertFruitName','salads','ayran'];
+      for (let r=0; r<rowLabels.length; r++){
+        const rowData = [rowLabels[r]];
+        for (let i=0; i<5; i++){
+          if (wk && wk[rowKeys[r]]) {
+            let val = wk[rowKeys[r]][i] || '';
+            // Special handling for dessertFruitName - show actual name
+            if (rowKeys[r] === 'dessertFruitName') {
+              const drink = wk.drinks?.[i] || '';
+              if (drink === 'Meşrubat') val = 'MEŞRUBAT';
+              else if (!val) val = '';
+            }
+            if (rowKeys[r] === 'ayran') val = wk.ayran?.[i] || 'Ayran';
+            rowData.push(val);
+          } else {
+            rowData.push('');
+          }
+        }
+        rows.push(rowData);
+      }
+      rows.push(['']); // blank between weeks
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    // Set column widths
+    ws['!cols'] = [{wch:22},{wch:22},{wch:22},{wch:22},{wch:22},{wch:22}];
+    // Merge title cell
+    ws['!merges'] = [{s:{r:0,c:0},e:{r:0,c:5}}];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Menü');
+    const fn = `UYSA_MENU_${monthNames[m0]}_${y}${cust !== 'GENEL' ? '_' + cust : ''}.xlsx`;
+    XLSX.writeFile(wb, fn);
+    toast('Excel indirildi: ' + fn);
+  }
+
+  // --- Excel Import ---
+  function importMenuExcel(file){
+    if (typeof XLSX === 'undefined') { toast('Excel kütüphanesi yüklenemedi'); return; }
+    const reader = new FileReader();
+    reader.onload = function(e){
+      try {
+        const wb = XLSX.read(e.target.result, {type:'array'});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const data = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+
+        // Parse the UYSA format
+        const store = getStore();
+        const monthKey = ymKey();
+        if (!store[monthKey]) store[monthKey] = {weeks:{}};
+
+        let currentWeek = 0;
+        let rowIndex = 0;
+        const rowMap = {
+          'ÇORBA': 'soups', 'CORBA': 'soups',
+          'ANA YEMEK': 'mains', 'ANA': 'mains',
+          'YARDIMCI YEMEK': 'sides', 'YARDIMCI': 'sides',
+          'MEYVE / TATLI': 'dessertFruitName', 'MEYVE': 'dessertFruitName', 'TATLI': 'dessertFruitName', 'MEYVE/TATLI': 'dessertFruitName',
+          'SALATA': 'salads',
+          'AYRAN': 'ayran', 'YOĞURT': 'ayran', 'YOGURT': 'ayran', 'AYRAN / YOĞURT': 'ayran'
+        };
+
+        let weekData = {};
+
+        for (let i=0; i<data.length; i++){
+          const row = data[i];
+          if (!row || row.length === 0) continue;
+          const first = String(row[0] || '').trim().toUpperCase();
+
+          // Detect week header (has date pattern dd.mm.yyyy)
+          if (row.length >= 2 && /\d{2}\.\d{2}\.\d{4}/.test(String(row[1] || ''))) {
+            currentWeek++;
+            weekData = {
+              soups: ['','','','','','',''],
+              soups2: ['','','','','','',''],
+              mains: ['','','','','','',''],
+              mains2: ['','','','','','',''],
+              sidesCode: ['','','','','','',''],
+              sides: ['','','','','','',''],
+              sides2: ['','','','','','',''],
+              dessertFruit: ['','','','','','',''],
+              dessertFruitName: ['','','','','','',''],
+              salads: ['','','','','','',''],
+              ayran: ['','','','','','',''],
+              drinks: ['','','','','','','']
+            };
+            store[monthKey].weeks[`W${currentWeek}`] = weekData;
+            continue;
+          }
+
+          // Match row label
+          if (currentWeek > 0 && first) {
+            let matchedKey = null;
+            for (const [label, key] of Object.entries(rowMap)) {
+              if (first.includes(label) || label.includes(first)) {
+                matchedKey = key;
+                break;
+              }
+            }
+            if (matchedKey && weekData) {
+              for (let c=1; c<=5 && c<row.length; c++){
+                const val = String(row[c] || '').trim();
+                weekData[matchedKey][c-1] = val;
+                // Auto-detect dessertFruit type
+                if (matchedKey === 'dessertFruitName' && val) {
+                  if (val.toUpperCase() === 'MEŞRUBAT') {
+                    weekData.drinks[c-1] = 'Meşrubat';
+                    weekData.dessertFruit[c-1] = '';
+                    weekData.dessertFruitName[c-1] = '';
+                  } else {
+                    weekData.dessertFruit[c-1] = 'dessert';
+                    weekData.dessertFruitName[c-1] = val;
+                  }
+                }
+                if (matchedKey === 'sides') {
+                  // Try to detect side code
+                  const lower = val.toLowerCase();
+                  if (lower.includes('pilav') || lower.includes('pirinç')) weekData.sidesCode[c-1] = 'rice';
+                  else if (lower.includes('bulgur')) weekData.sidesCode[c-1] = 'bulgur';
+                  else if (lower.includes('makarna') || lower.includes('erişte')) weekData.sidesCode[c-1] = 'pasta';
+                }
+              }
+            }
+          }
+        }
+
+        setStore(store);
+        // Reload current week
+        loadWeek();
+        renderTable();
+        toast('Excel başarıyla yüklendi! ' + currentWeek + ' hafta aktarıldı.');
+      } catch(err) {
+        console.error('Excel import error:', err);
+        toast('Excel okuma hatası: ' + err.message);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
 
   // --- Monthly View (template-like) ---
   function ddmmyyyy(d){
@@ -5601,6 +6067,15 @@ function escapeHtml(s){
   clearBtn.addEventListener('click', clearMonth);
   exportWeekJsonBtn.addEventListener('click', exportWeekJson);
   exportMonthJsonBtn.addEventListener('click', exportMonthJson);
+  const exportMonthExcelBtn = document.getElementById('exportMonthExcelBtn');
+  const importMenuExcelBtn = document.getElementById('importMenuExcelBtn');
+  const menuExcelFileInput = document.getElementById('menuExcelFileInput');
+  if (exportMonthExcelBtn) exportMonthExcelBtn.addEventListener('click', exportMonthExcel);
+  if (importMenuExcelBtn) importMenuExcelBtn.addEventListener('click', () => menuExcelFileInput?.click());
+  if (menuExcelFileInput) menuExcelFileInput.addEventListener('change', (e) => {
+    if (e.target.files[0]) importMenuExcel(e.target.files[0]);
+    e.target.value = '';
+  });
 
   if (weeklyBomBtn) weeklyBomBtn.addEventListener('click', ()=>openBom('week'));
   if (monthlyBomBtn) monthlyBomBtn.addEventListener('click', ()=>openBom('month'));
@@ -22758,31 +23233,64 @@ document.addEventListener('DOMContentLoaded', function(){
 </script>
 
 <!-- ═══════════════════════════════════════════════════════════════ -->
-<!-- UYSA ERP v5.0 — AI Asistan Chat Widget + ERP v5 API Bağlantıları -->
+<!-- UYSA ERP v6.0 — AI Asistan Widget (Device Auth + Provider) -->
 <!-- ═══════════════════════════════════════════════════════════════ -->
-<div id="uysa-ai-chat" style="display:none;position:fixed;bottom:20px;right:20px;width:380px;max-height:520px;background:#fff;border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,.18);z-index:99999;font-family:Inter,system-ui,sans-serif;flex-direction:column;overflow:hidden;">
+<!-- AI Widget Container — 3 state: hidden / auth / chat -->
+<div id="uysa-ai-chat" style="display:none;position:fixed;bottom:20px;right:20px;width:390px;max-height:540px;background:#fff;border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,.18);z-index:99999;font-family:Inter,system-ui,sans-serif;flex-direction:column;overflow:hidden;">
+  <!-- Header -->
   <div style="background:linear-gradient(135deg,#1a56db,#7c3aed);color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="uysaAI.toggle()">
     <div style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:15px;">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-      UYSA Asistan
+      <span id="uysa-ai-title">UYSA Asistan</span>
     </div>
     <div style="display:flex;gap:8px;">
-      <button onclick="event.stopPropagation();uysaAI.clear()" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px;">Temizle</button>
+      <button id="uysa-ai-btn-clear" onclick="event.stopPropagation();uysaAI.clear()" style="display:none;background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px;">Temizle</button>
+      <button id="uysa-ai-btn-disconnect" onclick="event.stopPropagation();uysaAI.disconnect()" style="display:none;background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px;">Bağlantıyı Kes</button>
       <button onclick="event.stopPropagation();uysaAI.close()" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;">×</button>
     </div>
   </div>
-  <div id="uysa-ai-messages" style="flex:1;overflow-y:auto;padding:12px;min-height:280px;max-height:360px;display:flex;flex-direction:column;gap:8px;background:#f8fafc;">
-    <div class="ai-msg ai-assistant" style="background:#e8f0fe;padding:10px 12px;border-radius:12px;font-size:13px;line-height:1.5;max-width:90%;">
-      Merhaba! Size nasıl yardımcı olabilirim? Stok, finans, personel veya herhangi bir konuda soru sorabilirsiniz.
+
+  <!-- STATE: Auth / Bağlantı Kur -->
+  <div id="uysa-ai-auth-screen" style="display:none;padding:24px 20px;text-align:center;background:#f8fafc;min-height:320px;">
+    <div style="font-size:40px;margin-bottom:12px;">🔗</div>
+    <h3 style="font-size:16px;color:#1e293b;margin:0 0 6px">AI bağlantısı gerekli</h3>
+    <p style="font-size:12px;color:#64748b;margin:0 0 20px">Aşağıdaki kod ile hesabınızı bağlayın</p>
+
+    <div style="background:#fff;border:2px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px;">
+      <div style="font-size:11px;color:#64748b;margin-bottom:4px;font-weight:600" id="uysa-ai-provider-label">Provider</div>
+      <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:14px" id="uysa-ai-provider-name">—</div>
+
+      <div style="font-size:11px;color:#64748b;margin-bottom:4px;font-weight:600">Kod</div>
+      <div id="uysa-ai-device-code" style="font-size:28px;font-weight:800;letter-spacing:4px;color:#1a56db;font-family:monospace;margin-bottom:8px;user-select:all">—</div>
+      <button onclick="uysaAI.copyCode()" style="background:#f1f5f9;border:1px solid #d1d5db;border-radius:6px;padding:4px 12px;cursor:pointer;font-size:11px;color:#475569;">Kodu Kopyala</button>
+    </div>
+
+    <div style="margin-bottom:16px">
+      <div style="font-size:11px;color:#64748b;margin-bottom:4px;font-weight:600">Bu adresi açın</div>
+      <a id="uysa-ai-verify-url" href="#" target="_blank" style="font-size:12px;color:#1a56db;word-break:break-all;font-weight:600">—</a>
+      <br>
+      <button onclick="uysaAI.openVerifyUrl()" style="background:linear-gradient(135deg,#1a56db,#7c3aed);color:#fff;border:none;border-radius:8px;padding:8px 20px;cursor:pointer;font-size:12px;font-weight:600;margin-top:8px;">Tarayıcıda Aç</button>
+    </div>
+
+    <div id="uysa-ai-auth-status" style="font-size:12px;color:#94a3b8;padding:8px;display:flex;align-items:center;justify-content:center;gap:6px;">
+      <span style="display:inline-block;width:8px;height:8px;background:#f59e0b;border-radius:50%;animation:pulse 1.5s infinite"></span>
+      Bağlantı bekleniyor…
     </div>
   </div>
-  <div id="uysa-ai-input-area" style="padding:10px 12px;border-top:1px solid #e2e8f0;display:flex;gap:8px;background:#fff;">
+
+  <!-- STATE: Chat -->
+  <div id="uysa-ai-messages" style="display:none;flex:1;overflow-y:auto;padding:12px;min-height:280px;max-height:380px;flex-direction:column;gap:8px;background:#f8fafc;">
+    <div class="ai-msg ai-assistant" style="background:#e8f0fe;padding:10px 12px;border-radius:12px;font-size:13px;line-height:1.5;max-width:90%;">
+      Asistan hazır. Stok, finans, personel veya herhangi bir konuda soru sorabilirsiniz.
+    </div>
+  </div>
+  <div id="uysa-ai-input-area" style="display:none;padding:10px 12px;border-top:1px solid #e2e8f0;gap:8px;background:#fff;">
     <input id="uysa-ai-input" type="text" placeholder="Sorunuzu yazın..." style="flex:1;border:1px solid #d1d5db;border-radius:10px;padding:10px 14px;font-size:13px;outline:none;font-family:inherit;" onkeydown="if(event.key==='Enter')uysaAI.send()">
     <button onclick="uysaAI.send()" style="background:linear-gradient(135deg,#1a56db,#7c3aed);color:#fff;border:none;border-radius:10px;padding:10px 16px;cursor:pointer;font-weight:600;font-size:13px;">Gönder</button>
   </div>
 </div>
 
-<!-- AI Chat FAB Butonu — sadece ERP'ye giriş yapmışsa görünür -->
+<!-- AI Chat FAB -->
 <button id="uysa-ai-fab" onclick="uysaAI.open()" style="position:fixed;bottom:20px;right:20px;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#1a56db,#7c3aed);color:#fff;border:none;box-shadow:0 4px 16px rgba(26,86,219,.4);cursor:pointer;z-index:99998;display:none;align-items:center;justify-content:center;transition:transform .2s;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
   <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
 </button>
@@ -22821,44 +23329,173 @@ async function apiCall(action, body, method, extraHeaders) {
 
 /* ── AI Chat Widget (Auth destekli) ─────────────────────────── */
 window.uysaAI = {
+  _pollTimer: null,
+  _deviceCode: null,
+  _verifyUrl: null,
+
   _getSession() {
     try { return JSON.parse(sessionStorage.getItem('uysa_session') || 'null'); } catch(e) { return null; }
   },
   _isLoggedIn() {
     return !!this._getSession();
   },
-  // ERP login sonrası FAB'ı göster
+  _getActiveAuth() {
+    try { return JSON.parse(localStorage.getItem('uysa_ai_device_auth') || 'null'); } catch(e) { return null; }
+  },
+  _setActiveAuth(data) {
+    if (data) localStorage.setItem('uysa_ai_device_auth', JSON.stringify(data));
+    else localStorage.removeItem('uysa_ai_device_auth');
+  },
+
   checkVisibility() {
     const fab = document.getElementById('uysa-ai-fab');
     const chat = document.getElementById('uysa-ai-chat');
     if (this._isLoggedIn()) {
-      // Giriş yapılmış: FAB göster (chat zaten kapalıysa)
       if (fab && (!chat || chat.style.display === 'none')) fab.style.display = 'flex';
     } else {
-      // Giriş yapılmamış: her ikisini de kesinlikle gizle
       if (fab) fab.style.display = 'none';
       if (chat) chat.style.display = 'none';
     }
   },
+
   open() {
     if (!this._isLoggedIn()) return;
-    document.getElementById('uysa-ai-chat').style.display = 'flex';
-    document.getElementById('uysa-ai-fab').style.display = 'none';
-    document.getElementById('uysa-ai-input')?.focus();
+    const chat = document.getElementById('uysa-ai-chat');
+    const fab = document.getElementById('uysa-ai-fab');
+    if (chat) chat.style.display = 'flex';
+    if (fab) fab.style.display = 'none';
+    // Check if we have active auth
+    const auth = this._getActiveAuth();
+    if (auth && auth.status === 'approved') {
+      this._switchState('chat');
+    } else {
+      this.startAuth();
+    }
   },
+
   close() {
-    document.getElementById('uysa-ai-chat').style.display = 'none';
-    if (this._isLoggedIn()) document.getElementById('uysa-ai-fab').style.display = 'flex';
+    const chat = document.getElementById('uysa-ai-chat');
+    if (chat) chat.style.display = 'none';
+    if (this._isLoggedIn()) {
+      const fab = document.getElementById('uysa-ai-fab');
+      if (fab) fab.style.display = 'flex';
+    }
+    this._stopPoll();
   },
+
   toggle() {
     const chat = document.getElementById('uysa-ai-chat');
-    if (chat.style.display === 'none' || !chat.style.display) this.open();
+    if (!chat || chat.style.display === 'none' || !chat.style.display) this.open();
     else this.close();
   },
+
+  _switchState(state) {
+    const authScreen = document.getElementById('uysa-ai-auth-screen');
+    const messages = document.getElementById('uysa-ai-messages');
+    const inputArea = document.getElementById('uysa-ai-input-area');
+    const clearBtn = document.getElementById('uysa-ai-btn-clear');
+    const disconnectBtn = document.getElementById('uysa-ai-btn-disconnect');
+
+    if (state === 'auth') {
+      if (authScreen) authScreen.style.display = 'block';
+      if (messages) messages.style.display = 'none';
+      if (inputArea) inputArea.style.display = 'none';
+      if (clearBtn) clearBtn.style.display = 'none';
+      if (disconnectBtn) disconnectBtn.style.display = 'none';
+    } else if (state === 'chat') {
+      if (authScreen) authScreen.style.display = 'none';
+      if (messages) messages.style.display = 'flex';
+      if (inputArea) inputArea.style.display = 'flex';
+      if (clearBtn) clearBtn.style.display = 'inline-block';
+      if (disconnectBtn) disconnectBtn.style.display = 'inline-block';
+      document.getElementById('uysa-ai-input')?.focus();
+    }
+  },
+
+  async startAuth() {
+    this._switchState('auth');
+    const statusEl = document.getElementById('uysa-ai-auth-status');
+    if (statusEl) statusEl.innerHTML = '<span style="display:inline-block;width:8px;height:8px;background:#f59e0b;border-radius:50%;animation:pulse 1.5s infinite"></span> Kod aliniyor...';
+
+    const result = await apiCall('ai.providerAuthStart', {}, 'POST');
+    if (!result.ok) {
+      if (statusEl) statusEl.innerHTML = '<span style="color:#ef4444">Hata: ' + (result.error || 'Bilinmeyen hata') + '</span>';
+      return;
+    }
+
+    this._deviceCode = result.device_code;
+    this._verifyUrl = result.verification_url;
+
+    const codeEl = document.getElementById('uysa-ai-device-code');
+    const urlEl = document.getElementById('uysa-ai-verify-url');
+    const providerEl = document.getElementById('uysa-ai-provider-name');
+
+    if (codeEl) codeEl.textContent = result.device_code;
+    if (urlEl) { urlEl.textContent = result.verification_url; urlEl.href = result.verification_url; }
+    if (providerEl) providerEl.textContent = result.provider || 'Anthropic Claude';
+    if (statusEl) statusEl.innerHTML = '<span style="display:inline-block;width:8px;height:8px;background:#f59e0b;border-radius:50%;animation:pulse 1.5s infinite"></span> Baglanti bekleniyor... Kodu girin ve onaylayin.';
+
+    this._startPoll();
+  },
+
+  _startPoll() {
+    this._stopPoll();
+    this._pollTimer = setInterval(() => this._pollStatus(), 3000);
+  },
+
+  _stopPoll() {
+    if (this._pollTimer) {
+      clearInterval(this._pollTimer);
+      this._pollTimer = null;
+    }
+  },
+
+  async _pollStatus() {
+    if (!this._deviceCode) return;
+    const result = await apiCall('ai.providerAuthStatus', { device_code: this._deviceCode }, 'POST');
+
+    if (result.ok && result.status === 'approved') {
+      this._stopPoll();
+      this._setActiveAuth({ status: 'approved', device_code: this._deviceCode, provider: result.provider || 'anthropic' });
+      const statusEl = document.getElementById('uysa-ai-auth-status');
+      if (statusEl) statusEl.innerHTML = '<span style="color:#10b981;font-weight:700">Baglanti kuruldu!</span>';
+      setTimeout(() => this._switchState('chat'), 800);
+    } else if (result.status === 'expired' || result.status === 'failed') {
+      this._stopPoll();
+      const statusEl = document.getElementById('uysa-ai-auth-status');
+      if (statusEl) statusEl.innerHTML = '<span style="color:#ef4444">Kod suresi doldu. Tekrar deneyin.</span><br><button onclick="uysaAI.startAuth()" style="margin-top:8px;background:#1a56db;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:12px;">Yeni Kod Al</button>';
+    }
+  },
+
+  copyCode() {
+    if (this._deviceCode) {
+      navigator.clipboard.writeText(this._deviceCode).then(() => {
+        const btn = document.querySelector('#uysa-ai-auth-screen button');
+        if (btn) { const orig = btn.textContent; btn.textContent = 'Kopyalandi!'; setTimeout(() => btn.textContent = orig, 1500); }
+      }).catch(() => {});
+    }
+  },
+
+  openVerifyUrl() {
+    if (this._verifyUrl) window.open(this._verifyUrl, '_blank');
+  },
+
+  async disconnect() {
+    this._stopPoll();
+    await apiCall('ai.providerAuthLogout', {}, 'POST');
+    this._setActiveAuth(null);
+    this._deviceCode = null;
+    this._verifyUrl = null;
+    this._switchState('auth');
+    const statusEl = document.getElementById('uysa-ai-auth-status');
+    if (statusEl) statusEl.innerHTML = '<span style="color:#64748b">Baglanti kesildi.</span><br><button onclick="uysaAI.startAuth()" style="margin-top:8px;background:#1a56db;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:12px;">Yeniden Baglan</button>';
+  },
+
   clear() {
     const msgs = document.getElementById('uysa-ai-messages');
     if (msgs) msgs.innerHTML = '<div class="ai-msg ai-assistant" style="background:#e8f0fe;padding:10px 12px;border-radius:12px;font-size:13px;line-height:1.5;max-width:90%;">Sohbet temizlendi. Yeni bir soru sorabilirsiniz.</div>';
   },
+
   addMsg(role, text) {
     const msgs = document.getElementById('uysa-ai-messages');
     if (!msgs) return;
@@ -22875,6 +23512,7 @@ window.uysaAI = {
     msgs.appendChild(div);
     msgs.scrollTop = msgs.scrollHeight;
   },
+
   async send() {
     const input = document.getElementById('uysa-ai-input');
     const msg = input?.value?.trim();
@@ -22885,17 +23523,20 @@ window.uysaAI = {
     const loadDiv = document.createElement('div');
     loadDiv.className = 'ai-loading';
     loadDiv.style.cssText = 'padding:10px;font-size:13px;color:#94a3b8;';
-    loadDiv.innerHTML = '<span style="animation:pulse 1.5s infinite;">Düşünüyorum...</span>';
+    loadDiv.innerHTML = '<span style="animation:pulse 1.5s infinite;">Dusunuyorum...</span>';
     document.getElementById('uysa-ai-messages').appendChild(loadDiv);
 
-    // ERP mevcut auth ile istek gönder
     const result = await apiCall('ai.chat', { message: msg }, 'POST');
     loadDiv.remove();
 
     if (result.ok && result.response) {
       this.addMsg('assistant', result.response);
+    } else if (result.error === 'ai_auth_required') {
+      this.addMsg('assistant', 'AI baglantisi kesildi. Yeniden baglanti kurmaniz gerekiyor.');
+      this._setActiveAuth(null);
+      setTimeout(() => this.startAuth(), 1000);
     } else {
-      this.addMsg('assistant', 'Yanıt alınamadı. Lütfen tekrar deneyin.');
+      this.addMsg('assistant', 'Yanit alinamadi. Lutfen tekrar deneyin.');
     }
   }
 };

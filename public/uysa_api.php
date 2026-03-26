@@ -650,7 +650,26 @@ function ensureSchema(PDO $pdo): void
         UNIQUE KEY `uk_user` (`user_id`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
-    // ── v5.0 AI & Telegram Tabloları ────────────────────────
+    // ── v5.0 AI Device Auth ─────────────────────────────────
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_ai_device_auth` (
+        `id`              INT UNSIGNED     NOT NULL AUTO_INCREMENT,
+        `user_id`         INT UNSIGNED     NOT NULL,
+        `username`        VARCHAR(100)     NOT NULL,
+        `device_code`     VARCHAR(20)      NOT NULL,
+        `session_token`   VARCHAR(128)              DEFAULT NULL,
+        `provider`        VARCHAR(30)      NOT NULL DEFAULT 'anthropic',
+        `status`          ENUM('pending','approved','expired','failed') NOT NULL DEFAULT 'pending',
+        `expires_at`      DATETIME         NOT NULL,
+        `approved_at`     DATETIME                  DEFAULT NULL,
+        `ip_address`      VARCHAR(45)               DEFAULT NULL,
+        `created_at`      DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        KEY `idx_device_code` (`device_code`),
+        KEY `idx_user_status` (`user_id`, `status`),
+        KEY `idx_session` (`session_token`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // ── v5.0 AI Chat Tablosu ─────────────────────────────────
     $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_ai_chats` (
         `id`          BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
         `user`        VARCHAR(100)     NOT NULL,
@@ -924,59 +943,231 @@ case 'stats':
         jsonResponse(['ok' => false, 'error' => 'stats failed'], 500);
     }
 
-// ── AI Widget Auth Login ─────────────────────────────────────
-case 'ai.authLogin':
-    $loginId  = sanitizeInput($body['email'] ?? $body['username'] ?? '', 100);
-    $password = $body['password'] ?? '';
-
-    if (!$loginId || !$password) {
-        jsonResponse(['ok' => false, 'error' => 'E-posta/kullanıcı adı ve şifre gerekli'], 400);
+// ── AI Provider Device Auth: Başlat ──────────────────────────
+case 'ai.providerAuthStart':
+    // ERP login gerekli
+    if (!$actor) {
+        jsonResponse(['ok' => false, 'error' => 'ERP oturumu gerekli'], 401);
     }
 
-    $loginKey = 'login:' . md5($loginId . ':' . $clientIp . ':ai');
-    $loginLimit = $rateLimiter->attempt($loginKey);
-    if (!$loginLimit['allowed']) {
-        auditLog($pdo, 'login_ratelimit', $loginId, null, json_encode(['surface' => 'ai_widget']), $clientIp);
+    // Kullanıcı bilgilerini al
+    $stmt = $pdo->prepare("SELECT id, username FROM uysa_users WHERE username = ? AND is_active = 1 LIMIT 1");
+    $stmt->execute([$actor]);
+    $erpUser = $stmt->fetch();
+    if (!$erpUser) {
+        jsonResponse(['ok' => false, 'error' => 'Geçersiz ERP kullanıcısı'], 401);
+    }
+
+    // Mevcut aktif auth varsa onu döndür
+    $existing = $pdo->prepare("SELECT * FROM uysa_ai_device_auth
+        WHERE user_id = ? AND status = 'approved' AND expires_at > NOW() ORDER BY id DESC LIMIT 1");
+    $existing->execute([$erpUser['id']]);
+    $activeAuth = $existing->fetch();
+    if ($activeAuth) {
         jsonResponse([
-            'ok'          => false,
-            'error'       => 'Çok fazla başarısız giriş denemesi. Lütfen bekleyin.',
-            'retry_after' => $loginLimit['retry_after'],
-        ], 429);
+            'ok'       => true,
+            'status'   => 'approved',
+            'provider' => $activeAuth['provider'],
+            'session_token' => $activeAuth['session_token'],
+            'message'  => 'AI bağlantısı zaten aktif',
+        ]);
     }
 
-    $stmt = $pdo->prepare("SELECT * FROM uysa_users WHERE username = ? AND is_active = 1 LIMIT 1");
-    $stmt->execute([$loginId]);
-    $user = $stmt->fetch();
+    // Pending olanı iptal et
+    $pdo->prepare("UPDATE uysa_ai_device_auth SET status = 'expired'
+        WHERE user_id = ? AND status = 'pending'")->execute([$erpUser['id']]);
 
-    $dummyHash = '$2y$10$invalidhashfortimingatk00000000000000000000000000000000';
-    $hashToVerify = $user ? $user['password'] : $dummyHash;
+    // Yeni device code üret
+    $code = strtoupper(substr(bin2hex(random_bytes(3)), 0, 4) . '-' . substr(bin2hex(random_bytes(3)), 0, 4));
+    $sessionToken = bin2hex(random_bytes(32));
+    $expiresIn = 600; // 10 dakika
+    $provider = strtolower(getenv('AI_PROVIDER') ?: 'anthropic');
 
-    if (!$user || !password_verify($password, $hashToVerify)) {
-        auditLog($pdo, 'login_fail', $loginId, null, json_encode(['ip' => $clientIp, 'surface' => 'ai_widget']), $clientIp);
-        jsonResponse(['ok' => false, 'error' => 'Kullanıcı adı/e-posta veya şifre hatalı'], 401);
-    }
+    require_once __DIR__ . '/src/modules/TelegramBot.php';
+    $aiCfg = getAIProvider();
+    $providerName = $aiCfg['provider'] === 'openai' ? 'OpenAI' : 'Claude (Anthropic)';
 
-    $rateLimiter->reset($loginKey);
-    $pdo->prepare("UPDATE uysa_users SET last_login = NOW() WHERE id = ?")->execute([$user['id']]);
+    $pdo->prepare("INSERT INTO uysa_ai_device_auth
+        (user_id, username, device_code, session_token, provider, status, expires_at, ip_address)
+        VALUES (?, ?, ?, ?, ?, 'pending', DATE_ADD(NOW(), INTERVAL ? SECOND), ?)")
+        ->execute([$erpUser['id'], $erpUser['username'], $code, $sessionToken, $provider, $expiresIn, $clientIp]);
 
-    $tokenPayload = ['sub' => $user['username'], 'role' => $user['role'], 'uid' => $user['id'], 'surface' => 'ai_widget'];
-    $accessToken  = $jwtManager->issue($tokenPayload);
-    $refreshToken = $jwtManager->issueRefresh($tokenPayload);
+    $deviceId = $pdo->lastInsertId();
+    $baseUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http')
+             . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
+    $verifyUrl = $baseUrl . '/uysa_api.php?action=ai.verifyDevice';
 
-    auditLog($pdo, 'login_success', $loginId, null, json_encode(['method' => 'jwt', 'surface' => 'ai_widget']), $clientIp);
+    auditLog($pdo, 'ai_device_auth_start', $actor, null, json_encode([
+        'device_id' => $deviceId, 'provider' => $provider
+    ]), $clientIp);
+
     jsonResponse([
-        'ok'            => true,
-        'token'         => $accessToken,
-        'access_token'  => $accessToken,
-        'refresh_token' => $refreshToken,
-        'token_type'    => 'Bearer',
-        'expires_in'    => 3600,
-        'user'          => [
-            'username'     => $user['username'],
-            'display_name' => $user['display_name'] ?: $user['username'],
-            'role'         => $user['role'],
-        ],
+        'ok'               => true,
+        'status'           => 'pending',
+        'device_code'      => $code,
+        'device_id'        => (int)$deviceId,
+        'provider'         => $providerName,
+        'verification_url' => $verifyUrl,
+        'expires_in'       => $expiresIn,
+        'poll_interval'    => 3,
     ]);
+
+// ── AI Provider Device Auth: Durum Sorgula ───────────────────
+case 'ai.providerAuthStatus':
+    if (!$actor) {
+        jsonResponse(['ok' => false, 'error' => 'ERP oturumu gerekli'], 401);
+    }
+
+    $deviceId = (int)($body['device_id'] ?? $_GET['device_id'] ?? 0);
+    if (!$deviceId) {
+        jsonResponse(['ok' => false, 'error' => 'device_id gerekli'], 400);
+    }
+
+    // Expire olmuşları güncelle
+    $pdo->exec("UPDATE uysa_ai_device_auth SET status = 'expired'
+        WHERE status = 'pending' AND expires_at < NOW()");
+
+    $stmt = $pdo->prepare("SELECT status, session_token, provider, approved_at
+        FROM uysa_ai_device_auth WHERE id = ? AND username = ?");
+    $stmt->execute([$deviceId, $actor]);
+    $row = $stmt->fetch();
+
+    if (!$row) {
+        jsonResponse(['ok' => false, 'error' => 'Device auth bulunamadı'], 404);
+    }
+
+    $result = ['ok' => true, 'status' => $row['status']];
+    if ($row['status'] === 'approved') {
+        $result['session_token'] = $row['session_token'];
+        $result['provider'] = $row['provider'];
+        $result['message'] = 'Bağlantı tamamlandı';
+    } elseif ($row['status'] === 'expired') {
+        $result['message'] = 'Kod süresi doldu. Yeniden başlatın.';
+    } elseif ($row['status'] === 'pending') {
+        $result['message'] = 'Bağlantı bekleniyor…';
+    }
+    jsonResponse($result);
+
+// ── AI Provider Device Auth: Onayla (Verification Page) ──────
+case 'ai.verifyDevice':
+    // Bu endpoint HTML sayfası döndürür (GET) veya onay işler (POST)
+    if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+        // Verification sayfası göster
+        $prefillCode = htmlspecialchars($_GET['code'] ?? '', ENT_QUOTES);
+        header('Content-Type: text/html; charset=utf-8');
+        echo '<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UYSA AI Bağlantı Onayı</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Inter,system-ui,sans-serif;background:linear-gradient(135deg,#1a56db 0%,#0b3aa6 100%);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.card{background:#fff;border-radius:16px;padding:40px 36px;width:380px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,.3);text-align:center}
+h1{font-size:20px;color:#1e293b;margin-bottom:6px}
+.sub{color:#64748b;font-size:13px;margin-bottom:24px}
+label{display:block;text-align:left;font-weight:600;font-size:12px;color:#374151;margin-bottom:4px}
+input{width:100%;padding:12px 16px;border:2px solid #d1d5db;border-radius:10px;font-size:18px;text-align:center;letter-spacing:4px;font-weight:700;font-family:monospace;outline:none;text-transform:uppercase}
+input:focus{border-color:#1a56db}
+.btn{width:100%;padding:14px;background:linear-gradient(135deg,#1a56db,#7c3aed);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin-top:16px;transition:transform .1s}
+.btn:hover{transform:scale(1.02)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.msg{margin-top:16px;padding:10px;border-radius:8px;font-size:13px;display:none}
+.msg.ok{display:block;background:#dcfce7;color:#166534;border:1px solid #86efac}
+.msg.err{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
+.logo{font-size:28px;margin-bottom:16px}
+</style></head><body>
+<div class="card">
+  <div class="logo">🔗</div>
+  <h1>AI Bağlantı Onayı</h1>
+  <p class="sub">UYSA ERP AI asistanını bağlamak için widget\'teki kodu girin.</p>
+  <form id="vf" onsubmit="return doVerify(event)">
+    <label>Doğrulama Kodu</label>
+    <input id="codeInput" maxlength="9" placeholder="XXXX-XXXX" value="' . $prefillCode . '" autofocus required>
+    <button class="btn" type="submit" id="submitBtn">Bağlantıyı Onayla</button>
+  </form>
+  <div id="msg" class="msg"></div>
+</div>
+<script>
+async function doVerify(e){
+  e.preventDefault();
+  var btn=document.getElementById("submitBtn");
+  var msg=document.getElementById("msg");
+  btn.disabled=true; btn.textContent="Onaylanıyor...";
+  msg.className="msg"; msg.style.display="none";
+  try{
+    var code=document.getElementById("codeInput").value.trim().toUpperCase();
+    var r=await fetch("/uysa_api.php?action=ai.verifyDevice",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({device_code:code})
+    });
+    var d=await r.json();
+    if(d.ok){
+      msg.className="msg ok"; msg.textContent="✅ "+d.message; msg.style.display="block";
+      btn.textContent="Bağlantı Tamamlandı";
+      setTimeout(function(){ try{window.close();}catch(e){} },2000);
+    } else {
+      msg.className="msg err"; msg.textContent=d.error||"Hata oluştu"; msg.style.display="block";
+      btn.disabled=false; btn.textContent="Bağlantıyı Onayla";
+    }
+  }catch(e){
+    msg.className="msg err"; msg.textContent="Bağlantı hatası"; msg.style.display="block";
+    btn.disabled=false; btn.textContent="Bağlantıyı Onayla";
+  }
+  return false;
+}
+</script></body></html>';
+        exit;
+    }
+
+    // POST: Kodu doğrula ve onayla
+    $deviceCode = strtoupper(trim($body['device_code'] ?? ''));
+    if (!$deviceCode) {
+        jsonResponse(['ok' => false, 'error' => 'Kod gerekli'], 400);
+    }
+
+    // Expire olmuşları güncelle
+    $pdo->exec("UPDATE uysa_ai_device_auth SET status = 'expired'
+        WHERE status = 'pending' AND expires_at < NOW()");
+
+    $stmt = $pdo->prepare("SELECT * FROM uysa_ai_device_auth
+        WHERE device_code = ? AND status = 'pending' LIMIT 1");
+    $stmt->execute([$deviceCode]);
+    $authRow = $stmt->fetch();
+
+    if (!$authRow) {
+        jsonResponse(['ok' => false, 'error' => 'Geçersiz veya süresi dolmuş kod. Yeni kod alın.'], 404);
+    }
+
+    // AI provider kontrolü - API key var mı?
+    require_once __DIR__ . '/src/modules/TelegramBot.php';
+    $aiCfg = getAIProvider();
+    if (!$aiCfg['key']) {
+        $pdo->prepare("UPDATE uysa_ai_device_auth SET status = 'failed' WHERE id = ?")
+            ->execute([$authRow['id']]);
+        jsonResponse(['ok' => false, 'error' => 'AI servisi yapılandırılmamış. Yöneticinize başvurun.'], 503);
+    }
+
+    // Onayla
+    $pdo->prepare("UPDATE uysa_ai_device_auth SET status = 'approved', approved_at = NOW()
+        WHERE id = ?")->execute([$authRow['id']]);
+
+    auditLog($pdo, 'ai_device_auth_approved', $authRow['username'], null, json_encode([
+        'device_id' => $authRow['id'], 'provider' => $authRow['provider']
+    ]), $clientIp);
+
+    jsonResponse([
+        'ok'      => true,
+        'message' => 'AI bağlantısı başarıyla tamamlandı. Widget\'a dönebilirsiniz.',
+    ]);
+
+// ── AI Provider Auth: Çıkış ──────────────────────────────────
+case 'ai.providerAuthLogout':
+    if (!$actor) {
+        jsonResponse(['ok' => false, 'error' => 'ERP oturumu gerekli'], 401);
+    }
+    $pdo->prepare("UPDATE uysa_ai_device_auth SET status = 'expired'
+        WHERE username = ? AND status IN ('pending','approved')")->execute([$actor]);
+    auditLog($pdo, 'ai_device_auth_logout', $actor, null, null, $clientIp);
+    jsonResponse(['ok' => true, 'message' => 'AI bağlantısı kaldırıldı']);
 
 // ── JWT: Token Al ────────────────────────────────────────────
 case 'getToken':
@@ -1423,11 +1614,24 @@ case 'telegram.setup':
     curl_close($ch);
     jsonResponse(['ok' => $result['ok'] ?? false, 'result' => $result]);
 
-// ── AI Chat (ERP içi asistan — Provider-Agnostic + Auth) ────
+// ── AI Chat (ERP içi asistan — Device Auth + Provider-Agnostic) ──
 case 'ai.chat':
+    if (!$actor) {
+        jsonResponse(['ok' => false, 'error' => 'ERP oturumu gerekli'], 401);
+    }
     $question = sanitizeInput($body['message'] ?? '', 2000);
     if (!$question) {
         jsonResponse(['ok' => false, 'error' => 'message gerekli'], 400);
+    }
+
+    // Device auth kontrolü
+    $authCheck = $pdo->prepare("SELECT id, provider FROM uysa_ai_device_auth
+        WHERE username = ? AND status = 'approved' AND expires_at > NOW()
+        ORDER BY id DESC LIMIT 1");
+    $authCheck->execute([$actor]);
+    $deviceAuth = $authCheck->fetch();
+    if (!$deviceAuth) {
+        jsonResponse(['ok' => false, 'error' => 'ai_auth_required', 'message' => 'AI bağlantısı gerekli. Widget üzerinden bağlantı kurun.'], 403);
     }
 
     require_once __DIR__ . '/src/modules/TelegramBot.php';
