@@ -2421,6 +2421,8 @@
             <button class="btn" id="finTabSayi" onclick="switchFinTab('sayi')">📊 Günlük Üretim Sayıları <span style="background:#7c3aed;color:#fff;font-size:10px;padding:1px 6px;border-radius:10px;margin-left:4px">+KDV</span></button>
             <button class="btn" id="finTabOzet" onclick="switchFinTab('ozet')">📊 Gelir/Gider Tablosu</button>
             <button class="btn" id="finTabButce" onclick="switchFinTab('butce')">🎯 Bütçe</button>
+            <button class="btn" id="finTabCari" onclick="switchFinTab('cari')">🏦 Cari Hesap</button>
+            <button class="btn" id="finTabOdeme" onclick="switchFinTab('odeme')">📅 Ödeme Takibi</button>
           </div>
         </div>
 
@@ -2623,6 +2625,17 @@
                   <div><label>Fatura No (isteğe bağlı)</label><input id="gelir-fatura" placeholder="FAT-2026-001"/></div>
                 </div>
                 <div><label>Açıklama</label><input id="gelir-aciklama" placeholder="Ocak servisi, organizasyon vb."/></div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                  <div><label>Vade Tarihi</label><input id="gelir-vade" type="date" title="Ödeme beklenen tarih"/></div>
+                  <div><label>Ödeme Durumu</label>
+                    <select id="gelir-odeme-durum">
+                      <option value="bekliyor">⏳ Ödeme Bekliyor</option>
+                      <option value="odendi">✅ Ödendi</option>
+                      <option value="gecikti">🔴 Gecikti</option>
+                      <option value="kismi">🟡 Kısmi Ödeme</option>
+                    </select>
+                  </div>
+                </div>
                 <!-- KDV seçimi -->
                 <div style="display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:center">
                   <label style="white-space:nowrap;font-weight:700">+KDV:</label>
