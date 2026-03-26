@@ -2657,6 +2657,23 @@
               <h3>📤 Gider Ekle</h3>
               <div class="hint">Üretim, personel, enerji ve diğer giderlerinizi kategoriye göre kayıt edin.</div>
               <div style="display:grid;grid-template-columns:1fr;gap:8px;margin-top:10px">
+                <!-- Gider Aitlik Seçimi -->
+                <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:10px">
+                  <label style="font-weight:700;color:#0369a1;font-size:12px;margin-bottom:6px;display:block">📌 Gider Kime Ait?</label>
+                  <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+                    <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px">
+                      <input type="radio" name="giderAitlik" value="genel" checked onchange="giderAitlikDegis()" style="accent-color:#2563eb"/> Genel Gider
+                    </label>
+                    <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px">
+                      <input type="radio" name="giderAitlik" value="musteri" onchange="giderAitlikDegis()" style="accent-color:#2563eb"/> Müşteriye Ait
+                    </label>
+                  </div>
+                  <div id="giderMusteriSecim" style="display:none">
+                    <select id="gider-musteri" multiple style="width:100%;min-height:60px;padding:6px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px">
+                    </select>
+                    <div style="font-size:10px;color:#64748b;margin-top:3px">Ctrl/Cmd ile birden fazla müşteri seçebilirsiniz</div>
+                  </div>
+                </div>
                 <div><label>Gider Kategorisi</label>
                   <select id="gider-kat">
                     <optgroup label="🍲 Üretim Gideri">
@@ -3048,6 +3065,29 @@
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
                 <div><label>Kişi Sayısı (gün)</label><input id="crmKisi" type="number" min="0" placeholder="Günlük kişi sayısı" oninput="crmPreviewOzet()"/></div>
                 <div><label>Satış Fiyatı (₺/kişi/gün)</label><input id="crmFiyat" type="number" min="0" step="0.01" placeholder="₺/kişi" oninput="crmPreviewOzet()"/></div>
+              </div>
+
+              <!-- Al/Sat Modu -->
+              <div id="crmAlSatPanel" style="background:#fef3c7;border:1.5px solid #fbbf24;border-radius:10px;padding:10px;margin-bottom:10px">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:700;color:#92400e;font-size:13px">
+                    <input type="checkbox" id="crmAlSat" onchange="crmAlSatToggle()" style="width:18px;height:18px;accent-color:#d97706"/>
+                    🔄 Al/Sat Müşterisi
+                  </label>
+                  <span style="font-size:11px;color:#78350f">(Bu müşteriye yemek dışarıdan temin ediliyor)</span>
+                </div>
+                <div id="crmAlSatFields" style="display:none;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                  <div>
+                    <label style="font-size:12px">Alış Fiyatı (₺/kişi/gün)</label>
+                    <input id="crmAlisFiyat" type="number" min="0" step="0.01" placeholder="Tedarikçiden alış fiyatı" oninput="crmPreviewOzet()" style="border-color:#fbbf24"/>
+                  </div>
+                  <div>
+                    <label style="font-size:12px">Tedarikçi</label>
+                    <select id="crmTedarikci" style="border-color:#fbbf24">
+                      <option value="">— Tedarikçi seçin —</option>
+                    </select>
+                  </div>
+                </div>
               </div>
 
               <!-- Servis Konfigürasyonu -->
@@ -7129,8 +7169,11 @@ alert('Tutar giriniz.'); return; }
     let toplam=0;
     div.innerHTML = arr.map((g,i)=>{
       toplam += g.tutar||0;
+      const aitTag = g.aitlik==='musteri' && g.musteriler && g.musteriler.length
+        ? '<span style="background:#dbeafe;color:#1d4ed8;padding:1px 6px;border-radius:10px;font-size:10px;font-weight:600">📌 '+g.musteriler.join(', ')+'</span> '
+        : '<span style="background:#f0fdf4;color:#166534;padding:1px 6px;border-radius:10px;font-size:10px;font-weight:600">Genel</span> ';
       return `<div style="border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:6px;background:#fff;display:flex;justify-content:space-between;align-items:center">
-        <div><b>${giderKatLabel[g.kat]||g.kat}</b> — ${g.tarih||'?'} — <span style="color:#dc2626;font-weight:800">${fmt(g.tutar)} ₺</span><br>
+        <div><b>${giderKatLabel[g.kat]||g.kat}</b> — ${g.tarih||'?'} — <span style="color:#dc2626;font-weight:800">${fmt(g.tutar)} ₺</span> ${aitTag}<br>
         <span style="color:var(--muted);font-size:11px">${g.tedarikci?'🏪'+g.tedarikci+' · ':''} ${g.aciklama||''} ${g.belge?'Belge:'+g.belge:''}</span></div>
         <div style="display:flex;gap:4px">
           <button onclick="duzenleGider(${i})" style="border:none;background:none;color:#2563eb;cursor:pointer;font-size:15px" title="Düzenle">✏️</button>
@@ -7202,14 +7245,24 @@ alert('Tutar giriniz.'); return; }
     if(!tutar){
 alert('Tutar giriniz.'); return; }
     const tedarikci = document.getElementById('gider-tedarikci')?.value||'';
+    // Gider aitlik bilgisi
+    const aitlik = document.querySelector('input[name="giderAitlik"]:checked')?.value||'genel';
+    let aitMusteri = [];
+    if(aitlik==='musteri'){
+      const musteriSel = document.getElementById('gider-musteri');
+      if(musteriSel) aitMusteri = Array.from(musteriSel.selectedOptions).map(o=>o.value);
+    }
     const arr = getGiderler();
-    arr.push({kat,tarih,tutar,aciklama,belge,tedarikci}); // FIX-C: save tedarikci
+    arr.push({kat,tarih,tutar,aciklama,belge,tedarikci, aitlik:aitlik, musteriler:aitMusteri});
     saveGiderler(arr);
     renderGiderler();
     try { if (typeof window.autoSaveToFolder === 'function') window.autoSaveToFolder(); } catch(e){}
-    alert('Gider kaydedildi.');
+    alert('Gider kaydedildi.' + (aitMusteri.length ? ' ('+aitMusteri.join(', ')+' müşterisi)' : ' (Genel gider)'));
     document.getElementById('gider-tutar').value='';
     document.getElementById('gider-aciklama').value='';
+    // Aitlik seçimini sıfırla
+    const genelRadio = document.querySelector('input[name="giderAitlik"][value="genel"]');
+    if(genelRadio){ genelRadio.checked=true; if(typeof giderAitlikDegis==='function') giderAitlikDegis(); }
   });
   document.getElementById('giderFiltreKat')?.addEventListener('change',e=>renderGiderler(e.target.value));
   renderGelirler(); renderGiderler();
@@ -8000,6 +8053,12 @@ alert('Malzeme ve miktar giriniz.'); return; }
     set('crmDiffNotes', d.diff);
     set('crmKisi',      d.kisi||'');
     set('crmFiyat',     d.fiyat||'');
+    // Al/Sat alanları
+    var alSatCb = document.getElementById('crmAlSat');
+    if(alSatCb) alSatCb.checked = d.alSat||false;
+    set('crmAlisFiyat', d.alisFiyat||'');
+    set('crmTedarikci', d.tedarikci||'');
+    if(typeof crmAlSatToggle==='function') crmAlSatToggle();
     set('crmIlgili',    d.ilgili);
     set('crmTelefon',   d.telefon);
     set('crmPersonel',  d.personel||'');
@@ -8127,6 +8186,9 @@ alert('Malzeme ve miktar giriniz.'); return; }
       diff:       get('crmDiffNotes'),
       kisi:       parseInt(get('crmKisi'))||0,
       fiyat:      parseFloat(get('crmFiyat'))||0,
+      alSat:      document.getElementById('crmAlSat')?.checked||false,
+      alisFiyat:  parseFloat(get('crmAlisFiyat'))||0,
+      tedarikci:  get('crmTedarikci'),
       ilgili:     get('crmIlgili'),
       telefon:    get('crmTelefon'),
       personel:   parseInt(get('crmPersonel'))||0,
@@ -8280,6 +8342,64 @@ alert('Malzeme ve miktar giriniz.'); return; }
     var el = document.getElementById('crmPersonel');
     if(el) el.value = secili.length;
     overlay.remove();
+  };
+
+  // ── Al/Sat Toggle ─────────────────────────────────────────────
+  window.crmAlSatToggle = function(){
+    var cb = document.getElementById('crmAlSat');
+    var fields = document.getElementById('crmAlSatFields');
+    if(!cb || !fields) return;
+    fields.style.display = cb.checked ? 'grid' : 'none';
+    // Tedarikçi dropdown'ını doldur
+    if(cb.checked) crmFillTedarikciDropdown();
+  };
+
+  window.crmFillTedarikciDropdown = function(){
+    var sel = document.getElementById('crmTedarikci');
+    if(!sel) return;
+    while(sel.options.length>1) sel.remove(1);
+    var tedList = [];
+    try{ tedList = JSON.parse(localStorage.getItem('uysa_tedarikci')||'[]'); }catch(e){}
+    tedList.forEach(function(t){
+      var val = t.firma||t.isim||t.ad||t.name||'';
+      if(!val) return;
+      var o = document.createElement('option'); o.value=val; o.textContent=val;
+      sel.appendChild(o);
+    });
+    // Gider kayıtlarından da tedarikçi ekle
+    var existing = new Set(Array.from(sel.options).map(function(o){return o.value;}));
+    try{
+      JSON.parse(localStorage.getItem('uysa_giderler')||'[]').forEach(function(g){
+        if(g.tedarikci && !existing.has(g.tedarikci)){
+          existing.add(g.tedarikci);
+          var o=document.createElement('option'); o.value=g.tedarikci; o.textContent=g.tedarikci;
+          sel.appendChild(o);
+        }
+      });
+    }catch(e){}
+  };
+
+  // ── Gider Aitlik Değişimi ───────────────────────────────────────
+  window.giderAitlikDegis = function(){
+    var val = document.querySelector('input[name="giderAitlik"]:checked')?.value||'genel';
+    var secimDiv = document.getElementById('giderMusteriSecim');
+    if(secimDiv) secimDiv.style.display = val==='musteri' ? 'block' : 'none';
+    if(val==='musteri') giderFillMusteriList();
+  };
+
+  window.giderFillMusteriList = function(){
+    var sel = document.getElementById('gider-musteri');
+    if(!sel) return;
+    sel.innerHTML = '';
+    var custs = [];
+    try{ custs = JSON.parse(localStorage.getItem('uysa_customers_v1')||'[]'); }catch(e){}
+    custs.forEach(function(c){
+      var name = c.name||c.ad||c;
+      if(typeof name!=='string') return;
+      if(name==='GENEL'||c.pasif) return;
+      var o = document.createElement('option'); o.value=name; o.textContent=name;
+      sel.appendChild(o);
+    });
   };
 
   document.getElementById('crmOpenMenuBtn')?.addEventListener('click',()=>{
@@ -15992,12 +16112,15 @@ window.addEventListener('load', function() {
       var borderStyle = i<custs.length-1 ? '1px solid #e2e8f0' : 'none';
       var statusLabel = kaydedildi ? '<br><span style="color:#16a34a;font-size:10px">✓ kaydedildi</span>'
         : (otoDoldu ? '<br><span style="color:#d97706;font-size:10px">↻ '+(_isWeekend?'önceki h.sonu':'önceki gün')+'</span>' : '');
+      // Al/Sat göstergesi
+      var alSatTag = crm.alSat ? '<span style="background:#fbbf24;color:#78350f;padding:1px 5px;border-radius:8px;font-size:9px;font-weight:700;margin-left:4px">🔄 Al/Sat</span>' : '';
+      var alSatInfo = crm.alSat && crm.alisFiyat ? '<br><span style="color:#d97706;font-size:10px">Alış: '+_fmt(crm.alisFiyat)+' ₺'+(crm.tedarikci?' · '+crm.tedarikci:'')+'</span>' : '';
 
       return '<tr style="background:'+rowBg+'">'
         // Müşteri adı (tıklanabilir — detay görüntüsü açar)
         +'<td style="padding:9px 12px;font-weight:700;color:#1e293b;border-bottom:'+borderStyle+';border-right:1px solid #e2e8f0;min-width:150px;cursor:pointer" onclick="gsMusteriDetay(\''+cust.replace(/'/g,"\\'")+'\')">'
-        +'<span style="color:#2563eb;text-decoration:underline;text-decoration-style:dotted">'+cust+'</span>'
-        +statusLabel
+        +'<span style="color:#2563eb;text-decoration:underline;text-decoration-style:dotted">'+cust+'</span>'+alSatTag
+        +statusLabel+alSatInfo
         +'<br><span style="color:#94a3b8;font-size:10px">CRM: '+(crmKisi||'—')+' kişi / '+(crmFiyat?_fmt(crmFiyat)+' ₺':'—')+'</span>'
         +'</td>'
         // Kişi sayısı input (editable)
@@ -16250,7 +16373,15 @@ window.addEventListener('load', function() {
         return !(g.tarih===tarih && g.aciklama && g.aciklama.startsWith('Günlük üretim'));
       });
 
-      var count=0, totalTutar=0;
+      // Al/Sat müşterileri için gider dizisi
+      var giderArr = [];
+      try{ giderArr = JSON.parse(localStorage.getItem('uysa_giderler')||'[]'); }catch(e){ giderArr=[]; }
+      // Bugünkü otomatik Al/Sat giderlerini temizle
+      giderArr = giderArr.filter(function(g){
+        return !(g.tarih===tarih && g.aciklama && g.aciklama.startsWith('Al/Sat alış —'));
+      });
+
+      var count=0, totalTutar=0, alSatCount=0;
       custs.forEach(function(cust,i){
         var kEl = document.querySelector('.gsv76-kisi[data-idx="'+i+'"]');
         var fEl = document.querySelector('.gsv76-fiyat[data-idx="'+i+'"]');
@@ -16263,6 +16394,23 @@ window.addEventListener('load', function() {
           aciklama:'Günlük üretim — '+k+' kişi × '+f+' ₺'});
         count++;
         totalTutar+=t;
+
+        // Al/Sat müşterisi ise otomatik gider oluştur
+        var crmData = _ls.get('uysa_crm_'+cust, {});
+        if(crmData.alSat && crmData.alisFiyat>0){
+          var alisTutar = k * crmData.alisFiyat;
+          giderArr.push({
+            kat:'uretim-diger-gida',
+            tarih:tarih,
+            tutar:alisTutar,
+            aciklama:'Al/Sat alış — '+cust+' — '+k+' kişi × '+crmData.alisFiyat+' ₺',
+            belge:'',
+            tedarikci: crmData.tedarikci||'',
+            aitlik:'musteri',
+            musteriler:[cust]
+          });
+          alSatCount++;
+        }
       });
 
       if(count===0){
@@ -16272,9 +16420,14 @@ window.addEventListener('load', function() {
 
       _saveGunluk(gunlukArr);
       _saveGelirler(gelirArr);
+      // Al/Sat giderlerini kaydet
+      if(alSatCount>0){
+        localStorage.setItem('uysa_giderler', JSON.stringify(giderArr));
+      }
 
       // Diğer modülleri güncelle
       if(typeof window.renderGelirler==='function') try{ window.renderGelirler(); }catch(e){}
+      if(typeof window.renderGiderler==='function') try{ window.renderGiderler(); }catch(e){}
       if(typeof window.refreshFinStats==='function') try{ window.refreshFinStats(); }catch(e){}
 
       // Tabloyu yenile (kayıtlı işaretleri göster)
@@ -16284,7 +16437,9 @@ window.addEventListener('load', function() {
       if(typeof window.v75RenderAylikRapor==='function') setTimeout(window.v75RenderAylikRapor, 200);
       if(typeof window.v75RenderMusteriListesi==='function') setTimeout(window.v75RenderMusteriListesi, 300);
 
-      _toast('✅ '+count+' müşteri kaydedildi — Toplam: '+_fmt(totalTutar)+' ₺  Gelire işlendi.');
+      var msg = '✅ '+count+' müşteri kaydedildi — Toplam: '+_fmt(totalTutar)+' ₺  Gelire işlendi.';
+      if(alSatCount>0) msg += '\n🔄 '+alSatCount+' Al/Sat müşterisi gidere eklendi.';
+      _toast(msg);
     });
   }
 
@@ -16360,14 +16515,34 @@ window.addEventListener('load', function() {
     var gelirArr = _getGelirler().filter(function(g){
       return !(g.tarih===tarih && g.aciklama && g.aciklama.startsWith('Günlük üretim'));
     });
+    // Al/Sat müşterileri için otomatik gider
+    var giderArr = [];
+    try{ giderArr = JSON.parse(localStorage.getItem('uysa_giderler')||'[]'); }catch(e){ giderArr=[]; }
+    giderArr = giderArr.filter(function(g){
+      return !(g.tarih===tarih && g.aciklama && g.aciklama.startsWith('Al/Sat alış —'));
+    });
+    var alSatCount = 0;
+
     yeniKayitlar.forEach(function(r){
       gelirArr.push({musteri:r.musteri, tarih:r.tarih, tutar:r.tutar, kisi:r.kisi, fatura:'',
         aciklama:'Günlük üretim — '+r.kisi+' kişi × '+r.fiyat+' ₺ (otomatik)'});
+      // Al/Sat otomatik gider
+      var crmData = _ls.get('uysa_crm_'+r.musteri, {});
+      if(crmData.alSat && crmData.alisFiyat>0){
+        giderArr.push({
+          kat:'uretim-diger-gida', tarih:tarih, tutar:r.kisi*crmData.alisFiyat,
+          aciklama:'Al/Sat alış — '+r.musteri+' — '+r.kisi+' kişi × '+crmData.alisFiyat+' ₺',
+          belge:'', tedarikci:crmData.tedarikci||'', aitlik:'musteri', musteriler:[r.musteri]
+        });
+        alSatCount++;
+      }
     });
     _saveGelirler(gelirArr);
+    if(alSatCount>0) localStorage.setItem('uysa_giderler', JSON.stringify(giderArr));
 
-    console.log('✅ Gün sonu otomatik kayıt: '+yeniKayitlar.length+' müşteri, tarih: '+tarih);
+    console.log('✅ Gün sonu otomatik kayıt: '+yeniKayitlar.length+' müşteri, '+alSatCount+' Al/Sat gider, tarih: '+tarih);
     if(typeof window.renderGelirler==='function') try{ window.renderGelirler(); }catch(e){}
+    if(typeof window.renderGiderler==='function') try{ window.renderGiderler(); }catch(e){}
     if(typeof window.refreshFinStats==='function') try{ window.refreshFinStats(); }catch(e){}
   }
 
