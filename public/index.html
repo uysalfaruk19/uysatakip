@@ -5961,120 +5961,85 @@ function escapeHtml(s){
           };
         }
 
-        // UYSA Excel format: No row labels!
-        // Structure per week block:
-        //   Row: Day names (PAZARTESİ, SALI, ...) — skip
-        //   Row: Dates (1/4/26, 02/04/26, ...)
-        //   Row 1: Soups (ÇORBA)
-        //   Row 2: Main dish (ANA YEMEK)
-        //   Row 3: Side dish (YARDIMCI)
-        //   Row 4: Salad (SALATA)
-        //   Row 5: Dessert/Fruit (TATLI/MEYVE)
-        //   Row 6: Ayran
-        // Then next week starts
-
-        let currentDates = null;  // array of parsed Date objects for current week
-        let currentWeekIdx = -1;
-        let rowAfterDates = 0;    // counter for rows after date row
-        let totalWeeks = 0;
-        // Row order after date row (UYSA standard)
-        const ROW_ORDER = ['soups','mains','sides','salads','dessertFruitName','ayran'];
-
-        // Also support labeled format (with ÇORBA, ANA YEMEK etc in col 0)
-        const labelMap = {
-          'ÇORBA':'soups', 'CORBA':'soups', 'MERCIMEK':'soups',
-          'ANA YEMEK':'mains', 'ANA':'mains',
-          'YARDIMCI YEMEK':'sides', 'YARDIMCI':'sides',
-          'SALATA':'salads',
-          'MEYVE':'dessertFruitName', 'TATLI':'dessertFruitName', 'TATLI/MEYVE':'dessertFruitName',
-          'MEYVE/TATLI':'dessertFruitName', 'TATLI / MEYVE':'dessertFruitName',
-          'İÇECEK/TATLI/MEYVE':'dessertFruitName', 'İÇECEK':'dessertFruitName',
-          'TATLI / MEYVE / MEŞRUBAT':'dessertFruitName',
-          'AYRAN':'ayran', 'AYRAN/YOĞURT':'ayran', 'AYRAN / YOĞURT':'ayran', 'YOĞURT':'ayran'
-        };
+        // UYSA REAL Excel format (from user screenshot):
+        //   Row: Title "UYSA YEMEK NİSAN 2026 YEMEK MENÜSÜ"
+        //   Row: Day names PAZARTESİ | SALI | ... (ONCE at top)
+        //   Row: Dates (partial week: empty | empty | 1.04.2026 | 02.04.26 | ...)
+        //   6 food rows: soup, main, side, salad, dessert, ayran
+        //   (blank row)
+        //   Row: Dates (full week: 6.04.2026 | 7.04.2026 | ...)
+        //   6 food rows: soup, main, side, salad, dessert, ayran
+        //   ... repeat for each week
 
         // Also read raw data for date serial numbers
         const dataRaw = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:true});
 
+        let currentDates = null;
+        let currentWeekIdx = -1;
+        let foodRowCount = 0;
+        let totalWeeks = 0;
+        const FOOD_ORDER = ['soups','mains','sides','salads','dessertFruitName','ayran'];
+
         for (let i=0; i<data.length; i++){
           const row = data[i];
-          const rowR = dataRaw[i] || row; // raw version for date detection
-          if (!row || row.length === 0) { rowAfterDates = 99; continue; }
+          const rowR = dataRaw[i] || row;
 
-          // Skip day name header rows
-          if (isDayNameRow(row)) {
-            console.log('[Excel Import] Row', i, ': DAY NAMES (skipped)', row.slice(0,4));
+          // Skip completely empty rows - reset food counter
+          const nonEmpty = (row||[]).filter(c => String(c||'').trim() !== '').length;
+          if (!row || nonEmpty === 0) {
+            foodRowCount = 99; // stop positional assignment until next date row
             continue;
           }
 
-          // Detect date row — check both formatted and raw versions
-          // Use raw row for date detection (handles Excel serial numbers)
+          // Skip title row, day name rows
+          if (isDayNameRow(row)) {
+            console.log('[Excel Import] Row', i, ': DAY NAMES (skip)');
+            continue;
+          }
+
+          // Skip title-like rows (contain "MENÜSÜ", "UYSA", etc.)
+          const rowStr = row.map(c=>String(c||'')).join(' ').toUpperCase();
+          if (rowStr.includes('MENÜSÜ') || rowStr.includes('UYSA YEMEK')) {
+            console.log('[Excel Import] Row', i, ': TITLE (skip)');
+            continue;
+          }
+
+          // Detect date row (at least 3 date-like cells)
           const dateRowCheck = isDateRow(row) || isDateRow(rowR);
           if (dateRowCheck) {
             currentDates = [];
-            for (let c=0; c<Math.max(row.length, rowR.length); c++){
-              // Try formatted first, then raw
-              let dt = parseDate(row[c]) || parseDate(rowR[c]);
+            for (let c=0; c<Math.max(row.length, (rowR||[]).length); c++){
+              let dt = parseDate(row[c]) || parseDate((rowR||[])[c]);
               if (dt) currentDates.push({col:c, date:dt});
             }
-            console.log('[Excel Import] Row', i, ': DATE ROW, found', currentDates.length, 'dates',
-              currentDates.map(d => d.date.toLocaleDateString('tr-TR')));
+            console.log('[Excel Import] Row', i, ': DATES, found', currentDates.length,
+              currentDates.map(d => d.col + ':' + d.date.toLocaleDateString('tr-TR')));
             if (currentDates.length > 0) {
               currentWeekIdx = getWeekIndexFromDates(currentDates);
-              console.log('[Excel Import] Week index for', currentDates[0].date.toLocaleDateString('tr-TR'), '=', currentWeekIdx);
-              if (currentWeekIdx > 0) {
-                const wk = `W${currentWeekIdx}`;
-                if (!store[storeKey].weeks[wk]) store[storeKey].weeks[wk] = makeEmptyWeek();
-                totalWeeks++;
-              } else {
-                console.warn('[Excel Import] Could not find week for date, trying month weeks...');
-                // Fallback: just assign incrementally
+              if (currentWeekIdx <= 0) {
+                // Fallback: incremental
                 totalWeeks++;
                 currentWeekIdx = totalWeeks;
-                const wk = `W${currentWeekIdx}`;
-                if (!store[storeKey].weeks[wk]) store[storeKey].weeks[wk] = makeEmptyWeek();
+              } else {
+                totalWeeks++;
               }
+              const wk = `W${currentWeekIdx}`;
+              if (!store[storeKey].weeks[wk]) store[storeKey].weeks[wk] = makeEmptyWeek();
+              console.log('[Excel Import] → Week', currentWeekIdx);
             }
-            rowAfterDates = 0;
+            foodRowCount = 0;
             continue;
           }
 
-          // If we have dates and a valid week, process food rows
-          if (currentWeekIdx > 0 && currentDates && currentDates.length > 0) {
+          // Process food rows (positional: 0=soup, 1=main, 2=side, 3=salad, 4=dessert, 5=ayran)
+          if (currentWeekIdx > 0 && currentDates && currentDates.length > 0 && foodRowCount < FOOD_ORDER.length) {
             const wk = store[storeKey].weeks[`W${currentWeekIdx}`];
             if (!wk) continue;
 
-            // Check if first cell has a known label
-            const firstCell = String(row[0]||'').trim().toUpperCase();
-            let targetKey = null;
+            const targetKey = FOOD_ORDER[foodRowCount];
+            foodRowCount++;
 
-            // Try label-based matching first
-            for (const [label, key] of Object.entries(labelMap)) {
-              if (firstCell === label || firstCell.includes(label) || label.includes(firstCell)) {
-                targetKey = key;
-                break;
-              }
-            }
-
-            // If no label match, use positional (UYSA format has no labels)
-            if (!targetKey && rowAfterDates < ROW_ORDER.length) {
-              // Check if this row has food-like data (not empty, not just dates)
-              let hasData = false;
-              for (let c=0; c<row.length; c++){
-                const v = String(row[c]||'').trim();
-                if (v && !parseDate(v) && v.toUpperCase() !== 'PAZARTESİ' && v.toUpperCase() !== 'SALI') {
-                  hasData = true; break;
-                }
-              }
-              if (hasData) {
-                targetKey = ROW_ORDER[rowAfterDates];
-                rowAfterDates++;
-              }
-            } else if (targetKey) {
-              rowAfterDates++;
-            }
-
-            if (targetKey && wk) {
+            if (targetKey) {
               // Map data from each column to correct day index
               currentDates.forEach(({col, date}) => {
                 const dow = (date.getDay()+6)%7; // Mon=0, Sun=6
@@ -6285,8 +6250,8 @@ function escapeHtml(s){
   if (bomPersons) bomPersons.addEventListener('input', ()=>{ if (bomModal && bomModal.style.display==='block') renderBom((bomTitle?.textContent||'').includes('Aylık')?'month':'week'); });
   if (bomModal) bomModal.addEventListener('click', (e)=>{ if (e.target===bomModal) bomModal.style.display='none'; });
 
-  if (monthlyViewBtn && monthlyModal && monthlyContent) {
-    monthlyViewBtn.addEventListener('click', openMonthly);
+  // Old monthly modal listeners (close/print only - open handled by v78 Excel-like modal)
+  if (monthlyModal) {
     if (closeMonthlyBtn) closeMonthlyBtn.addEventListener('click', closeMonthly);
     if (printMonthlyBtn) printMonthlyBtn.addEventListener('click', printMonthly);
     monthlyModal.addEventListener('click', (e)=>{ if (e.target === monthlyModal) closeMonthly(); });
