@@ -45,7 +45,7 @@ header('Permissions-Policy: geolocation=(), microphone=(), camera=()');
 
 // ── Güvenli CORS ──────────────────────────────────────────────
 $allowedOrigins = array_filter(array_map('trim', explode(',',
-    getenv('CORS_ORIGINS') ?: 'https://uysatakip.production.up.railway.app,http://localhost,http://127.0.0.1'
+    getenv('CORS_ORIGINS') ?: 'https://uysatakip-production-04a2.up.railway.app,https://uysatakip.production.up.railway.app,http://localhost,http://127.0.0.1'
 )));
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 if (in_array($origin, $allowedOrigins, true)) {
