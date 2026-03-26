@@ -21036,5 +21036,264 @@ document.addEventListener('DOMContentLoaded', function(){
 
 })();
 </script>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- UYSA ERP v5.0 — AI Asistan Chat Widget + ERP v5 API Bağlantıları -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div id="uysa-ai-chat" style="display:none;position:fixed;bottom:20px;right:20px;width:380px;max-height:520px;background:#fff;border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,.18);z-index:99999;font-family:Inter,system-ui,sans-serif;flex-direction:column;overflow:hidden;">
+  <div style="background:linear-gradient(135deg,#1a56db,#7c3aed);color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="uysaAI.toggle()">
+    <div style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:15px;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a7 7 0 017 7c0 3-2 5.5-4 7l-3 4-3-4c-2-1.5-4-4-4-7a7 7 0 017-7z"/><circle cx="12" cy="9" r="2"/></svg>
+      UYSA AI Asistan
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button onclick="event.stopPropagation();uysaAI.clear()" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px;">Temizle</button>
+      <button onclick="event.stopPropagation();uysaAI.close()" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;">×</button>
+    </div>
+  </div>
+  <div id="uysa-ai-messages" style="flex:1;overflow-y:auto;padding:12px;min-height:280px;max-height:360px;display:flex;flex-direction:column;gap:8px;background:#f8fafc;">
+    <div class="ai-msg ai-assistant" style="background:#e8f0fe;padding:10px 12px;border-radius:12px;font-size:13px;line-height:1.5;max-width:90%;">
+      Merhaba! Ben UYSA ERP AI asistanınızım. Stok, finans, personel veya herhangi bir ERP konusunda soru sorabilirsiniz.
+    </div>
+  </div>
+  <div style="padding:10px 12px;border-top:1px solid #e2e8f0;display:flex;gap:8px;background:#fff;">
+    <input id="uysa-ai-input" type="text" placeholder="Sorunuzu yazın..." style="flex:1;border:1px solid #d1d5db;border-radius:10px;padding:10px 14px;font-size:13px;outline:none;font-family:inherit;" onkeydown="if(event.key==='Enter')uysaAI.send()">
+    <button onclick="uysaAI.send()" style="background:linear-gradient(135deg,#1a56db,#7c3aed);color:#fff;border:none;border-radius:10px;padding:10px 16px;cursor:pointer;font-weight:600;font-size:13px;">Gönder</button>
+  </div>
+</div>
+
+<!-- AI Chat FAB Butonu -->
+<button id="uysa-ai-fab" onclick="uysaAI.open()" style="position:fixed;bottom:20px;right:20px;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#1a56db,#7c3aed);color:#fff;border:none;box-shadow:0 4px 16px rgba(26,86,219,.4);cursor:pointer;z-index:99998;display:flex;align-items:center;justify-content:center;transition:transform .2s;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+</button>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   UYSA ERP v5.0 — AI Asistan + ERP API Bağlantı Katmanı
+   ═══════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+
+const V5_API = '/uysa_api.php';
+
+function getAuthHeaders() {
+  const token = localStorage.getItem('uysa_access_token') || '';
+  const legacy = (typeof CFG !== 'undefined' && CFG.token) ? CFG.token : '';
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  else if (legacy) headers['X-UYSA-Token'] = legacy;
+  return headers;
+}
+
+async function apiCall(action, body, method) {
+  const isGet = !method || method === 'GET';
+  const url = isGet ? V5_API + '?action=' + action : V5_API + '?action=' + action;
+  const opts = { method: isGet ? 'GET' : 'POST', headers: getAuthHeaders() };
+  if (!isGet && body) opts.body = JSON.stringify(body);
+  try {
+    const res = await fetch(url, opts);
+    return await res.json();
+  } catch(e) {
+    console.error('[UYSA v5] API error:', action, e);
+    return { ok: false, error: e.message };
+  }
+}
+
+/* ── AI Chat Widget ──────────────────────────────────────────── */
+window.uysaAI = {
+  open() {
+    document.getElementById('uysa-ai-chat').style.display = 'flex';
+    document.getElementById('uysa-ai-fab').style.display = 'none';
+    document.getElementById('uysa-ai-input').focus();
+  },
+  close() {
+    document.getElementById('uysa-ai-chat').style.display = 'none';
+    document.getElementById('uysa-ai-fab').style.display = 'flex';
+  },
+  toggle() {
+    const chat = document.getElementById('uysa-ai-chat');
+    if (chat.style.display === 'none' || !chat.style.display) this.open();
+    else this.close();
+  },
+  clear() {
+    const msgs = document.getElementById('uysa-ai-messages');
+    msgs.innerHTML = '<div class="ai-msg ai-assistant" style="background:#e8f0fe;padding:10px 12px;border-radius:12px;font-size:13px;line-height:1.5;max-width:90%;">Sohbet temizlendi. Yeni bir soru sorabilirsiniz.</div>';
+  },
+  addMsg(role, text) {
+    const msgs = document.getElementById('uysa-ai-messages');
+    const div = document.createElement('div');
+    div.className = 'ai-msg ai-' + role;
+    const isUser = role === 'user';
+    div.style.cssText = 'padding:10px 12px;border-radius:12px;font-size:13px;line-height:1.6;max-width:90%;word-wrap:break-word;'
+      + (isUser ? 'background:#1a56db;color:#fff;align-self:flex-end;margin-left:auto;' : 'background:#e8f0fe;color:#1e293b;');
+    // Basit markdown: **bold**, `code`, \n -> <br>
+    let html = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/`(.*?)`/g, '<code style="background:#f1f5f9;padding:1px 4px;border-radius:4px;font-size:12px;">$1</code>');
+    html = html.replace(/\n/g, '<br>');
+    div.innerHTML = html;
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+  },
+  async send() {
+    const input = document.getElementById('uysa-ai-input');
+    const msg = input.value.trim();
+    if (!msg) return;
+    input.value = '';
+    this.addMsg('user', msg);
+
+    // Loading
+    const loadDiv = document.createElement('div');
+    loadDiv.className = 'ai-loading';
+    loadDiv.style.cssText = 'padding:10px;font-size:13px;color:#94a3b8;';
+    loadDiv.innerHTML = '<span style="animation:pulse 1.5s infinite;">Düşünüyorum...</span>';
+    document.getElementById('uysa-ai-messages').appendChild(loadDiv);
+
+    const result = await apiCall('ai.chat', { message: msg }, 'POST');
+    loadDiv.remove();
+
+    if (result.ok && result.response) {
+      this.addMsg('assistant', result.response);
+    } else {
+      this.addMsg('assistant', 'Üzgünüm, yanıt alınamadı. ' + (result.error || ''));
+    }
+  }
+};
+
+/* ── ERP v5.0 API Fonksiyonları (Global) ─────────────────────── */
+window.uysaERP = {
+  api: apiCall,
+
+  // Finans
+  fin: {
+    accounts:       ()         => apiCall('fin.accounts'),
+    accountSave:    (d)        => apiCall('fin.accountSave', d, 'POST'),
+    invoiceList:    (p)        => apiCall('fin.invoiceList&' + new URLSearchParams(p||{}).toString()),
+    invoiceSave:    (d)        => apiCall('fin.invoiceSave', d, 'POST'),
+    invoiceDetail:  (id)       => apiCall('fin.invoiceDetail&id='+id),
+    paymentSave:    (d)        => apiCall('fin.paymentSave', d, 'POST'),
+    bankAccounts:   ()         => apiCall('fin.bankAccounts'),
+    trialBalance:   (p)        => apiCall('fin.trialBalance&' + new URLSearchParams(p||{}).toString()),
+    balanceSheet:   (p)        => apiCall('fin.balanceSheet&' + new URLSearchParams(p||{}).toString()),
+    incomeStatement:(p)        => apiCall('fin.incomeStatement&' + new URLSearchParams(p||{}).toString()),
+    dashboard:      ()         => apiCall('fin.dashboard'),
+  },
+
+  // Stok & Depo
+  inv: {
+    warehouses:     ()         => apiCall('inv.warehouses'),
+    warehouseSave:  (d)        => apiCall('inv.warehouseSave', d, 'POST'),
+    products:       (p)        => apiCall('inv.products&' + new URLSearchParams(p||{}).toString()),
+    productSave:    (d)        => apiCall('inv.productSave', d, 'POST'),
+    barcodeSearch:  (c)        => apiCall('inv.barcodeSearch&code='+encodeURIComponent(c)),
+    suppliers:      ()         => apiCall('inv.suppliers'),
+    supplierSave:   (d)        => apiCall('inv.supplierSave', d, 'POST'),
+    stockMovements: (p)        => apiCall('inv.stockMovements&' + new URLSearchParams(p||{}).toString()),
+    stockMove:      (d)        => apiCall('inv.stockMovementSave', d, 'POST'),
+    purchaseOrders: (p)        => apiCall('inv.purchaseOrders&' + new URLSearchParams(p||{}).toString()),
+    purchaseOrderSave: (d)     => apiCall('inv.purchaseOrderSave', d, 'POST'),
+    purchaseOrderReceive: (d)  => apiCall('inv.purchaseOrderReceive', d, 'POST'),
+    lots:           (p)        => apiCall('inv.lots&' + new URLSearchParams(p||{}).toString()),
+    lowStock:       ()         => apiCall('inv.lowStockAlert'),
+    dashboard:      ()         => apiCall('inv.dashboard'),
+  },
+
+  // İK & Bordro
+  hr: {
+    employees:      (p)        => apiCall('hr.employees&' + new URLSearchParams(p||{}).toString()),
+    employeeSave:   (d)        => apiCall('hr.employeeSave', d, 'POST'),
+    employeeDetail: (id)       => apiCall('hr.employeeDetail&id='+id),
+    leaveTypes:     ()         => apiCall('hr.leaveTypes'),
+    leaveRequests:  (p)        => apiCall('hr.leaveRequests&' + new URLSearchParams(p||{}).toString()),
+    leaveRequestSave: (d)      => apiCall('hr.leaveRequestSave', d, 'POST'),
+    leaveApprove:   (d)        => apiCall('hr.leaveApprove', d, 'POST'),
+    attendance:     (p)        => apiCall('hr.attendance&' + new URLSearchParams(p||{}).toString()),
+    attendanceSave: (d)        => apiCall('hr.attendanceSave', d, 'POST'),
+    shifts:         ()         => apiCall('hr.shifts'),
+    shiftPlan:      (p)        => apiCall('hr.shiftPlan&' + new URLSearchParams(p||{}).toString()),
+    payrollCalc:    (d)        => apiCall('hr.payrollCalculate', d, 'POST'),
+    payrollList:    (p)        => apiCall('hr.payrollList&' + new URLSearchParams(p||{}).toString()),
+    payrollBulk:    (d)        => apiCall('hr.payrollBulk', d, 'POST'),
+    performanceReviews: (p)    => apiCall('hr.performanceReviews&' + new URLSearchParams(p||{}).toString()),
+    orgChart:       ()         => apiCall('hr.orgChart'),
+    dashboard:      ()         => apiCall('hr.dashboard'),
+  },
+
+  // Portal
+  portal: {
+    customers:      (p)        => apiCall('portal.customers&' + new URLSearchParams(p||{}).toString()),
+    customerSave:   (d)        => apiCall('portal.customerSave', d, 'POST'),
+    customerDetail: (id)       => apiCall('portal.customerDetail&id='+id),
+    orders:         (p)        => apiCall('portal.orders&' + new URLSearchParams(p||{}).toString()),
+    orderSave:      (d)        => apiCall('portal.orderSave', d, 'POST'),
+    orderStatus:    (d)        => apiCall('portal.orderStatusUpdate', d, 'POST'),
+    webhooks:       ()         => apiCall('portal.webhooks'),
+    webhookSave:    (d)        => apiCall('portal.webhookSave', d, 'POST'),
+    twoFaStatus:    ()         => apiCall('portal.2faStatus'),
+    twoFaSetup:     ()         => apiCall('portal.2faSetup', {}, 'POST'),
+    twoFaVerify:    (code)     => apiCall('portal.2faVerify', { code }, 'POST'),
+  }
+};
+
+/* ── v5.0 Dashboard KPI Yükleyici ────────────────────────────── */
+async function loadV5Dashboard() {
+  try {
+    const [fin, inv, hr] = await Promise.all([
+      apiCall('fin.dashboard'),
+      apiCall('inv.dashboard'),
+      apiCall('hr.dashboard'),
+    ]);
+
+    // Varolan dashboard'a KPI kartları ekle
+    const dashContainer = document.querySelector('.dashboard-kpis, .kpi-container, #anasayfaContent, [data-module="anasayfa"]');
+    if (!dashContainer) return;
+
+    const existing = document.getElementById('v5-kpi-row');
+    if (existing) existing.remove();
+
+    const kpiRow = document.createElement('div');
+    kpiRow.id = 'v5-kpi-row';
+    kpiRow.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:16px 0;';
+
+    const kpis = [];
+    if (fin.ok && fin.dashboard) {
+      kpis.push({ label: 'Aylık Gelir', value: '₺' + Number(fin.dashboard.monthly_income||0).toLocaleString('tr-TR'), color: '#10b981', icon: '💰' });
+      kpis.push({ label: 'Aylık Gider', value: '₺' + Number(fin.dashboard.monthly_expense||0).toLocaleString('tr-TR'), color: '#ef4444', icon: '📉' });
+      kpis.push({ label: 'Banka Bakiye', value: '₺' + Number(fin.dashboard.bank_total||0).toLocaleString('tr-TR'), color: '#3b82f6', icon: '🏦' });
+      kpis.push({ label: 'Vadesi Geçen', value: (fin.dashboard.overdue_count||0) + ' fatura', color: '#f59e0b', icon: '⚠️' });
+    }
+    if (inv.ok && inv.dashboard) {
+      kpis.push({ label: 'Toplam Ürün', value: inv.dashboard.total_products||0, color: '#8b5cf6', icon: '📦' });
+      kpis.push({ label: 'Düşük Stok', value: inv.dashboard.low_stock_count||0, color: '#ef4444', icon: '🔴' });
+      kpis.push({ label: 'Stok Değeri', value: '₺' + Number(inv.dashboard.total_stock_value||0).toLocaleString('tr-TR'), color: '#06b6d4', icon: '📊' });
+    }
+    if (hr.ok && hr.dashboard) {
+      kpis.push({ label: 'Aktif Personel', value: hr.dashboard.active_count||0, color: '#10b981', icon: '👥' });
+      kpis.push({ label: 'Bekleyen İzin', value: hr.dashboard.pending_leaves||0, color: '#f59e0b', icon: '📋' });
+    }
+
+    kpis.forEach(k => {
+      kpiRow.innerHTML += `<div style="background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.1);border-left:4px solid ${k.color};">
+        <div style="font-size:12px;color:#64748b;margin-bottom:4px;">${k.icon} ${k.label}</div>
+        <div style="font-size:22px;font-weight:700;color:#1e293b;">${k.value}</div>
+      </div>`;
+    });
+
+    dashContainer.prepend(kpiRow);
+  } catch(e) { console.log('[UYSA v5] Dashboard KPI yükleme hatası:', e); }
+}
+
+// Dashboard'ı sayfa yüklendiğinde ve modül değişikliğinde yükle
+setTimeout(loadV5Dashboard, 2000);
+
+// CSS animasyon
+const aiStyle = document.createElement('style');
+aiStyle.textContent = '@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}';
+document.head.appendChild(aiStyle);
+
+console.log('✅ UYSA ERP v5.0 — AI Asistan + Modüler API katmanı yüklendi');
+console.log('ℹ️ Kullanım: uysaERP.fin.dashboard(), uysaERP.inv.products(), uysaERP.hr.employees()');
+})();
+</script>
 </body>
 </html>
