@@ -21853,10 +21853,10 @@ function getAuthHeaders() {
   return headers;
 }
 
-async function apiCall(action, body, method) {
+async function apiCall(action, body, method, extraHeaders) {
   const isGet = !method || method === 'GET';
   const url = isGet ? V5_API + '?action=' + action : V5_API + '?action=' + action;
-  const opts = { method: isGet ? 'GET' : 'POST', headers: getAuthHeaders() };
+  const opts = { method: isGet ? 'GET' : 'POST', headers: Object.assign({}, getAuthHeaders(), extraHeaders || {}) };
   if (!isGet && body) opts.body = JSON.stringify(body);
   try {
     const res = await fetch(url, opts);
@@ -21983,10 +21983,11 @@ window.uysaAI = {
 
     // Auth moduna göre istek gönder
     const body = { message: msg };
+    const extraHeaders = {};
     if (this._aiAuthMode === 'auth' && this._aiToken) {
-      body.ai_auth_token = this._aiToken;
+      extraHeaders['Authorization'] = 'Bearer ' + this._aiToken;
     }
-    const result = await apiCall('ai.chat', body, 'POST');
+    const result = await apiCall('ai.chat', body, 'POST', extraHeaders);
     loadDiv.remove();
 
     if (result.ok && result.response) {
