@@ -20314,8 +20314,43 @@ function _syncMevcutGelirlerAlacak(){
   }catch(e){}
 }
 
+// ── Mevcut Giderleri Borca Senkronize Et (Geriye Dönük) ──
+function _syncMevcutGiderlerBorc(){
+  var borclar = lsGet(LS_BORC, []);
+  if(borclar.length>0) return; // Zaten borç var, senkronizasyon yapılmış
+  var katLabels = {
+    'uretim-kirmizi':'Kırmızı Et','uretim-tavuk':'Tavuk','uretim-kiyma':'Kıyma',
+    'uretim-sebze':'Sebze','uretim-bakliyat':'Bakliyat','uretim-ayran':'Ayran/Yoğurt',
+    'uretim-diger':'Üretim Diğer','kira':'Kira','maas':'Maaş','fatura-elektrik':'Elektrik',
+    'fatura-su':'Su','fatura-dogalgaz':'Doğalgaz','fatura-internet':'İnternet',
+    'ulasim':'Ulaşım','bakim':'Bakım/Onarım','diger':'Diğer Gider'
+  };
+  try{
+    var giderler = JSON.parse(localStorage.getItem('uysa_giderler')||'[]');
+    giderler.forEach(function(g){
+      if(g.tutar>0){
+        var tedAdi = g.tedarikci || katLabels[g.kat] || g.kat || 'Genel Gider';
+        borclar.push({
+          id: 'sync_'+Math.random().toString(36).slice(2,8),
+          tedarikci: tedAdi,
+          tarih: g.tarih||bugun(),
+          tutar: Number(g.tutar),
+          belge: g.belge||'',
+          aciklama: g.aciklama||katLabels[g.kat]||g.kat||'Mevcut gider',
+          kalan: Number(g.tutar),
+          durum: 'acik',
+          tip: 'fatura'
+        });
+      }
+    });
+    if(borclar.length) lsSet(LS_BORC, borclar);
+    console.log('✅ Mevcut giderler borca senkronize edildi: '+borclar.length+' kayıt');
+  }catch(e){}
+}
+
 // İlk yüklemede senkronize et
 setTimeout(_syncMevcutGelirlerAlacak, 2000);
+setTimeout(_syncMevcutGiderlerBorc, 2500);
 
 })();
 
