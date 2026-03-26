@@ -1836,7 +1836,7 @@
           </div>
           <div class="panel">
             <h3>🚀 Hızlı Erişim</h3>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;position:relative;z-index:10">
               <button class="btn primary" onclick="document.querySelector('[data-module=operasyon]')?.click()" style="text-align:left;padding:12px">📋 Haftalık Menü</button>
               <button class="btn primary" onclick="document.querySelector('[data-module=finans]')?.click();setTimeout(()=>switchFinTab('gelir'),200)" style="text-align:left;padding:12px">📥 Gelir Ekle</button>
               <button class="btn primary" onclick="document.querySelector('[data-module=finans]')?.click();setTimeout(()=>switchFinTab('gider'),200)" style="text-align:left;padding:12px">📤 Gider Ekle</button>
@@ -18948,7 +18948,7 @@ function renderHomePieChart(){
   const sorted = Object.entries(cats).sort((a,b)=>b[1]-a[1]).slice(0,7);
 
   if(!sorted.length){
-    ctx.parentElement.innerHTML += '<div class="home-empty">Bu ay için gider verisi yok</div>';
+    if(!ctx.parentElement.querySelector('.home-empty')) ctx.parentElement.insertAdjacentHTML('beforeend','<div class="home-empty">Bu ay için gider verisi yok</div>');
     return;
   }
 
@@ -18992,7 +18992,7 @@ function renderHomeBudgetChart(){
 
   const keys = Object.keys(butce.kategoriler||gercek);
   if(!keys.length){
-    ctx.parentElement.innerHTML += '<div class="home-empty">Bütçe verisi için Finans → Bütçe sekmesini kullanın</div>';
+    if(!ctx.parentElement.querySelector('.home-empty')) ctx.parentElement.insertAdjacentHTML('beforeend','<div class="home-empty">Bütçe verisi için Finans → Bütçe sekmesini kullanın</div>');
     return;
   }
 
