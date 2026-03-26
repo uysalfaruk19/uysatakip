@@ -2421,64 +2421,63 @@
           </div>
         </div>
 
-        <!-- KPI cards (tıklanabilir detay) -->
-        <div class="stats-grid" style="margin-bottom:14px">
-          <div class="stat-card" onclick="if(typeof kpiDetayModal==='function')kpiDetayModal('gelir')" style="cursor:pointer">
-            <div class="sc-label">TOPLAM GELİR</div>
-            <div class="sc-value" id="fin-revenue">0 ₺</div>
-            <div class="sc-sub" id="fin-revenue-sub">Tüm müşteri satışları</div>
-          </div>
-          <div class="stat-card" onclick="if(typeof kpiDetayModal==='function')kpiDetayModal('gider')" style="cursor:pointer">
-            <div class="sc-label">TOPLAM GİDER</div>
-            <div class="sc-value" id="fin-expense" style="color:#dc2626">0 ₺</div>
-            <div class="sc-sub" id="fin-expense-sub">Tüm gider kalemleri</div>
-          </div>
-          <div class="stat-card" onclick="if(typeof kpiDetayModal==='function')kpiDetayModal('kar')" style="cursor:pointer">
-            <div class="sc-label">NET KÂR</div>
-            <div class="sc-value" id="fin-net">0 ₺</div>
-            <div class="sc-sub">Gelir − Gider</div>
-          </div>
-          <div class="stat-card" onclick="if(typeof kpiDetayModal==='function')kpiDetayModal('kar')" style="cursor:pointer">
-            <div class="sc-label">KÂR MARJI</div>
-            <div class="sc-value" id="fin-margin">—</div>
-            <div class="sc-sub">% net / gelir</div>
-          </div>
-        </div>
-
-
-        <!-- ══ KDV & GELİR VERGİSİ ÖZET PANELİ ══ -->
-        <div id="kdvOzetPanel" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px">
-          <div style="background:#fefce8;border:2px solid #fde68a;border-radius:12px;padding:14px">
-            <div style="font-size:11px;font-weight:700;color:#92400e;margin-bottom:6px">🟢 KDV TAHSİL (Gelir KDV)</div>
-            <div id="kdvGelirToplam" style="font-size:20px;font-weight:800;color:#166534">0 ₺</div>
-            <div style="font-size:11px;color:#64748b;margin-top:4px">KDV'li tüm gelirlerden tahsil edilen</div>
-          </div>
-          <div style="background:#fef2f2;border:2px solid #fecaca;border-radius:12px;padding:14px">
-            <div style="font-size:11px;font-weight:700;color:#991b1b;margin-bottom:6px">🔴 KDV İNDİRİM (Gider KDV)</div>
-            <div id="kdvGiderToplam" style="font-size:20px;font-weight:800;color:#dc2626">0 ₺</div>
-            <div style="font-size:11px;color:#64748b;margin-top:4px">Faturalı giderlerden indirilecek KDV</div>
-          </div>
-          <div style="background:#eff6ff;border:2px solid #bfdbfe;border-radius:12px;padding:14px">
-            <div style="font-size:11px;font-weight:700;color:#1e40af;margin-bottom:6px">💰 ÖDENECEK KDV</div>
-            <div id="kdvOdenecek" style="font-size:20px;font-weight:800;color:#1d4ed8">0 ₺</div>
-            <div style="font-size:11px;color:#64748b;margin-top:4px">KDV Tahsil − KDV İndirim</div>
-          </div>
-        </div>
-        <!-- ══ GELİR VERGİSİ ÖZET PANELİ ══ -->
-        <div id="gelirVergisiPanel" style="background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:2px solid #86efac;border-radius:12px;padding:14px;margin-bottom:14px">
-          <div style="font-size:12px;font-weight:700;color:#166534;margin-bottom:8px">📊 GELİR VERGİSİ HESABI (Faturalı Gelir − Faturalı Gider)</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px">
-            <div><div style="font-size:10px;color:#64748b">KDV'li Tüm Gelirler</div><div id="gvGelirler" style="font-weight:800;color:#166534">0 ₺</div></div>
-            <div><div style="font-size:10px;color:#64748b">Faturalı Tüm Giderler</div><div id="gvGiderler" style="font-weight:800;color:#dc2626">0 ₺</div></div>
-            <div><div style="font-size:10px;color:#64748b">Matrah (Fark)</div><div id="gvMatrah" style="font-weight:800;color:#1d4ed8">0 ₺</div></div>
-            <div><div style="font-size:10px;color:#92400e">GELİR VERGİSİ (/4.1)</div><div id="gvVergi" style="font-weight:800;font-size:16px;color:#b45309">0 ₺</div></div>
-          </div>
-        </div>
-
         <!-- ══════════════════════════════════════════
              TAB: FİNANS DASHBOARD (v62)
         ══════════════════════════════════════════ -->
         <div id="finPane-dashboard" class="fin-pane">
+
+          <!-- KPI cards (tıklanabilir detay) -->
+          <div class="stats-grid" style="margin-bottom:14px">
+            <div class="stat-card" onclick="if(typeof kpiDetayModal==='function')kpiDetayModal('gelir')" style="cursor:pointer">
+              <div class="sc-label">TOPLAM GELİR</div>
+              <div class="sc-value" id="fin-revenue">0 ₺</div>
+              <div class="sc-sub" id="fin-revenue-sub">Tüm müşteri satışları</div>
+            </div>
+            <div class="stat-card" onclick="if(typeof kpiDetayModal==='function')kpiDetayModal('gider')" style="cursor:pointer">
+              <div class="sc-label">TOPLAM GİDER</div>
+              <div class="sc-value" id="fin-expense" style="color:#dc2626">0 ₺</div>
+              <div class="sc-sub" id="fin-expense-sub">Tüm gider kalemleri</div>
+            </div>
+            <div class="stat-card" onclick="if(typeof kpiDetayModal==='function')kpiDetayModal('kar')" style="cursor:pointer">
+              <div class="sc-label">NET KÂR</div>
+              <div class="sc-value" id="fin-net">0 ₺</div>
+              <div class="sc-sub">Gelir − Gider</div>
+            </div>
+            <div class="stat-card" onclick="if(typeof kpiDetayModal==='function')kpiDetayModal('kar')" style="cursor:pointer">
+              <div class="sc-label">KÂR MARJI</div>
+              <div class="sc-value" id="fin-margin">—</div>
+              <div class="sc-sub">% net / gelir</div>
+            </div>
+          </div>
+
+          <!-- ══ KDV & GELİR VERGİSİ ÖZET PANELİ ══ -->
+          <div id="kdvOzetPanel" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px">
+            <div style="background:#fefce8;border:2px solid #fde68a;border-radius:12px;padding:14px">
+              <div style="font-size:11px;font-weight:700;color:#92400e;margin-bottom:6px">KDV TAHSİL (Gelir KDV)</div>
+              <div id="kdvGelirToplam" style="font-size:20px;font-weight:800;color:#166534">0 ₺</div>
+              <div style="font-size:11px;color:#64748b;margin-top:4px">KDV'li tüm gelirlerden tahsil edilen</div>
+            </div>
+            <div style="background:#fef2f2;border:2px solid #fecaca;border-radius:12px;padding:14px">
+              <div style="font-size:11px;font-weight:700;color:#991b1b;margin-bottom:6px">KDV İNDİRİM (Gider KDV)</div>
+              <div id="kdvGiderToplam" style="font-size:20px;font-weight:800;color:#dc2626">0 ₺</div>
+              <div style="font-size:11px;color:#64748b;margin-top:4px">Faturalı giderlerden indirilecek KDV</div>
+            </div>
+            <div style="background:#eff6ff;border:2px solid #bfdbfe;border-radius:12px;padding:14px">
+              <div style="font-size:11px;font-weight:700;color:#1e40af;margin-bottom:6px">ÖDENECEK KDV</div>
+              <div id="kdvOdenecek" style="font-size:20px;font-weight:800;color:#1d4ed8">0 ₺</div>
+              <div style="font-size:11px;color:#64748b;margin-top:4px">KDV Tahsil − KDV İndirim</div>
+            </div>
+          </div>
+          <!-- ══ GELİR VERGİSİ ÖZET PANELİ ══ -->
+          <div id="gelirVergisiPanel" style="background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:2px solid #86efac;border-radius:12px;padding:14px;margin-bottom:14px">
+            <div style="font-size:12px;font-weight:700;color:#166534;margin-bottom:8px">GELİR VERGİSİ HESABI (Faturalı Gelir − Faturalı Gider)</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px">
+              <div><div style="font-size:10px;color:#64748b">KDV'li Tüm Gelirler</div><div id="gvGelirler" style="font-weight:800;color:#166534">0 ₺</div></div>
+              <div><div style="font-size:10px;color:#64748b">Faturalı Tüm Giderler</div><div id="gvGiderler" style="font-weight:800;color:#dc2626">0 ₺</div></div>
+              <div><div style="font-size:10px;color:#64748b">Matrah (Fark)</div><div id="gvMatrah" style="font-weight:800;color:#1d4ed8">0 ₺</div></div>
+              <div><div style="font-size:10px;color:#92400e">GELİR VERGİSİ (/4.1)</div><div id="gvVergi" style="font-weight:800;font-size:16px;color:#b45309">0 ₺</div></div>
+            </div>
+          </div>
 
           <!-- ── Dönem Seçici ── -->
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px;background:#f8faff;padding:12px 14px;border-radius:10px;border:1px solid #dbe4ff">
