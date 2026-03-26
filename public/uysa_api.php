@@ -1359,19 +1359,19 @@ case 'telegram.setup':
     curl_close($ch);
     jsonResponse(['ok' => $result['ok'] ?? false, 'result' => $result]);
 
-// ── AI Chat (ERP içi asistan) ────────────────────────────────
+// ── AI Chat (ERP içi asistan — Provider-Agnostic) ───────────
 case 'ai.chat':
     $question = sanitizeInput($body['message'] ?? '', 2000);
     if (!$question) {
         jsonResponse(['ok' => false, 'error' => 'message gerekli'], 400);
     }
 
-    $aiKey = getenv('ANTHROPIC_API_KEY') ?: '';
-    if (!$aiKey) {
-        jsonResponse(['ok' => false, 'error' => 'AI servisi yapılandırılmamış. ANTHROPIC_API_KEY env gerekli.'], 503);
-    }
-
     require_once __DIR__ . '/src/modules/TelegramBot.php';
+
+    $aiCfg = getAIProvider();
+    if (!$aiCfg['key']) {
+        jsonResponse(['ok' => false, 'error' => 'AI servisi yapılandırılmamış. AI_API_KEY veya ANTHROPIC_API_KEY env gerekli.'], 503);
+    }
 
     // Kullanıcı mesajını kaydet
     $pdo->prepare("INSERT INTO uysa_ai_chats (user, source, role, message) VALUES (?, 'erp', 'user', ?)")
@@ -1386,7 +1386,7 @@ case 'ai.chat':
     // ERP bağlamı
     $context = buildERPContext($pdo);
 
-    // Claude API çağrısı
+    // Mesaj geçmişi oluştur
     $messages = [];
     foreach ($historyRows as $h) {
         $messages[] = ['role' => $h['role'], 'content' => $h['message']];
@@ -1395,45 +1395,23 @@ case 'ai.chat':
         $messages[] = ['role' => 'user', 'content' => $question];
     }
 
-    $payload = [
-        'model'      => 'claude-sonnet-4-20250514',
-        'max_tokens' => 2048,
-        'system'     => "Sen UYSA ERP sisteminin AI asistanısın. Yemek sektörü (food service) ERP'si hakkında sorulara yanıt veriyorsun. "
-                      . "Türkçe yanıt ver. Markdown formatı kullan. Kısa ve öz yanıtlar ver. "
-                      . "Kullanıcının ERP verileri hakkında sorularını yanıtla. "
-                      . "Güncel ERP verileri:\n\n{$context}",
-        'messages'   => $messages,
-    ];
+    $systemPrompt = "Sen UYSA ERP sisteminin AI asistanısın. Yemek sektörü (food service) ERP'si hakkında sorulara yanıt veriyorsun. "
+                  . "Türkçe yanıt ver. Markdown formatı kullan. Kısa ve öz yanıtlar ver. "
+                  . "Kullanıcının ERP verileri hakkında sorularını yanıtla. "
+                  . "Güncel ERP verileri:\n\n{$context}";
 
-    $ch = curl_init('https://api.anthropic.com/v1/messages');
-    curl_setopt_array($ch, [
-        CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => json_encode($payload),
-        CURLOPT_HTTPHEADER     => [
-            'Content-Type: application/json',
-            "x-api-key: {$aiKey}",
-            'anthropic-version: 2023-06-01',
-        ],
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 30,
-    ]);
+    // Provider-agnostic AI çağrısı
+    $aiResponse = callAI($question, $systemPrompt, $messages);
 
-    $result = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-
-    if ($httpCode !== 200 || !$result) {
+    if (!$aiResponse) {
         jsonResponse(['ok' => false, 'error' => 'AI yanıt veremedi'], 503);
     }
-
-    $data = json_decode($result, true);
-    $aiResponse = $data['content'][0]['text'] ?? 'Yanıt alınamadı.';
 
     // Yanıtı kaydet
     $pdo->prepare("INSERT INTO uysa_ai_chats (user, source, role, message) VALUES (?, 'erp', 'assistant', ?)")
         ->execute([$actor, $aiResponse]);
 
-    jsonResponse(['ok' => true, 'response' => $aiResponse]);
+    jsonResponse(['ok' => true, 'response' => $aiResponse, 'provider' => $aiCfg['provider']]);
 
 // ── AI Sohbet Geçmişi ────────────────────────────────────────
 case 'ai.history':

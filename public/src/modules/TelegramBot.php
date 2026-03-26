@@ -366,29 +366,65 @@ function buildERPContext(PDO $pdo): string
     return $ctx;
 }
 
-// ── Claude API Çağrısı ──────────────────────────────────────
-function callClaudeAPI(string $apiKey, string $question, string $context): string
+// ── AI Provider Yapılandırması ───────────────────────────────
+// Desteklenen provider'lar: anthropic (Claude), openai (OpenClaw/GPT uyumlu)
+// AI_PROVIDER env ile seçim yapılır, varsayılan: anthropic
+function getAIProvider(): array
 {
-    $url = 'https://api.anthropic.com/v1/messages';
+    $provider = strtolower(getenv('AI_PROVIDER') ?: 'anthropic');
+
+    switch ($provider) {
+        case 'openai':
+        case 'openclaw':
+            return [
+                'provider'  => 'openai',
+                'url'       => getenv('AI_BASE_URL') ?: 'https://api.openai.com/v1/chat/completions',
+                'key'       => getenv('AI_API_KEY') ?: getenv('OPENAI_API_KEY') ?: '',
+                'model'     => getenv('AI_MODEL') ?: 'gpt-4o',
+            ];
+        case 'anthropic':
+        default:
+            return [
+                'provider'  => 'anthropic',
+                'url'       => getenv('AI_BASE_URL') ?: 'https://api.anthropic.com/v1/messages',
+                'key'       => getenv('AI_API_KEY') ?: getenv('ANTHROPIC_API_KEY') ?: '',
+                'model'     => getenv('AI_MODEL') ?: 'claude-sonnet-4-20250514',
+            ];
+    }
+}
+
+// ── Genel AI API Çağrısı (Provider-Agnostic) ────────────────
+function callAI(string $question, string $systemPrompt, array $messages = []): ?string
+{
+    $cfg = getAIProvider();
+    if (!$cfg['key']) return null;
+
+    if ($cfg['provider'] === 'openai') {
+        return callOpenAICompatible($cfg, $question, $systemPrompt, $messages);
+    }
+    return callAnthropicAPI($cfg, $question, $systemPrompt, $messages);
+}
+
+function callAnthropicAPI(array $cfg, string $question, string $systemPrompt, array $messages): ?string
+{
+    if (empty($messages)) {
+        $messages = [['role' => 'user', 'content' => $question]];
+    }
 
     $payload = [
-        'model'      => 'claude-sonnet-4-20250514',
+        'model'      => $cfg['model'],
         'max_tokens' => 1024,
-        'system'     => "Sen UYSA ERP sisteminin AI asistanısın. Yemek sektörü ERP'si hakkında soruları yanıtlıyorsun. "
-                      . "Türkçe yanıt ver, kısa ve öz ol. Telegram formatında HTML kullan (<b>, <i>, <code>). "
-                      . "Aşağıdaki güncel ERP verilerini kullanarak yanıt ver:\n\n{$context}",
-        'messages'   => [
-            ['role' => 'user', 'content' => $question]
-        ],
+        'system'     => $systemPrompt,
+        'messages'   => $messages,
     ];
 
-    $ch = curl_init($url);
+    $ch = curl_init($cfg['url']);
     curl_setopt_array($ch, [
         CURLOPT_POST           => true,
         CURLOPT_POSTFIELDS     => json_encode($payload),
         CURLOPT_HTTPHEADER     => [
             'Content-Type: application/json',
-            "x-api-key: {$apiKey}",
+            "x-api-key: {$cfg['key']}",
             'anthropic-version: 2023-06-01',
         ],
         CURLOPT_RETURNTRANSFER => true,
@@ -399,10 +435,58 @@ function callClaudeAPI(string $apiKey, string $question, string $context): strin
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
 
-    if ($httpCode !== 200 || !$result) {
-        return "AI yanıt veremedi. Lütfen komutları kullanın: /yardim";
-    }
+    if ($httpCode !== 200 || !$result) return null;
 
     $data = json_decode($result, true);
-    return $data['content'][0]['text'] ?? "Yanıt alınamadı.";
+    return $data['content'][0]['text'] ?? null;
+}
+
+function callOpenAICompatible(array $cfg, string $question, string $systemPrompt, array $messages): ?string
+{
+    $apiMessages = [['role' => 'system', 'content' => $systemPrompt]];
+    if (!empty($messages)) {
+        foreach ($messages as $m) {
+            $apiMessages[] = ['role' => $m['role'], 'content' => $m['content']];
+        }
+    } else {
+        $apiMessages[] = ['role' => 'user', 'content' => $question];
+    }
+
+    $payload = [
+        'model'      => $cfg['model'],
+        'max_tokens' => 1024,
+        'messages'   => $apiMessages,
+    ];
+
+    $ch = curl_init($cfg['url']);
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => json_encode($payload),
+        CURLOPT_HTTPHEADER     => [
+            'Content-Type: application/json',
+            "Authorization: Bearer {$cfg['key']}",
+        ],
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 30,
+    ]);
+
+    $result = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($httpCode !== 200 || !$result) return null;
+
+    $data = json_decode($result, true);
+    return $data['choices'][0]['message']['content'] ?? null;
+}
+
+// Eski API uyumluluğu (Telegram bot kullanıyor)
+function callClaudeAPI(string $apiKey, string $question, string $context): string
+{
+    $systemPrompt = "Sen UYSA ERP sisteminin AI asistanısın. Yemek sektörü ERP'si hakkında soruları yanıtlıyorsun. "
+                  . "Türkçe yanıt ver, kısa ve öz ol. Telegram formatında HTML kullan (<b>, <i>, <code>). "
+                  . "Aşağıdaki güncel ERP verilerini kullanarak yanıt ver:\n\n{$context}";
+
+    $result = callAI($question, $systemPrompt);
+    return $result ?? "AI yanıt veremedi. Lütfen komutları kullanın: /yardim";
 }
