@@ -2666,8 +2666,11 @@
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
             <!-- Müşteri Cari Listesi -->
             <div class="panel">
-              <h3>💳 Müşteri Cari Hesapları</h3>
-              <div class="hint">Gelir kayıtları otomatik olarak müşteri carilerine eklenir. Tahsilat geldiğinde işleyin.</div>
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <h3>💳 Müşteri Cari Hesapları</h3>
+                <button class="btn success" onclick="manuelAlacakEkle()" style="font-size:11px;padding:5px 12px">+ Alacak Ekle</button>
+              </div>
+              <div class="hint">Gelir kayıtları otomatik eklenir. Manuel alacak da girebilirsiniz.</div>
               <div style="margin:8px 0;display:flex;gap:8px">
                 <input id="alacakFiltreMus" placeholder="Müşteri ara..." oninput="renderAlacaklar()" style="flex:1;padding:8px;border:1px solid #d1d5db;border-radius:8px;font-size:12px"/>
                 <select id="alacakFiltreDurum" onchange="renderAlacaklar()" style="padding:8px;border:1px solid #d1d5db;border-radius:8px;font-size:12px">
@@ -2730,8 +2733,11 @@
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
             <!-- Borç Listesi -->
             <div class="panel">
-              <h3>📕 Borç Takibi</h3>
-              <div class="hint">Tedarikçi faturaları ve sabit giderler otomatik olarak burada görünür.</div>
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <h3>📕 Borç Takibi</h3>
+                <button class="btn danger" onclick="manuelBorcEkle()" style="font-size:11px;padding:5px 12px">+ Borç Ekle</button>
+              </div>
+              <div class="hint">Giderler otomatik eklenir. Manuel borç da girebilirsiniz.</div>
               <!-- Sabit Gider Tanımlama -->
               <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:10px;margin:8px 0">
                 <div style="display:flex;justify-content:space-between;align-items:center">
@@ -20288,6 +20294,104 @@ function renderOdemeler(){
   });
   div.innerHTML = html;
 }
+
+// ══ MANUEL ALACAK EKLEME ═══════════════════════════════════
+window.manuelAlacakEkle = function(){
+  var musteriler = getMusteriler();
+  var opsiyonlar = musteriler.map(function(m){ return '<option value="'+(m.name||m.isim||m.firma||'')+'">'+( m.name||m.isim||m.firma||'')+'</option>'; }).join('');
+
+  var modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100001;display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.innerHTML = '<div style="background:#fff;border-radius:16px;padding:24px;width:400px;max-width:95vw;box-shadow:0 12px 40px rgba(0,0,0,.25)">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">' +
+    '<h3 style="margin:0;font-size:16px">💳 Manuel Alacak Ekle</h3>' +
+    '<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b">×</button></div>' +
+    '<div style="display:grid;gap:10px">' +
+    '<div><label style="font-weight:600;font-size:12px;color:#374151">Müşteri / Kişi *</label>' +
+    '<input id="manuelAlacakMusteri" list="manuelAlacakMusteriList" placeholder="Müşteri adı yazın veya seçin..." style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box"/>' +
+    '<datalist id="manuelAlacakMusteriList">' + opsiyonlar + '</datalist></div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+    '<div><label style="font-weight:600;font-size:12px;color:#374151">Tarih</label>' +
+    '<input id="manuelAlacakTarih" type="date" value="' + bugun() + '" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box"/></div>' +
+    '<div><label style="font-weight:600;font-size:12px;color:#374151">Tutar (₺) *</label>' +
+    '<input id="manuelAlacakTutar" type="number" min="0" step="0.01" placeholder="0.00" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box"/></div></div>' +
+    '<div><label style="font-weight:600;font-size:12px;color:#374151">Fatura / Belge No</label>' +
+    '<input id="manuelAlacakFatura" placeholder="İsteğe bağlı" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box"/></div>' +
+    '<div><label style="font-weight:600;font-size:12px;color:#374151">Açıklama</label>' +
+    '<input id="manuelAlacakAciklama" placeholder="Eski alacak, anlaşma vb." style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box"/></div>' +
+    '<button onclick="manuelAlacakKaydet()" class="btn success" style="padding:10px;font-size:14px;font-weight:700;width:100%;margin-top:4px">✅ Alacak Kaydet</button>' +
+    '</div></div>';
+  modal.addEventListener('click', function(e){ if(e.target===modal) modal.remove(); });
+  document.body.appendChild(modal);
+  setTimeout(function(){ document.getElementById('manuelAlacakMusteri')?.focus(); }, 100);
+};
+
+window.manuelAlacakKaydet = function(){
+  var musteri = (document.getElementById('manuelAlacakMusteri')||{}).value||'';
+  var tarih = (document.getElementById('manuelAlacakTarih')||{}).value||bugun();
+  var tutar = parseFloat((document.getElementById('manuelAlacakTutar')||{}).value)||0;
+  var fatura = (document.getElementById('manuelAlacakFatura')||{}).value||'';
+  var aciklama = (document.getElementById('manuelAlacakAciklama')||{}).value||'';
+  if(!musteri){ alert('Müşteri adı gereklidir!'); return; }
+  if(!tutar || tutar<=0){ alert('Tutar giriniz!'); return; }
+  window._addAlacak({ musteri:musteri, tarih:tarih, tutar:tutar, fatura:fatura, aciklama:aciklama||'Manuel alacak' });
+  // Modalı kapat
+  var modals = document.querySelectorAll('div[style*="z-index:100001"]');
+  modals.forEach(function(m){ m.remove(); });
+  if(typeof window.renderAlacaklar==='function') window.renderAlacaklar();
+  if(typeof window.fillTahsilatDropdowns==='function') window.fillTahsilatDropdowns();
+  if(typeof window.toast==='function') window.toast('Alacak kaydedildi: '+musteri+' — '+tutar.toLocaleString('tr-TR')+' ₺');
+  else alert('Alacak kaydedildi!');
+};
+
+// ══ MANUEL BORÇ EKLEME ════════════════════════════════════
+window.manuelBorcEkle = function(){
+  var tedList = getTedarikciListesi();
+  var opsiyonlar = tedList.map(function(t){ return '<option value="'+t+'">'; }).join('');
+
+  var modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100001;display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.innerHTML = '<div style="background:#fff;border-radius:16px;padding:24px;width:400px;max-width:95vw;box-shadow:0 12px 40px rgba(0,0,0,.25)">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">' +
+    '<h3 style="margin:0;font-size:16px">📕 Manuel Borç Ekle</h3>' +
+    '<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b">×</button></div>' +
+    '<div style="display:grid;gap:10px">' +
+    '<div><label style="font-weight:600;font-size:12px;color:#374151">Tedarikçi / Alacaklı *</label>' +
+    '<input id="manuelBorcTedarikci" list="manuelBorcTedList" placeholder="Tedarikçi, kişi veya kurum adı..." style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box"/>' +
+    '<datalist id="manuelBorcTedList">' + opsiyonlar + '</datalist></div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+    '<div><label style="font-weight:600;font-size:12px;color:#374151">Tarih</label>' +
+    '<input id="manuelBorcTarih" type="date" value="' + bugun() + '" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box"/></div>' +
+    '<div><label style="font-weight:600;font-size:12px;color:#374151">Tutar (₺) *</label>' +
+    '<input id="manuelBorcTutar" type="number" min="0" step="0.01" placeholder="0.00" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box"/></div></div>' +
+    '<div><label style="font-weight:600;font-size:12px;color:#374151">Belge / Fatura No</label>' +
+    '<input id="manuelBorcBelge" placeholder="İsteğe bağlı" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box"/></div>' +
+    '<div><label style="font-weight:600;font-size:12px;color:#374151">Açıklama</label>' +
+    '<input id="manuelBorcAciklama" placeholder="Eski borç, taksit, anlaşma vb." style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box"/></div>' +
+    '<button onclick="manuelBorcKaydet()" class="btn danger" style="padding:10px;font-size:14px;font-weight:700;width:100%;margin-top:4px">📕 Borç Kaydet</button>' +
+    '</div></div>';
+  modal.addEventListener('click', function(e){ if(e.target===modal) modal.remove(); });
+  document.body.appendChild(modal);
+  setTimeout(function(){ document.getElementById('manuelBorcTedarikci')?.focus(); }, 100);
+};
+
+window.manuelBorcKaydet = function(){
+  var tedarikci = (document.getElementById('manuelBorcTedarikci')||{}).value||'';
+  var tarih = (document.getElementById('manuelBorcTarih')||{}).value||bugun();
+  var tutar = parseFloat((document.getElementById('manuelBorcTutar')||{}).value)||0;
+  var belge = (document.getElementById('manuelBorcBelge')||{}).value||'';
+  var aciklama = (document.getElementById('manuelBorcAciklama')||{}).value||'';
+  if(!tedarikci){ alert('Tedarikçi / alacaklı adı gereklidir!'); return; }
+  if(!tutar || tutar<=0){ alert('Tutar giriniz!'); return; }
+  window._addBorc({ tedarikci:tedarikci, tarih:tarih, tutar:tutar, belge:belge, aciklama:aciklama||'Manuel borç' });
+  // Modalı kapat
+  var modals = document.querySelectorAll('div[style*="z-index:100001"]');
+  modals.forEach(function(m){ m.remove(); });
+  if(typeof window.renderBorclar==='function') window.renderBorclar();
+  if(typeof window.fillOdemeDropdowns==='function') window.fillOdemeDropdowns();
+  if(typeof window.toast==='function') window.toast('Borç kaydedildi: '+tedarikci+' — '+tutar.toLocaleString('tr-TR')+' ₺');
+  else alert('Borç kaydedildi!');
+};
 
 // ── Mevcut Gelirleri Alacağa Senkronize Et (Geriye Dönük) ──
 function _syncMevcutGelirlerAlacak(){
