@@ -1676,13 +1676,26 @@
         </div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;position:relative">
+        <!-- Global Tarih Aralığı Filtresi -->
+        <div style="display:flex;gap:4px;align-items:center">
+          <select id="globalTarihSecici" onchange="globalTarihDegis()" style="padding:6px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.18);color:#fff;font-size:11px;font-weight:600;cursor:pointer">
+            <option value="buay" style="color:#000">Bu Ay</option>
+            <option value="gecenay" style="color:#000">Geçen Ay</option>
+            <option value="son7" style="color:#000">Son 7 Gün</option>
+            <option value="son30" style="color:#000">Son 30 Gün</option>
+            <option value="buYil" style="color:#000">Bu Yıl</option>
+            <option value="ozel" style="color:#000">Özel Aralık</option>
+          </select>
+          <input id="globalTarihBas" type="date" style="display:none;padding:5px;border-radius:6px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.18);color:#fff;font-size:11px;width:120px" onchange="globalTarihDegis()"/>
+          <input id="globalTarihBit" type="date" style="display:none;padding:5px;border-radius:6px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.18);color:#fff;font-size:11px;width:120px" onchange="globalTarihDegis()"/>
+        </div>
         <!-- B5: Global Arama -->
         <div style="position:relative">
           <input id="globalAramaInp" placeholder="🔍 Ara: müşteri, yemek, malzeme…"
             style="width:220px;padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.18);color:#fff;font-size:12px;font-weight:600"
             oninput="globalArama(this.value)"
             onfocus="this.select();document.getElementById('aramaPanel').style.display=''"
-            onblur="setTimeout(()=>{const p=document.getElementById('aramaPanel');if(p)p.style.display='none'},250)"/>
+            onblur="setTimeout(()=>{const p=document.getElementById('aramaPanel');if(p)p.style.display='none'},400)"/>
           <div id="aramaPanel" style="display:none;position:absolute;top:38px;right:0;width:360px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.2);z-index:9999;max-height:360px;overflow:auto"></div>
         </div>
         <!-- B1: Bildirim -->
@@ -11261,6 +11274,77 @@ window.addEventListener('DOMContentLoaded', function() {
   // ─────────────────────────────────────────────
   // B5: Global Arama
   // ─────────────────────────────────────────────
+  // ── Global Tarih Aralığı Filtresi ───────────────────────────
+  window.globalTarihDegis = function(){
+    var secici = document.getElementById('globalTarihSecici');
+    var basEl = document.getElementById('globalTarihBas');
+    var bitEl = document.getElementById('globalTarihBit');
+    var val = secici?.value||'buay';
+    var now = new Date();
+    var bas, bit;
+
+    if(val==='ozel'){
+      if(basEl) basEl.style.display='';
+      if(bitEl) bitEl.style.display='';
+      bas = basEl?.value||'';
+      bit = bitEl?.value||'';
+      if(!bas||!bit) return;
+    } else {
+      if(basEl) basEl.style.display='none';
+      if(bitEl) bitEl.style.display='none';
+      bit = now.toISOString().slice(0,10);
+      if(val==='buay'){
+        bas = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-01';
+      } else if(val==='gecenay'){
+        var prev = new Date(now.getFullYear(), now.getMonth()-1, 1);
+        bas = prev.toISOString().slice(0,10);
+        var last = new Date(now.getFullYear(), now.getMonth(), 0);
+        bit = last.toISOString().slice(0,10);
+      } else if(val==='son7'){
+        var d7 = new Date(); d7.setDate(d7.getDate()-7);
+        bas = d7.toISOString().slice(0,10);
+      } else if(val==='son30'){
+        var d30 = new Date(); d30.setDate(d30.getDate()-30);
+        bas = d30.toISOString().slice(0,10);
+      } else if(val==='buYil'){
+        bas = now.getFullYear()+'-01-01';
+      }
+    }
+
+    // localStorage'a kaydet (sayfa yenilenince hatırlansın)
+    localStorage.setItem('uysa_global_tarih_secici', val);
+    if(val==='ozel'){
+      localStorage.setItem('uysa_global_tarih_bas', bas);
+      localStorage.setItem('uysa_global_tarih_bit', bit);
+    }
+
+    // Global değişken olarak tut
+    window._globalTarihBas = bas;
+    window._globalTarihBit = bit;
+
+    // Dashboard'ı yenile
+    if(typeof window.renderAnasayfa==='function') try{ window.renderAnasayfa(); }catch(e){}
+    if(typeof refreshFinStats==='function') try{ refreshFinStats(); }catch(e){}
+  };
+
+  // Sayfa yüklendiğinde kayıtlı tarih aralığını geri yükle
+  (function _restoreGlobalTarih(){
+    var saved = localStorage.getItem('uysa_global_tarih_secici');
+    if(saved){
+      var sel = document.getElementById('globalTarihSecici');
+      if(sel) sel.value = saved;
+      if(saved==='ozel'){
+        var basEl = document.getElementById('globalTarihBas');
+        var bitEl = document.getElementById('globalTarihBit');
+        if(basEl){ basEl.style.display=''; basEl.value=localStorage.getItem('uysa_global_tarih_bas')||''; }
+        if(bitEl){ bitEl.style.display=''; bitEl.value=localStorage.getItem('uysa_global_tarih_bit')||''; }
+      }
+    }
+    // İlk yüklemede tarih aralığını set et
+    window.globalTarihDegis();
+  })();
+
+  // ── Global Arama ──────────────────────────────────────────────
   window.globalArama = function(q){
     const panel=document.getElementById('aramaPanel'); if(!panel) return;
     if(!q||q.length<2){ panel.innerHTML='<div style="padding:12px;color:#6b7280;font-size:12px">En az 2 karakter girin…</div>'; return; }
@@ -19573,24 +19657,30 @@ function getButce(){
 function calcKPIs(){
   const now   = new Date();
   const ym    = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+
+  // Global tarih aralığı filtresi
+  const gBas = window._globalTarihBas || (ym+'-01');
+  const gBit = window._globalTarihBit || now.toISOString().slice(0,10);
+  const tarihFiltre = (tarih) => tarih >= gBas && tarih <= gBit;
+
   const gelirler = getGelirler();
   const giderler = getGiderler();
   const uretim   = getUretimGiderleri();
   const sayilar  = getUretimSayilari();
 
-  // Bu ay
-  const thisAyGelir  = gelirler.filter(g=>g.tarih?.startsWith(ym)).reduce((s,g)=>s+Number(g.tutar||0),0);
-  const thisAyGider  = giderler.filter(g=>g.tarih?.startsWith(ym)).reduce((s,g)=>s+Number(g.tutar||0),0);
-  const thisAyUretim = uretim.filter(u=>u.tarih?.startsWith(ym)).reduce((s,u)=>s+Number(u.toplam||u.tutar||0),0);
+  // Seçili dönem
+  const thisAyGelir  = gelirler.filter(g=>tarihFiltre(g.tarih||'')).reduce((s,g)=>s+Number(g.tutar||0),0);
+  const thisAyGider  = giderler.filter(g=>tarihFiltre(g.tarih||'')).reduce((s,g)=>s+Number(g.tutar||0),0);
+  const thisAyUretim = uretim.filter(u=>tarihFiltre(u.tarih||'')).reduce((s,u)=>s+Number(u.toplam||u.tutar||0),0);
   const totalGider   = thisAyGider + thisAyUretim;
 
   // Toplam tüm zamanlar
   const tumGelir = gelirler.reduce((s,g)=>s+Number(g.tutar||0),0);
   const tumGider = giderler.reduce((s,g)=>s+Number(g.tutar||0),0)+uretim.reduce((s,u)=>s+Number(u.toplam||u.tutar||0),0);
 
-  // Kişi başı maliyet (bu ay — üretim gideri / toplam kişi sayısı)
-  const thisAySayilar = sayilar.filter(s=>s.tarih?.startsWith(ym));
-  const totalKisi = thisAySayilar.reduce((s,r)=>s+(Number(r.adet||r.kisi||r.kisiSayisi||0)),0);
+  // Kişi başı maliyet
+  const thisSayilar = sayilar.filter(s=>tarihFiltre(s.tarih||''));
+  const totalKisi = thisSayilar.reduce((s,r)=>s+(Number(r.adet||r.kisi||r.kisiSayisi||0)),0);
   const kisiBasi  = totalKisi>0 ? thisAyUretim/totalKisi : 0;
 
   // Net kâr & marj
@@ -19601,10 +19691,13 @@ function calcKPIs(){
   const prevDate = new Date(now.getFullYear(), now.getMonth()-1, 1);
   const prevYm   = prevDate.getFullYear()+'-'+String(prevDate.getMonth()+1).padStart(2,'0');
   const prevGider = giderler.filter(g=>g.tarih?.startsWith(prevYm)).reduce((s,g)=>s+Number(g.tutar||0),0)
-                  + uretim.filter(u=>u.tarih?.startsWith(prevYm)).reduce((s,u)=>s+Number(u.tutar||0),0);
+                  + uretim.filter(u=>u.tarih?.startsWith(prevYm)).reduce((s,u)=>s+Number(u.toplam||u.tutar||0),0);
+
+  // Dönem etiketi
+  const donemLabel = gBas + ' → ' + gBit;
 
   return { thisAyGelir, thisAyGider, thisAyUretim, totalGider, tumGelir, tumGider,
-           totalKisi, kisiBasi, netKar, kar_marj, prevGider };
+           totalKisi, kisiBasi, netKar, kar_marj, prevGider, donemLabel };
 }
 
 // ── Al/Sat Müşteri Gelir→Gider Senkronizasyonu ─────────────
@@ -19658,9 +19751,11 @@ function renderHomeKPIs(){
 
   const now = new Date();
   const ayAd = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'][now.getMonth()];
+  const secici = document.getElementById('globalTarihSecici')?.value||'buay';
+  const donemAd = secici==='buay'?ayAd:secici==='gecenay'?'Geçen ay':secici==='son7'?'Son 7 gün':secici==='son30'?'Son 30 gün':secici==='buYil'?'Bu yıl':'Özel aralık';
 
   row.innerHTML = [
-    { color:'blue',   icon:'💰', lbl:'Bu Ay Gelir',              val:fmtTL(k.thisAyGelir),  sub: ayAd+' satış toplamı',                    trend: '', detail:'gelir' },
+    { color:'blue',   icon:'💰', lbl:'Gelir',              val:fmtTL(k.thisAyGelir),  sub: donemAd+' satış toplamı',                    trend: '', detail:'gelir' },
     { color:'red',    icon:'📤', lbl:'Bu Ay Toplam Gider',       val:fmtTL(k.totalGider),   sub: 'İşletme + Üretim',                       trend: trend(k.totalGider, k.prevGider), detail:'gider' },
     { color:'green',  icon:'📈', lbl:'Net Kâr',                  val:fmtTL(k.netKar),       sub: `Kâr Marjı: ${k.kar_marj.toFixed(1)}%`,   trend: k.netKar>=0?'<span class="kpi-trend up">✅ Kârlı</span>':'<span class="kpi-trend down">⚠️ Zararda</span>', detail:'kar' },
     { color:'orange', icon:'🍳', lbl:'Üretim Maliyeti',          val:fmtTL(k.thisAyUretim), sub: ayAd+' üretim giderleri',                 trend: '', detail:'uretim' },
@@ -19680,12 +19775,14 @@ function renderHomeKPIs(){
 // ── KPI Detay Modal ────────────────────────────────────────────
 window.kpiDetayModal = function(tip){
   const now = new Date();
-  const ym = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
-  const ayAd = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'][now.getMonth()];
+  const gBas = window._globalTarihBas || (now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-01');
+  const gBit = window._globalTarihBit || now.toISOString().slice(0,10);
+  const tf = (t) => t >= gBas && t <= gBit;
+  const ayAd = gBas + ' → ' + gBit;
 
-  const gelirler = getGelirler().filter(g=>(g.tarih||'').startsWith(ym));
-  const giderler = getGiderler().filter(g=>(g.tarih||'').startsWith(ym));
-  const uretim   = getUretimGiderleri().filter(u=>(u.tarih||'').startsWith(ym));
+  const gelirler = getGelirler().filter(g=>tf(g.tarih||''));
+  const giderler = getGiderler().filter(g=>tf(g.tarih||''));
+  const uretim   = getUretimGiderleri().filter(u=>tf(u.tarih||''));
 
   let title='', rows='', summary='';
 
