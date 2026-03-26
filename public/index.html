@@ -1841,6 +1841,7 @@
               <button class="btn primary" onclick="document.querySelector('[data-module=finans]')?.click();setTimeout(()=>switchFinTab('gelir'),200)" style="text-align:left;padding:12px">📥 Gelir Ekle</button>
               <button class="btn primary" onclick="document.querySelector('[data-module=finans]')?.click();setTimeout(()=>switchFinTab('gider'),200)" style="text-align:left;padding:12px">📤 Gider Ekle</button>
               <button class="btn primary" onclick="document.querySelector('[data-module=finans]')?.click();setTimeout(()=>switchFinTab('uretim'),200)" style="text-align:left;padding:12px">🍳 Üretim Gideri</button>
+              <button class="btn primary" onclick="document.querySelector('[data-module=finans]')?.click();setTimeout(()=>switchFinTab('sayi'),200)" style="text-align:left;padding:12px;background:#059669">📊 Günlük Üretim Sayıları</button>
               <button class="btn primary" onclick="document.querySelector('[data-module=stok]')?.click()" style="text-align:left;padding:12px">🏭 Stok Takibi</button>
               <button class="btn primary" onclick="document.querySelector('[data-module=satis]')?.click()" style="text-align:left;padding:12px">🤝 CRM & Satış</button>
               <button class="btn primary" onclick="document.querySelector('[data-module=satinalma]')?.click()" style="text-align:left;padding:12px">🛒 Satın Alma</button>
@@ -15822,18 +15823,30 @@ window.addEventListener('load', function() {
       var _haftaGun = _tarihObj.getDay(); // 0=Paz,6=Cmt
       var _isWeekend = (_haftaGun===0||_haftaGun===6);
       var oncekiGunKisi = 0;
-      if(!bugun && !_isWeekend) {
-        // Son 14 gün içindeki en yakın hafta içi kaydı bul
-        var _sorted = gunlukArr.filter(function(u){
-          if(u.musteri!==cust||!u.tarih||u.tarih>=tarih) return false;
-          var _d=new Date(u.tarih), _g=_d.getDay();
-          return _g!==0&&_g!==6&&u.kisi>0;
-        }).sort(function(a,b){return b.tarih.localeCompare(a.tarih);});
-        if(_sorted.length>0) oncekiGunKisi = _sorted[0].kisi;
+      var oncekiGunFiyat = 0;
+      if(!bugun) {
+        if(_isWeekend) {
+          // Hafta sonu: önceki hafta sonundan kopyala (son 14 gün)
+          var _sortedWe = gunlukArr.filter(function(u){
+            if(u.musteri!==cust||!u.tarih||u.tarih>=tarih) return false;
+            var _d=new Date(u.tarih), _g=_d.getDay();
+            return (_g===0||_g===6)&&u.kisi>0;
+          }).sort(function(a,b){return b.tarih.localeCompare(a.tarih);});
+          if(_sortedWe.length>0){ oncekiGunKisi=_sortedWe[0].kisi; oncekiGunFiyat=_sortedWe[0].fiyat||0; }
+        } else {
+          // Hafta içi: önceki hafta içi gününden kopyala
+          var _sorted = gunlukArr.filter(function(u){
+            if(u.musteri!==cust||!u.tarih||u.tarih>=tarih) return false;
+            var _d=new Date(u.tarih), _g=_d.getDay();
+            return _g!==0&&_g!==6&&u.kisi>0;
+          }).sort(function(a,b){return b.tarih.localeCompare(a.tarih);});
+          if(_sorted.length>0){ oncekiGunKisi=_sorted[0].kisi; oncekiGunFiyat=_sorted[0].fiyat||0; }
+        }
       }
-      var kisiVal  = bugun ? bugun.kisi  : (_isWeekend ? 0 : (oncekiGunKisi || crmKisi));
-      var fiyatVal = bugun ? bugun.fiyat : crmFiyat;
-      var kaydedildi = !!bugun; // FIX-3: auto-fill from prev weekday
+      var kisiVal  = bugun ? bugun.kisi  : (oncekiGunKisi || crmKisi);
+      var fiyatVal = bugun ? bugun.fiyat : (oncekiGunFiyat || crmFiyat);
+      var kaydedildi = !!bugun;
+      var otoDoldu = !bugun && oncekiGunKisi > 0; // otomatik dolduruldu mu
 
       // Ay başından toplam (bu güne kadar, bu gün HARİÇ)
       var ayOnceki = gunlukArr.filter(function(u){
@@ -15845,14 +15858,16 @@ window.addEventListener('load', function() {
       // Bugünkü anlık tutar
       var gunlukToplam = kisiVal&&fiyatVal ? kisiVal*fiyatVal : 0;
 
-      var rowBg = kaydedildi ? '#f0fdf4' : (i%2===0?'#fff':'#f8fafc');
+      var rowBg = kaydedildi ? '#f0fdf4' : (otoDoldu ? '#fffbeb' : (i%2===0?'#fff':'#f8fafc'));
       var borderStyle = i<custs.length-1 ? '1px solid #e2e8f0' : 'none';
+      var statusLabel = kaydedildi ? '<br><span style="color:#16a34a;font-size:10px">✓ kaydedildi</span>'
+        : (otoDoldu ? '<br><span style="color:#d97706;font-size:10px">↻ '+(_isWeekend?'önceki h.sonu':'önceki gün')+'</span>' : '');
 
       return '<tr style="background:'+rowBg+'">'
-        // Müşteri adı
-        +'<td style="padding:9px 12px;font-weight:700;color:#1e293b;border-bottom:'+borderStyle+';border-right:1px solid #e2e8f0;min-width:150px">'
-        +cust
-        +(kaydedildi?'<br><span style="color:#16a34a;font-size:10px">✓ kaydedildi</span>':'')
+        // Müşteri adı (tıklanabilir — detay görüntüsü açar)
+        +'<td style="padding:9px 12px;font-weight:700;color:#1e293b;border-bottom:'+borderStyle+';border-right:1px solid #e2e8f0;min-width:150px;cursor:pointer" onclick="gsMusteriDetay(\''+cust.replace(/'/g,"\\'")+'\')">'
+        +'<span style="color:#2563eb;text-decoration:underline;text-decoration-style:dotted">'+cust+'</span>'
+        +statusLabel
         +'<br><span style="color:#94a3b8;font-size:10px">CRM: '+(crmKisi||'—')+' kişi / '+(crmFiyat?_fmt(crmFiyat)+' ₺':'—')+'</span>'
         +'</td>'
         // Kişi sayısı input (editable)
@@ -15922,6 +15937,85 @@ window.addEventListener('load', function() {
     // Özet ve aylık rapor güncelle
     _updateGunlukOzet();
     if(typeof window.v75RenderAylikRapor==='function') setTimeout(window.v75RenderAylikRapor, 200);
+  };
+
+  /* ── Müşteri Detay Modal (tarih aralığı) ───────────────────────── */
+  window.gsMusteriDetay = function(musteriAdi){
+    var gunlukArr = _getGunluk();
+    var musteriKayitlar = gunlukArr.filter(function(u){ return u.musteri===musteriAdi && u.kisi>0; })
+      .sort(function(a,b){ return b.tarih.localeCompare(a.tarih); });
+
+    // Tarih aralığı: son 90 gün varsayılan
+    var bugun = _today();
+    var d90 = new Date(); d90.setDate(d90.getDate()-90);
+    var baslangic = d90.toISOString().slice(0,10);
+
+    var modal = document.createElement('div');
+    modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10000;display:flex;align-items:flex-start;justify-content:center;padding:24px;overflow:auto';
+    modal.onclick=function(e){ if(e.target===modal) modal.remove(); };
+
+    function renderDetay(bas, bit){
+      var filtrelenmis = musteriKayitlar.filter(function(u){ return u.tarih>=bas && u.tarih<=bit; });
+      var topKisi = filtrelenmis.reduce(function(s,u){ return s+(u.kisi||0); },0);
+      var topTutar = filtrelenmis.reduce(function(s,u){ return s+(u.tutar||0); },0);
+      var gunSayisi = filtrelenmis.length;
+
+      var satirlar = filtrelenmis.map(function(u){
+        var d=new Date(u.tarih); var gunAdi=['Paz','Pzt','Sal','Çar','Per','Cum','Cmt'][d.getDay()];
+        var haftaSonu=(d.getDay()===0||d.getDay()===6);
+        return '<tr style="background:'+(haftaSonu?'#fef3c7':'#fff')+'">'
+          +'<td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-weight:600">'+u.tarih+' <span style="color:#64748b;font-size:11px">('+gunAdi+')</span></td>'
+          +'<td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;font-weight:700;color:#2563eb">'+u.kisi+'</td>'
+          +'<td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right">'+_fmt(u.fiyat||0)+' ₺</td>'
+          +'<td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:700;color:#166534">'+_fmt(u.tutar||0)+' ₺</td>'
+          +'</tr>';
+      }).join('');
+
+      if(!satirlar) satirlar='<tr><td colspan="4" style="padding:20px;text-align:center;color:#94a3b8">Bu tarih aralığında kayıt yok</td></tr>';
+
+      return '<div style="background:#f0f9ff;border-radius:12px;padding:16px;margin-bottom:16px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px">'
+        +'<div style="text-align:center"><div style="font-size:11px;color:#64748b">Toplam Gün</div><div style="font-size:22px;font-weight:800;color:#2563eb">'+gunSayisi+'</div></div>'
+        +'<div style="text-align:center"><div style="font-size:11px;color:#64748b">Toplam Kişi</div><div style="font-size:22px;font-weight:800;color:#7c3aed">'+topKisi.toLocaleString('tr-TR')+'</div></div>'
+        +'<div style="text-align:center"><div style="font-size:11px;color:#64748b">Toplam Tutar</div><div style="font-size:22px;font-weight:800;color:#166534">'+_fmt(topTutar)+' ₺</div></div>'
+        +'</div>'
+        +'<div style="overflow-x:auto;max-height:400px;overflow-y:auto">'
+        +'<table style="width:100%;font-size:13px;border-collapse:collapse">'
+        +'<thead><tr style="background:#eef3ff;position:sticky;top:0">'
+        +'<th style="padding:8px 12px;text-align:left;border-bottom:2px solid #c7d2fe">Tarih</th>'
+        +'<th style="padding:8px 12px;text-align:center;border-bottom:2px solid #c7d2fe">Kişi</th>'
+        +'<th style="padding:8px 12px;text-align:right;border-bottom:2px solid #c7d2fe">Fiyat</th>'
+        +'<th style="padding:8px 12px;text-align:right;border-bottom:2px solid #c7d2fe">Tutar</th>'
+        +'</tr></thead>'
+        +'<tbody>'+satirlar+'</tbody>'
+        +'</table></div>';
+    }
+
+    var content = document.createElement('div');
+    content.style.cssText='background:#fff;border-radius:16px;max-width:700px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.25);margin-top:40px';
+    content.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">'
+      +'<h2 style="margin:0;font-size:18px;color:#1e293b">📊 '+musteriAdi+' — Yemek Sayıları</h2>'
+      +'<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#64748b">✕</button>'
+      +'</div>'
+      +'<div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap">'
+      +'<label style="font-size:12px;color:#64748b">Başlangıç:</label>'
+      +'<input type="date" id="gsMdBas" value="'+baslangic+'" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px"/>'
+      +'<label style="font-size:12px;color:#64748b">Bitiş:</label>'
+      +'<input type="date" id="gsMdBit" value="'+bugun+'" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px"/>'
+      +'<button class="btn primary" style="padding:6px 14px;font-size:12px" id="gsMdFiltrele">Filtrele</button>'
+      +'<button style="padding:6px 12px;font-size:11px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:8px;cursor:pointer" onclick="document.getElementById(\'gsMdBas\').value=new Date(Date.now()-7*86400000).toISOString().slice(0,10);document.getElementById(\'gsMdFiltrele\').click()">Son 7 gün</button>'
+      +'<button style="padding:6px 12px;font-size:11px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:8px;cursor:pointer" onclick="document.getElementById(\'gsMdBas\').value=new Date().toISOString().slice(0,7)+\'-01\';document.getElementById(\'gsMdFiltrele\').click()">Bu ay</button>'
+      +'<button style="padding:6px 12px;font-size:11px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:8px;cursor:pointer" onclick="var d=new Date();d.setMonth(d.getMonth()-1);document.getElementById(\'gsMdBas\').value=d.toISOString().slice(0,7)+\'-01\';var l=new Date(d.getFullYear(),d.getMonth()+1,0);document.getElementById(\'gsMdBit\').value=l.toISOString().slice(0,10);document.getElementById(\'gsMdFiltrele\').click()">Geçen ay</button>'
+      +'</div>'
+      +'<div id="gsMdIcerik">'+renderDetay(baslangic, bugun)+'</div>';
+
+    modal.appendChild(content);
+    document.body.appendChild(modal);
+
+    document.getElementById('gsMdFiltrele').onclick=function(){
+      var b=document.getElementById('gsMdBas').value;
+      var bi=document.getElementById('gsMdBit').value;
+      document.getElementById('gsMdIcerik').innerHTML=renderDetay(b,bi);
+    };
   };
 
   /* ── Kaydet butonu override ─────────────────────────────────────── */
