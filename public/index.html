@@ -22044,22 +22044,22 @@ document.addEventListener('DOMContentLoaded', function(){
       UYSA AI Asistan
     </div>
     <div style="display:flex;gap:8px;">
-      <button id="uysa-ai-login-btn" onclick="event.stopPropagation();uysaAI.showLogin()" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px;">Giriş</button>
+      <button id="uysa-ai-login-btn" onclick="event.stopPropagation();uysaAI.showLogin()" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Giriş</button>
       <button onclick="event.stopPropagation();uysaAI.clear()" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px;">Temizle</button>
       <button onclick="event.stopPropagation();uysaAI.close()" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;">×</button>
     </div>
   </div>
   <!-- AI Auth Login Panel -->
-  <div id="uysa-ai-auth" style="display:none;padding:20px;background:#f8fafc;flex-direction:column;gap:12px;">
-    <div style="text-align:center;margin-bottom:4px">
-      <div style="font-size:14px;font-weight:600;color:#1e293b">AI Asistan Girişi</div>
-      <div style="font-size:11px;color:#64748b;margin-top:4px">OpenClaw hesabınızla giriş yapın</div>
+  <div id="uysa-ai-auth" style="display:none;padding:24px 20px;background:#f8fafc;flex-direction:column;gap:12px;">
+    <div style="text-align:center;margin-bottom:8px">
+      <div style="font-size:28px;margin-bottom:6px">🤖</div>
+      <div style="font-size:15px;font-weight:600;color:#1e293b">ERP Asistan Girişi</div>
+      <div style="font-size:12px;color:#64748b;margin-top:4px">ERP hesabınızla giriş yaparak asistanı kullanabilirsiniz</div>
     </div>
-    <input id="uysa-ai-auth-email" type="email" placeholder="E-posta" style="border:1px solid #d1d5db;border-radius:8px;padding:10px 12px;font-size:13px;outline:none;width:100%;box-sizing:border-box">
-    <input id="uysa-ai-auth-pass" type="password" placeholder="Şifre" style="border:1px solid #d1d5db;border-radius:8px;padding:10px 12px;font-size:13px;outline:none;width:100%;box-sizing:border-box" onkeydown="if(event.key==='Enter')uysaAI.authLogin()">
-    <button onclick="uysaAI.authLogin()" style="background:linear-gradient(135deg,#1a56db,#7c3aed);color:#fff;border:none;border-radius:8px;padding:10px;cursor:pointer;font-weight:600;font-size:13px;width:100%">Giriş Yap</button>
-    <div id="uysa-ai-auth-error" style="display:none;color:#dc2626;font-size:12px;text-align:center"></div>
-    <button onclick="uysaAI.skipAuth()" style="background:none;border:none;color:#64748b;font-size:11px;cursor:pointer;text-decoration:underline">Sunucu API anahtarıyla devam et</button>
+    <input id="uysa-ai-auth-email" type="text" placeholder="Kullanıcı adı veya e-posta" style="border:1px solid #d1d5db;border-radius:8px;padding:10px 12px;font-size:13px;outline:none;width:100%;box-sizing:border-box" autocomplete="username">
+    <input id="uysa-ai-auth-pass" type="password" placeholder="Şifre" style="border:1px solid #d1d5db;border-radius:8px;padding:10px 12px;font-size:13px;outline:none;width:100%;box-sizing:border-box" onkeydown="if(event.key==='Enter')uysaAI.authLogin()" autocomplete="current-password">
+    <button onclick="uysaAI.authLogin()" id="uysa-ai-login-submit" style="background:linear-gradient(135deg,#1a56db,#7c3aed);color:#fff;border:none;border-radius:8px;padding:10px;cursor:pointer;font-weight:600;font-size:13px;width:100%">Giriş Yap</button>
+    <div id="uysa-ai-auth-error" style="display:none;color:#dc2626;font-size:12px;text-align:center;padding:6px;background:#fef2f2;border-radius:6px"></div>
   </div>
   <div id="uysa-ai-messages" style="flex:1;overflow-y:auto;padding:12px;min-height:280px;max-height:360px;display:flex;flex-direction:column;gap:8px;background:#f8fafc;">
     <div class="ai-msg ai-assistant" style="background:#e8f0fe;padding:10px 12px;border-radius:12px;font-size:13px;line-height:1.5;max-width:90%;">
@@ -22112,16 +22112,16 @@ async function apiCall(action, body, method, extraHeaders) {
 /* ── AI Chat Widget (Auth destekli) ─────────────────────────── */
 window.uysaAI = {
   _aiToken: localStorage.getItem('uysa_ai_auth_token') || '',
-  _aiAuthMode: localStorage.getItem('uysa_ai_auth_mode') || '', // 'auth' veya 'server'
+  _userName: localStorage.getItem('uysa_ai_user_name') || '',
 
   open() {
     document.getElementById('uysa-ai-chat').style.display = 'flex';
     document.getElementById('uysa-ai-fab').style.display = 'none';
-    // Auth durumuna göre panel göster
-    if (!this._aiToken && this._aiAuthMode !== 'server') {
+    if (!this._aiToken) {
       this._showAuth(true);
     } else {
       this._showAuth(false);
+      this._updateLoginBtn();
       document.getElementById('uysa-ai-input').focus();
     }
   },
@@ -22141,55 +22141,76 @@ window.uysaAI = {
     if (auth) auth.style.display = show ? 'flex' : 'none';
     if (msgs) msgs.style.display = show ? 'none' : 'flex';
     if (input) input.style.display = show ? 'none' : 'flex';
+    // Login paneli gösterildiğinde inputu focusla
+    if (show) {
+      setTimeout(() => { const el = document.getElementById('uysa-ai-auth-email'); if(el) el.focus(); }, 100);
+    }
+  },
+  _updateLoginBtn() {
+    const btn = document.getElementById('uysa-ai-login-btn');
+    if (!btn) return;
+    if (this._aiToken && this._userName) {
+      btn.textContent = this._userName;
+      btn.title = 'Çıkış yapmak için tıklayın';
+      btn.onclick = (e) => { e.stopPropagation(); uysaAI.logout(); };
+    } else {
+      btn.textContent = 'Giriş';
+      btn.title = 'ERP hesabınızla giriş yapın';
+      btn.onclick = (e) => { e.stopPropagation(); uysaAI.showLogin(); };
+    }
   },
   async authLogin() {
-    const email = document.getElementById('uysa-ai-auth-email')?.value?.trim();
+    const loginId = document.getElementById('uysa-ai-auth-email')?.value?.trim();
     const pass = document.getElementById('uysa-ai-auth-pass')?.value;
     const errEl = document.getElementById('uysa-ai-auth-error');
-    if (!email || !pass) {
-      if (errEl) { errEl.textContent = 'E-posta ve şifre gerekli'; errEl.style.display = 'block'; }
+    const submitBtn = document.getElementById('uysa-ai-login-submit');
+    if (!loginId || !pass) {
+      if (errEl) { errEl.textContent = 'Kullanıcı adı ve şifre gerekli'; errEl.style.display = 'block'; }
       return;
     }
     if (errEl) errEl.style.display = 'none';
+    // Butonu devre dışı bırak
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Giriş yapılıyor...'; }
 
-    // OpenClaw auth endpoint'ine giriş yap
     try {
-      const result = await apiCall('ai.authLogin', { email: email, password: pass }, 'POST');
+      const result = await apiCall('ai.authLogin', { email: loginId, password: pass }, 'POST');
       if (result.ok && result.token) {
         this._aiToken = result.token;
-        this._aiAuthMode = 'auth';
+        this._userName = (result.user && result.user.display_name) || loginId;
         localStorage.setItem('uysa_ai_auth_token', result.token);
-        localStorage.setItem('uysa_ai_auth_mode', 'auth');
+        localStorage.setItem('uysa_ai_user_name', this._userName);
         this._showAuth(false);
-        this.addMsg('assistant', 'Giriş başarılı! AI asistan kullanıma hazır.');
+        this._updateLoginBtn();
+        // Şifre alanını temizle
+        const passEl = document.getElementById('uysa-ai-auth-pass');
+        if (passEl) passEl.value = '';
+        this.addMsg('assistant', 'Giriş başarılı. Asistan hazır, sorularınızı yazabilirsiniz.');
         document.getElementById('uysa-ai-input').focus();
       } else {
-        if (errEl) { errEl.textContent = result.error || 'Giriş başarısız'; errEl.style.display = 'block'; }
+        const errMsg = result.error || 'Giriş başarısız';
+        // Kullanıcı dostu hata mesajları
+        let displayErr = errMsg;
+        if (errMsg.includes('Çok fazla')) displayErr = 'Çok fazla deneme yaptınız. Lütfen biraz bekleyin.';
+        else if (errMsg.includes('hatalı')) displayErr = 'Kullanıcı adı veya şifre hatalı.';
+        if (errEl) { errEl.textContent = displayErr; errEl.style.display = 'block'; }
       }
     } catch(e) {
-      if (errEl) { errEl.textContent = 'Bağlantı hatası: ' + e.message; errEl.style.display = 'block'; }
+      if (errEl) { errEl.textContent = 'Sunucuya bağlanılamadı. Lütfen tekrar deneyin.'; errEl.style.display = 'block'; }
+    } finally {
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Giriş Yap'; }
     }
   },
   showLogin() {
-    this._aiAuthMode = '';
-    this._aiToken = '';
-    localStorage.removeItem('uysa_ai_auth_token');
-    localStorage.removeItem('uysa_ai_auth_mode');
     this._showAuth(true);
-  },
-  skipAuth() {
-    this._aiAuthMode = 'server';
-    localStorage.setItem('uysa_ai_auth_mode', 'server');
-    this._showAuth(false);
-    this.addMsg('assistant', 'Sunucu API anahtarıyla devam ediliyor.');
-    document.getElementById('uysa-ai-input').focus();
   },
   logout() {
     this._aiToken = '';
-    this._aiAuthMode = '';
+    this._userName = '';
     localStorage.removeItem('uysa_ai_auth_token');
-    localStorage.removeItem('uysa_ai_auth_mode');
+    localStorage.removeItem('uysa_ai_user_name');
     this._showAuth(true);
+    this._updateLoginBtn();
+    this.addMsg('assistant', 'Oturumunuz kapatıldı.');
   },
   clear() {
     const msgs = document.getElementById('uysa-ai-messages');
@@ -22214,6 +22235,14 @@ window.uysaAI = {
     const input = document.getElementById('uysa-ai-input');
     const msg = input.value.trim();
     if (!msg) return;
+
+    // Token yoksa login'e yönlendir
+    if (!this._aiToken) {
+      this.addMsg('assistant', 'Asistanı kullanmak için giriş yapmanız gerekiyor.');
+      this._showAuth(true);
+      return;
+    }
+
     input.value = '';
     this.addMsg('user', msg);
 
@@ -22223,22 +22252,24 @@ window.uysaAI = {
     loadDiv.innerHTML = '<span style="animation:pulse 1.5s infinite;">Düşünüyorum...</span>';
     document.getElementById('uysa-ai-messages').appendChild(loadDiv);
 
-    // Auth moduna göre istek gönder
+    // ERP JWT token ile istek gönder
     const body = { message: msg };
-    const extraHeaders = {};
-    if (this._aiAuthMode === 'auth' && this._aiToken) {
-      extraHeaders['Authorization'] = 'Bearer ' + this._aiToken;
-    }
+    const extraHeaders = { 'Authorization': 'Bearer ' + this._aiToken };
     const result = await apiCall('ai.chat', body, 'POST', extraHeaders);
     loadDiv.remove();
 
     if (result.ok && result.response) {
       this.addMsg('assistant', result.response);
-    } else if (result.error && result.error.indexOf('token') !== -1) {
-      this.addMsg('assistant', 'Oturum süresi dolmuş. Lütfen tekrar giriş yapın.');
-      this.logout();
+    } else if (result.error && (result.error.includes('JWT') || result.error.includes('token') || result.error.includes('geçersiz') || result.error.includes('401'))) {
+      this.addMsg('assistant', 'Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+      this._aiToken = '';
+      this._userName = '';
+      localStorage.removeItem('uysa_ai_auth_token');
+      localStorage.removeItem('uysa_ai_user_name');
+      this._updateLoginBtn();
+      setTimeout(() => this._showAuth(true), 1500);
     } else {
-      this.addMsg('assistant', 'Üzgünüm, yanıt alınamadı. ' + (result.error || ''));
+      this.addMsg('assistant', 'Yanıt alınamadı. Lütfen tekrar deneyin.');
     }
   }
 };
@@ -22374,8 +22405,13 @@ const aiStyle = document.createElement('style');
 aiStyle.textContent = '@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}';
 document.head.appendChild(aiStyle);
 
+// AI widget login butonunu başlat
+setTimeout(() => { if (window.uysaAI) uysaAI._updateLoginBtn(); }, 500);
+
+// Eski auth mode temizliği
+localStorage.removeItem('uysa_ai_auth_mode');
+
 console.log('✅ UYSA ERP v5.0 — AI Asistan + Modüler API katmanı yüklendi');
-console.log('ℹ️ Kullanım: uysaERP.fin.dashboard(), uysaERP.inv.products(), uysaERP.hr.employees()');
 })();
 </script>
 </body>
