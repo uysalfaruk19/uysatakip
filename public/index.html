@@ -1837,13 +1837,15 @@
           <div class="panel">
             <h3>🚀 Hızlı Erişim</h3>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;position:relative;z-index:10">
-              <button class="btn primary" onclick="document.querySelector('[data-module=operasyon]')?.click()" style="text-align:left;padding:12px">📋 Haftalık Menü</button>
-              <button class="btn primary" onclick="document.querySelector('[data-module=finans]')?.click();setTimeout(()=>switchFinTab('gelir'),200)" style="text-align:left;padding:12px">📥 Gelir Ekle</button>
+              <!-- EN SIK KULLANILANLAR — ÜST SIRA -->
+              <button class="btn" onclick="document.querySelector('[data-module=finans]')?.click();setTimeout(()=>switchFinTab('gelir'),200)" style="text-align:left;padding:16px 14px;font-size:15px;font-weight:800;background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;border-radius:12px;box-shadow:0 4px 12px rgba(5,150,105,.3)">📥 Gelir Ekle</button>
+              <button class="btn" onclick="document.querySelector('[data-module=finans]')?.click();setTimeout(()=>switchFinTab('sayi'),200)" style="text-align:left;padding:16px 14px;font-size:15px;font-weight:800;background:linear-gradient(135deg,#2563eb,#3b82f6);color:#fff;border:none;border-radius:12px;box-shadow:0 4px 12px rgba(37,99,235,.3)">📊 Günlük Üretim Sayıları</button>
+              <!-- DİĞER BUTONLAR -->
               <button class="btn primary" onclick="document.querySelector('[data-module=finans]')?.click();setTimeout(()=>switchFinTab('gider'),200)" style="text-align:left;padding:12px">📤 Gider Ekle</button>
+              <button class="btn primary" onclick="document.querySelector('[data-module=operasyon]')?.click()" style="text-align:left;padding:12px">📋 Haftalık Menü</button>
               <button class="btn primary" onclick="document.querySelector('[data-module=finans]')?.click();setTimeout(()=>switchFinTab('uretim'),200)" style="text-align:left;padding:12px">🍳 Üretim Gideri</button>
-              <button class="btn primary" onclick="document.querySelector('[data-module=finans]')?.click();setTimeout(()=>switchFinTab('sayi'),200)" style="text-align:left;padding:12px;background:#059669">📊 Günlük Üretim Sayıları</button>
-              <button class="btn primary" onclick="document.querySelector('[data-module=stok]')?.click()" style="text-align:left;padding:12px">🏭 Stok Takibi</button>
               <button class="btn primary" onclick="document.querySelector('[data-module=satis]')?.click()" style="text-align:left;padding:12px">🤝 CRM & Satış</button>
+              <button class="btn primary" onclick="document.querySelector('[data-module=stok]')?.click()" style="text-align:left;padding:12px">🏭 Stok Takibi</button>
               <button class="btn primary" onclick="document.querySelector('[data-module=satinalma]')?.click()" style="text-align:left;padding:12px">🛒 Satın Alma</button>
               <button class="btn primary" onclick="document.querySelector('[data-module=raporlama]')?.click()" style="text-align:left;padding:12px">📊 Raporlar</button>
             </div>
