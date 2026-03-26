@@ -8409,11 +8409,15 @@ alert('Malzeme ve miktar giriniz.'); return; }
     if(!sel) return;
     sel.innerHTML = '';
     var custs = [];
-    try{ custs = JSON.parse(localStorage.getItem('uysa_customers_v1')||'[]'); }catch(e){}
+    try{
+      var raw = JSON.parse(localStorage.getItem('uysa_customers_v1')||'{}');
+      // Format: {"customers":["A","B"]} veya ["A","B"]
+      if(Array.isArray(raw)) custs = raw;
+      else if(raw.customers && Array.isArray(raw.customers)) custs = raw.customers;
+    }catch(e){}
     custs.forEach(function(c){
-      var name = c.name||c.ad||c;
-      if(typeof name!=='string') return;
-      if(name==='GENEL'||c.pasif) return;
+      var name = (typeof c==='string') ? c : (c.name||c.ad||'');
+      if(!name || name==='GENEL') return;
       var o = document.createElement('option'); o.value=name; o.textContent=name;
       sel.appendChild(o);
     });
