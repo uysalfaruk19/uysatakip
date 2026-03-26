@@ -95,7 +95,7 @@
     --shadow-lg: 0 20px 30px rgba(0,0,0,.1),0 8px 12px rgba(0,0,0,.05);
 
     /* Navigation */
-    --nav-h:  52px;
+    --nav-h:  56px;
     --nav-bg: linear-gradient(135deg, #0f1f3d 0%, #1a2d5a 60%, #1e3a5f 100%);
 
     /* Transitions */
@@ -149,15 +149,15 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 2px;
-    padding: 7px 14px;
+    gap: 3px;
+    padding: 10px 16px;
     border-radius: var(--radius-sm) !important;
     cursor: pointer;
     border: 1px solid transparent;
     background: transparent;
     color: rgba(255,255,255,.65);
-    font-size: 10.5px;
-    font-weight: 600;
+    font-size: 11px;
+    font-weight: 700;
     letter-spacing: .03em;
     white-space: nowrap;
     min-width: 72px;
@@ -644,7 +644,7 @@
   .mod-panel.active {
     display: block !important;
     position: fixed !important;
-    top: 106px !important; /* JS ile override edilir */
+    top: 114px !important; /* JS ile override edilir */
     left: 0 !important;
     right: 0 !important;
     bottom: 0 !important;
@@ -1976,7 +1976,8 @@
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;position:relative">
         <!-- Global Tarih Aralığı Filtresi -->
         <div style="display:flex;gap:4px;align-items:center">
-          <select id="globalTarihSecici" onchange="globalTarihDegis()" style="padding:6px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.18);color:#fff;font-size:11px;font-weight:600;cursor:pointer">
+          <span style="font-size:11px;font-weight:700;color:#93c5fd;white-space:nowrap">📅 Tarih:</span>
+          <select id="globalTarihSecici" onchange="globalTarihDegis()" style="padding:6px 10px;border-radius:8px;border:1px solid rgba(147,197,253,.5);background:rgba(37,99,235,.35);color:#fff;font-size:11px;font-weight:700;cursor:pointer">
             <option value="buay" style="color:#000">Bu Ay</option>
             <option value="gecenay" style="color:#000">Geçen Ay</option>
             <option value="son7" style="color:#000">Son 7 Gün</option>
@@ -5772,55 +5773,77 @@ function escapeHtml(s){
     if (typeof XLSX === 'undefined') { toast('Excel kütüphanesi yüklenemedi'); return; }
     const y = parseInt(yearEl.value,10);
     const m0 = parseInt(monthEl.value,10)-1;
-    const weeks = getMonthWeeksFromStore();
     const monthNames = ['OCAK','ŞUBAT','MART','NİSAN','MAYIS','HAZİRAN','TEMMUZ','AĞUSTOS','EYLÜL','EKİM','KASIM','ARALIK'];
+    const dow7 = ['PAZARTESİ','SALI','ÇARŞAMBA','PERŞEMBE','CUMA','CUMARTESİ','PAZAR'];
     const cust = currentCustomer();
     const title = `UYSA YEMEK ${monthNames[m0]} ${y} YEMEK MENÜSÜ` + (cust !== 'GENEL' ? ' - ' + cust : '');
 
+    // Use same week matrix as the monthly view
+    const store = getStore();
+    const monthObj = store?.[ymKey()] || {weeks:{}};
+    const weeksMatrix = buildMonthWeeksMatrix(y, m0);
+
     const rows = [];
-    // Title row
-    rows.push([title,'','','','','','']);
-    rows.push(['']); // blank row
+    const merges = [];
 
-    for (let w=1; w<=5; w++){
-      const wk = weeks[`W${w}`];
-      const dates = buildWeekDates(y, m0, w);
+    // Title row (merged across 8 columns: label + 7 days)
+    rows.push([title,'','','','','','','']);
+    merges.push({s:{r:0,c:0},e:{r:0,c:7}});
+    rows.push(['']); // blank
 
-      // Header: Hafta N + date range
-      const haftaLabel = `${w}. HAFTA`;
-      const dayHeaders = [''].concat(dates.map((d,i) => ddmmyyyy(d) + ' ' + TR_DAY[DAYS[i]]));
-      rows.push(dayHeaders);
+    weeksMatrix.forEach((weekDates, wi) => {
+      const startRow = rows.length;
 
-      // Data rows
-      const rowLabels = ['ÇORBA','ANA YEMEK','YARDIMCI YEMEK','MEYVE / TATLI','SALATA','AYRAN'];
-      const rowKeys = ['soups','mains','sides','dessertFruitName','salads','ayran'];
-      for (let r=0; r<rowLabels.length; r++){
-        const rowData = [rowLabels[r]];
-        for (let i=0; i<5; i++){
-          if (wk && wk[rowKeys[r]]) {
-            let val = wk[rowKeys[r]][i] || '';
-            // Special handling for dessertFruitName - show actual name
-            if (rowKeys[r] === 'dessertFruitName') {
-              const drink = wk.drinks?.[i] || '';
-              if (drink === 'Meşrubat') val = 'MEŞRUBAT';
-              else if (!val) val = '';
-            }
-            if (rowKeys[r] === 'ayran') val = wk.ayran?.[i] || 'Ayran';
-            rowData.push(val);
-          } else {
-            rowData.push('');
+      // Hafta header: day names
+      const dayRow = ['YEMEK / TARİH'];
+      dow7.forEach(d => dayRow.push(d));
+      rows.push(dayRow);
+
+      // Date row
+      const dateRow = ['TARİH'];
+      weekDates.forEach(d => {
+        dateRow.push(String(d.getDate()).padStart(2,'0') + '.' + String(d.getMonth()+1).padStart(2,'0'));
+      });
+      rows.push(dateRow);
+
+      // Food rows
+      const foodRows = [
+        {label:'ÇORBA', k:'soup'},
+        {label:'ANA YEMEK', k:'main'},
+        {label:'YARDIMCI YEMEK', k:'side'},
+        {label:'SALATA', k:'salad'},
+        {label:'TATLI / MEYVE', k:'extras'},
+        {label:'AYRAN', k:'ayran'}
+      ];
+
+      foodRows.forEach(fr => {
+        const r = [fr.label];
+        weekDates.forEach((d, di) => {
+          const wk = monthObj?.weeks?.[`W${wi+1}`];
+          if (!wk) { r.push(''); return; }
+          const idx = di;
+          let val = '';
+          if (fr.k === 'soup') val = wk.soups?.[idx] || '';
+          else if (fr.k === 'main') val = wk.mains?.[idx] || '';
+          else if (fr.k === 'side') val = wk.sides?.[idx] || '';
+          else if (fr.k === 'salad') val = wk.salads?.[idx] || '';
+          else if (fr.k === 'extras') {
+            const dessert = wk.dessertFruitName?.[idx] || '';
+            const drink = wk.drinks?.[idx] || '';
+            val = [dessert, drink].filter(Boolean).join(' / ') || '';
           }
-        }
-        rows.push(rowData);
-      }
+          else if (fr.k === 'ayran') val = wk.ayran?.[idx] || '';
+          r.push(val);
+        });
+        rows.push(r);
+      });
+
       rows.push(['']); // blank between weeks
-    }
+    });
 
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    // Set column widths
-    ws['!cols'] = [{wch:22},{wch:22},{wch:22},{wch:22},{wch:22},{wch:22}];
-    // Merge title cell
-    ws['!merges'] = [{s:{r:0,c:0},e:{r:0,c:5}}];
+    ws['!cols'] = [{wch:22},{wch:18},{wch:18},{wch:18},{wch:18},{wch:18},{wch:16},{wch:16}];
+    ws['!merges'] = merges;
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Menü');
@@ -5845,55 +5868,94 @@ function escapeHtml(s){
         if (!store[monthKey]) store[monthKey] = {weeks:{}};
 
         let currentWeek = 0;
-        let rowIndex = 0;
         const rowMap = {
           'ÇORBA': 'soups', 'CORBA': 'soups',
           'ANA YEMEK': 'mains', 'ANA': 'mains',
           'YARDIMCI YEMEK': 'sides', 'YARDIMCI': 'sides',
-          'MEYVE / TATLI': 'dessertFruitName', 'MEYVE': 'dessertFruitName', 'TATLI': 'dessertFruitName', 'MEYVE/TATLI': 'dessertFruitName',
+          'MEYVE / TATLI': 'dessertFruitName', 'MEYVE': 'dessertFruitName', 'TATLI': 'dessertFruitName',
+          'MEYVE/TATLI': 'dessertFruitName', 'TATLI / MEYVE': 'dessertFruitName', 'TATLI / MEYVE / MEŞRUBAT': 'dessertFruitName',
           'SALATA': 'salads',
           'AYRAN': 'ayran', 'YOĞURT': 'ayran', 'YOGURT': 'ayran', 'AYRAN / YOĞURT': 'ayran'
         };
 
-        let weekData = {};
+        let weekData = null;
+        // Detect how many day columns (5 or 7)
+        let numDays = 7;
+
+        // Helper: check if a row is a week header (day names or date pattern)
+        function isWeekHeader(row) {
+          const f = String(row[0] || '').trim().toUpperCase();
+          // Check first cell for "YEMEK / TARİH", "YEMEK/TARİH", "HAFTA", or day names
+          if (f.includes('YEMEK') || f.includes('TARİH') || f.includes('HAFTA')) return true;
+          // Check if any cell in the row has a day name
+          const dayNames = ['PAZARTESİ','SALI','ÇARŞAMBA','PERŞEMBE','CUMA','CUMARTESİ','PAZAR'];
+          for (let c=0; c<row.length; c++){
+            const v = String(row[c] || '').trim().toUpperCase();
+            if (dayNames.some(d => v.includes(d))) return true;
+          }
+          return false;
+        }
+        // Helper: check if a row is a date row (dd.mm or dd.mm.yyyy)
+        function isDateRow(row) {
+          let dateCount = 0;
+          for (let c=0; c<row.length; c++){
+            const v = String(row[c] || '').trim();
+            if (/\d{1,2}\.\d{1,2}/.test(v)) dateCount++;
+          }
+          return dateCount >= 3; // at least 3 date-like cells
+        }
+
+        function makeEmptyWeek() {
+          return {
+            soups: ['','','','','','',''],
+            soups2: ['','','','','','',''],
+            mains: ['','','','','','',''],
+            mains2: ['','','','','','',''],
+            sidesCode: ['','','','','','',''],
+            sides: ['','','','','','',''],
+            sides2: ['','','','','','',''],
+            dessertFruit: ['','','','','','',''],
+            dessertFruitName: ['','','','','','',''],
+            salads: ['','','','','','',''],
+            ayran: ['','','','','','',''],
+            drinks: ['','','','','','','']
+          };
+        }
 
         for (let i=0; i<data.length; i++){
           const row = data[i];
           if (!row || row.length === 0) continue;
-          const first = String(row[0] || '').trim().toUpperCase();
 
-          // Detect week header (has date pattern dd.mm.yyyy)
-          if (row.length >= 2 && /\d{2}\.\d{2}\.\d{4}/.test(String(row[1] || ''))) {
+          // Detect week header row (day names like PAZARTESİ, SALI...)
+          if (isWeekHeader(row)) {
             currentWeek++;
-            weekData = {
-              soups: ['','','','','','',''],
-              soups2: ['','','','','','',''],
-              mains: ['','','','','','',''],
-              mains2: ['','','','','','',''],
-              sidesCode: ['','','','','','',''],
-              sides: ['','','','','','',''],
-              sides2: ['','','','','','',''],
-              dessertFruit: ['','','','','','',''],
-              dessertFruitName: ['','','','','','',''],
-              salads: ['','','','','','',''],
-              ayran: ['','','','','','',''],
-              drinks: ['','','','','','','']
-            };
+            weekData = makeEmptyWeek();
             store[monthKey].weeks[`W${currentWeek}`] = weekData;
+            // Detect number of day columns
+            let colCount = 0;
+            for (let c=1; c<row.length; c++){ if (String(row[c]||'').trim()) colCount++; }
+            if (colCount >= 5) numDays = colCount;
             continue;
           }
 
-          // Match row label
-          if (currentWeek > 0 && first) {
+          // Skip date rows (TARİH row or rows with just dates)
+          if (isDateRow(row)) continue;
+
+          const first = String(row[0] || '').trim().toUpperCase();
+          if (!first) continue;
+
+          // Match row label to food category
+          if (currentWeek > 0 && weekData) {
             let matchedKey = null;
             for (const [label, key] of Object.entries(rowMap)) {
-              if (first.includes(label) || label.includes(first)) {
+              if (first === label || first.includes(label) || label.includes(first)) {
                 matchedKey = key;
                 break;
               }
             }
-            if (matchedKey && weekData) {
-              for (let c=1; c<=5 && c<row.length; c++){
+            if (matchedKey) {
+              const maxCols = Math.min(numDays, row.length - 1);
+              for (let c=1; c<=maxCols; c++){
                 const val = String(row[c] || '').trim();
                 weekData[matchedKey][c-1] = val;
                 // Auto-detect dessertFruit type
