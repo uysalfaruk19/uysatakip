@@ -8240,6 +8240,10 @@ alert('Malzeme ve miktar giriniz.'); return; }
     if(typeof window.gsRenderTableV76==='function') try{ setTimeout(window.gsRenderTableV76, 100); }catch(e){}
     if(typeof window.v75RenderMusteriListesi==='function') try{ setTimeout(window.v75RenderMusteriListesi, 200); }catch(e){}
     if(typeof window.refreshFinStats==='function') try{ setTimeout(window.refreshFinStats, 300); }catch(e){}
+    // Al/Sat müşterinin mevcut gelirlerini gidere otomatik yansıt
+    if(data.alSat && data.alisFiyat > 0){
+      if(typeof window._syncAlSatGiderler==='function') window._syncAlSatGiderler(cust, data.alisFiyat, data.tedarikci||'');
+    }
     toast('✅ Müşteri kaydedildi: '+cust+' (Üretim sayıları güncellendi)');
   }
   window.crmSaveBtnClick = _doCrmSave;
@@ -14199,6 +14203,10 @@ window.addEventListener('load', function() {
     // Özet paneline scroll
     const panel = document.getElementById('crmOzetPanel');
     if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    // Al/Sat müşterinin mevcut gelirlerini gidere otomatik yansıt
+    if(data.alSat && data.alisFiyat > 0){
+      _syncAlSatGiderler(cust, data.alisFiyat, data.tedarikci||'');
+    }
     window._uysaToast('✅ Müşteri kaydedildi: ' + cust);
   }
 
@@ -19599,7 +19607,41 @@ function calcKPIs(){
            totalKisi, kisiBasi, netKar, kar_marj, prevGider };
 }
 
-// ── KPI Kartları ──────────────────────────────────────────────
+// ── Al/Sat Müşteri Gelir→Gider Senkronizasyonu ─────────────
+window._syncAlSatGiderler = function(musteriAdi, alisFiyat, tedarikci){
+  var gunlukArr = [];
+  try{ gunlukArr = JSON.parse(localStorage.getItem('uysa_gunluk_uretim')||'[]'); }catch(e){}
+  var musteriKayitlar = gunlukArr.filter(function(u){ return u.musteri===musteriAdi && u.kisi>0; });
+  if(!musteriKayitlar.length) return;
+
+  var giderArr = [];
+  try{ giderArr = JSON.parse(localStorage.getItem('uysa_giderler')||'[]'); }catch(e){}
+
+  // Bu müşterinin tüm Al/Sat giderlerini temizle
+  giderArr = giderArr.filter(function(g){
+    return !(g.aciklama && g.aciklama.startsWith('Al/Sat alış — '+musteriAdi+' —'));
+  });
+
+  // Her gün için gider oluştur
+  var eklenen = 0;
+  musteriKayitlar.forEach(function(r){
+    var alisTutar = r.kisi * alisFiyat;
+    giderArr.push({
+      kat:'uretim-diger-gida', tarih:r.tarih, tutar:alisTutar,
+      aciklama:'Al/Sat alış — '+musteriAdi+' — '+r.kisi+' kişi × '+alisFiyat+' ₺',
+      belge:'', tedarikci:tedarikci, aitlik:'musteri', musteriler:[musteriAdi]
+    });
+    eklenen++;
+  });
+
+  localStorage.setItem('uysa_giderler', JSON.stringify(giderArr));
+  if(typeof window.renderGiderler==='function') try{ window.renderGiderler(); }catch(e){}
+  if(typeof window.refreshFinStats==='function') try{ window.refreshFinStats(); }catch(e){}
+  if(typeof window.renderAnasayfa==='function') try{ setTimeout(window.renderAnasayfa, 300); }catch(e){}
+  console.log('✅ Al/Sat senkronize: '+musteriAdi+' — '+eklenen+' gün gidere eklendi');
+};
+
+// ── KPI Kartları (tıklanabilir detay) ────────────────────────
 
 function renderHomeKPIs(){
   const k   = calcKPIs();
@@ -19618,14 +19660,14 @@ function renderHomeKPIs(){
   const ayAd = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'][now.getMonth()];
 
   row.innerHTML = [
-    { color:'blue',   icon:'💰', lbl:'Bu Ay Gelir',              val:fmtTL(k.thisAyGelir),  sub: ayAd+' satış toplamı',                    trend: '' },
-    { color:'red',    icon:'📤', lbl:'Bu Ay Toplam Gider',       val:fmtTL(k.totalGider),   sub: 'İşletme + Üretim',                       trend: trend(k.totalGider, k.prevGider) },
-    { color:'green',  icon:'📈', lbl:'Net Kâr',                  val:fmtTL(k.netKar),       sub: `Kâr Marjı: ${k.kar_marj.toFixed(1)}%`,   trend: k.netKar>=0?'<span class="kpi-trend up">✅ Kârlı</span>':'<span class="kpi-trend down">⚠️ Zararda</span>' },
-    { color:'orange', icon:'🍳', lbl:'Üretim Maliyeti',          val:fmtTL(k.thisAyUretim), sub: ayAd+' üretim giderleri',                 trend: '' },
-    { color:'teal',   icon:'👤', lbl:'Kişi Başı Maliyet',        val:k.kisiBasi>0?fmtTL(k.kisiBasi):'—', sub:k.totalKisi>0?`${fmt(k.totalKisi)} kişi/ay`:'Üretim verisi girin', trend: '' },
-    { color:'purple', icon:'⚖️', lbl:'Maliyet / Gelir Oranı',    val:k.thisAyGelir>0?(k.totalGider/k.thisAyGelir*100).toFixed(1)+'%':'—',  sub:'Düşük = daha iyi', trend: '' },
+    { color:'blue',   icon:'💰', lbl:'Bu Ay Gelir',              val:fmtTL(k.thisAyGelir),  sub: ayAd+' satış toplamı',                    trend: '', detail:'gelir' },
+    { color:'red',    icon:'📤', lbl:'Bu Ay Toplam Gider',       val:fmtTL(k.totalGider),   sub: 'İşletme + Üretim',                       trend: trend(k.totalGider, k.prevGider), detail:'gider' },
+    { color:'green',  icon:'📈', lbl:'Net Kâr',                  val:fmtTL(k.netKar),       sub: `Kâr Marjı: ${k.kar_marj.toFixed(1)}%`,   trend: k.netKar>=0?'<span class="kpi-trend up">✅ Kârlı</span>':'<span class="kpi-trend down">⚠️ Zararda</span>', detail:'kar' },
+    { color:'orange', icon:'🍳', lbl:'Üretim Maliyeti',          val:fmtTL(k.thisAyUretim), sub: ayAd+' üretim giderleri',                 trend: '', detail:'uretim' },
+    { color:'teal',   icon:'👤', lbl:'Kişi Başı Maliyet',        val:k.kisiBasi>0?fmtTL(k.kisiBasi):'—', sub:k.totalKisi>0?`${fmt(k.totalKisi)} kişi/ay`:'Üretim verisi girin', trend: '', detail:'kisibasi' },
+    { color:'purple', icon:'⚖️', lbl:'Maliyet / Gelir Oranı',    val:k.thisAyGelir>0?(k.totalGider/k.thisAyGelir*100).toFixed(1)+'%':'—',  sub:'Düşük = daha iyi', trend: '', detail:'oran' },
   ].map(c=>`
-    <div class="home-kpi-card kpi-${c.color}">
+    <div class="home-kpi-card kpi-${c.color}" style="cursor:pointer" onclick="kpiDetayModal('${c.detail}')">
       <span class="kpi-icon">${c.icon}</span>
       <div class="kpi-label">${c.lbl}</div>
       <div class="kpi-value">${c.val}</div>
@@ -19634,6 +19676,109 @@ function renderHomeKPIs(){
     </div>
   `).join('');
 }
+
+// ── KPI Detay Modal ────────────────────────────────────────────
+window.kpiDetayModal = function(tip){
+  const now = new Date();
+  const ym = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  const ayAd = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'][now.getMonth()];
+
+  const gelirler = getGelirler().filter(g=>(g.tarih||'').startsWith(ym));
+  const giderler = getGiderler().filter(g=>(g.tarih||'').startsWith(ym));
+  const uretim   = getUretimGiderleri().filter(u=>(u.tarih||'').startsWith(ym));
+
+  let title='', rows='', summary='';
+
+  if(tip==='gelir'){
+    title = '💰 '+ayAd+' Gelir Detayı';
+    // Müşteri bazlı grupla
+    const byMusteri = {};
+    gelirler.forEach(g=>{ const m=g.musteri||'Diğer'; if(!byMusteri[m]) byMusteri[m]={toplam:0,kayitlar:[]}; byMusteri[m].toplam+=(g.tutar||0); byMusteri[m].kayitlar.push(g); });
+    const toplam = gelirler.reduce((s,g)=>s+(g.tutar||0),0);
+    rows = Object.keys(byMusteri).sort((a,b)=>byMusteri[b].toplam-byMusteri[a].toplam).map(m=>{
+      const d = byMusteri[m];
+      const detay = d.kayitlar.slice(-5).reverse().map(g=>`<div style="font-size:11px;color:#64748b;padding:2px 0 2px 16px">${g.tarih} — ${fmtTL(g.tutar)} ${g.kisi?'('+g.kisi+' kişi)':''}</div>`).join('');
+      const oran = toplam>0 ? (d.toplam/toplam*100).toFixed(1) : 0;
+      return `<div style="border-bottom:1px solid #e2e8f0;padding:8px 0">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-weight:700">${m}</span>
+          <span style="font-weight:800;color:#166534">${fmtTL(d.toplam)} <span style="font-size:10px;color:#64748b">(${oran}%)</span></span>
+        </div>${detay}</div>`;
+    }).join('');
+    summary = `<div style="font-size:16px;font-weight:900;color:#166534;padding:12px 0;border-top:2px solid #16a34a">TOPLAM: ${fmtTL(toplam)}</div>`;
+  }
+  else if(tip==='gider'){
+    title = '📤 '+ayAd+' Gider Detayı';
+    const katLabels = {'uretim-kirmizi':'🥩 Kırmızı Et','uretim-tavuk':'🍗 Tavuk','uretim-kiyma':'🫙 Kıyma','uretim-sebze':'🥦 Sebze','uretim-bakliyat':'🫘 Bakliyat','uretim-ayran':'🥛 Ayran','uretim-ekmek':'🍞 Ekmek','uretim-diger-gida':'🛒 Diğer Gıda','personel':'👷 Personel','personel-maas':'💰 Maaş','enerji':'⚡ Enerji','diger':'📌 Diğer'};
+    // Kategori bazlı grupla
+    const byKat = {};
+    giderler.forEach(g=>{ const k=g.kat||'diger'; if(!byKat[k]) byKat[k]={toplam:0,kayitlar:[]}; byKat[k].toplam+=(g.tutar||0); byKat[k].kayitlar.push(g); });
+    const toplam = giderler.reduce((s,g)=>s+(g.tutar||0),0);
+    const uretimTop = uretim.reduce((s,u)=>s+(u.toplam||u.tutar||0),0);
+    rows = Object.keys(byKat).sort((a,b)=>byKat[b].toplam-byKat[a].toplam).map(k=>{
+      const d = byKat[k];
+      const detay = d.kayitlar.slice(-5).reverse().map(g=>{
+        const ait = g.aitlik==='musteri'&&g.musteriler?.length ? ' ['+g.musteriler.join(',')+']' : '';
+        return `<div style="font-size:11px;color:#64748b;padding:2px 0 2px 16px">${g.tarih} — ${fmtTL(g.tutar)} ${g.aciklama||''}${ait}</div>`;
+      }).join('');
+      return `<div style="border-bottom:1px solid #e2e8f0;padding:8px 0">
+        <div style="display:flex;justify-content:space-between"><span style="font-weight:700">${katLabels[k]||k}</span><span style="font-weight:800;color:#dc2626">${fmtTL(d.toplam)}</span></div>${detay}</div>`;
+    }).join('');
+    if(uretimTop>0) rows += `<div style="border-bottom:1px solid #e2e8f0;padding:8px 0"><div style="display:flex;justify-content:space-between"><span style="font-weight:700">🍳 Üretim Giderleri</span><span style="font-weight:800;color:#dc2626">${fmtTL(uretimTop)}</span></div></div>`;
+    summary = `<div style="font-size:16px;font-weight:900;color:#dc2626;padding:12px 0;border-top:2px solid #dc2626">TOPLAM: ${fmtTL(toplam+uretimTop)}</div>`;
+  }
+  else if(tip==='kar'){
+    title = '📈 '+ayAd+' Kâr/Zarar Analizi';
+    const topGelir = gelirler.reduce((s,g)=>s+(g.tutar||0),0);
+    const topGider = giderler.reduce((s,g)=>s+(g.tutar||0),0);
+    const topUretim = uretim.reduce((s,u)=>s+(u.toplam||u.tutar||0),0);
+    const net = topGelir - topGider - topUretim;
+    // Müşteri bazlı kârlılık
+    const byMusteri = {};
+    gelirler.forEach(g=>{ const m=g.musteri||'Diğer'; if(!byMusteri[m]) byMusteri[m]={gelir:0,gider:0}; byMusteri[m].gelir+=(g.tutar||0); });
+    giderler.filter(g=>g.aitlik==='musteri'&&g.musteriler?.length).forEach(g=>{
+      g.musteriler.forEach(m=>{ if(!byMusteri[m]) byMusteri[m]={gelir:0,gider:0}; byMusteri[m].gider+=(g.tutar||0)/g.musteriler.length; });
+    });
+    rows = `<div style="border-bottom:1px solid #e2e8f0;padding:8px 0;display:flex;justify-content:space-between"><span style="font-weight:700">💰 Toplam Gelir</span><span style="font-weight:800;color:#166534">${fmtTL(topGelir)}</span></div>`
+      +`<div style="border-bottom:1px solid #e2e8f0;padding:8px 0;display:flex;justify-content:space-between"><span style="font-weight:700">📤 İşletme Gideri</span><span style="font-weight:800;color:#dc2626">−${fmtTL(topGider)}</span></div>`
+      +`<div style="border-bottom:1px solid #e2e8f0;padding:8px 0;display:flex;justify-content:space-between"><span style="font-weight:700">🍳 Üretim Gideri</span><span style="font-weight:800;color:#dc2626">−${fmtTL(topUretim)}</span></div>`;
+    // Müşteri kârlılık
+    const mustKeys = Object.keys(byMusteri).filter(m=>byMusteri[m].gelir>0||byMusteri[m].gider>0);
+    if(mustKeys.length){
+      rows += `<div style="font-weight:800;color:#1e293b;padding:10px 0 4px;font-size:13px">Müşteri Bazlı Kârlılık:</div>`;
+      rows += mustKeys.sort((a,b)=>(byMusteri[b].gelir-byMusteri[b].gider)-(byMusteri[a].gelir-byMusteri[a].gider)).map(m=>{
+        const d=byMusteri[m]; const kar=d.gelir-d.gider;
+        return `<div style="border-bottom:1px solid #f1f5f9;padding:4px 0;display:flex;justify-content:space-between;font-size:12px"><span>${m}</span><span>Gelir: ${fmtTL(d.gelir)} | Gider: ${fmtTL(d.gider)} | <b style="color:${kar>=0?'#166534':'#dc2626'}">Kâr: ${fmtTL(kar)}</b></span></div>`;
+      }).join('');
+    }
+    summary = `<div style="font-size:18px;font-weight:900;color:${net>=0?'#166534':'#dc2626'};padding:12px 0;border-top:2px solid ${net>=0?'#16a34a':'#dc2626'}">NET KÂR: ${fmtTL(net)}</div>`;
+  }
+  else if(tip==='uretim'){
+    title = '🍳 '+ayAd+' Üretim Gideri Detayı';
+    const toplam = uretim.reduce((s,u)=>s+(u.toplam||u.tutar||0),0);
+    rows = uretim.length ? uretim.sort((a,b)=>(b.tarih||'').localeCompare(a.tarih||'')).slice(0,20).map(u=>
+      `<div style="border-bottom:1px solid #e2e8f0;padding:6px 0;display:flex;justify-content:space-between;font-size:12px"><span>${u.tarih} — ${u.aciklama||u.kat||''}</span><span style="font-weight:700;color:#dc2626">${fmtTL(u.toplam||u.tutar||0)}</span></div>`
+    ).join('') : '<div style="color:#94a3b8;padding:10px">Bu ay üretim gideri kaydı yok.</div>';
+    summary = `<div style="font-size:16px;font-weight:900;color:#ea580c;padding:12px 0;border-top:2px solid #ea580c">TOPLAM: ${fmtTL(toplam)}</div>`;
+  }
+  else {
+    title = '📊 Detay'; rows = '<div style="color:#94a3b8;padding:10px">Detay bilgisi mevcut değil.</div>'; summary='';
+  }
+
+  // Modal oluştur
+  const modal = document.createElement('div');
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10000;display:flex;align-items:flex-start;justify-content:center;padding:24px;overflow:auto';
+  modal.onclick=function(e){ if(e.target===modal) modal.remove(); };
+  modal.innerHTML=`<div style="background:#fff;border-radius:16px;max-width:700px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.25);margin-top:40px;max-height:80vh;overflow:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h2 style="margin:0;font-size:18px;color:#1e293b">${title}</h2>
+      <button onclick="this.closest('div[style*=fixed]').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#64748b">✕</button>
+    </div>
+    <div style="font-size:13px">${rows}</div>
+    ${summary}
+  </div>`;
+  document.body.appendChild(modal);
+};
 
 // ── Aylık Maliyet Trend Grafiği ───────────────────────────────
 
