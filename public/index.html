@@ -1526,7 +1526,7 @@
   position: fixed;
   inset: 0;
   background: linear-gradient(135deg, #1a56db 0%, #0b3aa6 100%);
-  z-index: 9999;
+  z-index: 100000;
   align-items: center;
   justify-content: center;
 }
@@ -9138,6 +9138,10 @@ function uysaLogout() {
   } catch(e){}
 }
 
+// ── KRİTİK: Login fonksiyonlarını hemen window'a ata ────
+window.uysaDoLogin   = uysaDoLogin;
+window.uysaLogout    = uysaLogout;
+
 // ── Oturum kontrolü ──────────────────────────────────────
 function uysaCheckAuth() {
   const sess = _getSession();
@@ -9145,7 +9149,11 @@ function uysaCheckAuth() {
     document.getElementById('uysaLoginOverlay').classList.add('active');
     return false;
   }
+  // Oturum varsa overlay'ı kapat
+  document.getElementById('uysaLoginOverlay').classList.remove('active');
   _updateUserBadge();
+  // AI widget'ı göster
+  try { if(typeof window.uysaAI==='object') window.uysaAI.checkVisibility(); } catch(e){}
   return true;
 }
 
@@ -22684,7 +22692,15 @@ window.uysaAI = {
   // ERP login sonrası FAB'ı göster
   checkVisibility() {
     const fab = document.getElementById('uysa-ai-fab');
-    if (fab) fab.style.display = this._isLoggedIn() ? 'flex' : 'none';
+    const chat = document.getElementById('uysa-ai-chat');
+    if (this._isLoggedIn()) {
+      // Giriş yapılmış: FAB göster (chat zaten kapalıysa)
+      if (fab && (!chat || chat.style.display === 'none')) fab.style.display = 'flex';
+    } else {
+      // Giriş yapılmamış: her ikisini de kesinlikle gizle
+      if (fab) fab.style.display = 'none';
+      if (chat) chat.style.display = 'none';
+    }
   },
   open() {
     if (!this._isLoggedIn()) return;
@@ -22877,8 +22893,19 @@ const aiStyle = document.createElement('style');
 aiStyle.textContent = '@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}';
 document.head.appendChild(aiStyle);
 
-// AI widget: ERP oturum durumuna göre FAB göster/gizle
-setTimeout(() => { if (window.uysaAI) uysaAI.checkVisibility(); }, 1000);
+// AI widget: ERP oturum durumuna göre FAB göster/gizle (login yoksa kesinlikle gizle)
+setTimeout(() => {
+  if (window.uysaAI) {
+    uysaAI.checkVisibility();
+    // Login yoksa chat panelini de kapat
+    if (!uysaAI._isLoggedIn()) {
+      const chatEl = document.getElementById('uysa-ai-chat');
+      const fabEl = document.getElementById('uysa-ai-fab');
+      if (chatEl) chatEl.style.display = 'none';
+      if (fabEl) fabEl.style.display = 'none';
+    }
+  }
+}, 1000);
 // Eski AI auth temizliği
 localStorage.removeItem('uysa_ai_auth_mode');
 localStorage.removeItem('uysa_ai_auth_token');
