@@ -797,7 +797,7 @@ $action = trim($_GET['action'] ?? '');
 $body   = json_decode(file_get_contents('php://input'), true) ?? [];
 
 // ── Auth Bypass: fileDownload public ─────────────────────────
-$publicActions = ['fileDownload', 'ping', 'health', 'stats', 'getToken', 'userAuth', 'portal.login'];
+$publicActions = ['fileDownload', 'ping', 'health', 'stats', 'getToken', 'userAuth', 'portal.login', 'ai.authLogin'];
 
 // ── Kimlik Doğrulama ─────────────────────────────────────────
 $authedUser = null;
@@ -840,7 +840,7 @@ if (!in_array($action, $publicActions, true)) {
 // ── Rate Limiting — SADECE auth/güvenlik endpoint'leri ──────
 // Normal veri işlemleri (setBulk, get, set vb.) kısıtlanmaz.
 // Kısıtlanan: login, getToken, apiKeyCreate, userSave
-$AUTH_RATE_ACTIONS = ['getToken', 'userAuth', 'apiKeyCreate', 'userSave'];
+$AUTH_RATE_ACTIONS = ['getToken', 'userAuth', 'ai.authLogin', 'apiKeyCreate', 'userSave'];
 
 if (in_array($action, $AUTH_RATE_ACTIONS, true)) {
     $rateLimitKey = 'login:' . md5($clientIp . ':' . $action);
@@ -923,6 +923,60 @@ case 'stats':
     } catch (\Throwable $e) {
         jsonResponse(['ok' => false, 'error' => 'stats failed'], 500);
     }
+
+// ── AI Widget Auth Login ─────────────────────────────────────
+case 'ai.authLogin':
+    $loginId  = sanitizeInput($body['email'] ?? $body['username'] ?? '', 100);
+    $password = $body['password'] ?? '';
+
+    if (!$loginId || !$password) {
+        jsonResponse(['ok' => false, 'error' => 'E-posta/kullanıcı adı ve şifre gerekli'], 400);
+    }
+
+    $loginKey = 'login:' . md5($loginId . ':' . $clientIp . ':ai');
+    $loginLimit = $rateLimiter->attempt($loginKey);
+    if (!$loginLimit['allowed']) {
+        auditLog($pdo, 'login_ratelimit', $loginId, null, json_encode(['surface' => 'ai_widget']), $clientIp);
+        jsonResponse([
+            'ok'          => false,
+            'error'       => 'Çok fazla başarısız giriş denemesi. Lütfen bekleyin.',
+            'retry_after' => $loginLimit['retry_after'],
+        ], 429);
+    }
+
+    $stmt = $pdo->prepare("SELECT * FROM uysa_users WHERE username = ? AND is_active = 1 LIMIT 1");
+    $stmt->execute([$loginId]);
+    $user = $stmt->fetch();
+
+    $dummyHash = '$2y$10$invalidhashfortimingatk00000000000000000000000000000000';
+    $hashToVerify = $user ? $user['password'] : $dummyHash;
+
+    if (!$user || !password_verify($password, $hashToVerify)) {
+        auditLog($pdo, 'login_fail', $loginId, null, json_encode(['ip' => $clientIp, 'surface' => 'ai_widget']), $clientIp);
+        jsonResponse(['ok' => false, 'error' => 'Kullanıcı adı/e-posta veya şifre hatalı'], 401);
+    }
+
+    $rateLimiter->reset($loginKey);
+    $pdo->prepare("UPDATE uysa_users SET last_login = NOW() WHERE id = ?")->execute([$user['id']]);
+
+    $tokenPayload = ['sub' => $user['username'], 'role' => $user['role'], 'uid' => $user['id'], 'surface' => 'ai_widget'];
+    $accessToken  = $jwtManager->issue($tokenPayload);
+    $refreshToken = $jwtManager->issueRefresh($tokenPayload);
+
+    auditLog($pdo, 'login_success', $loginId, null, json_encode(['method' => 'jwt', 'surface' => 'ai_widget']), $clientIp);
+    jsonResponse([
+        'ok'            => true,
+        'token'         => $accessToken,
+        'access_token'  => $accessToken,
+        'refresh_token' => $refreshToken,
+        'token_type'    => 'Bearer',
+        'expires_in'    => 3600,
+        'user'          => [
+            'username'     => $user['username'],
+            'display_name' => $user['display_name'] ?: $user['username'],
+            'role'         => $user['role'],
+        ],
+    ]);
 
 // ── JWT: Token Al ────────────────────────────────────────────
 case 'getToken':
