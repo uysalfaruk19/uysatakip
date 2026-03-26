@@ -7901,7 +7901,7 @@ alert('Malzeme ve miktar giriniz.'); return; }
     if(finSubEl) finSubEl.textContent = gBas + ' → ' + gBit;
     const todayUg = ugiderler.filter(u=>u.tarih===today()).reduce((s,u)=>s+(u.toplam||0),0);
     el('bi-gunluk', fmt(todayUg)+' ₺');
-    el('bi-karlilik', '%'+fmt(margin,1));
+    el('bi-karlilik', '%'+fmt(fMargin,1));
   }
   refreshFinStats();
   // Ana sayfa render çağrısını erteleyerek yap (DOM hazır olunca)
