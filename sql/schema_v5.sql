@@ -1,14 +1,143 @@
 -- ═══════════════════════════════════════════════════════════════
--- UYSA ERP — Enhanced Schema v5.0
+-- UYSA ERP — Complete Schema v5.0
 -- MySQL 8.0+
 -- ─────────────────────────────────────────────────────────────
--- YENİLİKLER v5.0:
---   + Finans & Muhasebe tabloları (hesap planı, yevmiye, fatura, ödeme, banka)
---   + Stok & Depo tabloları (depo, ürün, stok hareketi, tedarikçi, satın alma, lot)
---   + İK & Bordro tabloları (personel, izin, puantaj, vardiya, bordro, performans, eğitim)
---   + Portal & Entegrasyon tabloları (müşteri, sipariş, webhook, 2FA)
---   + AI Asistan tabloları (sohbet geçmişi)
+-- Bu dosya TÜM tabloları içerir (v4 temel + v5 ERP modülleri)
+-- Railway / cPanel'e tek seferde import edilebilir
 -- ═══════════════════════════════════════════════════════════════
+
+-- ══════════════════════════════════════════════════════════════
+-- TEMEL TABLOLAR (v4 — Core)
+-- ══════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS `uysa_storage` (
+  `id`          BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  `store_key`   VARCHAR(255)     NOT NULL,
+  `store_value` MEDIUMTEXT       NOT NULL,
+  `created_at`  DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`  DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_store_key` (`store_key`),
+  KEY `idx_updated` (`updated_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `uysa_backups` (
+  `id`          INT UNSIGNED     NOT NULL AUTO_INCREMENT,
+  `backup_at`   DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `key_count`   INT UNSIGNED     NOT NULL DEFAULT 0,
+  `size_bytes`  INT UNSIGNED     NOT NULL DEFAULT 0,
+  `trigger_by`  VARCHAR(100)     NOT NULL DEFAULT 'auto',
+  `snapshot`    LONGTEXT         NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_backup_at` (`backup_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `uysa_users` (
+  `id`               INT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  `username`         VARCHAR(50)   NOT NULL,
+  `password`         VARCHAR(255)  NOT NULL,
+  `role`             ENUM('superadmin','editor','user','viewer') NOT NULL DEFAULT 'user',
+  `display_name`     VARCHAR(100)           DEFAULT NULL,
+  `email`            VARCHAR(255)           DEFAULT NULL,
+  `last_login`       DATETIME               DEFAULT NULL,
+  `failed_attempts`  TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  `locked_until`     DATETIME               DEFAULT NULL,
+  `is_active`        TINYINT(1)    NOT NULL DEFAULT 1,
+  `created_at`       DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`       DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_username` (`username`),
+  KEY `idx_role`           (`role`),
+  KEY `idx_active`         (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `uysa_files` (
+  `id`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `filename`    VARCHAR(255)    NOT NULL,
+  `original`    VARCHAR(255)    NOT NULL,
+  `mime`        VARCHAR(100)    NOT NULL,
+  `size_bytes`  INT UNSIGNED    NOT NULL DEFAULT 0,
+  `uploaded_by` VARCHAR(100)             DEFAULT NULL,
+  `category`    VARCHAR(100)             DEFAULT NULL,
+  `date`        DATE                     DEFAULT NULL,
+  `deleted_at`  DATETIME                 DEFAULT NULL,
+  `created_at`  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_category` (`category`),
+  KEY `idx_deleted`  (`deleted_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `uysa_audit` (
+  `id`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `action`      VARCHAR(100)    NOT NULL,
+  `actor`       VARCHAR(100)             DEFAULT NULL,
+  `target_key`  VARCHAR(255)             DEFAULT NULL,
+  `detail`      TEXT                     DEFAULT NULL,
+  `ip_addr`     VARCHAR(45)     NOT NULL DEFAULT '',
+  `user_agent`  VARCHAR(500)             DEFAULT NULL,
+  `created_at`  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_action`  (`action`),
+  KEY `idx_actor`   (`actor`),
+  KEY `idx_created` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `uysa_logs` (
+  `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `action`     VARCHAR(50)     NOT NULL,
+  `store_key`  VARCHAR(255)    NOT NULL DEFAULT '',
+  `ip_addr`    VARCHAR(45)     NOT NULL DEFAULT '',
+  `created_at` DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_action`  (`action`),
+  KEY `idx_created` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `uysa_rate_limits` (
+  `id`           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `key`          VARCHAR(255)    NOT NULL,
+  `attempted_at` INT UNSIGNED    NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_key_time` (`key`, `attempted_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `uysa_rate_locks` (
+  `key`          VARCHAR(255) NOT NULL,
+  `locked_until` INT UNSIGNED NOT NULL,
+  PRIMARY KEY (`key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `uysa_api_keys` (
+  `id`           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `key_hash`     VARCHAR(64)  NOT NULL,
+  `key_prefix`   VARCHAR(20)  NOT NULL,
+  `name`         VARCHAR(100) NOT NULL DEFAULT 'API Key',
+  `owner`        VARCHAR(100) NOT NULL DEFAULT 'system',
+  `role`         VARCHAR(50)  NOT NULL DEFAULT 'viewer',
+  `scopes`       JSON                  DEFAULT NULL,
+  `is_active`    TINYINT(1)   NOT NULL DEFAULT 1,
+  `uses_count`   INT UNSIGNED NOT NULL DEFAULT 0,
+  `last_used_at` DATETIME              DEFAULT NULL,
+  `expires_at`   DATETIME              DEFAULT NULL,
+  `created_at`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_key_hash` (`key_hash`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `uysa_sessions` (
+  `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `jti`        VARCHAR(64)     NOT NULL,
+  `username`   VARCHAR(50)     NOT NULL,
+  `ip_addr`    VARCHAR(45)     NOT NULL DEFAULT '',
+  `user_agent` VARCHAR(500)             DEFAULT NULL,
+  `issued_at`  DATETIME        NOT NULL,
+  `expires_at` DATETIME        NOT NULL,
+  `revoked`    TINYINT(1)      NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_jti` (`jti`),
+  KEY `idx_username` (`username`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 
 -- ══════════════════════════════════════════════════════════════
 -- FİNANS & MUHASEBE
