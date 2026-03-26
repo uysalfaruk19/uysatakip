@@ -1726,73 +1726,59 @@
       <button class="mod-nav-item active" data-module="anasayfa">
         <span class="mod-icon">🏠</span>
         <span>ANASAYFA</span>
-        <span class="mod-label">Maliyet Merkezi</span>
-      </button>
-      <button class="mod-nav-item" data-module="operasyon">
-        <span class="mod-icon">📋</span>
-        <span>MENÜ</span>
-        <span class="mod-label">Menü &amp; Üretim</span>
       </button>
       <button class="mod-nav-item" data-module="finans">
         <span class="mod-icon">💰</span>
         <span>FİNANS</span>
-        <span class="mod-label">Gelir &amp; Gider</span>
+      </button>
+      <button class="mod-nav-item" data-module="operasyon">
+        <span class="mod-icon">📋</span>
+        <span>MENÜ</span>
       </button>
       <button class="mod-nav-item" data-module="satis">
         <span class="mod-icon">🤝</span>
-        <span>SATIŞ &amp; CRM</span>
-        <span class="mod-label">Müşteri &amp; Teklif</span>
+        <span>CRM</span>
       </button>
       <button class="mod-nav-item" data-module="satinalma">
         <span class="mod-icon">🛒</span>
         <span>SATIN ALMA</span>
-        <span class="mod-label">Tedarik &amp; Fatura</span>
-      </button>
-      <button class="mod-nav-item" data-module="ik">
-        <span class="mod-icon">👥</span>
-        <span>İNSAN KAYNAKLARI</span>
-        <span class="mod-label">Personel &amp; Bordro</span>
-      </button>
-      <button class="mod-nav-item" data-module="raporlama">
-        <span class="mod-icon">📊</span>
-        <span>RAPORLAMA</span>
-        <span class="mod-label">Dashboard &amp; Analiz</span>
-      </button>
-      <button class="mod-nav-item" data-module="dokuman">
-        <span class="mod-icon">🗂️</span>
-        <span>DOKÜMAN</span>
-        <span class="mod-label">Dijital Arşiv</span>
-      </button>
-
-      <button class="mod-nav-item" data-module="uretim">
-        <span class="mod-icon">🍳</span>
-        <span>ÜRETİM</span>
-        <span class="mod-label">KDS &amp; Alerjen</span>
-      </button>
-      <button class="mod-nav-item" data-module="haccp" style="display:none" id="haccpNavBtn">
-        <span class="mod-icon">🛡️</span>
-        <span>HACCP</span>
-        <span class="mod-label">Gıda Güvenliği</span>
-      </button>
-      <button class="mod-nav-item" data-module="lojistik">
-        <span class="mod-icon">🚚</span>
-        <span>LOJİSTİK</span>
-        <span class="mod-label">Sefer &amp; Teslimat</span>
-      </button>
-      <button class="mod-nav-item" data-module="bildirim" style="display:none" id="bildirimNavBtn">
-        <span class="mod-icon">🔔</span>
-        <span>BİLDİRİM</span>
-        <span class="mod-label">Bildirim Merkezi</span>
       </button>
       <button class="mod-nav-item" data-module="stok">
         <span class="mod-icon">🏭</span>
         <span>DEPO</span>
-        <span class="mod-label">Stok &amp; Depo</span>
       </button>
-      <button class="mod-nav-item" data-module="portal">
+      <button class="mod-nav-item" data-module="ik">
+        <span class="mod-icon">👥</span>
+        <span>PERSONEL</span>
+      </button>
+      <button class="mod-nav-item" data-module="raporlama">
+        <span class="mod-icon">📊</span>
+        <span>RAPORLAR</span>
+      </button>
+      <!-- İkincil modüller — ihtiyaç halinde görünür -->
+      <button class="mod-nav-item" data-module="uretim" style="display:none" id="uretimNavBtn">
+        <span class="mod-icon">🍳</span>
+        <span>ÜRETİM</span>
+      </button>
+      <button class="mod-nav-item" data-module="haccp" style="display:none" id="haccpNavBtn">
+        <span class="mod-icon">🛡️</span>
+        <span>HACCP</span>
+      </button>
+      <button class="mod-nav-item" data-module="lojistik" style="display:none" id="lojistikNavBtn">
+        <span class="mod-icon">🚚</span>
+        <span>LOJİSTİK</span>
+      </button>
+      <button class="mod-nav-item" data-module="bildirim" style="display:none" id="bildirimNavBtn">
+        <span class="mod-icon">🔔</span>
+        <span>BİLDİRİM</span>
+      </button>
+      <button class="mod-nav-item" data-module="dokuman" style="display:none" id="dokumanNavBtn">
+        <span class="mod-icon">🗂️</span>
+        <span>DOKÜMAN</span>
+      </button>
+      <button class="mod-nav-item" data-module="portal" style="display:none" id="portalNavBtn">
         <span class="mod-icon">🌐</span>
         <span>PORTAL</span>
-        <span class="mod-label">Müşteri Portalı</span>
       </button>
     </nav>
 
@@ -1848,19 +1834,12 @@
             <div id="home-son-islemler"></div>
           </div>
           <div class="panel">
-            <h3>🚀 Hızlı Erişim</h3>
+            <h3>Hızlı Erişim</h3>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;position:relative;z-index:10">
-              <!-- EN SIK KULLANILANLAR — ÜST SIRA -->
-              <button class="btn" onclick="document.querySelector('[data-module=finans]')?.click();setTimeout(()=>switchFinTab('gelir'),200)" style="text-align:left;padding:16px 14px;font-size:15px;font-weight:800;background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;border-radius:12px;box-shadow:0 4px 12px rgba(5,150,105,.3)">📥 Gelir Ekle</button>
-              <button class="btn" onclick="document.querySelector('[data-module=finans]')?.click();setTimeout(()=>switchFinTab('sayi'),200)" style="text-align:left;padding:16px 14px;font-size:15px;font-weight:800;background:linear-gradient(135deg,#2563eb,#3b82f6);color:#fff;border:none;border-radius:12px;box-shadow:0 4px 12px rgba(37,99,235,.3)">📊 Günlük Üretim Sayıları</button>
-              <!-- DİĞER BUTONLAR -->
-              <button class="btn primary" onclick="document.querySelector('[data-module=finans]')?.click();setTimeout(()=>switchFinTab('gider'),200)" style="text-align:left;padding:12px">📤 Gider Ekle</button>
-              <button class="btn primary" onclick="document.querySelector('[data-module=operasyon]')?.click()" style="text-align:left;padding:12px">📋 Haftalık Menü</button>
-              <button class="btn primary" onclick="document.querySelector('[data-module=finans]')?.click();setTimeout(()=>switchFinTab('uretim'),200)" style="text-align:left;padding:12px">🍳 Üretim Gideri</button>
-              <button class="btn primary" onclick="document.querySelector('[data-module=satis]')?.click()" style="text-align:left;padding:12px">🤝 CRM & Satış</button>
-              <button class="btn primary" onclick="document.querySelector('[data-module=stok]')?.click()" style="text-align:left;padding:12px">🏭 Stok Takibi</button>
-              <button class="btn primary" onclick="document.querySelector('[data-module=satinalma]')?.click()" style="text-align:left;padding:12px">🛒 Satın Alma</button>
-              <button class="btn primary" onclick="document.querySelector('[data-module=raporlama]')?.click()" style="text-align:left;padding:12px">📊 Raporlar</button>
+              <button class="btn" onclick="document.querySelector('[data-module=finans]')?.click();setTimeout(()=>switchFinTab('gelir'),200)" style="text-align:left;padding:14px;font-size:14px;font-weight:700;background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;border-radius:10px">📥 Gelir Ekle</button>
+              <button class="btn" onclick="document.querySelector('[data-module=finans]')?.click();setTimeout(()=>switchFinTab('sayi'),200)" style="text-align:left;padding:14px;font-size:14px;font-weight:700;background:linear-gradient(135deg,#2563eb,#3b82f6);color:#fff;border:none;border-radius:10px">📊 Üretim Sayıları</button>
+              <button class="btn" onclick="document.querySelector('[data-module=finans]')?.click();setTimeout(()=>switchFinTab('gider'),200)" style="text-align:left;padding:10px;font-size:13px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;color:#334155">📤 Gider Ekle</button>
+              <button class="btn" onclick="document.querySelector('[data-module=finans]')?.click();setTimeout(()=>switchFinTab('alacak'),200)" style="text-align:left;padding:10px;font-size:13px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;color:#166534">💳 Alacaklar</button>
             </div>
           </div>
         </div>
@@ -2430,34 +2409,36 @@
         <div class="module-header">
           <h2>💰 Finans &amp; Kontrol</h2>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="btn active" id="finTabDashboard" onclick="switchFinTab('dashboard')">🏠 Dashboard</button>
-            <button class="btn" id="finTabGelir" onclick="switchFinTab('gelir')">📥 Gelir Ekle</button>
-            <button class="btn" id="finTabGider" onclick="switchFinTab('gider')">📤 Gider Ekle</button>
-            <button class="btn" id="finTabUretim" onclick="switchFinTab('uretim')">🍳 Günlük Üretim Gideri</button>
-            <button class="btn" id="finTabSayi" onclick="switchFinTab('sayi')">📊 Günlük Üretim Sayıları <span style="background:#7c3aed;color:#fff;font-size:10px;padding:1px 6px;border-radius:10px;margin-left:4px">+KDV</span></button>
-            <button class="btn" id="finTabOzet" onclick="switchFinTab('ozet')">📊 Gelir/Gider Tablosu</button>
-            <button class="btn" id="finTabButce" onclick="switchFinTab('butce')">🎯 Bütçe</button>
+            <button class="btn active" id="finTabDashboard" onclick="switchFinTab('dashboard')">Dashboard</button>
+            <button class="btn" id="finTabGelir" onclick="switchFinTab('gelir')">Gelir Ekle</button>
+            <button class="btn" id="finTabGider" onclick="switchFinTab('gider')">Gider Ekle</button>
+            <button class="btn" id="finTabAlacak" onclick="switchFinTab('alacak')" style="border-color:#10b981;color:#059669">💳 Alacaklar</button>
+            <button class="btn" id="finTabBorc" onclick="switchFinTab('borc')" style="border-color:#ef4444;color:#dc2626">📕 Borçlar</button>
+            <button class="btn" id="finTabSayi" onclick="switchFinTab('sayi')">Üretim Sayıları</button>
+            <button class="btn" id="finTabOzet" onclick="switchFinTab('ozet')">Tablo</button>
+            <button class="btn" id="finTabUretim" onclick="switchFinTab('uretim')">Üretim Gideri</button>
+            <button class="btn" id="finTabButce" onclick="switchFinTab('butce')">Bütçe</button>
           </div>
         </div>
 
-        <!-- KPI cards -->
+        <!-- KPI cards (tıklanabilir detay) -->
         <div class="stats-grid" style="margin-bottom:14px">
-          <div class="stat-card">
+          <div class="stat-card" onclick="if(typeof kpiDetayModal==='function')kpiDetayModal('gelir')" style="cursor:pointer">
             <div class="sc-label">TOPLAM GELİR</div>
             <div class="sc-value" id="fin-revenue">0 ₺</div>
-            <div class="sc-sub">Tüm müşteri satışları</div>
+            <div class="sc-sub" id="fin-revenue-sub">Tüm müşteri satışları</div>
           </div>
-          <div class="stat-card">
+          <div class="stat-card" onclick="if(typeof kpiDetayModal==='function')kpiDetayModal('gider')" style="cursor:pointer">
             <div class="sc-label">TOPLAM GİDER</div>
             <div class="sc-value" id="fin-expense" style="color:#dc2626">0 ₺</div>
-            <div class="sc-sub">Tüm gider kalemleri</div>
+            <div class="sc-sub" id="fin-expense-sub">Tüm gider kalemleri</div>
           </div>
-          <div class="stat-card">
+          <div class="stat-card" onclick="if(typeof kpiDetayModal==='function')kpiDetayModal('kar')" style="cursor:pointer">
             <div class="sc-label">NET KÂR</div>
             <div class="sc-value" id="fin-net">0 ₺</div>
             <div class="sc-sub">Gelir − Gider</div>
           </div>
-          <div class="stat-card">
+          <div class="stat-card" onclick="if(typeof kpiDetayModal==='function')kpiDetayModal('kar')" style="cursor:pointer">
             <div class="sc-label">KÂR MARJI</div>
             <div class="sc-value" id="fin-margin">—</div>
             <div class="sc-sub">% net / gelir</div>
@@ -2661,6 +2642,142 @@
               </div>
               <div id="gelirListDiv" style="max-height:360px;overflow:auto;font-size:12px"></div>
               <div style="margin-top:8px;font-weight:800;font-size:13px;color:#166534" id="gelirToplamDiv"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB: ALACAKLAR (Müşteri Cari) -->
+        <div id="finPane-alacak" class="fin-pane" style="display:none">
+          <!-- Alacak Özet KPI -->
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px">
+            <div style="background:#f0fdf4;border:2px solid #bbf7d0;border-radius:12px;padding:14px">
+              <div style="font-size:11px;font-weight:700;color:#166534">TOPLAM ALACAK</div>
+              <div id="alacakToplamKPI" style="font-size:22px;font-weight:800;color:#059669">0 ₺</div>
+            </div>
+            <div style="background:#fefce8;border:2px solid #fde68a;border-radius:12px;padding:14px">
+              <div style="font-size:11px;font-weight:700;color:#92400e">VADESİ GEÇEN</div>
+              <div id="alacakVadesiGecenKPI" style="font-size:22px;font-weight:800;color:#d97706">0 ₺</div>
+            </div>
+            <div style="background:#eff6ff;border:2px solid #bfdbfe;border-radius:12px;padding:14px">
+              <div style="font-size:11px;font-weight:700;color:#1e40af">TAHSİLAT (Bu Ay)</div>
+              <div id="alacakTahsilatKPI" style="font-size:22px;font-weight:800;color:#2563eb">0 ₺</div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+            <!-- Müşteri Cari Listesi -->
+            <div class="panel">
+              <h3>💳 Müşteri Cari Hesapları</h3>
+              <div class="hint">Gelir kayıtları otomatik olarak müşteri carilerine eklenir. Tahsilat geldiğinde işleyin.</div>
+              <div style="margin:8px 0;display:flex;gap:8px">
+                <input id="alacakFiltreMus" placeholder="Müşteri ara..." oninput="renderAlacaklar()" style="flex:1;padding:8px;border:1px solid #d1d5db;border-radius:8px;font-size:12px"/>
+                <select id="alacakFiltreDurum" onchange="renderAlacaklar()" style="padding:8px;border:1px solid #d1d5db;border-radius:8px;font-size:12px">
+                  <option value="">Tüm durumlar</option>
+                  <option value="acik">Açık bakiye</option>
+                  <option value="vadesi_gecen">Vadesi geçen</option>
+                </select>
+              </div>
+              <div id="alacakListDiv" style="max-height:450px;overflow:auto;font-size:12px"></div>
+            </div>
+            <!-- Tahsilat Girişi -->
+            <div class="panel">
+              <h3>📥 Tahsilat Girişi</h3>
+              <div class="hint">Müşteriden gelen ödemeyi kaydedin.</div>
+              <div style="display:grid;gap:8px;margin-top:10px">
+                <div><label>Müşteri</label>
+                  <select id="tahsilat-musteri" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px;font-size:13px">
+                    <option value="">Seçiniz...</option>
+                  </select>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                  <div><label>Tarih</label><input id="tahsilat-tarih" type="date" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px;font-size:13px"/></div>
+                  <div><label>Tutar (₺)</label><input id="tahsilat-tutar" type="number" min="0" step="0.01" placeholder="0.00" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px;font-size:13px"/></div>
+                </div>
+                <div><label>Ödeme Yöntemi</label>
+                  <select id="tahsilat-yontem" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px;font-size:13px">
+                    <option value="havale">Havale / EFT</option>
+                    <option value="nakit">Nakit</option>
+                    <option value="kredi_karti">Kredi Kartı</option>
+                    <option value="cek">Çek</option>
+                  </select>
+                </div>
+                <div><label>Açıklama</label><input id="tahsilat-aciklama" placeholder="Fatura no, dekont no vb." style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px;font-size:13px"/></div>
+                <button class="btn success" onclick="tahsilatKaydet()" style="padding:10px">Tahsilat Kaydet</button>
+              </div>
+              <!-- Son Tahsilatlar -->
+              <h4 style="margin-top:16px;font-size:13px;color:#475569">Son Tahsilatlar</h4>
+              <div id="tahsilatListDiv" style="max-height:200px;overflow:auto;font-size:12px"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB: BORÇLAR (Tedarikçi Cari + Sabit Giderler) -->
+        <div id="finPane-borc" class="fin-pane" style="display:none">
+          <!-- Borç Özet KPI -->
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px">
+            <div style="background:#fef2f2;border:2px solid #fecaca;border-radius:12px;padding:14px">
+              <div style="font-size:11px;font-weight:700;color:#991b1b">TOPLAM BORÇ</div>
+              <div id="borcToplamKPI" style="font-size:22px;font-weight:800;color:#dc2626">0 ₺</div>
+            </div>
+            <div style="background:#fefce8;border:2px solid #fde68a;border-radius:12px;padding:14px">
+              <div style="font-size:11px;font-weight:700;color:#92400e">VADESİ GEÇEN</div>
+              <div id="borcVadesiGecenKPI" style="font-size:22px;font-weight:800;color:#d97706">0 ₺</div>
+            </div>
+            <div style="background:#eff6ff;border:2px solid #bfdbfe;border-radius:12px;padding:14px">
+              <div style="font-size:11px;font-weight:700;color:#1e40af">ÖDEME (Bu Ay)</div>
+              <div id="borcOdemeKPI" style="font-size:22px;font-weight:800;color:#2563eb">0 ₺</div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+            <!-- Borç Listesi -->
+            <div class="panel">
+              <h3>📕 Borç Takibi</h3>
+              <div class="hint">Tedarikçi faturaları ve sabit giderler otomatik olarak burada görünür.</div>
+              <!-- Sabit Gider Tanımlama -->
+              <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:10px;margin:8px 0">
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                  <b style="font-size:12px;color:#92400e">Aylık Sabit Giderler</b>
+                  <button class="btn" onclick="sabitGiderEkleModal()" style="font-size:11px;padding:4px 10px">+ Ekle</button>
+                </div>
+                <div id="sabitGiderListDiv" style="margin-top:6px;font-size:12px"></div>
+              </div>
+              <div style="margin:8px 0;display:flex;gap:8px">
+                <input id="borcFiltreTedarikci" placeholder="Tedarikçi ara..." oninput="renderBorclar()" style="flex:1;padding:8px;border:1px solid #d1d5db;border-radius:8px;font-size:12px"/>
+                <select id="borcFiltreDurum" onchange="renderBorclar()" style="padding:8px;border:1px solid #d1d5db;border-radius:8px;font-size:12px">
+                  <option value="">Tüm durumlar</option>
+                  <option value="acik">Açık bakiye</option>
+                  <option value="vadesi_gecen">Vadesi geçen</option>
+                </select>
+              </div>
+              <div id="borcListDiv" style="max-height:400px;overflow:auto;font-size:12px"></div>
+            </div>
+            <!-- Ödeme Girişi -->
+            <div class="panel">
+              <h3>📤 Ödeme Girişi</h3>
+              <div class="hint">Tedarikçiye veya sabit gider için ödeme kaydedin.</div>
+              <div style="display:grid;gap:8px;margin-top:10px">
+                <div><label>Tedarikçi / Gider Kalemi</label>
+                  <select id="odeme-alici" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px;font-size:13px">
+                    <option value="">Seçiniz...</option>
+                  </select>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                  <div><label>Tarih</label><input id="odeme-tarih" type="date" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px;font-size:13px"/></div>
+                  <div><label>Tutar (₺)</label><input id="odeme-tutar" type="number" min="0" step="0.01" placeholder="0.00" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px;font-size:13px"/></div>
+                </div>
+                <div><label>Ödeme Yöntemi</label>
+                  <select id="odeme-yontem" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px;font-size:13px">
+                    <option value="havale">Havale / EFT</option>
+                    <option value="nakit">Nakit</option>
+                    <option value="kredi_karti">Kredi Kartı</option>
+                    <option value="cek">Çek</option>
+                  </select>
+                </div>
+                <div><label>Açıklama</label><input id="odeme-aciklama" placeholder="Fatura no, dekont no vb." style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px;font-size:13px"/></div>
+                <button class="btn danger" onclick="odemeKaydet()" style="padding:10px">Ödeme Kaydet</button>
+              </div>
+              <!-- Son Ödemeler -->
+              <h4 style="margin-top:16px;font-size:13px;color:#475569">Son Ödemeler</h4>
+              <div id="odemeListDiv" style="max-height:200px;overflow:auto;font-size:12px"></div>
             </div>
           </div>
         </div>
@@ -7098,12 +7215,20 @@ ${note}`);
     const el = document.getElementById('finPane-'+tab);
     if(el) el.style.display='';
     // Highlight active tab button
-    ['dashboard','gelir','gider','uretim','sayi','ozet','butce'].forEach(t=>{
+    ['dashboard','gelir','gider','uretim','sayi','ozet','butce','alacak','borc'].forEach(t=>{
       const b = document.getElementById('finTab'+t.charAt(0).toUpperCase()+t.slice(1));
-      if(b) b.className = t===tab ? 'btn primary' : 'btn';
+      if(b){
+        b.className = t===tab ? 'btn primary' : 'btn';
+        // Alacak/Borç özel renkleri koru
+        if(t==='alacak' && t!==tab){ b.style.borderColor='#10b981'; b.style.color='#059669'; }
+        else if(t==='borc' && t!==tab){ b.style.borderColor='#ef4444'; b.style.color='#dc2626'; }
+        else if(t===tab){ b.style.borderColor=''; b.style.color=''; }
+      }
     });
     if(tab==='uretim') syncAllCustomerDropdowns();
     if(tab==='gelir') syncAllCustomerDropdowns();
+    if(tab==='alacak') { setTimeout(function(){ if(typeof window.renderAlacaklar==='function') window.renderAlacaklar(); if(typeof window.fillTahsilatDropdowns==='function') window.fillTahsilatDropdowns(); },100); }
+    if(tab==='borc') { setTimeout(function(){ if(typeof window.renderBorclar==='function') window.renderBorclar(); if(typeof window.fillOdemeDropdowns==='function') window.fillOdemeDropdowns(); },100); }
     if(tab==='sayi'){
       gsSyncDropdowns();
       const gsTarih = document.getElementById('gs-tarih');
@@ -7155,8 +7280,12 @@ alert('Tutar giriniz.'); return; }
     arr.push({musteri,tarih,tutar,kisi,fatura,aciklama});
     saveGelirler(arr);
     renderGelirler();
+    // Gelir → Müşteri Alacak Carisi oluştur
+    if(musteri && tutar>0 && typeof window._addAlacak==='function'){
+      window._addAlacak({musteri, tarih, tutar, fatura, aciklama: aciklama||'Gelir kaydı'});
+    }
     try { if (typeof window.autoSaveToFolder === 'function') window.autoSaveToFolder(); } catch(e){}
-    alert('Gelir kaydedildi.');
+    alert('Gelir kaydedildi. Müşteri cariye eklendi.');
     document.getElementById('gelir-tutar').value='';
     document.getElementById('gelir-fatura').value='';
     document.getElementById('gelir-aciklama').value='';
@@ -7271,6 +7400,10 @@ alert('Tutar giriniz.'); return; }
     arr.push({kat,tarih,tutar,aciklama,belge,tedarikci, aitlik:aitlik, musteriler:aitMusteri});
     saveGiderler(arr);
     renderGiderler();
+    // Gider → Tedarikçi Borç Carisi oluştur
+    if(tedarikci && tutar>0 && typeof window._addBorc==='function'){
+      window._addBorc({tedarikci, tarih, tutar, belge, aciklama: aciklama||kat});
+    }
     try { if (typeof window.autoSaveToFolder === 'function') window.autoSaveToFolder(); } catch(e){}
     alert('Gider kaydedildi.' + (aitMusteri.length ? ' ('+aitMusteri.join(', ')+' müşterisi)' : ' (Genel gider)'));
     document.getElementById('gider-tutar').value='';
@@ -7730,11 +7863,16 @@ alert('Malzeme ve miktar giriniz.'); return; }
     const kisiBasiMaliyet = thisAyUretimKisi>0 ? (thisAyUretim/thisAyUretimKisi) : 0;
     const maliyetGelirOran = thisAyGelir>0 ? ((totalGider/thisAyGelir)*100) : 0;
 
-    // Tüm dönem toplamları (Finans dashboard için)
-    const topGelir = gelirler.reduce((s,g)=>s+(g.tutar||0),0);
-    const topGider = giderler.reduce((s,g)=>s+(g.tutar||0),0);
-    const net = topGelir - topGider;
-    const margin = topGelir>0 ? (net/topGelir*100) : 0;
+    // Global tarih filtresi ile Finans dashboard (Anasayfa ile tutarlı)
+    const gBas = window._globalTarihBas || (thisMonth+'-01');
+    const gBit = window._globalTarihBit || now.toISOString().slice(0,10);
+    const tarihF = (t) => t >= gBas && t <= gBit;
+    const fGelir = gelirler.filter(g=>tarihF(g.tarih||'')).reduce((s,g)=>s+(g.tutar||0),0);
+    const fGider = giderler.filter(g=>tarihF(g.tarih||'')).reduce((s,g)=>s+(g.tutar||0),0);
+    const fUretim = ugiderler.filter(u=>tarihF(u.tarih||'')).reduce((s,u)=>s+(u.toplam||0),0);
+    const fTopGider = fGider + fUretim;
+    const fNet = fGelir - fTopGider;
+    const fMargin = fGelir>0 ? (fNet/fGelir*100) : 0;
 
     const el = (id,v) => { const e=document.getElementById(id); if(e) e.textContent=v; };
 
@@ -7753,11 +7891,14 @@ alert('Malzeme ve miktar giriniz.'); return; }
     const ayAd = ayAdlari[now.getMonth()] || '';
     el('kpi-ay-adi', ayAd);
 
-    // Eski element isimleri (finans sekmesi için)
-    el('fin-revenue', fmt(topGelir)+' ₺');
-    el('fin-expense', fmt(topGider)+' ₺');
-    el('fin-net', fmt(net)+' ₺');
-    el('fin-margin', '%'+fmt(margin,1));
+    // Finans sekmesi KPI'lar (global tarih filtreli — Anasayfa ile tutarlı)
+    el('fin-revenue', fmt(fGelir)+' ₺');
+    el('fin-expense', fmt(fTopGider)+' ₺');
+    el('fin-net', fmt(fNet)+' ₺');
+    el('fin-margin', '%'+fmt(fMargin,1));
+    // Dönem bilgisi alt yazı
+    const finSubEl = document.getElementById('fin-revenue-sub');
+    if(finSubEl) finSubEl.textContent = gBas + ' → ' + gBit;
     const todayUg = ugiderler.filter(u=>u.tarih===today()).reduce((s,u)=>s+(u.toplam||0),0);
     el('bi-gunluk', fmt(todayUg)+' ₺');
     el('bi-karlilik', '%'+fmt(margin,1));
@@ -8945,6 +9086,7 @@ function uysaDoLogin() {
           setTimeout(function(){
             try { if(typeof window.renderAnasayfa==='function') window.renderAnasayfa(); } catch(e){}
             try { if(typeof window._uysaSyncLoad==='function') window._uysaSyncLoad(); } catch(e){}
+            try { if(typeof window.uysaAI==='object') window.uysaAI.checkVisibility(); } catch(e){}
           }, 300);
         } else {
           // Sunucu da reddetti
@@ -8976,6 +9118,7 @@ function uysaDoLogin() {
   setTimeout(function(){
     try { if(typeof window.renderAnasayfa==='function') window.renderAnasayfa(); } catch(e){}
     try { if(typeof window._uysaSyncLoad==='function') window._uysaSyncLoad(); } catch(e){}
+    try { if(typeof window.uysaAI==='object') window.uysaAI.checkVisibility(); } catch(e){}
   }, 300);
 }
 
@@ -8988,6 +9131,11 @@ function uysaLogout() {
   document.getElementById('uysaUserPanel').style.display = 'none';
   document.getElementById('loginUser').value = '';
   document.getElementById('loginPass').value = '';
+  // AI widget'ı gizle
+  try {
+    document.getElementById('uysa-ai-fab').style.display = 'none';
+    document.getElementById('uysa-ai-chat').style.display = 'none';
+  } catch(e){}
 }
 
 // ── Oturum kontrolü ──────────────────────────────────────
@@ -19734,6 +19882,435 @@ window._syncAlSatGiderler = function(musteriAdi, alisFiyat, tedarikci){
   console.log('✅ Al/Sat senkronize: '+musteriAdi+' — '+eklenen+' gün gidere eklendi');
 };
 
+// ══════════════════════════════════════════════════════════════
+// CARİ HESAP SİSTEMİ — Alacaklar & Borçlar
+// ══════════════════════════════════════════════════════════════
+(function(){
+'use strict';
+var LS_ALACAK = 'uysa_alacaklar';
+var LS_BORC   = 'uysa_borclar';
+var LS_TAHSILAT = 'uysa_tahsilatlar';
+var LS_ODEME  = 'uysa_odemeler';
+var LS_SABIT  = 'uysa_sabit_giderler';
+
+function lsGet(k,d){ try{ return JSON.parse(localStorage.getItem(k)||JSON.stringify(d)); }catch(e){ return d; } }
+function lsSet(k,v){ localStorage.setItem(k,JSON.stringify(v)); }
+function fmt(n){ return Number(n||0).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function bugun(){ return new Date().toISOString().slice(0,10); }
+function buAy(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+
+// ── Müşteri Listesi (customers_v1 uyumlu) ──
+function getMusteriler(){
+  try{
+    var raw = JSON.parse(localStorage.getItem('uysa_customers_v1')||'[]');
+    if(Array.isArray(raw)) return raw;
+    if(raw && Array.isArray(raw.customers)) return raw.customers;
+    return [];
+  }catch(e){ return []; }
+}
+
+// ── Tedarikçi Listesi (giderlerden + tedarikci deposundan) ──
+function getTedarikciListesi(){
+  var set = new Set();
+  try{
+    var ted = JSON.parse(localStorage.getItem('uysa_tedarikci')||'[]');
+    ted.forEach(function(t){ var n=t.firma||t.isim||t.ad||t.name||''; if(n) set.add(n); });
+  }catch(e){}
+  try{
+    var gid = JSON.parse(localStorage.getItem('uysa_giderler')||'[]');
+    gid.forEach(function(g){ if(g.tedarikci) set.add(g.tedarikci); });
+  }catch(e){}
+  return Array.from(set).sort();
+}
+
+// ══ ALACAKLAR ══════════════════════════════════════════════
+window._addAlacak = function(kayit){
+  var arr = lsGet(LS_ALACAK, []);
+  arr.push({
+    id: Date.now()+'_'+Math.random().toString(36).slice(2,6),
+    musteri: kayit.musteri,
+    tarih: kayit.tarih||bugun(),
+    tutar: Number(kayit.tutar)||0,
+    fatura: kayit.fatura||'',
+    aciklama: kayit.aciklama||'',
+    kalan: Number(kayit.tutar)||0,
+    durum: 'acik' // acik | kapali
+  });
+  lsSet(LS_ALACAK, arr);
+};
+
+window.renderAlacaklar = function(){
+  var alacaklar = lsGet(LS_ALACAK, []);
+  var tahsilatlar = lsGet(LS_TAHSILAT, []);
+  var filtre = (document.getElementById('alacakFiltreMus')||{}).value||'';
+  var durumFiltre = (document.getElementById('alacakFiltreDurum')||{}).value||'';
+  var div = document.getElementById('alacakListDiv');
+  if(!div) return;
+
+  // Müşteri bazlı gruplama
+  var cari = {};
+  alacaklar.forEach(function(a){
+    if(!cari[a.musteri]) cari[a.musteri] = {toplam:0, kalan:0, vadesiGecen:0, kayitlar:[]};
+    cari[a.musteri].toplam += a.tutar||0;
+    cari[a.musteri].kalan += a.kalan||0;
+    // 30 günden eski açık alacak = vadesi geçen
+    if(a.kalan>0 && a.tarih){
+      var gun = (new Date()-new Date(a.tarih))/(1000*60*60*24);
+      if(gun>30) cari[a.musteri].vadesiGecen += a.kalan;
+    }
+    cari[a.musteri].kayitlar.push(a);
+  });
+
+  // KPI güncelle
+  var topAlacak=0, topVadesi=0, topTahsilat=0;
+  Object.values(cari).forEach(function(c){ topAlacak+=c.kalan; topVadesi+=c.vadesiGecen; });
+  var buAyStr = buAy();
+  tahsilatlar.filter(function(t){ return (t.tarih||'').startsWith(buAyStr); }).forEach(function(t){ topTahsilat+=t.tutar||0; });
+
+  var e1=document.getElementById('alacakToplamKPI'); if(e1) e1.textContent=fmt(topAlacak)+' ₺';
+  var e2=document.getElementById('alacakVadesiGecenKPI'); if(e2) e2.textContent=fmt(topVadesi)+' ₺';
+  var e3=document.getElementById('alacakTahsilatKPI'); if(e3) e3.textContent=fmt(topTahsilat)+' ₺';
+
+  // Filtreleme
+  var keys = Object.keys(cari).sort();
+  if(filtre) keys = keys.filter(function(k){ return k.toLowerCase().includes(filtre.toLowerCase()); });
+  if(durumFiltre==='acik') keys = keys.filter(function(k){ return cari[k].kalan>0; });
+  if(durumFiltre==='vadesi_gecen') keys = keys.filter(function(k){ return cari[k].vadesiGecen>0; });
+
+  if(!keys.length){ div.innerHTML='<div style="color:#94a3b8;padding:12px;text-align:center">Alacak kaydı yok.</div>'; return; }
+
+  var html = '';
+  keys.forEach(function(m){
+    var c = cari[m];
+    var renk = c.kalan>0 ? (c.vadesiGecen>0?'#dc2626':'#d97706') : '#10b981';
+    var badge = c.kalan>0 ? (c.vadesiGecen>0?'VADESİ GEÇMİŞ':'AÇIK') : 'ÖDENDİ';
+    html += '<div style="border:1px solid #e2e8f0;border-radius:10px;padding:10px;margin-bottom:8px;background:#fff;border-left:4px solid '+renk+'">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center">';
+    html += '<div><b style="font-size:13px">'+m+'</b> <span style="background:'+renk+'22;color:'+renk+';font-size:10px;padding:1px 6px;border-radius:8px;font-weight:700">'+badge+'</span></div>';
+    html += '<div style="text-align:right"><div style="font-weight:800;color:'+renk+'">'+fmt(c.kalan)+' ₺</div>';
+    html += '<div style="font-size:10px;color:#94a3b8">Toplam: '+fmt(c.toplam)+' ₺</div></div></div>';
+    // Son kayıtlar detay
+    html += '<details style="margin-top:6px"><summary style="font-size:11px;color:#64748b;cursor:pointer">Detay ('+c.kayitlar.length+' kayıt)</summary>';
+    html += '<div style="margin-top:4px">';
+    c.kayitlar.slice(-5).forEach(function(r){
+      html += '<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:11px;border-bottom:1px solid #f1f5f9">';
+      html += '<span>'+r.tarih+' — '+(r.aciklama||r.fatura||'Gelir')+' </span>';
+      html += '<span style="font-weight:700">'+fmt(r.tutar)+' ₺'+(r.kalan<r.tutar?' <span style="color:#10b981">('+fmt(r.tutar-r.kalan)+' tahsil)</span>':'')+'</span></div>';
+    });
+    html += '</div></details></div>';
+  });
+  div.innerHTML = html;
+};
+
+window.fillTahsilatDropdowns = function(){
+  var sel = document.getElementById('tahsilat-musteri');
+  if(!sel) return;
+  var musteriler = getMusteriler();
+  // Ayrıca alacak kaydı olan müşterileri ekle
+  var alacaklar = lsGet(LS_ALACAK, []);
+  var set = new Set(musteriler);
+  alacaklar.forEach(function(a){ if(a.musteri) set.add(a.musteri); });
+  var all = Array.from(set).sort();
+  sel.innerHTML = '<option value="">Seçiniz...</option>';
+  all.forEach(function(m){ sel.innerHTML += '<option value="'+m+'">'+m+'</option>'; });
+  // Tarih
+  var tarih = document.getElementById('tahsilat-tarih');
+  if(tarih && !tarih.value) tarih.value = bugun();
+};
+
+window.tahsilatKaydet = function(){
+  var musteri = (document.getElementById('tahsilat-musteri')||{}).value||'';
+  var tarih = (document.getElementById('tahsilat-tarih')||{}).value||bugun();
+  var tutar = parseFloat((document.getElementById('tahsilat-tutar')||{}).value)||0;
+  var yontem = (document.getElementById('tahsilat-yontem')||{}).value||'havale';
+  var aciklama = (document.getElementById('tahsilat-aciklama')||{}).value||'';
+  if(!musteri){ alert('Müşteri seçiniz.'); return; }
+  if(!tutar){ alert('Tutar giriniz.'); return; }
+
+  // Tahsilatı kaydet
+  var tahsilatlar = lsGet(LS_TAHSILAT, []);
+  tahsilatlar.push({musteri:musteri, tarih:tarih, tutar:tutar, yontem:yontem, aciklama:aciklama});
+  lsSet(LS_TAHSILAT, tahsilatlar);
+
+  // Alacaklardan düş (FIFO — eski alacaklardan başla)
+  var alacaklar = lsGet(LS_ALACAK, []);
+  var kalan = tutar;
+  alacaklar.filter(function(a){ return a.musteri===musteri && a.kalan>0; })
+    .sort(function(a,b){ return (a.tarih||'').localeCompare(b.tarih||''); })
+    .forEach(function(a){
+      if(kalan<=0) return;
+      var dusulecek = Math.min(kalan, a.kalan);
+      a.kalan -= dusulecek;
+      kalan -= dusulecek;
+      if(a.kalan<=0) a.durum='kapali';
+    });
+  lsSet(LS_ALACAK, alacaklar);
+
+  renderAlacaklar();
+  renderTahsilatlar();
+  alert('Tahsilat kaydedildi: '+musteri+' — '+fmt(tutar)+' ₺');
+  document.getElementById('tahsilat-tutar').value='';
+  document.getElementById('tahsilat-aciklama').value='';
+};
+
+function renderTahsilatlar(){
+  var div = document.getElementById('tahsilatListDiv');
+  if(!div) return;
+  var arr = lsGet(LS_TAHSILAT, []);
+  if(!arr.length){ div.innerHTML='<div style="color:#94a3b8;padding:8px;text-align:center">Tahsilat yok.</div>'; return; }
+  var html = '';
+  arr.slice(-10).reverse().forEach(function(t){
+    html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f1f5f9;font-size:12px">';
+    html += '<span><b>'+t.musteri+'</b> — '+t.tarih+' <span style="color:#94a3b8">'+(t.yontem||'')+'</span></span>';
+    html += '<span style="font-weight:700;color:#059669">'+fmt(t.tutar)+' ₺</span></div>';
+  });
+  div.innerHTML = html;
+}
+
+// ══ BORÇLAR ═══════════════════════════════════════════════
+window._addBorc = function(kayit){
+  var arr = lsGet(LS_BORC, []);
+  arr.push({
+    id: Date.now()+'_'+Math.random().toString(36).slice(2,6),
+    tedarikci: kayit.tedarikci,
+    tarih: kayit.tarih||bugun(),
+    tutar: Number(kayit.tutar)||0,
+    belge: kayit.belge||'',
+    aciklama: kayit.aciklama||'',
+    kalan: Number(kayit.tutar)||0,
+    durum: 'acik',
+    tip: kayit.tip||'fatura' // fatura | sabit
+  });
+  lsSet(LS_BORC, arr);
+};
+
+// Sabit Giderler
+window.sabitGiderEkleModal = function(){
+  var isim = prompt('Sabit gider adı (örn: Kira, Elektrik, Doğalgaz):');
+  if(!isim) return;
+  var tutar = parseFloat(prompt('Aylık tutar (₺):')||'0');
+  if(!tutar) return;
+  var vadeGun = parseInt(prompt('Her ayın kaçında? (1-28):')||'1');
+  var arr = lsGet(LS_SABIT, []);
+  arr.push({isim:isim, tutar:tutar, vadeGun:Math.min(28,Math.max(1,vadeGun)), aktif:true});
+  lsSet(LS_SABIT, arr);
+  renderSabitGiderler();
+  // Bu ayın sabit giderini borçlara ekle
+  _sabitGiderBorcOlustur();
+};
+
+function renderSabitGiderler(){
+  var div = document.getElementById('sabitGiderListDiv');
+  if(!div) return;
+  var arr = lsGet(LS_SABIT, []);
+  if(!arr.length){ div.innerHTML='<div style="font-size:11px;color:#94a3b8">Sabit gider tanımlı değil.</div>'; return; }
+  var html = '';
+  arr.forEach(function(s,i){
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #fde68a66">';
+    html += '<span style="font-size:12px">'+s.isim+' — <b>'+fmt(s.tutar)+' ₺</b> <span style="color:#92400e;font-size:10px">(her ay '+s.vadeGun+'.)</span></span>';
+    html += '<button onclick="sabitGiderSil('+i+')" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px" title="Sil">×</button></div>';
+  });
+  div.innerHTML = html;
+}
+window.sabitGiderSil = function(i){
+  var arr = lsGet(LS_SABIT, []);
+  arr.splice(i,1);
+  lsSet(LS_SABIT, arr);
+  renderSabitGiderler();
+};
+
+// Her ay başında sabit giderleri borç olarak oluştur
+function _sabitGiderBorcOlustur(){
+  var sabitler = lsGet(LS_SABIT, []);
+  var borclar = lsGet(LS_BORC, []);
+  var ayStr = buAy();
+  sabitler.forEach(function(s){
+    if(!s.aktif) return;
+    // Bu ay için bu sabit gider zaten eklendi mi?
+    var varMi = borclar.some(function(b){
+      return b.tip==='sabit' && b.aciklama===('Sabit: '+s.isim) && (b.tarih||'').startsWith(ayStr);
+    });
+    if(!varMi){
+      var vt = ayStr+'-'+String(s.vadeGun).padStart(2,'0');
+      borclar.push({
+        id: Date.now()+'_'+Math.random().toString(36).slice(2,6),
+        tedarikci: s.isim,
+        tarih: vt,
+        tutar: s.tutar,
+        belge: '',
+        aciklama: 'Sabit: '+s.isim,
+        kalan: s.tutar,
+        durum: 'acik',
+        tip: 'sabit'
+      });
+    }
+  });
+  lsSet(LS_BORC, borclar);
+}
+
+window.renderBorclar = function(){
+  // Sabit giderleri kontrol et
+  _sabitGiderBorcOlustur();
+  renderSabitGiderler();
+
+  var borclar = lsGet(LS_BORC, []);
+  var odemeler = lsGet(LS_ODEME, []);
+  var filtre = (document.getElementById('borcFiltreTedarikci')||{}).value||'';
+  var durumFiltre = (document.getElementById('borcFiltreDurum')||{}).value||'';
+  var div = document.getElementById('borcListDiv');
+  if(!div) return;
+
+  // Tedarikçi/gider bazlı gruplama
+  var cari = {};
+  borclar.forEach(function(b){
+    var key = b.tedarikci||b.aciklama||'Diğer';
+    if(!cari[key]) cari[key] = {toplam:0, kalan:0, vadesiGecen:0, kayitlar:[], tip:b.tip||'fatura'};
+    cari[key].toplam += b.tutar||0;
+    cari[key].kalan += b.kalan||0;
+    if(b.kalan>0 && b.tarih){
+      var gun = (new Date()-new Date(b.tarih))/(1000*60*60*24);
+      if(gun>30) cari[key].vadesiGecen += b.kalan;
+    }
+    cari[key].kayitlar.push(b);
+  });
+
+  // KPI güncelle
+  var topBorc=0, topVadesi=0, topOdeme=0;
+  Object.values(cari).forEach(function(c){ topBorc+=c.kalan; topVadesi+=c.vadesiGecen; });
+  var buAyStr = buAy();
+  odemeler.filter(function(o){ return (o.tarih||'').startsWith(buAyStr); }).forEach(function(o){ topOdeme+=o.tutar||0; });
+
+  var e1=document.getElementById('borcToplamKPI'); if(e1) e1.textContent=fmt(topBorc)+' ₺';
+  var e2=document.getElementById('borcVadesiGecenKPI'); if(e2) e2.textContent=fmt(topVadesi)+' ₺';
+  var e3=document.getElementById('borcOdemeKPI'); if(e3) e3.textContent=fmt(topOdeme)+' ₺';
+
+  var keys = Object.keys(cari).sort();
+  if(filtre) keys = keys.filter(function(k){ return k.toLowerCase().includes(filtre.toLowerCase()); });
+  if(durumFiltre==='acik') keys = keys.filter(function(k){ return cari[k].kalan>0; });
+  if(durumFiltre==='vadesi_gecen') keys = keys.filter(function(k){ return cari[k].vadesiGecen>0; });
+
+  if(!keys.length){ div.innerHTML='<div style="color:#94a3b8;padding:12px;text-align:center">Borç kaydı yok.</div>'; return; }
+
+  var html = '';
+  keys.forEach(function(t){
+    var c = cari[t];
+    var renk = c.kalan>0 ? (c.vadesiGecen>0?'#dc2626':'#d97706') : '#10b981';
+    var badge = c.kalan>0 ? (c.vadesiGecen>0?'VADESİ GEÇMİŞ':'AÇIK') : 'ÖDENDİ';
+    var ikon = c.tip==='sabit' ? '🔄' : '🏪';
+    html += '<div style="border:1px solid #e2e8f0;border-radius:10px;padding:10px;margin-bottom:8px;background:#fff;border-left:4px solid '+renk+'">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center">';
+    html += '<div>'+ikon+' <b style="font-size:13px">'+t+'</b> <span style="background:'+renk+'22;color:'+renk+';font-size:10px;padding:1px 6px;border-radius:8px;font-weight:700">'+badge+'</span></div>';
+    html += '<div style="text-align:right"><div style="font-weight:800;color:'+renk+'">'+fmt(c.kalan)+' ₺</div>';
+    html += '<div style="font-size:10px;color:#94a3b8">Toplam: '+fmt(c.toplam)+' ₺</div></div></div>';
+    html += '<details style="margin-top:6px"><summary style="font-size:11px;color:#64748b;cursor:pointer">Detay ('+c.kayitlar.length+' kayıt)</summary>';
+    html += '<div style="margin-top:4px">';
+    c.kayitlar.slice(-5).forEach(function(r){
+      html += '<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:11px;border-bottom:1px solid #f1f5f9">';
+      html += '<span>'+r.tarih+' — '+(r.aciklama||r.belge||'Fatura')+'</span>';
+      html += '<span style="font-weight:700">'+fmt(r.tutar)+' ₺'+(r.kalan<r.tutar?' <span style="color:#10b981">('+fmt(r.tutar-r.kalan)+' ödendi)</span>':'')+'</span></div>';
+    });
+    html += '</div></details></div>';
+  });
+  div.innerHTML = html;
+};
+
+window.fillOdemeDropdowns = function(){
+  var sel = document.getElementById('odeme-alici');
+  if(!sel) return;
+  var borclar = lsGet(LS_BORC, []);
+  var set = new Set();
+  borclar.forEach(function(b){ if(b.kalan>0) set.add(b.tedarikci||b.aciklama||''); });
+  // Tedarikçileri de ekle
+  getTedarikciListesi().forEach(function(t){ set.add(t); });
+  // Sabit giderleri ekle
+  lsGet(LS_SABIT, []).forEach(function(s){ set.add(s.isim); });
+  var all = Array.from(set).filter(Boolean).sort();
+  sel.innerHTML = '<option value="">Seçiniz...</option>';
+  all.forEach(function(t){ sel.innerHTML += '<option value="'+t+'">'+t+'</option>'; });
+  // Tarih
+  var tarih = document.getElementById('odeme-tarih');
+  if(tarih && !tarih.value) tarih.value = bugun();
+};
+
+window.odemeKaydet = function(){
+  var alici = (document.getElementById('odeme-alici')||{}).value||'';
+  var tarih = (document.getElementById('odeme-tarih')||{}).value||bugun();
+  var tutar = parseFloat((document.getElementById('odeme-tutar')||{}).value)||0;
+  var yontem = (document.getElementById('odeme-yontem')||{}).value||'havale';
+  var aciklama = (document.getElementById('odeme-aciklama')||{}).value||'';
+  if(!alici){ alert('Alıcı seçiniz.'); return; }
+  if(!tutar){ alert('Tutar giriniz.'); return; }
+
+  // Ödemeyi kaydet
+  var odemeler = lsGet(LS_ODEME, []);
+  odemeler.push({alici:alici, tarih:tarih, tutar:tutar, yontem:yontem, aciklama:aciklama});
+  lsSet(LS_ODEME, odemeler);
+
+  // Borçlardan düş (FIFO)
+  var borclar = lsGet(LS_BORC, []);
+  var kalan = tutar;
+  borclar.filter(function(b){ return (b.tedarikci===alici || b.aciklama==='Sabit: '+alici) && b.kalan>0; })
+    .sort(function(a,b){ return (a.tarih||'').localeCompare(b.tarih||''); })
+    .forEach(function(b){
+      if(kalan<=0) return;
+      var dusulecek = Math.min(kalan, b.kalan);
+      b.kalan -= dusulecek;
+      kalan -= dusulecek;
+      if(b.kalan<=0) b.durum='kapali';
+    });
+  lsSet(LS_BORC, borclar);
+
+  renderBorclar();
+  renderOdemeler();
+  alert('Ödeme kaydedildi: '+alici+' — '+fmt(tutar)+' ₺');
+  document.getElementById('odeme-tutar').value='';
+  document.getElementById('odeme-aciklama').value='';
+};
+
+function renderOdemeler(){
+  var div = document.getElementById('odemeListDiv');
+  if(!div) return;
+  var arr = lsGet(LS_ODEME, []);
+  if(!arr.length){ div.innerHTML='<div style="color:#94a3b8;padding:8px;text-align:center">Ödeme yok.</div>'; return; }
+  var html = '';
+  arr.slice(-10).reverse().forEach(function(o){
+    html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f1f5f9;font-size:12px">';
+    html += '<span><b>'+o.alici+'</b> — '+o.tarih+' <span style="color:#94a3b8">'+(o.yontem||'')+'</span></span>';
+    html += '<span style="font-weight:700;color:#dc2626">'+fmt(o.tutar)+' ₺</span></div>';
+  });
+  div.innerHTML = html;
+}
+
+// ── Mevcut Gelirleri Alacağa Senkronize Et (Geriye Dönük) ──
+function _syncMevcutGelirlerAlacak(){
+  var alacaklar = lsGet(LS_ALACAK, []);
+  if(alacaklar.length>0) return; // Zaten alacak var, senkronizasyon yapılmış
+  try{
+    var gelirler = JSON.parse(localStorage.getItem('uysa_gelirler')||'[]');
+    gelirler.forEach(function(g){
+      if(g.musteri && g.tutar>0){
+        alacaklar.push({
+          id: 'sync_'+Math.random().toString(36).slice(2,8),
+          musteri: g.musteri,
+          tarih: g.tarih||bugun(),
+          tutar: Number(g.tutar),
+          fatura: g.fatura||'',
+          aciklama: g.aciklama||'Mevcut gelir',
+          kalan: Number(g.tutar),
+          durum: 'acik'
+        });
+      }
+    });
+    if(alacaklar.length) lsSet(LS_ALACAK, alacaklar);
+    console.log('✅ Mevcut gelirler alacağa senkronize edildi: '+alacaklar.length+' kayıt');
+  }catch(e){}
+}
+
+// İlk yüklemede senkronize et
+setTimeout(_syncMevcutGelirlerAlacak, 2000);
+
+})();
+
 // ── KPI Kartları (tıklanabilir detay) ────────────────────────
 
 function renderHomeKPIs(){
@@ -22040,30 +22617,17 @@ document.addEventListener('DOMContentLoaded', function(){
 <div id="uysa-ai-chat" style="display:none;position:fixed;bottom:20px;right:20px;width:380px;max-height:520px;background:#fff;border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,.18);z-index:99999;font-family:Inter,system-ui,sans-serif;flex-direction:column;overflow:hidden;">
   <div style="background:linear-gradient(135deg,#1a56db,#7c3aed);color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="uysaAI.toggle()">
     <div style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:15px;">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a7 7 0 017 7c0 3-2 5.5-4 7l-3 4-3-4c-2-1.5-4-4-4-7a7 7 0 017-7z"/><circle cx="12" cy="9" r="2"/></svg>
-      UYSA AI Asistan
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+      UYSA Asistan
     </div>
     <div style="display:flex;gap:8px;">
-      <button id="uysa-ai-login-btn" onclick="event.stopPropagation();uysaAI.showLogin()" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Giriş</button>
       <button onclick="event.stopPropagation();uysaAI.clear()" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px;">Temizle</button>
       <button onclick="event.stopPropagation();uysaAI.close()" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;">×</button>
     </div>
   </div>
-  <!-- AI Auth Login Panel -->
-  <div id="uysa-ai-auth" style="display:none;padding:24px 20px;background:#f8fafc;flex-direction:column;gap:12px;">
-    <div style="text-align:center;margin-bottom:8px">
-      <div style="font-size:28px;margin-bottom:6px">🤖</div>
-      <div style="font-size:15px;font-weight:600;color:#1e293b">ERP Asistan Girişi</div>
-      <div style="font-size:12px;color:#64748b;margin-top:4px">ERP hesabınızla giriş yaparak asistanı kullanabilirsiniz</div>
-    </div>
-    <input id="uysa-ai-auth-email" type="text" placeholder="Kullanıcı adı veya e-posta" style="border:1px solid #d1d5db;border-radius:8px;padding:10px 12px;font-size:13px;outline:none;width:100%;box-sizing:border-box" autocomplete="username">
-    <input id="uysa-ai-auth-pass" type="password" placeholder="Şifre" style="border:1px solid #d1d5db;border-radius:8px;padding:10px 12px;font-size:13px;outline:none;width:100%;box-sizing:border-box" onkeydown="if(event.key==='Enter')uysaAI.authLogin()" autocomplete="current-password">
-    <button onclick="uysaAI.authLogin()" id="uysa-ai-login-submit" style="background:linear-gradient(135deg,#1a56db,#7c3aed);color:#fff;border:none;border-radius:8px;padding:10px;cursor:pointer;font-weight:600;font-size:13px;width:100%">Giriş Yap</button>
-    <div id="uysa-ai-auth-error" style="display:none;color:#dc2626;font-size:12px;text-align:center;padding:6px;background:#fef2f2;border-radius:6px"></div>
-  </div>
   <div id="uysa-ai-messages" style="flex:1;overflow-y:auto;padding:12px;min-height:280px;max-height:360px;display:flex;flex-direction:column;gap:8px;background:#f8fafc;">
     <div class="ai-msg ai-assistant" style="background:#e8f0fe;padding:10px 12px;border-radius:12px;font-size:13px;line-height:1.5;max-width:90%;">
-      Merhaba! Ben UYSA ERP AI asistanınızım. Stok, finans, personel veya herhangi bir ERP konusunda soru sorabilirsiniz.
+      Merhaba! Size nasıl yardımcı olabilirim? Stok, finans, personel veya herhangi bir konuda soru sorabilirsiniz.
     </div>
   </div>
   <div id="uysa-ai-input-area" style="padding:10px 12px;border-top:1px solid #e2e8f0;display:flex;gap:8px;background:#fff;">
@@ -22072,8 +22636,8 @@ document.addEventListener('DOMContentLoaded', function(){
   </div>
 </div>
 
-<!-- AI Chat FAB Butonu -->
-<button id="uysa-ai-fab" onclick="uysaAI.open()" style="position:fixed;bottom:20px;right:20px;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#1a56db,#7c3aed);color:#fff;border:none;box-shadow:0 4px 16px rgba(26,86,219,.4);cursor:pointer;z-index:99998;display:flex;align-items:center;justify-content:center;transition:transform .2s;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
+<!-- AI Chat FAB Butonu — sadece ERP'ye giriş yapmışsa görünür -->
+<button id="uysa-ai-fab" onclick="uysaAI.open()" style="position:fixed;bottom:20px;right:20px;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#1a56db,#7c3aed);color:#fff;border:none;box-shadow:0 4px 16px rgba(26,86,219,.4);cursor:pointer;z-index:99998;display:none;align-items:center;justify-content:center;transition:transform .2s;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
   <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
 </button>
 
@@ -22111,113 +22675,39 @@ async function apiCall(action, body, method, extraHeaders) {
 
 /* ── AI Chat Widget (Auth destekli) ─────────────────────────── */
 window.uysaAI = {
-  _aiToken: localStorage.getItem('uysa_ai_auth_token') || '',
-  _userName: localStorage.getItem('uysa_ai_user_name') || '',
-
+  _getSession() {
+    try { return JSON.parse(sessionStorage.getItem('uysa_session') || 'null'); } catch(e) { return null; }
+  },
+  _isLoggedIn() {
+    return !!this._getSession();
+  },
+  // ERP login sonrası FAB'ı göster
+  checkVisibility() {
+    const fab = document.getElementById('uysa-ai-fab');
+    if (fab) fab.style.display = this._isLoggedIn() ? 'flex' : 'none';
+  },
   open() {
+    if (!this._isLoggedIn()) return;
     document.getElementById('uysa-ai-chat').style.display = 'flex';
     document.getElementById('uysa-ai-fab').style.display = 'none';
-    if (!this._aiToken) {
-      this._showAuth(true);
-    } else {
-      this._showAuth(false);
-      this._updateLoginBtn();
-      document.getElementById('uysa-ai-input').focus();
-    }
+    document.getElementById('uysa-ai-input')?.focus();
   },
   close() {
     document.getElementById('uysa-ai-chat').style.display = 'none';
-    document.getElementById('uysa-ai-fab').style.display = 'flex';
+    if (this._isLoggedIn()) document.getElementById('uysa-ai-fab').style.display = 'flex';
   },
   toggle() {
     const chat = document.getElementById('uysa-ai-chat');
     if (chat.style.display === 'none' || !chat.style.display) this.open();
     else this.close();
   },
-  _showAuth(show) {
-    const auth = document.getElementById('uysa-ai-auth');
-    const msgs = document.getElementById('uysa-ai-messages');
-    const input = document.getElementById('uysa-ai-input-area');
-    if (auth) auth.style.display = show ? 'flex' : 'none';
-    if (msgs) msgs.style.display = show ? 'none' : 'flex';
-    if (input) input.style.display = show ? 'none' : 'flex';
-    // Login paneli gösterildiğinde inputu focusla
-    if (show) {
-      setTimeout(() => { const el = document.getElementById('uysa-ai-auth-email'); if(el) el.focus(); }, 100);
-    }
-  },
-  _updateLoginBtn() {
-    const btn = document.getElementById('uysa-ai-login-btn');
-    if (!btn) return;
-    if (this._aiToken && this._userName) {
-      btn.textContent = this._userName;
-      btn.title = 'Çıkış yapmak için tıklayın';
-      btn.onclick = (e) => { e.stopPropagation(); uysaAI.logout(); };
-    } else {
-      btn.textContent = 'Giriş';
-      btn.title = 'ERP hesabınızla giriş yapın';
-      btn.onclick = (e) => { e.stopPropagation(); uysaAI.showLogin(); };
-    }
-  },
-  async authLogin() {
-    const loginId = document.getElementById('uysa-ai-auth-email')?.value?.trim();
-    const pass = document.getElementById('uysa-ai-auth-pass')?.value;
-    const errEl = document.getElementById('uysa-ai-auth-error');
-    const submitBtn = document.getElementById('uysa-ai-login-submit');
-    if (!loginId || !pass) {
-      if (errEl) { errEl.textContent = 'Kullanıcı adı ve şifre gerekli'; errEl.style.display = 'block'; }
-      return;
-    }
-    if (errEl) errEl.style.display = 'none';
-    // Butonu devre dışı bırak
-    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Giriş yapılıyor...'; }
-
-    try {
-      const result = await apiCall('ai.authLogin', { email: loginId, password: pass }, 'POST');
-      if (result.ok && result.token) {
-        this._aiToken = result.token;
-        this._userName = (result.user && result.user.display_name) || loginId;
-        localStorage.setItem('uysa_ai_auth_token', result.token);
-        localStorage.setItem('uysa_ai_user_name', this._userName);
-        this._showAuth(false);
-        this._updateLoginBtn();
-        // Şifre alanını temizle
-        const passEl = document.getElementById('uysa-ai-auth-pass');
-        if (passEl) passEl.value = '';
-        this.addMsg('assistant', 'Giriş başarılı. Asistan hazır, sorularınızı yazabilirsiniz.');
-        document.getElementById('uysa-ai-input').focus();
-      } else {
-        const errMsg = result.error || 'Giriş başarısız';
-        // Kullanıcı dostu hata mesajları
-        let displayErr = errMsg;
-        if (errMsg.includes('Çok fazla')) displayErr = 'Çok fazla deneme yaptınız. Lütfen biraz bekleyin.';
-        else if (errMsg.includes('hatalı')) displayErr = 'Kullanıcı adı veya şifre hatalı.';
-        if (errEl) { errEl.textContent = displayErr; errEl.style.display = 'block'; }
-      }
-    } catch(e) {
-      if (errEl) { errEl.textContent = 'Sunucuya bağlanılamadı. Lütfen tekrar deneyin.'; errEl.style.display = 'block'; }
-    } finally {
-      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Giriş Yap'; }
-    }
-  },
-  showLogin() {
-    this._showAuth(true);
-  },
-  logout() {
-    this._aiToken = '';
-    this._userName = '';
-    localStorage.removeItem('uysa_ai_auth_token');
-    localStorage.removeItem('uysa_ai_user_name');
-    this._showAuth(true);
-    this._updateLoginBtn();
-    this.addMsg('assistant', 'Oturumunuz kapatıldı.');
-  },
   clear() {
     const msgs = document.getElementById('uysa-ai-messages');
-    msgs.innerHTML = '<div class="ai-msg ai-assistant" style="background:#e8f0fe;padding:10px 12px;border-radius:12px;font-size:13px;line-height:1.5;max-width:90%;">Sohbet temizlendi. Yeni bir soru sorabilirsiniz.</div>';
+    if (msgs) msgs.innerHTML = '<div class="ai-msg ai-assistant" style="background:#e8f0fe;padding:10px 12px;border-radius:12px;font-size:13px;line-height:1.5;max-width:90%;">Sohbet temizlendi. Yeni bir soru sorabilirsiniz.</div>';
   },
   addMsg(role, text) {
     const msgs = document.getElementById('uysa-ai-messages');
+    if (!msgs) return;
     const div = document.createElement('div');
     div.className = 'ai-msg ai-' + role;
     const isUser = role === 'user';
@@ -22233,16 +22723,8 @@ window.uysaAI = {
   },
   async send() {
     const input = document.getElementById('uysa-ai-input');
-    const msg = input.value.trim();
+    const msg = input?.value?.trim();
     if (!msg) return;
-
-    // Token yoksa login'e yönlendir
-    if (!this._aiToken) {
-      this.addMsg('assistant', 'Asistanı kullanmak için giriş yapmanız gerekiyor.');
-      this._showAuth(true);
-      return;
-    }
-
     input.value = '';
     this.addMsg('user', msg);
 
@@ -22252,22 +22734,12 @@ window.uysaAI = {
     loadDiv.innerHTML = '<span style="animation:pulse 1.5s infinite;">Düşünüyorum...</span>';
     document.getElementById('uysa-ai-messages').appendChild(loadDiv);
 
-    // ERP JWT token ile istek gönder
-    const body = { message: msg };
-    const extraHeaders = { 'Authorization': 'Bearer ' + this._aiToken };
-    const result = await apiCall('ai.chat', body, 'POST', extraHeaders);
+    // ERP mevcut auth ile istek gönder
+    const result = await apiCall('ai.chat', { message: msg }, 'POST');
     loadDiv.remove();
 
     if (result.ok && result.response) {
       this.addMsg('assistant', result.response);
-    } else if (result.error && (result.error.includes('JWT') || result.error.includes('token') || result.error.includes('geçersiz') || result.error.includes('401'))) {
-      this.addMsg('assistant', 'Oturum süresi doldu. Lütfen tekrar giriş yapın.');
-      this._aiToken = '';
-      this._userName = '';
-      localStorage.removeItem('uysa_ai_auth_token');
-      localStorage.removeItem('uysa_ai_user_name');
-      this._updateLoginBtn();
-      setTimeout(() => this._showAuth(true), 1500);
     } else {
       this.addMsg('assistant', 'Yanıt alınamadı. Lütfen tekrar deneyin.');
     }
@@ -22405,11 +22877,12 @@ const aiStyle = document.createElement('style');
 aiStyle.textContent = '@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}';
 document.head.appendChild(aiStyle);
 
-// AI widget login butonunu başlat
-setTimeout(() => { if (window.uysaAI) uysaAI._updateLoginBtn(); }, 500);
-
-// Eski auth mode temizliği
+// AI widget: ERP oturum durumuna göre FAB göster/gizle
+setTimeout(() => { if (window.uysaAI) uysaAI.checkVisibility(); }, 1000);
+// Eski AI auth temizliği
 localStorage.removeItem('uysa_ai_auth_mode');
+localStorage.removeItem('uysa_ai_auth_token');
+localStorage.removeItem('uysa_ai_user_name');
 
 console.log('✅ UYSA ERP v5.0 — AI Asistan + Modüler API katmanı yüklendi');
 })();
