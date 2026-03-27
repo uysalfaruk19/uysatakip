@@ -206,14 +206,89 @@
 
   window.rcFilterYemekList = function(){ window.rcRenderYemekList(); };
 
-  // ── Yeni yemek ekle ────────────────────────────────────────
+  // ── Yeni yemek ekle (kategori seçimli modal) ───────────────
   window.rcYeniYemek = function(){
-    var name = prompt('Yeni yemek adı:');
-    if(!name || !name.trim()) return;
-    name = name.trim();
+    // Modal oluştur
+    var overlay = document.createElement('div');
+    overlay.id = 'rcYeniYemekModal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+
+    var catOptions = [
+      {val:'soups',     label:'🥣 Çorba'},
+      {val:'meat',      label:'🥩 Ana Yemek — Kırmızı Et'},
+      {val:'chicken',   label:'🍗 Ana Yemek — Beyaz Et'},
+      {val:'legume',    label:'🫘 Ana Yemek — Bakliyat'},
+      {val:'kebab',     label:'🍖 Ana Yemek — Köfte'},
+      {val:'vegetable', label:'🥦 Ana Yemek — Sebze'},
+      {val:'sides',     label:'🍚 Yardımcı Yemek'},
+      {val:'salatabar', label:'🥗 Salatabar'},
+      {val:'diger',     label:'📋 Diğer'}
+    ];
+
+    var optHtml = catOptions.map(function(o){
+      return '<option value="'+o.val+'">'+o.label+'</option>';
+    }).join('');
+
+    overlay.innerHTML =
+      '<div style="background:#fff;border-radius:14px;padding:24px;width:380px;max-width:95vw;box-shadow:0 12px 40px rgba(0,0,0,.25)">'
+      +'<h3 style="margin:0 0 16px;color:#0f172a">Yeni Yemek Ekle</h3>'
+      +'<label style="font-size:12px;font-weight:700;color:#475569;display:block;margin-bottom:4px">Yemek Adı</label>'
+      +'<input id="rcYeniYemekAd" type="text" placeholder="ör: Mercimek Çorbası" style="width:100%;padding:10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;margin-bottom:12px;box-sizing:border-box"/>'
+      +'<label style="font-size:12px;font-weight:700;color:#475569;display:block;margin-bottom:4px">Kategori</label>'
+      +'<select id="rcYeniYemekKat" style="width:100%;padding:10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;margin-bottom:18px;box-sizing:border-box">'+optHtml+'</select>'
+      +'<div style="display:flex;gap:8px;justify-content:flex-end">'
+      +'<button onclick="document.getElementById(\'rcYeniYemekModal\').remove()" style="padding:8px 18px;border:1px solid #d1d5db;border-radius:8px;background:#f8fafc;cursor:pointer;font-size:13px">İptal</button>'
+      +'<button onclick="rcYeniYemekKaydet()" style="padding:8px 18px;border:none;border-radius:8px;background:#0f766e;color:#fff;cursor:pointer;font-size:13px;font-weight:700">Ekle</button>'
+      +'</div></div>';
+
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', function(e){ if(e.target===overlay) overlay.remove(); });
+    setTimeout(function(){ document.getElementById('rcYeniYemekAd')?.focus(); }, 100);
+  };
+
+  // Yeni yemek kaydetme
+  window.rcYeniYemekKaydet = function(){
+    var nameInp = document.getElementById('rcYeniYemekAd');
+    var katSel = document.getElementById('rcYeniYemekKat');
+    var name = (nameInp?.value||'').trim();
+    var kat = katSel?.value || 'diger';
+
+    if(!name){ alert('Yemek adı giriniz.'); return; }
+
+    // Kataloğa ekle
+    var cat = rc.getCatalog();
+    if(kat === 'soups'){
+      if(!cat.soups) cat.soups = [];
+      if(cat.soups.indexOf(name) < 0) cat.soups.push(name);
+    } else if(ANAYEMEK_SUBS.indexOf(kat) >= 0){
+      if(!cat.mainsByType) cat.mainsByType = {};
+      if(!cat.mainsByType[kat]) cat.mainsByType[kat] = [];
+      if(cat.mainsByType[kat].indexOf(name) < 0) cat.mainsByType[kat].push(name);
+    } else if(kat === 'sides'){
+      if(!cat.sidesByGroup) cat.sidesByGroup = {};
+      if(!cat.sidesByGroup.other) cat.sidesByGroup.other = [];
+      if(cat.sidesByGroup.other.indexOf(name) < 0) cat.sidesByGroup.other.push(name);
+    } else if(kat === 'salatabar'){
+      if(!cat.salads) cat.salads = [];
+      if(cat.salads.indexOf(name) < 0) cat.salads.push(name);
+    }
+    // 'diger' kategorisi kataloğa eklenmez, sadece recipes'a gider
+
+    try{ localStorage.setItem('uysa_catalog_v1', JSON.stringify(cat)); }catch(e){}
+
+    // Boş reçete oluştur
     var recipes = rc.getRecipes();
     if(!recipes[name]) recipes[name] = [];
     rc.setRecipes(recipes);
+
+    // Modal kapat
+    var modal = document.getElementById('rcYeniYemekModal');
+    if(modal) modal.remove();
+
+    // Kategoriyi aç
+    _openCats[kat] = true;
+    if(ANAYEMEK_SUBS.indexOf(kat) >= 0) _openCats.anayemek = true;
+
     window.rcRenderYemekList();
     window.rcOpenRecipe(name);
   };
