@@ -892,14 +892,6 @@
       grid-template-columns: 1fr 1fr !important;
     }
 
-    /* AI Chat widget - responsive */
-    #uysa-ai-chat {
-      width: calc(100vw - 24px) !important;
-      right: 12px !important;
-      bottom: 12px !important;
-      max-height: 85vh !important;
-    }
-
     /* Monthly Excel modal */
     #monthlyExcelModal > div,
     #monthlyModal > div {
@@ -1017,20 +1009,6 @@
       border-radius: 0 !important;
       max-height: 100vh !important;
       height: 100vh !important;
-    }
-
-    /* AI Chat: full width */
-    #uysa-ai-chat {
-      width: calc(100vw - 16px) !important;
-      right: 8px !important;
-      bottom: 8px !important;
-      max-height: 80vh !important;
-    }
-    #uysa-ai-fab {
-      bottom: 12px !important;
-      right: 12px !important;
-      width: 48px !important;
-      height: 48px !important;
     }
 
     /* CRM sidebar */
@@ -23479,465 +23457,201 @@ document.addEventListener('DOMContentLoaded', function(){
 })();
 </script>
 
-<!-- ═══════════════════════════════════════════════════════════════ -->
-<!-- UYSA ERP v6.0 — AI Asistan Widget (Device Auth + Provider) -->
-<!-- ═══════════════════════════════════════════════════════════════ -->
-<!-- AI Widget Container — 3 state: hidden / auth / chat -->
-<div id="uysa-ai-chat" style="display:none;position:fixed;bottom:20px;right:20px;width:390px;max-height:540px;background:#fff;border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,.18);z-index:99999;font-family:Inter,system-ui,sans-serif;flex-direction:column;overflow:hidden;">
-  <!-- Header -->
-  <div style="background:linear-gradient(135deg,#1a56db,#7c3aed);color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="uysaAI.toggle()">
-    <div style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:15px;">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-      <span id="uysa-ai-title">UYSA Asistan</span>
+<!-- ════════════════════════════════════════════════════════════════
+     UYSA AI Bridge Widget v2.0
+     ════════════════════════════════════════════════════════════════ -->
+<style id="uysa-ai-styles">
+#uysa-ai-chat{display:none;position:fixed;bottom:86px;right:16px;width:400px;max-width:calc(100vw - 24px);height:560px;max-height:calc(100vh - 100px);background:#fff;border-radius:20px;box-shadow:0 12px 48px rgba(0,0,0,.15),0 2px 8px rgba(0,0,0,.08);z-index:99999;flex-direction:column;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;border:1px solid rgba(0,0,0,.06)}
+#uysa-ai-chat .ai-head{background:linear-gradient(135deg,#1a56db 0%,#6d28d9 100%);color:#fff;padding:16px 18px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+#uysa-ai-chat .ai-head-title{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;letter-spacing:-.2px}
+#uysa-ai-chat .ai-head-actions{display:flex;gap:6px;align-items:center}
+#uysa-ai-chat .ai-head-btn{background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:8px;padding:5px 10px;cursor:pointer;font-size:11px;font-weight:500;transition:background .15s}
+#uysa-ai-chat .ai-head-btn:hover{background:rgba(255,255,255,.25)}
+#uysa-ai-chat .ai-dot{width:8px;height:8px;border-radius:50%;transition:background .3s}
+#uysa-ai-chat .ai-msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:#f8fafc;scroll-behavior:smooth}
+#uysa-ai-chat .ai-msg{padding:10px 14px;border-radius:14px;font-size:13px;line-height:1.65;max-width:88%;word-wrap:break-word;animation:aiMsgIn .25s ease-out}
+#uysa-ai-chat .ai-msg.ai-user{background:linear-gradient(135deg,#1a56db,#6d28d9);color:#fff;align-self:flex-end;margin-left:auto;border-bottom-right-radius:4px}
+#uysa-ai-chat .ai-msg.ai-assistant{background:#fff;color:#1e293b;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,.04);border-bottom-left-radius:4px}
+#uysa-ai-chat .ai-msg code{background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:12px;font-family:'SF Mono',Monaco,monospace}
+#uysa-ai-chat .ai-msg strong{font-weight:700}
+#uysa-ai-chat .ai-input-wrap{padding:12px 14px;border-top:1px solid #edf0f4;display:flex;gap:8px;background:#fff;flex-shrink:0}
+#uysa-ai-chat .ai-input{flex:1;border:1.5px solid #dde1e8;border-radius:12px;padding:10px 14px;font-size:13px;outline:none;font-family:inherit;transition:border-color .2s,box-shadow .2s}
+#uysa-ai-chat .ai-input:focus{border-color:#6d28d9;box-shadow:0 0 0 3px rgba(109,40,217,.1)}
+#uysa-ai-chat .ai-send-btn{background:linear-gradient(135deg,#1a56db,#6d28d9);color:#fff;border:none;border-radius:12px;padding:10px 18px;cursor:pointer;font-weight:700;font-size:13px;transition:transform .1s,opacity .2s}
+#uysa-ai-chat .ai-send-btn:hover{transform:scale(1.03)}
+#uysa-ai-chat .ai-send-btn:disabled{opacity:.5;cursor:default;transform:none}
+#uysa-ai-chat .ai-typing{display:flex;gap:4px;padding:10px 14px;align-items:center}
+#uysa-ai-chat .ai-typing span{width:7px;height:7px;border-radius:50%;background:#94a3b8;animation:aiTyping 1.2s infinite}
+#uysa-ai-chat .ai-typing span:nth-child(2){animation-delay:.2s}
+#uysa-ai-chat .ai-typing span:nth-child(3){animation-delay:.4s}
+#uysa-ai-chat .ai-connect{display:none;padding:28px 22px;background:#f8fafc;flex-direction:column;gap:16px;flex:1;justify-content:center;align-items:center}
+#uysa-ai-chat .ai-connect-card{background:#fff;border:1.5px solid #e2e8f0;border-radius:14px;padding:20px;text-align:center;width:100%;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+#uysa-ai-fab{display:none;position:fixed;bottom:20px;right:20px;width:58px;height:58px;border-radius:50%;background:linear-gradient(135deg,#1a56db,#6d28d9);color:#fff;border:none;box-shadow:0 4px 20px rgba(26,86,219,.35);cursor:pointer;z-index:99998;align-items:center;justify-content:center;transition:transform .2s,box-shadow .2s}
+#uysa-ai-fab:hover{transform:scale(1.08);box-shadow:0 6px 24px rgba(26,86,219,.45)}
+@keyframes aiMsgIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes aiTyping{0%,60%,100%{opacity:.3;transform:scale(.8)}30%{opacity:1;transform:scale(1)}}
+@media(max-width:480px){#uysa-ai-chat{bottom:0;right:0;width:100vw;max-width:100vw;height:100vh;max-height:100vh;border-radius:0}#uysa-ai-fab{bottom:16px;right:16px}}
+</style>
+
+<div id="uysa-ai-chat">
+  <div class="ai-head">
+    <div class="ai-head-title">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+      UYSA AI
+      <span class="ai-dot" id="uysa-ai-dot" style="background:#fbbf24"></span>
     </div>
-    <div style="display:flex;gap:8px;">
-      <button id="uysa-ai-btn-clear" onclick="event.stopPropagation();uysaAI.clear()" style="display:none;background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px;">Temizle</button>
-      <button id="uysa-ai-btn-disconnect" onclick="event.stopPropagation();uysaAI.disconnect()" style="display:none;background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px;">Bağlantıyı Kes</button>
-      <button onclick="event.stopPropagation();uysaAI.close()" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;">×</button>
-    </div>
-  </div>
-
-  <!-- STATE: Auth / Bağlantı Kur -->
-  <div id="uysa-ai-auth-screen" style="display:none;padding:24px 20px;text-align:center;background:#f8fafc;min-height:320px;">
-    <div style="font-size:40px;margin-bottom:12px;">🔗</div>
-    <h3 style="font-size:16px;color:#1e293b;margin:0 0 6px">AI bağlantısı gerekli</h3>
-    <p style="font-size:12px;color:#64748b;margin:0 0 20px">Aşağıdaki kod ile hesabınızı bağlayın</p>
-
-    <div style="background:#fff;border:2px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px;">
-      <div style="font-size:11px;color:#64748b;margin-bottom:4px;font-weight:600" id="uysa-ai-provider-label">Provider</div>
-      <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:14px" id="uysa-ai-provider-name">—</div>
-
-      <div style="font-size:11px;color:#64748b;margin-bottom:4px;font-weight:600">Kod</div>
-      <div id="uysa-ai-device-code" style="font-size:28px;font-weight:800;letter-spacing:4px;color:#1a56db;font-family:monospace;margin-bottom:8px;user-select:all">—</div>
-      <button onclick="uysaAI.copyCode()" style="background:#f1f5f9;border:1px solid #d1d5db;border-radius:6px;padding:4px 12px;cursor:pointer;font-size:11px;color:#475569;">Kodu Kopyala</button>
-    </div>
-
-    <div style="margin-bottom:16px">
-      <div style="font-size:11px;color:#64748b;margin-bottom:4px;font-weight:600">Bu adresi açın</div>
-      <a id="uysa-ai-verify-url" href="#" target="_blank" style="font-size:12px;color:#1a56db;word-break:break-all;font-weight:600">—</a>
-      <br>
-      <button onclick="uysaAI.openVerifyUrl()" style="background:linear-gradient(135deg,#1a56db,#7c3aed);color:#fff;border:none;border-radius:8px;padding:8px 20px;cursor:pointer;font-size:12px;font-weight:600;margin-top:8px;">Tarayıcıda Aç</button>
-    </div>
-
-    <div id="uysa-ai-auth-status" style="font-size:12px;color:#94a3b8;padding:8px;display:flex;align-items:center;justify-content:center;gap:6px;">
-      <span style="display:inline-block;width:8px;height:8px;background:#f59e0b;border-radius:50%;animation:pulse 1.5s infinite"></span>
-      Bağlantı bekleniyor…
-    </div>
-  </div>
-
-  <!-- STATE: Chat -->
-  <div id="uysa-ai-messages" style="display:none;flex:1;overflow-y:auto;padding:12px;min-height:280px;max-height:380px;flex-direction:column;gap:8px;background:#f8fafc;">
-    <div class="ai-msg ai-assistant" style="background:#e8f0fe;padding:10px 12px;border-radius:12px;font-size:13px;line-height:1.5;max-width:90%;">
-      Asistan hazır. Stok, finans, personel veya herhangi bir konuda soru sorabilirsiniz.
+    <div class="ai-head-actions">
+      <button class="ai-head-btn" onclick="event.stopPropagation();uysaAI.clear()">Temizle</button>
+      <button class="ai-head-btn" onclick="event.stopPropagation();uysaAI.close()" style="font-size:16px;padding:3px 8px">&#215;</button>
     </div>
   </div>
-  <div id="uysa-ai-input-area" style="display:none;padding:10px 12px;border-top:1px solid #e2e8f0;gap:8px;background:#fff;">
-    <input id="uysa-ai-input" type="text" placeholder="Sorunuzu yazın..." style="flex:1;border:1px solid #d1d5db;border-radius:10px;padding:10px 14px;font-size:13px;outline:none;font-family:inherit;" onkeydown="if(event.key==='Enter')uysaAI.send()">
-    <button onclick="uysaAI.send()" style="background:linear-gradient(135deg,#1a56db,#7c3aed);color:#fff;border:none;border-radius:10px;padding:10px 16px;cursor:pointer;font-weight:600;font-size:13px;">Gönder</button>
+  <div class="ai-connect" id="uysa-ai-connect">
+    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#6d28d9" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+    <div style="font-size:16px;font-weight:700;color:#1e293b">AI Servisi Baglaniyor</div>
+    <div id="uysa-ai-connect-provider" style="font-size:12px;color:#64748b"></div>
+    <div class="ai-connect-card" id="uysa-ai-connect-info">
+      <div style="font-size:12px;color:#64748b;margin-bottom:6px">Bu adresi acin:</div>
+      <a id="uysa-ai-connect-url" href="#" target="_blank" style="font-size:14px;font-weight:700;color:#1a56db;word-break:break-all"></a>
+      <div style="margin-top:12px;font-size:12px;color:#64748b">Kodu girin:</div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:6px">
+        <span id="uysa-ai-connect-code" style="font-size:26px;font-weight:900;letter-spacing:5px;color:#1e293b;font-family:monospace"></span>
+        <button onclick="uysaAI.copyCode()" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px">Kopyala</button>
+      </div>
+    </div>
+    <div id="uysa-ai-connect-status" style="font-size:12px;color:#64748b">Bekleniyor...</div>
+    <button onclick="uysaAI.retryConnect()" style="background:linear-gradient(135deg,#1a56db,#6d28d9);color:#fff;border:none;border-radius:12px;padding:11px 20px;cursor:pointer;font-weight:700;font-size:13px;width:100%">Tekrar Dene</button>
+    <div id="uysa-ai-connect-error" style="display:none;color:#dc2626;font-size:12px"></div>
+  </div>
+  <div class="ai-msgs" id="uysa-ai-messages">
+    <div class="ai-msg ai-assistant">Merhaba! UYSA ERP AI asistaniyim. Stok, finans, personel veya siparis konularinda yardimci olabilirim.</div>
+  </div>
+  <div class="ai-input-wrap" id="uysa-ai-input-area">
+    <input id="uysa-ai-input" class="ai-input" type="text" placeholder="Bir soru sorun..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();uysaAI.send()}">
+    <button class="ai-send-btn" id="uysa-ai-send" onclick="uysaAI.send()">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+    </button>
   </div>
 </div>
 
-<!-- AI Chat FAB -->
-<button id="uysa-ai-fab" onclick="uysaAI.open()" style="position:fixed;bottom:20px;right:20px;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#1a56db,#7c3aed);color:#fff;border:none;box-shadow:0 4px 16px rgba(26,86,219,.4);cursor:pointer;z-index:99998;display:none;align-items:center;justify-content:center;transition:transform .2s;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
-  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+<button id="uysa-ai-fab" onclick="uysaAI.open()">
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
 </button>
 
 <script>
 /* ═══════════════════════════════════════════════════════════════
-   UYSA ERP v5.0 — AI Asistan + ERP API Bağlantı Katmanı
+   UYSA AI Bridge Widget v2.0 — OpenClaw Connected
    ═══════════════════════════════════════════════════════════════ */
 (function(){
 'use strict';
 
-const V5_API = '/uysa_api.php';
+const BRIDGE_URL = 'https://srv1516979.hstgr.cloud/ai-bridge';
+const BRIDGE_SECRET = 'c11a3f1069ef86290a14d6213410c58084c2e164af5ba684b8f45926d49e9dad';
+const POLL_INTERVAL = 5000;
+const SESSION_KEY = 'uysa_ai_bridge_session';
 
-function getAuthHeaders() {
-  const token = localStorage.getItem('uysa_access_token') || '';
-  const legacy = (typeof CFG !== 'undefined' && CFG.token) ? CFG.token : '';
-  const headers = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = 'Bearer ' + token;
-  else if (legacy) headers['X-UYSA-Token'] = legacy;
-  return headers;
+let _sid = null, _poll = null, _authed = false, _sending = false;
+
+async function api(path, method, body) {
+  const o = { method: method||'GET', headers:{'Content-Type':'application/json','X-Bridge-Secret':BRIDGE_SECRET} };
+  if (body) o.body = JSON.stringify(body);
+  try { const r = await fetch(BRIDGE_URL+path, o); return await r.json(); }
+  catch(e) { return {error:e.message}; }
 }
 
-async function apiCall(action, body, method, extraHeaders) {
-  const isGet = !method || method === 'GET';
-  const url = isGet ? V5_API + '?action=' + action : V5_API + '?action=' + action;
-  const opts = { method: isGet ? 'GET' : 'POST', headers: Object.assign({}, getAuthHeaders(), extraHeaders || {}) };
-  if (!isGet && body) opts.body = JSON.stringify(body);
-  try {
-    const res = await fetch(url, opts);
-    return await res.json();
-  } catch(e) {
-    console.error('[UYSA v5] API error:', action, e);
-    return { ok: false, error: e.message };
-  }
+function erpOk() { try { return !!JSON.parse(sessionStorage.getItem('uysa_session')||'null'); } catch(e){return false;} }
+
+function fabCheck() {
+  const f = document.getElementById('uysa-ai-fab');
+  if (f) f.style.display = erpOk() ? 'flex' : 'none';
+}
+setInterval(fabCheck, 2000);
+document.readyState==='loading' ? document.addEventListener('DOMContentLoaded',fabCheck) : fabCheck();
+
+function loadSess() { try { const s=JSON.parse(localStorage.getItem(SESSION_KEY)||'null'); if(s&&s.sid){_sid=s.sid;_authed=s.ok||false;} } catch(e){} }
+function saveSess(id,ok) { _sid=id;_authed=ok;localStorage.setItem(SESSION_KEY,JSON.stringify({sid:id,ok:ok})); }
+function clearSess() { _sid=null;_authed=false;localStorage.removeItem(SESSION_KEY); }
+
+function dot(color) { const d=document.getElementById('uysa-ai-dot'); if(d) d.style.background=color; }
+
+function panel(mode) {
+  const c=document.getElementById('uysa-ai-connect'), m=document.getElementById('uysa-ai-messages'), i=document.getElementById('uysa-ai-input-area');
+  if(mode==='connect'){c.style.display='flex';m.style.display='none';i.style.display='none';dot('#fbbf24');}
+  else{c.style.display='none';m.style.display='flex';i.style.display='flex';dot('#22c55e');}
 }
 
-/* ── AI Chat Widget (Auth destekli) ─────────────────────────── */
+async function startConn(prov) {
+  const el=document.getElementById;
+  document.getElementById('uysa-ai-connect-error').style.display='none';
+  document.getElementById('uysa-ai-connect-status').textContent='Baglaniyor...';
+  const r = await api('/connect/start','POST',{provider:prov});
+  if(r.error){document.getElementById('uysa-ai-connect-error').textContent=r.error;document.getElementById('uysa-ai-connect-error').style.display='block';return;}
+  saveSess(r.session_id,false);
+  if(r.status==='authenticated'){saveSess(r.session_id,true);panel('chat');document.getElementById('uysa-ai-input').focus();return;}
+  document.getElementById('uysa-ai-connect-provider').textContent=r.provider||'';
+  const u=document.getElementById('uysa-ai-connect-url');u.href=r.verification_url||'#';u.textContent=r.verification_url||'';
+  document.getElementById('uysa-ai-connect-code').textContent=r.code||'';
+  panel('connect');
+  document.getElementById('uysa-ai-connect-status').textContent='Yetkilendirme bekleniyor...';
+  pollStart();
+}
+
+function pollStart() { pollStop(); _poll=setInterval(async()=>{if(!_sid){pollStop();return;}const r=await api('/connect/status/'+_sid);if(!r)return;if(r.status==='authenticated'){pollStop();saveSess(_sid,true);panel('chat');document.getElementById('uysa-ai-input').focus();}else if(r.status==='failed'){pollStop();document.getElementById('uysa-ai-connect-error').textContent=r.error||'Basarisiz';document.getElementById('uysa-ai-connect-error').style.display='block';}},POLL_INTERVAL); }
+function pollStop() { if(_poll){clearInterval(_poll);_poll=null;} }
+
+async function checkSess() { if(!_sid)return false;const r=await api('/connect/status/'+_sid);if(r&&r.status==='authenticated'){_authed=true;saveSess(_sid,true);return true;}return false; }
+
+function renderMsg(role, text) {
+  const wrap=document.getElementById('uysa-ai-messages'), d=document.createElement('div');
+  d.className='ai-msg ai-'+role;
+  let h=text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  h=h.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>');
+  h=h.replace(/`(.*?)`/g,'<code>$1</code>');
+  h=h.replace(/\n/g,'<br>');
+  d.innerHTML=h; wrap.appendChild(d); wrap.scrollTop=wrap.scrollHeight;
+}
+
+function showTyping() {
+  const wrap=document.getElementById('uysa-ai-messages'), d=document.createElement('div');
+  d.className='ai-typing'; d.id='ai-typing-ind';
+  d.innerHTML='<span></span><span></span><span></span>';
+  wrap.appendChild(d); wrap.scrollTop=wrap.scrollHeight;
+}
+function hideTyping() { const t=document.getElementById('ai-typing-ind'); if(t)t.remove(); }
+
 window.uysaAI = {
-  _pollTimer: null,
-  _deviceCode: null,
-  _verifyUrl: null,
-
-  _getSession() {
-    try { return JSON.parse(sessionStorage.getItem('uysa_session') || 'null'); } catch(e) { return null; }
+  async open() {
+    if(!erpOk())return;
+    document.getElementById('uysa-ai-chat').style.display='flex';
+    document.getElementById('uysa-ai-fab').style.display='none';
+    const ok=await api('/health');
+    if(!ok||ok.status!=='ok'){panel('connect');document.getElementById('uysa-ai-connect-error').textContent='AI servisi ulasilamiyor';document.getElementById('uysa-ai-connect-error').style.display='block';return;}
+    loadSess();
+    if(_sid&&_authed){const v=await checkSess();if(v){panel('chat');document.getElementById('uysa-ai-input').focus();return;}}
+    await startConn();
   },
-  _isLoggedIn() {
-    return !!this._getSession();
-  },
-  _getActiveAuth() {
-    try { return JSON.parse(localStorage.getItem('uysa_ai_device_auth') || 'null'); } catch(e) { return null; }
-  },
-  _setActiveAuth(data) {
-    if (data) localStorage.setItem('uysa_ai_device_auth', JSON.stringify(data));
-    else localStorage.removeItem('uysa_ai_device_auth');
-  },
-
-  checkVisibility() {
-    const fab = document.getElementById('uysa-ai-fab');
-    const chat = document.getElementById('uysa-ai-chat');
-    if (this._isLoggedIn()) {
-      if (fab && (!chat || chat.style.display === 'none')) fab.style.display = 'flex';
-    } else {
-      if (fab) fab.style.display = 'none';
-      if (chat) chat.style.display = 'none';
-    }
-  },
-
-  open() {
-    if (!this._isLoggedIn()) return;
-    const chat = document.getElementById('uysa-ai-chat');
-    const fab = document.getElementById('uysa-ai-fab');
-    if (chat) chat.style.display = 'flex';
-    if (fab) fab.style.display = 'none';
-    // Check if we have active auth
-    const auth = this._getActiveAuth();
-    if (auth && auth.status === 'approved') {
-      this._switchState('chat');
-    } else {
-      this.startAuth();
-    }
-  },
-
-  close() {
-    const chat = document.getElementById('uysa-ai-chat');
-    if (chat) chat.style.display = 'none';
-    if (this._isLoggedIn()) {
-      const fab = document.getElementById('uysa-ai-fab');
-      if (fab) fab.style.display = 'flex';
-    }
-    this._stopPoll();
-  },
-
-  toggle() {
-    const chat = document.getElementById('uysa-ai-chat');
-    if (!chat || chat.style.display === 'none' || !chat.style.display) this.open();
-    else this.close();
-  },
-
-  _switchState(state) {
-    const authScreen = document.getElementById('uysa-ai-auth-screen');
-    const messages = document.getElementById('uysa-ai-messages');
-    const inputArea = document.getElementById('uysa-ai-input-area');
-    const clearBtn = document.getElementById('uysa-ai-btn-clear');
-    const disconnectBtn = document.getElementById('uysa-ai-btn-disconnect');
-
-    if (state === 'auth') {
-      if (authScreen) authScreen.style.display = 'block';
-      if (messages) messages.style.display = 'none';
-      if (inputArea) inputArea.style.display = 'none';
-      if (clearBtn) clearBtn.style.display = 'none';
-      if (disconnectBtn) disconnectBtn.style.display = 'none';
-    } else if (state === 'chat') {
-      if (authScreen) authScreen.style.display = 'none';
-      if (messages) messages.style.display = 'flex';
-      if (inputArea) inputArea.style.display = 'flex';
-      if (clearBtn) clearBtn.style.display = 'inline-block';
-      if (disconnectBtn) disconnectBtn.style.display = 'inline-block';
-      document.getElementById('uysa-ai-input')?.focus();
-    }
-  },
-
-  async startAuth() {
-    this._switchState('auth');
-    const statusEl = document.getElementById('uysa-ai-auth-status');
-    if (statusEl) statusEl.innerHTML = '<span style="display:inline-block;width:8px;height:8px;background:#f59e0b;border-radius:50%;animation:pulse 1.5s infinite"></span> Kod aliniyor...';
-
-    const result = await apiCall('ai.providerAuthStart', {}, 'POST');
-    if (!result.ok) {
-      if (statusEl) statusEl.innerHTML = '<span style="color:#ef4444">Hata: ' + (result.error || 'Bilinmeyen hata') + '</span>';
-      return;
-    }
-
-    this._deviceCode = result.device_code;
-    this._verifyUrl = result.verification_url;
-
-    const codeEl = document.getElementById('uysa-ai-device-code');
-    const urlEl = document.getElementById('uysa-ai-verify-url');
-    const providerEl = document.getElementById('uysa-ai-provider-name');
-
-    if (codeEl) codeEl.textContent = result.device_code;
-    if (urlEl) { urlEl.textContent = result.verification_url; urlEl.href = result.verification_url; }
-    if (providerEl) providerEl.textContent = result.provider || 'Anthropic Claude';
-    if (statusEl) statusEl.innerHTML = '<span style="display:inline-block;width:8px;height:8px;background:#f59e0b;border-radius:50%;animation:pulse 1.5s infinite"></span> Baglanti bekleniyor... Kodu girin ve onaylayin.';
-
-    this._startPoll();
-  },
-
-  _startPoll() {
-    this._stopPoll();
-    this._pollTimer = setInterval(() => this._pollStatus(), 3000);
-  },
-
-  _stopPoll() {
-    if (this._pollTimer) {
-      clearInterval(this._pollTimer);
-      this._pollTimer = null;
-    }
-  },
-
-  async _pollStatus() {
-    if (!this._deviceCode) return;
-    const result = await apiCall('ai.providerAuthStatus', { device_code: this._deviceCode }, 'POST');
-
-    if (result.ok && result.status === 'approved') {
-      this._stopPoll();
-      this._setActiveAuth({ status: 'approved', device_code: this._deviceCode, provider: result.provider || 'anthropic' });
-      const statusEl = document.getElementById('uysa-ai-auth-status');
-      if (statusEl) statusEl.innerHTML = '<span style="color:#10b981;font-weight:700">Baglanti kuruldu!</span>';
-      setTimeout(() => this._switchState('chat'), 800);
-    } else if (result.status === 'expired' || result.status === 'failed') {
-      this._stopPoll();
-      const statusEl = document.getElementById('uysa-ai-auth-status');
-      if (statusEl) statusEl.innerHTML = '<span style="color:#ef4444">Kod suresi doldu. Tekrar deneyin.</span><br><button onclick="uysaAI.startAuth()" style="margin-top:8px;background:#1a56db;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:12px;">Yeni Kod Al</button>';
-    }
-  },
-
-  copyCode() {
-    if (this._deviceCode) {
-      navigator.clipboard.writeText(this._deviceCode).then(() => {
-        const btn = document.querySelector('#uysa-ai-auth-screen button');
-        if (btn) { const orig = btn.textContent; btn.textContent = 'Kopyalandi!'; setTimeout(() => btn.textContent = orig, 1500); }
-      }).catch(() => {});
-    }
-  },
-
-  openVerifyUrl() {
-    if (this._verifyUrl) window.open(this._verifyUrl, '_blank');
-  },
-
-  async disconnect() {
-    this._stopPoll();
-    await apiCall('ai.providerAuthLogout', {}, 'POST');
-    this._setActiveAuth(null);
-    this._deviceCode = null;
-    this._verifyUrl = null;
-    this._switchState('auth');
-    const statusEl = document.getElementById('uysa-ai-auth-status');
-    if (statusEl) statusEl.innerHTML = '<span style="color:#64748b">Baglanti kesildi.</span><br><button onclick="uysaAI.startAuth()" style="margin-top:8px;background:#1a56db;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:12px;">Yeniden Baglan</button>';
-  },
-
-  clear() {
-    const msgs = document.getElementById('uysa-ai-messages');
-    if (msgs) msgs.innerHTML = '<div class="ai-msg ai-assistant" style="background:#e8f0fe;padding:10px 12px;border-radius:12px;font-size:13px;line-height:1.5;max-width:90%;">Sohbet temizlendi. Yeni bir soru sorabilirsiniz.</div>';
-  },
-
-  addMsg(role, text) {
-    const msgs = document.getElementById('uysa-ai-messages');
-    if (!msgs) return;
-    const div = document.createElement('div');
-    div.className = 'ai-msg ai-' + role;
-    const isUser = role === 'user';
-    div.style.cssText = 'padding:10px 12px;border-radius:12px;font-size:13px;line-height:1.6;max-width:90%;word-wrap:break-word;'
-      + (isUser ? 'background:#1a56db;color:#fff;align-self:flex-end;margin-left:auto;' : 'background:#e8f0fe;color:#1e293b;');
-    let html = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-    html = html.replace(/`(.*?)`/g, '<code style="background:#f1f5f9;padding:1px 4px;border-radius:4px;font-size:12px;">$1</code>');
-    html = html.replace(/\n/g, '<br>');
-    div.innerHTML = html;
-    msgs.appendChild(div);
-    msgs.scrollTop = msgs.scrollHeight;
-  },
-
+  close() { document.getElementById('uysa-ai-chat').style.display='none';document.getElementById('uysa-ai-fab').style.display=erpOk()?'flex':'none';pollStop(); },
+  clear() { document.getElementById('uysa-ai-messages').innerHTML='<div class="ai-msg ai-assistant">Sohbet temizlendi. Yeni bir soru sorabilirsiniz.</div>'; },
   async send() {
-    const input = document.getElementById('uysa-ai-input');
-    const msg = input?.value?.trim();
-    if (!msg) return;
-    input.value = '';
-    this.addMsg('user', msg);
-
-    const loadDiv = document.createElement('div');
-    loadDiv.className = 'ai-loading';
-    loadDiv.style.cssText = 'padding:10px;font-size:13px;color:#94a3b8;';
-    loadDiv.innerHTML = '<span style="animation:pulse 1.5s infinite;">Dusunuyorum...</span>';
-    document.getElementById('uysa-ai-messages').appendChild(loadDiv);
-
-    const result = await apiCall('ai.chat', { message: msg }, 'POST');
-    loadDiv.remove();
-
-    if (result.ok && result.response) {
-      this.addMsg('assistant', result.response);
-    } else if (result.error === 'ai_auth_required') {
-      this.addMsg('assistant', 'AI baglantisi kesildi. Yeniden baglanti kurmaniz gerekiyor.');
-      this._setActiveAuth(null);
-      setTimeout(() => this.startAuth(), 1000);
-    } else {
-      this.addMsg('assistant', 'Yanit alinamadi. Lutfen tekrar deneyin.');
-    }
-  }
+    if(_sending)return;
+    const inp=document.getElementById('uysa-ai-input'), msg=inp.value.trim();
+    if(!msg)return; inp.value=''; renderMsg('user',msg);
+    if(!_sid||!_authed){renderMsg('assistant','Baglanti yok. Lutfen tekrar deneyin.');return;}
+    _sending=true; const btn=document.getElementById('uysa-ai-send'); btn.disabled=true;
+    showTyping();
+    const r=await api('/chat','POST',{session_id:_sid,message:msg});
+    hideTyping(); _sending=false; btn.disabled=false;
+    if(r.message){renderMsg('assistant',r.message);}
+    else if(r.error){
+      if(r.error.indexOf('not authenticated')!==-1||r.error.indexOf('Session not')!==-1){clearSess();renderMsg('assistant','Oturum suresi doldu.');panel('connect');await startConn();}
+      else renderMsg('assistant','Hata: '+r.error);
+    } else renderMsg('assistant','Yanit alinamadi.');
+    inp.focus();
+  },
+  copyCode() { const c=document.getElementById('uysa-ai-connect-code')?.textContent;if(c)navigator.clipboard.writeText(c).catch(()=>{}); },
+  async retryConnect() { clearSess();await startConn(); },
+  addMsg: renderMsg,
 };
 
-/* ── ERP v5.0 API Fonksiyonları (Global) ─────────────────────── */
-window.uysaERP = {
-  api: apiCall,
-
-  // Finans
-  fin: {
-    accounts:       ()         => apiCall('fin.accounts'),
-    accountSave:    (d)        => apiCall('fin.accountSave', d, 'POST'),
-    invoiceList:    (p)        => apiCall('fin.invoiceList&' + new URLSearchParams(p||{}).toString()),
-    invoiceSave:    (d)        => apiCall('fin.invoiceSave', d, 'POST'),
-    invoiceDetail:  (id)       => apiCall('fin.invoiceDetail&id='+id),
-    paymentSave:    (d)        => apiCall('fin.paymentSave', d, 'POST'),
-    bankAccounts:   ()         => apiCall('fin.bankAccounts'),
-    trialBalance:   (p)        => apiCall('fin.trialBalance&' + new URLSearchParams(p||{}).toString()),
-    balanceSheet:   (p)        => apiCall('fin.balanceSheet&' + new URLSearchParams(p||{}).toString()),
-    incomeStatement:(p)        => apiCall('fin.incomeStatement&' + new URLSearchParams(p||{}).toString()),
-    dashboard:      ()         => apiCall('fin.dashboard'),
-  },
-
-  // Stok & Depo
-  inv: {
-    warehouses:     ()         => apiCall('inv.warehouses'),
-    warehouseSave:  (d)        => apiCall('inv.warehouseSave', d, 'POST'),
-    products:       (p)        => apiCall('inv.products&' + new URLSearchParams(p||{}).toString()),
-    productSave:    (d)        => apiCall('inv.productSave', d, 'POST'),
-    barcodeSearch:  (c)        => apiCall('inv.barcodeSearch&code='+encodeURIComponent(c)),
-    suppliers:      ()         => apiCall('inv.suppliers'),
-    supplierSave:   (d)        => apiCall('inv.supplierSave', d, 'POST'),
-    stockMovements: (p)        => apiCall('inv.stockMovements&' + new URLSearchParams(p||{}).toString()),
-    stockMove:      (d)        => apiCall('inv.stockMovementSave', d, 'POST'),
-    purchaseOrders: (p)        => apiCall('inv.purchaseOrders&' + new URLSearchParams(p||{}).toString()),
-    purchaseOrderSave: (d)     => apiCall('inv.purchaseOrderSave', d, 'POST'),
-    purchaseOrderReceive: (d)  => apiCall('inv.purchaseOrderReceive', d, 'POST'),
-    lots:           (p)        => apiCall('inv.lots&' + new URLSearchParams(p||{}).toString()),
-    lowStock:       ()         => apiCall('inv.lowStockAlert'),
-    dashboard:      ()         => apiCall('inv.dashboard'),
-  },
-
-  // İK & Bordro
-  hr: {
-    employees:      (p)        => apiCall('hr.employees&' + new URLSearchParams(p||{}).toString()),
-    employeeSave:   (d)        => apiCall('hr.employeeSave', d, 'POST'),
-    employeeDetail: (id)       => apiCall('hr.employeeDetail&id='+id),
-    leaveTypes:     ()         => apiCall('hr.leaveTypes'),
-    leaveRequests:  (p)        => apiCall('hr.leaveRequests&' + new URLSearchParams(p||{}).toString()),
-    leaveRequestSave: (d)      => apiCall('hr.leaveRequestSave', d, 'POST'),
-    leaveApprove:   (d)        => apiCall('hr.leaveApprove', d, 'POST'),
-    attendance:     (p)        => apiCall('hr.attendance&' + new URLSearchParams(p||{}).toString()),
-    attendanceSave: (d)        => apiCall('hr.attendanceSave', d, 'POST'),
-    shifts:         ()         => apiCall('hr.shifts'),
-    shiftPlan:      (p)        => apiCall('hr.shiftPlan&' + new URLSearchParams(p||{}).toString()),
-    payrollCalc:    (d)        => apiCall('hr.payrollCalculate', d, 'POST'),
-    payrollList:    (p)        => apiCall('hr.payrollList&' + new URLSearchParams(p||{}).toString()),
-    payrollBulk:    (d)        => apiCall('hr.payrollBulk', d, 'POST'),
-    performanceReviews: (p)    => apiCall('hr.performanceReviews&' + new URLSearchParams(p||{}).toString()),
-    orgChart:       ()         => apiCall('hr.orgChart'),
-    dashboard:      ()         => apiCall('hr.dashboard'),
-  },
-
-  // Portal
-  portal: {
-    customers:      (p)        => apiCall('portal.customers&' + new URLSearchParams(p||{}).toString()),
-    customerSave:   (d)        => apiCall('portal.customerSave', d, 'POST'),
-    customerDetail: (id)       => apiCall('portal.customerDetail&id='+id),
-    orders:         (p)        => apiCall('portal.orders&' + new URLSearchParams(p||{}).toString()),
-    orderSave:      (d)        => apiCall('portal.orderSave', d, 'POST'),
-    orderStatus:    (d)        => apiCall('portal.orderStatusUpdate', d, 'POST'),
-    webhooks:       ()         => apiCall('portal.webhooks'),
-    webhookSave:    (d)        => apiCall('portal.webhookSave', d, 'POST'),
-    twoFaStatus:    ()         => apiCall('portal.2faStatus'),
-    twoFaSetup:     ()         => apiCall('portal.2faSetup', {}, 'POST'),
-    twoFaVerify:    (code)     => apiCall('portal.2faVerify', { code }, 'POST'),
-  }
-};
-
-/* ── v5.0 Dashboard KPI Yükleyici ────────────────────────────── */
-async function loadV5Dashboard() {
-  try {
-    const [fin, inv, hr] = await Promise.all([
-      apiCall('fin.dashboard'),
-      apiCall('inv.dashboard'),
-      apiCall('hr.dashboard'),
-    ]);
-
-    // Varolan dashboard'a KPI kartları ekle
-    const dashContainer = document.querySelector('.dashboard-kpis, .kpi-container, #anasayfaContent, [data-module="anasayfa"]');
-    if (!dashContainer) return;
-
-    const existing = document.getElementById('v5-kpi-row');
-    if (existing) existing.remove();
-
-    const kpiRow = document.createElement('div');
-    kpiRow.id = 'v5-kpi-row';
-    kpiRow.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:16px 0;';
-
-    const kpis = [];
-    if (fin.ok && fin.dashboard) {
-      kpis.push({ label: 'Aylık Gelir', value: '₺' + Number(fin.dashboard.monthly_income||0).toLocaleString('tr-TR'), color: '#10b981', icon: '💰' });
-      kpis.push({ label: 'Aylık Gider', value: '₺' + Number(fin.dashboard.monthly_expense||0).toLocaleString('tr-TR'), color: '#ef4444', icon: '📉' });
-      kpis.push({ label: 'Banka Bakiye', value: '₺' + Number(fin.dashboard.bank_total||0).toLocaleString('tr-TR'), color: '#3b82f6', icon: '🏦' });
-      kpis.push({ label: 'Vadesi Geçen', value: (fin.dashboard.overdue_count||0) + ' fatura', color: '#f59e0b', icon: '⚠️' });
-    }
-    if (inv.ok && inv.dashboard) {
-      kpis.push({ label: 'Toplam Ürün', value: inv.dashboard.total_products||0, color: '#8b5cf6', icon: '📦' });
-      kpis.push({ label: 'Düşük Stok', value: inv.dashboard.low_stock_count||0, color: '#ef4444', icon: '🔴' });
-      kpis.push({ label: 'Stok Değeri', value: '₺' + Number(inv.dashboard.total_stock_value||0).toLocaleString('tr-TR'), color: '#06b6d4', icon: '📊' });
-    }
-    if (hr.ok && hr.dashboard) {
-      kpis.push({ label: 'Aktif Personel', value: hr.dashboard.active_count||0, color: '#10b981', icon: '👥' });
-      kpis.push({ label: 'Bekleyen İzin', value: hr.dashboard.pending_leaves||0, color: '#f59e0b', icon: '📋' });
-    }
-
-    kpis.forEach(k => {
-      kpiRow.innerHTML += `<div style="background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.1);border-left:4px solid ${k.color};">
-        <div style="font-size:12px;color:#64748b;margin-bottom:4px;">${k.icon} ${k.label}</div>
-        <div style="font-size:22px;font-weight:700;color:#1e293b;">${k.value}</div>
-      </div>`;
-    });
-
-    dashContainer.prepend(kpiRow);
-  } catch(e) { console.log('[UYSA v5] Dashboard KPI yükleme hatası:', e); }
-}
-
-// Dashboard'ı sayfa yüklendiğinde ve modül değişikliğinde yükle
-setTimeout(loadV5Dashboard, 2000);
-
-// CSS animasyon
-const aiStyle = document.createElement('style');
-aiStyle.textContent = '@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}';
-document.head.appendChild(aiStyle);
-
-// AI widget: ERP oturum durumuna göre FAB göster/gizle (login yoksa kesinlikle gizle)
-setTimeout(() => {
-  if (window.uysaAI) {
-    uysaAI.checkVisibility();
-    // Login yoksa chat panelini de kapat
-    if (!uysaAI._isLoggedIn()) {
-      const chatEl = document.getElementById('uysa-ai-chat');
-      const fabEl = document.getElementById('uysa-ai-fab');
-      if (chatEl) chatEl.style.display = 'none';
-      if (fabEl) fabEl.style.display = 'none';
-    }
-  }
-}, 1000);
-// Eski AI auth temizliği
-localStorage.removeItem('uysa_ai_auth_mode');
-localStorage.removeItem('uysa_ai_auth_token');
-localStorage.removeItem('uysa_ai_user_name');
-
-console.log('✅ UYSA ERP v5.0 — AI Asistan + Modüler API katmanı yüklendi');
 })();
 </script>
 </body>
