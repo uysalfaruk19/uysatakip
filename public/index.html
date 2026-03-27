@@ -579,12 +579,16 @@
 
   /* ── Excel-style monthly view ─────────────────────────────── */
   .mx-wrap { display: flex; flex-direction: column; gap: 0; }
+  .mx-header-row { display: flex; align-items: center; justify-content: center; padding: 8px 0; gap: 20px; }
+  .mx-header-row img { height: 50px; }
+  .mx-header-title { font-size: 18px; font-weight: 900; color: #1a3a6b; letter-spacing: 1px; text-align: center; }
   .mx-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-  .mx-table th, .mx-table td { border: 1px solid #7a9cc6; padding: 5px 8px; vertical-align: middle; font-size: 11px; text-align: center; font-weight: 700; }
-  .mx-table th { background: linear-gradient(180deg, #1a3a6b, #102a52) !important; color: #fff !important; font-weight: 900; font-size: 12px; letter-spacing: .5px; padding: 8px 6px; }
-  .mx-date-row td { background: linear-gradient(180deg, #2563eb, #1d4ed8) !important; color: #fff !important; font-weight: 900; font-size: 11px; padding: 6px 4px; }
-  .mx-food-row td { background: #fff; color: #1e293b; font-weight: 700; font-size: 11px; padding: 5px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .mx-food-row:nth-child(even) td { background: #f1f5f9; }
+  .mx-table th, .mx-table td { border: 1px solid #5a8ab5; padding: 4px 6px; vertical-align: middle; font-size: 11px; text-align: center; font-weight: 700; }
+  .mx-table th { background: linear-gradient(180deg, #1a3a6b, #0f2440) !important; color: #fff !important; font-weight: 900; font-size: 12px; letter-spacing: .5px; padding: 8px 4px; }
+  .mx-date-row td { background: linear-gradient(180deg, #1976b5, #145a8a) !important; color: #fff !important; font-weight: 900; font-size: 11px; padding: 5px 4px; }
+  .mx-food-row td { background: #fff; color: #1e293b; font-weight: 700; font-size: 10.5px; padding: 4px 3px; }
+  .mx-food-row:nth-child(odd) td { background: #f8fafc; }
+  .mx-footer { font-size: 9px; color: #333; padding: 8px 4px 4px; line-height: 1.5; font-weight: 600; }
 
   /* ── Weekend columns ──────────────────────────────────────── */
   .weekend-col { display: none !important; }
@@ -661,7 +665,7 @@
     .is-emri-print { display: block !important; }
     body { background: #fff !important; padding: 0; }
     #monthlyExcelModal { position: static; inset: auto; background: #fff; padding: 0; }
-    #closeMonthlyExcelBtn, #monthlyExcelPrintBtn { display: none !important; }
+    #closeMonthlyExcelBtn, #monthlyExcelPrintBtn, #monthlyExcelSaveBtn { display: none !important; }
     .mx-table { font-size: 9px; }
     .mx-table th, .mx-table td { padding: 3px 2px; }
   }
@@ -2689,17 +2693,15 @@
 
 <!-- Monthly Excel-like View Modal -->
 <div id="monthlyExcelModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:90;padding:18px;overflow:auto">
-  <div style="max-width:1300px;margin:0 auto;background:#fff;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.25);overflow:hidden">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 16px;border-bottom:2px solid #1a3a6b;background:linear-gradient(135deg,#e8eef6,#d4dff0)">
-      <div>
-        <div style="font-weight:900;color:#1a3a6b;font-size:16px;letter-spacing:.5px" id="monthlyExcelTitle">UYSA AYLIK MENÜ</div>
-      </div>
+  <div style="max-width:1400px;margin:0 auto;background:#fff;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,.25);overflow:hidden">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0">
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-        <button class="btn" id="monthlyExcelPrintBtn">Yazdır</button>
-        <button class="btn danger" id="closeMonthlyExcelBtn">Kapat</button>
+        <button class="btn" id="monthlyExcelPrintBtn" style="background:#1a3a6b;color:#fff">Yazdır (PDF)</button>
+        <button class="btn" id="monthlyExcelSaveBtn" style="background:#047857;color:#fff">Excel Kaydet</button>
       </div>
+      <button class="btn danger" id="closeMonthlyExcelBtn">Kapat</button>
     </div>
-    <div style="padding:16px" id="monthlyExcelBody"></div>
+    <div style="padding:12px;overflow-x:auto" id="monthlyExcelBody"></div>
   </div>
 </div>
 
@@ -5072,6 +5074,7 @@
   const monthlyExcelBody = document.getElementById('monthlyExcelBody');
   const monthlyExcelTitle = document.getElementById('monthlyExcelTitle');
   const monthlyExcelPrintBtn = document.getElementById('monthlyExcelPrintBtn');
+  const monthlyExcelSaveBtn = document.getElementById('monthlyExcelSaveBtn');
 
   const monthlyModal = document.getElementById('monthlyModal');
   const monthlyContent = document.getElementById('monthlyContent');
@@ -5768,45 +5771,49 @@ function escapeHtml(s){
   }
 
   // --- Excel Export (UYSA Format) ---
-  function exportMonthExcel(){
+  function exportMonthExcelUYSA(){
     if (typeof XLSX === 'undefined') { toast('Excel kütüphanesi yüklenemedi'); return; }
     const y = parseInt(yearEl.value,10);
     const m0 = parseInt(monthEl.value,10)-1;
-    const monthNames = ['OCAK','ŞUBAT','MART','NİSAN','MAYIS','HAZİRAN','TEMMUZ','AĞUSTOS','EYLÜL','EKİM','KASIM','ARALIK'];
+    const MN = ['OCAK','ŞUBAT','MART','NİSAN','MAYIS','HAZİRAN','TEMMUZ','AĞUSTOS','EYLÜL','EKİM','KASIM','ARALIK'];
     const dow7 = ['PAZARTESİ','SALI','ÇARŞAMBA','PERŞEMBE','CUMA','CUMARTESİ','PAZAR'];
     const cust = currentCustomer();
-    const title = `UYSA YEMEK ${monthNames[m0]} ${y} YEMEK MENÜSÜ` + (cust !== 'GENEL' ? ' - ' + cust : '');
+    const title = `UYSA YEMEK ${MN[m0]} ${y} YEMEK MENÜSÜ`;
 
-    // Use same week matrix as the monthly view
     const store = getStore();
     const monthObj = store?.[ymKey()] || {weeks:{}};
     const weeksMatrix = buildMonthWeeksMatrix(y, m0);
 
     const rows = [];
     const merges = [];
+    const styles = {}; // row index → style type
 
-    // Title row (merged across 7 columns: 7 days)
+    // Row 0: Title (merged)
     rows.push([title,'','','','','','']);
     merges.push({s:{r:0,c:0},e:{r:0,c:6}});
-    rows.push(['']); // blank
+    styles[0] = 'title';
 
+    // Row 1: Day names (only once at top)
+    rows.push(dow7.slice());
+    styles[1] = 'dayHeader';
+
+    let rowIdx = 2;
     weeksMatrix.forEach((weekDates, wi) => {
-      // Day names row (PAZARTESİ, SALI, ...)
-      const dayRow = dow7.map(d => d);
-      rows.push(dayRow);
-
-      // Date row (d/m/yy format like the UYSA Excel)
+      // Date row
       const dateRow = weekDates.map(d => {
-        return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+        if (d.getMonth() !== m0) return '';
+        return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
       });
       rows.push(dateRow);
+      styles[rowIdx] = 'dateRow';
+      rowIdx++;
 
-      // Food rows (NO labels in first column - UYSA format)
+      // 6 food rows
       const wk = monthObj?.weeks?.[`W${wi+1}`];
       const foodKeys = ['soups','mains','sides','salads','dessertFruitName','ayran'];
-
       foodKeys.forEach(fk => {
         const r = weekDates.map((d, di) => {
+          if (d.getMonth() !== m0) return '';
           if (!wk) return '';
           if (fk === 'dessertFruitName') {
             const dessert = wk.dessertFruitName?.[di] || '';
@@ -5815,24 +5822,56 @@ function escapeHtml(s){
           }
           if (fk === 'ayran') return wk.ayran?.[di] || 'AYRAN/YOĞURT';
           if (fk === 'salads') return wk.salads?.[di] || 'SALATA';
-          return wk[fk]?.[di] || '';
+          return (wk[fk]?.[di] || '').toUpperCase();
         });
         rows.push(r);
+        styles[rowIdx] = 'food';
+        rowIdx++;
       });
-
-      rows.push(['']); // blank between weeks
     });
 
+    // Footer notes
+    const footerLines = [
+      '',
+      'İKİ DİLİM EKMEK 272 KALORİ',
+      'MASA BAŞI ÇALIŞAN BAYAN:1700-1800KKAL ERKEK :2200-2400 KKAL',
+      'AĞIR İŞ ÇALIŞAN BAYAN:2500-2900 KKAL ERKEK: 3400-3500 KKAL',
+      'YUKARIDA BELİRTİLEN KALORİ DEĞERLERİNİN %20 Sİ SABAH %40 I ÖĞLE %40 I AKŞAM ALINMASI TAVSİYE EDİLİR.',
+      'YUKARIDA BELİRTİLEN DEĞERLER SADECE ANA YEMEKLERDE ALINMASI GEREKEN DEĞERLER DEĞİL ARA YEMEKLERİDE KAPSAMAKTADIR.',
+      'TABLODA BELİRTİLEN ÖĞÜN BAŞINA ORTALAMA 500-600 KKAL OLACAK ŞEKİLDE DÜZENLENMİŞTİR.'
+    ];
+    footerLines.forEach(line => { rows.push([line]); rowIdx++; });
+
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [{wch:22},{wch:22},{wch:22},{wch:22},{wch:22},{wch:22},{wch:22}];
+    ws['!cols'] = [{wch:24},{wch:24},{wch:24},{wch:24},{wch:24},{wch:24},{wch:24}];
     ws['!merges'] = merges;
+
+    // Apply cell styles
+    for (let r = 0; r < rows.length; r++) {
+      for (let c = 0; c < 7; c++) {
+        const addr = XLSX.utils.encode_cell({r, c});
+        if (!ws[addr]) ws[addr] = {v:'', t:'s'};
+        const cell = ws[addr];
+        if (styles[r] === 'title') {
+          cell.s = {font:{bold:true,sz:14,color:{rgb:'1A3A6B'}},alignment:{horizontal:'center',vertical:'center'},fill:{fgColor:{rgb:'FFFFFF'}}};
+        } else if (styles[r] === 'dayHeader') {
+          cell.s = {font:{bold:true,sz:11,color:{rgb:'FFFFFF'}},alignment:{horizontal:'center',vertical:'center'},fill:{fgColor:{rgb:'1A3A6B'}},border:{top:{style:'thin'},bottom:{style:'thin'},left:{style:'thin'},right:{style:'thin'}}};
+        } else if (styles[r] === 'dateRow') {
+          cell.s = {font:{bold:true,sz:10,color:{rgb:'FFFFFF'}},alignment:{horizontal:'center',vertical:'center'},fill:{fgColor:{rgb:'1976B5'}},border:{top:{style:'thin'},bottom:{style:'thin'},left:{style:'thin'},right:{style:'thin'}}};
+        } else if (styles[r] === 'food') {
+          cell.s = {font:{bold:true,sz:10},alignment:{horizontal:'center',vertical:'center'},border:{top:{style:'thin'},bottom:{style:'thin'},left:{style:'thin'},right:{style:'thin'}}};
+        }
+      }
+    }
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Menü');
-    const fn = `UYSA_MENU_${monthNames[m0]}_${y}${cust !== 'GENEL' ? '_' + cust : ''}.xlsx`;
+    const fn = `UYSA ${MN[m0]} ${y}.xlsx`;
     XLSX.writeFile(wb, fn);
     toast('Excel indirildi: ' + fn);
   }
+  // Keep old name as alias
+  function exportMonthExcel(){ exportMonthExcelUYSA(); }
 
   // --- Excel Import ---
   function importMenuExcel(file){
@@ -7596,24 +7635,36 @@ ${p.name}`)) return;
     return {soup, main, side, salad, extras, ayran:wk.ayran?.[i] || ''};
   }
 
+  const UYSA_LOGO_HTML = `<img src="uysa-logo.svg" alt="UYSA" style="height:45px">`;
+
   function renderMonthlyExcelLike(){
     if (!monthlyExcelBody) return;
     const y = Number(yearEl.value);
     const m0 = Number(monthEl.value) - 1;
-    if (monthlyExcelTitle) monthlyExcelTitle.textContent = `UYSA ${MONTH_TR[m0].toUpperCase()} ${y} .xlsx`;
+    const monthName = MONTH_TR[m0].toUpperCase();
 
     const store = getStore();
     const monthObj = store?.[ymKey()] || {weeks:{}};
     const weeks = buildMonthWeeksMatrix(y, m0);
 
+    const wrap = document.createElement('div');
+    wrap.className = 'mx-wrap';
+
+    // Header with logo + title + logo
+    const hdr = document.createElement('div');
+    hdr.className = 'mx-header-row';
+    hdr.innerHTML = `${UYSA_LOGO_HTML}<span class="mx-header-title">UYSA YEMEK ${monthName} ${y} YEMEK MENÜSÜ</span>${UYSA_LOGO_HTML}`;
+    wrap.appendChild(hdr);
+
     const tbl = document.createElement('table');
     tbl.className = 'mx-table';
 
-    // Single header row with day names (only once at top)
+    // Day names header (once)
     const thead = document.createElement('thead');
     const hr = document.createElement('tr');
-    const dayNames = ['PAZARTESİ','SALI','ÇARŞAMBA','PERŞEMBE','CUMA','CUMARTESİ','PAZAR'];
-    dayNames.forEach(d=>{ const th=document.createElement('th'); th.textContent=d; hr.appendChild(th); });
+    ['PAZARTESİ','SALI','ÇARŞAMBA','PERŞEMBE','CUMA','CUMARTESİ','PAZAR'].forEach(d=>{
+      const th=document.createElement('th'); th.textContent=d; hr.appendChild(th);
+    });
     thead.appendChild(hr);
     tbl.appendChild(thead);
 
@@ -7621,20 +7672,19 @@ ${p.name}`)) return;
     const foodKeys = ['soup','main','side','salad','extras','ayran'];
 
     weeks.forEach((weekDates, wi)=>{
-      // Date row (blue background)
+      // Date row (blue)
       const trDate = document.createElement('tr');
       trDate.className = 'mx-date-row';
       weekDates.forEach(d=>{
         const td = document.createElement('td');
-        // Show date only if it's in this month, otherwise empty
         if (d.getMonth() === m0) {
-          td.textContent = `${d.getDate()}/${d.getMonth()+1}/${String(d.getFullYear()).slice(-2)}`;
+          td.textContent = `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
         }
         trDate.appendChild(td);
       });
       tbody.appendChild(trDate);
 
-      // 6 food rows (no labels, just values)
+      // 6 food rows
       foodKeys.forEach(key=>{
         const tr = document.createElement('tr');
         tr.className = 'mx-food-row';
@@ -7642,7 +7692,7 @@ ${p.name}`)) return;
           const td = document.createElement('td');
           if (d.getMonth() === m0) {
             const vals = getCellValueForDate(monthObj, wi+1, di);
-            td.textContent = vals[key] || '';
+            td.textContent = (vals[key] || '').toUpperCase();
           }
           tr.appendChild(td);
         });
@@ -7651,10 +7701,20 @@ ${p.name}`)) return;
     });
 
     tbl.appendChild(tbody);
-
-    const wrap = document.createElement('div');
-    wrap.className = 'mx-wrap';
     wrap.appendChild(tbl);
+
+    // Footer notes (calorie info)
+    const footer = document.createElement('div');
+    footer.className = 'mx-footer';
+    footer.innerHTML = `
+      <div>İKİ DİLİM EKMEK 272 KALORİ</div>
+      <div>MASA BAŞI ÇALIŞAN BAYAN:1700-1800KKAL ERKEK :2200-2400 KKAL</div>
+      <div>AĞIR İŞ ÇALIŞAN BAYAN:2500-2900 KKAL ERKEK: 3400-3500 KKAL</div>
+      <div>YUKARIDA BELİRTİLEN KALORİ DEĞERLERİNİN %20 Sİ SABAH %40 I ÖĞLE %40 I AKŞAM ALINMASI TAVSİYE EDİLİR.</div>
+      <div>YUKARIDA BELİRTİLEN DEĞERLER SADECE ANA YEMEKLERDE ALINMASI GEREKEN DEĞERLER DEĞİL ARA YEMEKLERİDE KAPSAMAKTADIR.</div>
+      <div>TABLODA BELİRTİLEN ÖĞÜN BAŞINA ORTALAMA 500-600 KKAL OLACAK ŞEKİLDE DÜZENLENMİŞTİR.</div>
+    `;
+    wrap.appendChild(footer);
 
     monthlyExcelBody.innerHTML='';
     monthlyExcelBody.appendChild(wrap);
@@ -7677,6 +7737,7 @@ ${p.name}`)) return;
   if (closeMonthlyExcelBtn && monthlyExcelModal) closeMonthlyExcelBtn.addEventListener('click', ()=>monthlyExcelModal.style.display='none');
   if (monthlyExcelModal) monthlyExcelModal.addEventListener('click', (e)=>{ if (e.target===monthlyExcelModal) monthlyExcelModal.style.display='none'; });
   if (monthlyExcelPrintBtn) monthlyExcelPrintBtn.addEventListener('click', ()=>window.print());
+  if (monthlyExcelSaveBtn) monthlyExcelSaveBtn.addEventListener('click', ()=> exportMonthExcelUYSA());
 
   // --- Genel menüyü tüm müşterilere uygula + fark notu ---
   function currentCustomer(){
