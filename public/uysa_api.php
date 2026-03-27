@@ -45,7 +45,7 @@ header('Permissions-Policy: geolocation=(), microphone=(), camera=()');
 
 // ── Güvenli CORS ──────────────────────────────────────────────
 $allowedOrigins = array_filter(array_map('trim', explode(',',
-    getenv('CORS_ORIGINS') ?: 'https://uysatakip.production.up.railway.app,http://localhost,http://127.0.0.1'
+    getenv('CORS_ORIGINS') ?: 'https://uysatakip-production-04a2.up.railway.app,https://uysatakip.production.up.railway.app,http://localhost,http://127.0.0.1'
 )));
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 if (in_array($origin, $allowedOrigins, true)) {
@@ -88,8 +88,18 @@ try {
         PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci",
     ]);
 } catch (PDOException $e) {
-    error_log('[UYSA] DB Error: ' . $e->getMessage());
-    jsonResponse(['ok' => false, 'error' => 'Veritabanı bağlantı hatası'], 503);
+    error_log('[UYSA] DB Error: ' . $e->getMessage() . ' | DSN: mysql:host=' . DB_HOST . ':' . DB_PORT . ' db=' . DB_NAME . ' user=' . DB_USER);
+    jsonResponse([
+        'ok'    => false,
+        'error' => 'Veritabanı bağlantı hatası',
+        'debug' => [
+            'host' => DB_HOST,
+            'port' => DB_PORT,
+            'name' => DB_NAME,
+            'user' => DB_USER,
+            'hint' => $e->getMessage(),
+        ]
+    ], 503);
 }
 
 // ── Schema ────────────────────────────────────────────────────
@@ -181,6 +191,507 @@ function ensureSchema(PDO $pdo): void
         PRIMARY KEY (`id`),
         KEY `idx_category` (`category`),
         KEY `idx_deleted`  (`deleted_at`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // ── v5.0 Finans Tabloları ─────────────────────────────────
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_accounts` (
+        `id`         INT UNSIGNED    NOT NULL AUTO_INCREMENT,
+        `code`       VARCHAR(20)     NOT NULL,
+        `name`       VARCHAR(200)    NOT NULL,
+        `type`       VARCHAR(20)     NOT NULL DEFAULT 'asset',
+        `parent_id`  INT UNSIGNED             DEFAULT NULL,
+        `is_active`  TINYINT(1)      NOT NULL DEFAULT 1,
+        `created_at` DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        `updated_at` DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        UNIQUE KEY `uk_code` (`code`),
+        KEY `idx_type` (`type`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_journal_entries` (
+        `id`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        `entry_no`    VARCHAR(30)     NOT NULL,
+        `date`        DATE            NOT NULL,
+        `description` VARCHAR(500)             DEFAULT NULL,
+        `status`      VARCHAR(20)     NOT NULL DEFAULT 'draft',
+        `created_by`  VARCHAR(100)             DEFAULT NULL,
+        `created_at`  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        `updated_at`  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        UNIQUE KEY `uk_entry_no` (`entry_no`),
+        KEY `idx_date` (`date`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_journal_lines` (
+        `id`          BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+        `entry_id`    BIGINT UNSIGNED  NOT NULL,
+        `account_id`  INT UNSIGNED     NOT NULL,
+        `debit`       DECIMAL(15,2)    NOT NULL DEFAULT 0.00,
+        `credit`      DECIMAL(15,2)    NOT NULL DEFAULT 0.00,
+        `description` VARCHAR(300)              DEFAULT NULL,
+        PRIMARY KEY (`id`),
+        KEY `idx_entry` (`entry_id`),
+        KEY `idx_account` (`account_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_invoices` (
+        `id`           BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+        `invoice_no`   VARCHAR(30)      NOT NULL,
+        `type`         VARCHAR(20)      NOT NULL DEFAULT 'sales',
+        `customer_id`  BIGINT UNSIGNED           DEFAULT NULL,
+        `supplier_id`  INT UNSIGNED              DEFAULT NULL,
+        `date`         DATE             NOT NULL,
+        `due_date`     DATE                      DEFAULT NULL,
+        `subtotal`     DECIMAL(15,2)    NOT NULL DEFAULT 0.00,
+        `tax_rate`     DECIMAL(5,2)     NOT NULL DEFAULT 20.00,
+        `tax_amount`   DECIMAL(15,2)    NOT NULL DEFAULT 0.00,
+        `total`        DECIMAL(15,2)    NOT NULL DEFAULT 0.00,
+        `status`       VARCHAR(20)      NOT NULL DEFAULT 'draft',
+        `notes`        TEXT                      DEFAULT NULL,
+        `created_by`   VARCHAR(100)              DEFAULT NULL,
+        `created_at`   DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        `updated_at`   DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        UNIQUE KEY `uk_invoice_no` (`invoice_no`),
+        KEY `idx_type` (`type`),
+        KEY `idx_status` (`status`),
+        KEY `idx_date` (`date`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_invoice_lines` (
+        `id`          BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+        `invoice_id`  BIGINT UNSIGNED  NOT NULL,
+        `product_id`  BIGINT UNSIGNED           DEFAULT NULL,
+        `description` VARCHAR(500)     NOT NULL,
+        `quantity`    DECIMAL(12,3)    NOT NULL DEFAULT 1.000,
+        `unit`        VARCHAR(20)               DEFAULT 'adet',
+        `unit_price`  DECIMAL(15,2)    NOT NULL DEFAULT 0.00,
+        `tax_rate`    DECIMAL(5,2)     NOT NULL DEFAULT 20.00,
+        `total`       DECIMAL(15,2)    NOT NULL DEFAULT 0.00,
+        PRIMARY KEY (`id`),
+        KEY `idx_invoice` (`invoice_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_payments` (
+        `id`          BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+        `invoice_id`  BIGINT UNSIGNED           DEFAULT NULL,
+        `amount`      DECIMAL(15,2)    NOT NULL,
+        `method`      VARCHAR(20)      NOT NULL DEFAULT 'cash',
+        `date`        DATE             NOT NULL,
+        `reference`   VARCHAR(100)              DEFAULT NULL,
+        `notes`       VARCHAR(500)              DEFAULT NULL,
+        `bank_account_id` INT UNSIGNED          DEFAULT NULL,
+        `created_by`  VARCHAR(100)              DEFAULT NULL,
+        `created_at`  DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        KEY `idx_invoice` (`invoice_id`),
+        KEY `idx_date` (`date`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_bank_accounts` (
+        `id`          INT UNSIGNED     NOT NULL AUTO_INCREMENT,
+        `name`        VARCHAR(100)     NOT NULL,
+        `bank_name`   VARCHAR(100)     NOT NULL,
+        `iban`        VARCHAR(34)               DEFAULT NULL,
+        `currency`    VARCHAR(3)       NOT NULL DEFAULT 'TRY',
+        `balance`     DECIMAL(15,2)    NOT NULL DEFAULT 0.00,
+        `is_active`   TINYINT(1)       NOT NULL DEFAULT 1,
+        `created_at`  DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        `updated_at`  DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_bank_transactions` (
+        `id`              BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+        `bank_account_id` INT UNSIGNED     NOT NULL,
+        `type`            VARCHAR(20)      NOT NULL,
+        `amount`          DECIMAL(15,2)    NOT NULL,
+        `description`     VARCHAR(500)              DEFAULT NULL,
+        `date`            DATE             NOT NULL,
+        `reference`       VARCHAR(100)              DEFAULT NULL,
+        `reconciled`      TINYINT(1)       NOT NULL DEFAULT 0,
+        `created_at`      DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        KEY `idx_bank` (`bank_account_id`),
+        KEY `idx_date` (`date`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // ── v5.0 Stok & Depo Tabloları ──────────────────────────
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_warehouses` (
+        `id`         INT UNSIGNED     NOT NULL AUTO_INCREMENT,
+        `name`       VARCHAR(100)     NOT NULL,
+        `location`   VARCHAR(300)              DEFAULT NULL,
+        `manager`    VARCHAR(100)              DEFAULT NULL,
+        `is_active`  TINYINT(1)       NOT NULL DEFAULT 1,
+        `created_at` DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_suppliers` (
+        `id`              INT UNSIGNED     NOT NULL AUTO_INCREMENT,
+        `name`            VARCHAR(200)     NOT NULL,
+        `contact_person`  VARCHAR(100)              DEFAULT NULL,
+        `phone`           VARCHAR(20)               DEFAULT NULL,
+        `email`           VARCHAR(255)              DEFAULT NULL,
+        `address`         TEXT                      DEFAULT NULL,
+        `tax_no`          VARCHAR(20)               DEFAULT NULL,
+        `payment_terms`   INT UNSIGNED     NOT NULL DEFAULT 30,
+        `rating`          TINYINT UNSIGNED          DEFAULT NULL,
+        `is_active`       TINYINT(1)       NOT NULL DEFAULT 1,
+        `created_at`      DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        `updated_at`      DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_products` (
+        `id`            BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+        `sku`           VARCHAR(50)               DEFAULT NULL,
+        `barcode`       VARCHAR(50)               DEFAULT NULL,
+        `name`          VARCHAR(200)     NOT NULL,
+        `category`      VARCHAR(100)              DEFAULT NULL,
+        `unit`          VARCHAR(20)      NOT NULL DEFAULT 'kg',
+        `min_stock`     DECIMAL(12,3)    NOT NULL DEFAULT 0.000,
+        `max_stock`     DECIMAL(12,3)    NOT NULL DEFAULT 0.000,
+        `current_stock` DECIMAL(12,3)    NOT NULL DEFAULT 0.000,
+        `unit_cost`     DECIMAL(15,2)    NOT NULL DEFAULT 0.00,
+        `unit_price`    DECIMAL(15,2)    NOT NULL DEFAULT 0.00,
+        `supplier_id`   INT UNSIGNED              DEFAULT NULL,
+        `is_active`     TINYINT(1)       NOT NULL DEFAULT 1,
+        `created_at`    DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        `updated_at`    DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        KEY `idx_barcode` (`barcode`),
+        KEY `idx_category` (`category`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_stock_movements` (
+        `id`              BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+        `product_id`      BIGINT UNSIGNED  NOT NULL,
+        `warehouse_id`    INT UNSIGNED     NOT NULL,
+        `type`            VARCHAR(20)      NOT NULL,
+        `quantity`        DECIMAL(12,3)    NOT NULL,
+        `unit_cost`       DECIMAL(15,2)             DEFAULT NULL,
+        `reference_type`  VARCHAR(50)               DEFAULT NULL,
+        `reference_id`    BIGINT UNSIGNED           DEFAULT NULL,
+        `to_warehouse_id` INT UNSIGNED              DEFAULT NULL,
+        `notes`           VARCHAR(500)              DEFAULT NULL,
+        `created_by`      VARCHAR(100)              DEFAULT NULL,
+        `created_at`      DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        KEY `idx_product` (`product_id`),
+        KEY `idx_warehouse` (`warehouse_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_purchase_orders` (
+        `id`             BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+        `order_no`       VARCHAR(30)      NOT NULL,
+        `supplier_id`    INT UNSIGNED     NOT NULL,
+        `warehouse_id`   INT UNSIGNED     NOT NULL,
+        `date`           DATE             NOT NULL,
+        `expected_date`  DATE                      DEFAULT NULL,
+        `status`         VARCHAR(20)      NOT NULL DEFAULT 'draft',
+        `total`          DECIMAL(15,2)    NOT NULL DEFAULT 0.00,
+        `notes`          TEXT                      DEFAULT NULL,
+        `created_by`     VARCHAR(100)              DEFAULT NULL,
+        `created_at`     DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        `updated_at`     DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        UNIQUE KEY `uk_order_no` (`order_no`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_purchase_order_lines` (
+        `id`            BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+        `order_id`      BIGINT UNSIGNED  NOT NULL,
+        `product_id`    BIGINT UNSIGNED  NOT NULL,
+        `quantity`      DECIMAL(12,3)    NOT NULL,
+        `received_qty`  DECIMAL(12,3)    NOT NULL DEFAULT 0.000,
+        `unit_price`    DECIMAL(15,2)    NOT NULL DEFAULT 0.00,
+        `total`         DECIMAL(15,2)    NOT NULL DEFAULT 0.00,
+        PRIMARY KEY (`id`),
+        KEY `idx_order` (`order_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_lots` (
+        `id`              BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+        `product_id`      BIGINT UNSIGNED  NOT NULL,
+        `lot_number`      VARCHAR(50)      NOT NULL,
+        `production_date` DATE                      DEFAULT NULL,
+        `expiry_date`     DATE                      DEFAULT NULL,
+        `quantity`        DECIMAL(12,3)    NOT NULL DEFAULT 0.000,
+        `warehouse_id`    INT UNSIGNED              DEFAULT NULL,
+        `created_at`      DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        KEY `idx_product` (`product_id`),
+        KEY `idx_expiry` (`expiry_date`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // ── v5.0 İK & Bordro Tabloları ──────────────────────────
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_employees` (
+        `id`            INT UNSIGNED     NOT NULL AUTO_INCREMENT,
+        `employee_no`   VARCHAR(20)      NOT NULL,
+        `first_name`    VARCHAR(50)      NOT NULL,
+        `last_name`     VARCHAR(50)      NOT NULL,
+        `tc_no`         VARCHAR(11)               DEFAULT NULL,
+        `phone`         VARCHAR(20)               DEFAULT NULL,
+        `email`         VARCHAR(255)              DEFAULT NULL,
+        `department`    VARCHAR(100)              DEFAULT NULL,
+        `position`      VARCHAR(100)              DEFAULT NULL,
+        `hire_date`     DATE             NOT NULL,
+        `salary`        DECIMAL(12,2)    NOT NULL DEFAULT 0.00,
+        `salary_type`   VARCHAR(20)      NOT NULL DEFAULT 'monthly',
+        `shift_group`   VARCHAR(50)               DEFAULT NULL,
+        `manager_id`    INT UNSIGNED              DEFAULT NULL,
+        `status`        VARCHAR(20)      NOT NULL DEFAULT 'active',
+        `created_at`    DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        `updated_at`    DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        UNIQUE KEY `uk_employee_no` (`employee_no`),
+        KEY `idx_department` (`department`),
+        KEY `idx_status` (`status`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_leave_types` (
+        `id`           INT UNSIGNED     NOT NULL AUTO_INCREMENT,
+        `name`         VARCHAR(100)     NOT NULL,
+        `default_days` INT UNSIGNED     NOT NULL DEFAULT 14,
+        `is_paid`      TINYINT(1)       NOT NULL DEFAULT 1,
+        `is_active`    TINYINT(1)       NOT NULL DEFAULT 1,
+        PRIMARY KEY (`id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_leave_requests` (
+        `id`             BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+        `employee_id`    INT UNSIGNED     NOT NULL,
+        `leave_type_id`  INT UNSIGNED     NOT NULL,
+        `start_date`     DATE             NOT NULL,
+        `end_date`       DATE             NOT NULL,
+        `days`           DECIMAL(4,1)     NOT NULL,
+        `status`         VARCHAR(20)      NOT NULL DEFAULT 'pending',
+        `approved_by`    VARCHAR(100)              DEFAULT NULL,
+        `notes`          VARCHAR(500)              DEFAULT NULL,
+        `created_at`     DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        KEY `idx_employee` (`employee_id`),
+        KEY `idx_status` (`status`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_attendance` (
+        `id`              BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+        `employee_id`     INT UNSIGNED     NOT NULL,
+        `date`            DATE             NOT NULL,
+        `check_in`        TIME                      DEFAULT NULL,
+        `check_out`       TIME                      DEFAULT NULL,
+        `status`          VARCHAR(20)      NOT NULL DEFAULT 'present',
+        `overtime_hours`  DECIMAL(4,1)     NOT NULL DEFAULT 0.0,
+        `notes`           VARCHAR(300)              DEFAULT NULL,
+        PRIMARY KEY (`id`),
+        UNIQUE KEY `uk_emp_date` (`employee_id`, `date`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_shifts` (
+        `id`             INT UNSIGNED     NOT NULL AUTO_INCREMENT,
+        `name`           VARCHAR(50)      NOT NULL,
+        `start_time`     TIME             NOT NULL,
+        `end_time`       TIME             NOT NULL,
+        `break_minutes`  INT UNSIGNED     NOT NULL DEFAULT 60,
+        `is_active`      TINYINT(1)       NOT NULL DEFAULT 1,
+        PRIMARY KEY (`id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_shift_assignments` (
+        `id`           BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+        `employee_id`  INT UNSIGNED     NOT NULL,
+        `shift_id`     INT UNSIGNED     NOT NULL,
+        `date`         DATE             NOT NULL,
+        `created_by`   VARCHAR(100)              DEFAULT NULL,
+        PRIMARY KEY (`id`),
+        UNIQUE KEY `uk_emp_date` (`employee_id`, `date`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_payroll` (
+        `id`              BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+        `employee_id`     INT UNSIGNED     NOT NULL,
+        `period_year`     SMALLINT UNSIGNED NOT NULL,
+        `period_month`    TINYINT UNSIGNED  NOT NULL,
+        `gross_salary`    DECIMAL(12,2)    NOT NULL DEFAULT 0.00,
+        `sgk_employee`    DECIMAL(12,2)    NOT NULL DEFAULT 0.00,
+        `sgk_employer`    DECIMAL(12,2)    NOT NULL DEFAULT 0.00,
+        `income_tax`      DECIMAL(12,2)    NOT NULL DEFAULT 0.00,
+        `stamp_tax`       DECIMAL(12,2)    NOT NULL DEFAULT 0.00,
+        `net_salary`      DECIMAL(12,2)    NOT NULL DEFAULT 0.00,
+        `overtime_pay`    DECIMAL(12,2)    NOT NULL DEFAULT 0.00,
+        `deductions`      DECIMAL(12,2)    NOT NULL DEFAULT 0.00,
+        `bonuses`         DECIMAL(12,2)    NOT NULL DEFAULT 0.00,
+        `status`          VARCHAR(20)      NOT NULL DEFAULT 'draft',
+        `created_at`      DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        UNIQUE KEY `uk_emp_period` (`employee_id`, `period_year`, `period_month`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_performance_reviews` (
+        `id`            BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+        `employee_id`   INT UNSIGNED     NOT NULL,
+        `reviewer_id`   INT UNSIGNED              DEFAULT NULL,
+        `period`        VARCHAR(20)      NOT NULL,
+        `score`         TINYINT UNSIGNED NOT NULL DEFAULT 0,
+        `strengths`     TEXT                      DEFAULT NULL,
+        `improvements`  TEXT                      DEFAULT NULL,
+        `goals`         TEXT                      DEFAULT NULL,
+        `created_at`    DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        KEY `idx_employee` (`employee_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_trainings` (
+        `id`              INT UNSIGNED     NOT NULL AUTO_INCREMENT,
+        `title`           VARCHAR(200)     NOT NULL,
+        `description`     TEXT                      DEFAULT NULL,
+        `trainer`         VARCHAR(100)              DEFAULT NULL,
+        `date`            DATE             NOT NULL,
+        `duration_hours`  DECIMAL(4,1)     NOT NULL DEFAULT 1.0,
+        `category`        VARCHAR(100)              DEFAULT NULL,
+        `created_at`      DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_training_participants` (
+        `id`            BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+        `training_id`   INT UNSIGNED     NOT NULL,
+        `employee_id`   INT UNSIGNED     NOT NULL,
+        `status`        VARCHAR(20)      NOT NULL DEFAULT 'registered',
+        `score`         TINYINT UNSIGNED          DEFAULT NULL,
+        PRIMARY KEY (`id`),
+        UNIQUE KEY `uk_train_emp` (`training_id`, `employee_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // ── v5.0 Portal & Entegrasyon Tabloları ─────────────────
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_customers` (
+        `id`                  BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+        `name`                VARCHAR(200)     NOT NULL,
+        `contact_person`      VARCHAR(100)              DEFAULT NULL,
+        `phone`               VARCHAR(20)               DEFAULT NULL,
+        `email`               VARCHAR(255)              DEFAULT NULL,
+        `address`             TEXT                      DEFAULT NULL,
+        `tax_no`              VARCHAR(20)               DEFAULT NULL,
+        `sector`              VARCHAR(100)              DEFAULT NULL,
+        `credit_limit`        DECIMAL(15,2)    NOT NULL DEFAULT 0.00,
+        `balance`             DECIMAL(15,2)    NOT NULL DEFAULT 0.00,
+        `portal_username`     VARCHAR(50)               DEFAULT NULL,
+        `portal_password_hash` VARCHAR(255)             DEFAULT NULL,
+        `portal_active`       TINYINT(1)       NOT NULL DEFAULT 0,
+        `is_active`           TINYINT(1)       NOT NULL DEFAULT 1,
+        `created_at`          DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        `updated_at`          DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_customer_orders` (
+        `id`             BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+        `order_no`       VARCHAR(30)      NOT NULL,
+        `customer_id`    BIGINT UNSIGNED  NOT NULL,
+        `date`           DATE             NOT NULL,
+        `delivery_date`  DATE                      DEFAULT NULL,
+        `status`         VARCHAR(30)      NOT NULL DEFAULT 'pending',
+        `total`          DECIMAL(15,2)    NOT NULL DEFAULT 0.00,
+        `notes`          TEXT                      DEFAULT NULL,
+        `created_by`     VARCHAR(100)              DEFAULT NULL,
+        `created_at`     DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        `updated_at`     DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        UNIQUE KEY `uk_order_no` (`order_no`),
+        KEY `idx_customer` (`customer_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_customer_order_lines` (
+        `id`          BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+        `order_id`    BIGINT UNSIGNED  NOT NULL,
+        `product_id`  BIGINT UNSIGNED           DEFAULT NULL,
+        `description` VARCHAR(500)     NOT NULL,
+        `quantity`    DECIMAL(12,3)    NOT NULL DEFAULT 1.000,
+        `unit_price`  DECIMAL(15,2)    NOT NULL DEFAULT 0.00,
+        `total`       DECIMAL(15,2)    NOT NULL DEFAULT 0.00,
+        PRIMARY KEY (`id`),
+        KEY `idx_order` (`order_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_webhooks` (
+        `id`              INT UNSIGNED     NOT NULL AUTO_INCREMENT,
+        `url`             VARCHAR(500)     NOT NULL,
+        `events`          LONGTEXT         NOT NULL,
+        `secret`          VARCHAR(100)     NOT NULL,
+        `is_active`       TINYINT(1)       NOT NULL DEFAULT 1,
+        `last_triggered`  DATETIME                  DEFAULT NULL,
+        `fail_count`      INT UNSIGNED     NOT NULL DEFAULT 0,
+        `created_by`      VARCHAR(100)              DEFAULT NULL,
+        `created_at`      DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_webhook_logs` (
+        `id`              BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+        `webhook_id`      INT UNSIGNED     NOT NULL,
+        `event`           VARCHAR(100)     NOT NULL,
+        `payload`         TEXT             NOT NULL,
+        `response_code`   INT                       DEFAULT NULL,
+        `response_body`   TEXT                      DEFAULT NULL,
+        `created_at`      DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        KEY `idx_webhook` (`webhook_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_2fa` (
+        `id`            INT UNSIGNED     NOT NULL AUTO_INCREMENT,
+        `user_id`       INT UNSIGNED     NOT NULL,
+        `secret`        VARCHAR(64)      NOT NULL,
+        `is_enabled`    TINYINT(1)       NOT NULL DEFAULT 0,
+        `backup_codes`  LONGTEXT                  DEFAULT NULL,
+        `created_at`    DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        UNIQUE KEY `uk_user` (`user_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // ── v5.0 AI Device Auth ─────────────────────────────────
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_ai_device_auth` (
+        `id`              INT UNSIGNED     NOT NULL AUTO_INCREMENT,
+        `user_id`         INT UNSIGNED     NOT NULL,
+        `username`        VARCHAR(100)     NOT NULL,
+        `device_code`     VARCHAR(20)      NOT NULL,
+        `session_token`   VARCHAR(128)              DEFAULT NULL,
+        `provider`        VARCHAR(30)      NOT NULL DEFAULT 'anthropic',
+        `status`          ENUM('pending','approved','expired','failed') NOT NULL DEFAULT 'pending',
+        `expires_at`      DATETIME         NOT NULL,
+        `approved_at`     DATETIME                  DEFAULT NULL,
+        `ip_address`      VARCHAR(45)               DEFAULT NULL,
+        `created_at`      DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        KEY `idx_device_code` (`device_code`),
+        KEY `idx_user_status` (`user_id`, `status`),
+        KEY `idx_session` (`session_token`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // ── v5.0 AI Chat Tablosu ─────────────────────────────────
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_ai_chats` (
+        `id`          BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+        `user`        VARCHAR(100)     NOT NULL,
+        `source`      VARCHAR(20)      NOT NULL DEFAULT 'erp',
+        `role`        VARCHAR(20)      NOT NULL,
+        `message`     TEXT             NOT NULL,
+        `context`     LONGTEXT                  DEFAULT NULL,
+        `created_at`  DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        KEY `idx_user` (`user`),
+        KEY `idx_source` (`source`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `uysa_telegram_users` (
+        `id`            INT UNSIGNED     NOT NULL AUTO_INCREMENT,
+        `telegram_id`   BIGINT           NOT NULL,
+        `telegram_username` VARCHAR(100)          DEFAULT NULL,
+        `uysa_user_id`  INT UNSIGNED              DEFAULT NULL,
+        `is_verified`   TINYINT(1)       NOT NULL DEFAULT 0,
+        `created_at`    DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        UNIQUE KEY `uk_telegram` (`telegram_id`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
     // Rate limit tabloları
@@ -305,7 +816,7 @@ $action = trim($_GET['action'] ?? '');
 $body   = json_decode(file_get_contents('php://input'), true) ?? [];
 
 // ── Auth Bypass: fileDownload public ─────────────────────────
-$publicActions = ['fileDownload', 'ping', 'health', 'stats', 'getToken', 'userAuth'];
+$publicActions = ['fileDownload', 'ping', 'health', 'stats', 'getToken', 'userAuth', 'portal.login', 'ai.authLogin'];
 
 // ── Kimlik Doğrulama ─────────────────────────────────────────
 $authedUser = null;
@@ -348,7 +859,7 @@ if (!in_array($action, $publicActions, true)) {
 // ── Rate Limiting — SADECE auth/güvenlik endpoint'leri ──────
 // Normal veri işlemleri (setBulk, get, set vb.) kısıtlanmaz.
 // Kısıtlanan: login, getToken, apiKeyCreate, userSave
-$AUTH_RATE_ACTIONS = ['getToken', 'userAuth', 'apiKeyCreate', 'userSave'];
+$AUTH_RATE_ACTIONS = ['getToken', 'userAuth', 'ai.authLogin', 'apiKeyCreate', 'userSave'];
 
 if (in_array($action, $AUTH_RATE_ACTIONS, true)) {
     $rateLimitKey = 'login:' . md5($clientIp . ':' . $action);
@@ -431,6 +942,232 @@ case 'stats':
     } catch (\Throwable $e) {
         jsonResponse(['ok' => false, 'error' => 'stats failed'], 500);
     }
+
+// ── AI Provider Device Auth: Başlat ──────────────────────────
+case 'ai.providerAuthStart':
+    // ERP login gerekli
+    if (!$actor) {
+        jsonResponse(['ok' => false, 'error' => 'ERP oturumu gerekli'], 401);
+    }
+
+    // Kullanıcı bilgilerini al
+    $stmt = $pdo->prepare("SELECT id, username FROM uysa_users WHERE username = ? AND is_active = 1 LIMIT 1");
+    $stmt->execute([$actor]);
+    $erpUser = $stmt->fetch();
+    if (!$erpUser) {
+        jsonResponse(['ok' => false, 'error' => 'Geçersiz ERP kullanıcısı'], 401);
+    }
+
+    // Mevcut aktif auth varsa onu döndür
+    $existing = $pdo->prepare("SELECT * FROM uysa_ai_device_auth
+        WHERE user_id = ? AND status = 'approved' AND expires_at > NOW() ORDER BY id DESC LIMIT 1");
+    $existing->execute([$erpUser['id']]);
+    $activeAuth = $existing->fetch();
+    if ($activeAuth) {
+        jsonResponse([
+            'ok'       => true,
+            'status'   => 'approved',
+            'provider' => $activeAuth['provider'],
+            'session_token' => $activeAuth['session_token'],
+            'message'  => 'AI bağlantısı zaten aktif',
+        ]);
+    }
+
+    // Pending olanı iptal et
+    $pdo->prepare("UPDATE uysa_ai_device_auth SET status = 'expired'
+        WHERE user_id = ? AND status = 'pending'")->execute([$erpUser['id']]);
+
+    // Yeni device code üret
+    $code = strtoupper(substr(bin2hex(random_bytes(3)), 0, 4) . '-' . substr(bin2hex(random_bytes(3)), 0, 4));
+    $sessionToken = bin2hex(random_bytes(32));
+    $expiresIn = 600; // 10 dakika
+    $provider = strtolower(getenv('AI_PROVIDER') ?: 'anthropic');
+
+    require_once __DIR__ . '/src/modules/TelegramBot.php';
+    $aiCfg = getAIProvider();
+    $providerName = $aiCfg['provider'] === 'openai' ? 'OpenAI' : 'Claude (Anthropic)';
+
+    $pdo->prepare("INSERT INTO uysa_ai_device_auth
+        (user_id, username, device_code, session_token, provider, status, expires_at, ip_address)
+        VALUES (?, ?, ?, ?, ?, 'pending', DATE_ADD(NOW(), INTERVAL ? SECOND), ?)")
+        ->execute([$erpUser['id'], $erpUser['username'], $code, $sessionToken, $provider, $expiresIn, $clientIp]);
+
+    $deviceId = $pdo->lastInsertId();
+    $baseUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http')
+             . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
+    $verifyUrl = $baseUrl . '/uysa_api.php?action=ai.verifyDevice';
+
+    auditLog($pdo, 'ai_device_auth_start', $actor, null, json_encode([
+        'device_id' => $deviceId, 'provider' => $provider
+    ]), $clientIp);
+
+    jsonResponse([
+        'ok'               => true,
+        'status'           => 'pending',
+        'device_code'      => $code,
+        'device_id'        => (int)$deviceId,
+        'provider'         => $providerName,
+        'verification_url' => $verifyUrl,
+        'expires_in'       => $expiresIn,
+        'poll_interval'    => 3,
+    ]);
+
+// ── AI Provider Device Auth: Durum Sorgula ───────────────────
+case 'ai.providerAuthStatus':
+    if (!$actor) {
+        jsonResponse(['ok' => false, 'error' => 'ERP oturumu gerekli'], 401);
+    }
+
+    $deviceId = (int)($body['device_id'] ?? $_GET['device_id'] ?? 0);
+    if (!$deviceId) {
+        jsonResponse(['ok' => false, 'error' => 'device_id gerekli'], 400);
+    }
+
+    // Expire olmuşları güncelle
+    $pdo->exec("UPDATE uysa_ai_device_auth SET status = 'expired'
+        WHERE status = 'pending' AND expires_at < NOW()");
+
+    $stmt = $pdo->prepare("SELECT status, session_token, provider, approved_at
+        FROM uysa_ai_device_auth WHERE id = ? AND username = ?");
+    $stmt->execute([$deviceId, $actor]);
+    $row = $stmt->fetch();
+
+    if (!$row) {
+        jsonResponse(['ok' => false, 'error' => 'Device auth bulunamadı'], 404);
+    }
+
+    $result = ['ok' => true, 'status' => $row['status']];
+    if ($row['status'] === 'approved') {
+        $result['session_token'] = $row['session_token'];
+        $result['provider'] = $row['provider'];
+        $result['message'] = 'Bağlantı tamamlandı';
+    } elseif ($row['status'] === 'expired') {
+        $result['message'] = 'Kod süresi doldu. Yeniden başlatın.';
+    } elseif ($row['status'] === 'pending') {
+        $result['message'] = 'Bağlantı bekleniyor…';
+    }
+    jsonResponse($result);
+
+// ── AI Provider Device Auth: Onayla (Verification Page) ──────
+case 'ai.verifyDevice':
+    // Bu endpoint HTML sayfası döndürür (GET) veya onay işler (POST)
+    if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+        // Verification sayfası göster
+        $prefillCode = htmlspecialchars($_GET['code'] ?? '', ENT_QUOTES);
+        header('Content-Type: text/html; charset=utf-8');
+        echo '<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UYSA AI Bağlantı Onayı</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Inter,system-ui,sans-serif;background:linear-gradient(135deg,#1a56db 0%,#0b3aa6 100%);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.card{background:#fff;border-radius:16px;padding:40px 36px;width:380px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,.3);text-align:center}
+h1{font-size:20px;color:#1e293b;margin-bottom:6px}
+.sub{color:#64748b;font-size:13px;margin-bottom:24px}
+label{display:block;text-align:left;font-weight:600;font-size:12px;color:#374151;margin-bottom:4px}
+input{width:100%;padding:12px 16px;border:2px solid #d1d5db;border-radius:10px;font-size:18px;text-align:center;letter-spacing:4px;font-weight:700;font-family:monospace;outline:none;text-transform:uppercase}
+input:focus{border-color:#1a56db}
+.btn{width:100%;padding:14px;background:linear-gradient(135deg,#1a56db,#7c3aed);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin-top:16px;transition:transform .1s}
+.btn:hover{transform:scale(1.02)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.msg{margin-top:16px;padding:10px;border-radius:8px;font-size:13px;display:none}
+.msg.ok{display:block;background:#dcfce7;color:#166534;border:1px solid #86efac}
+.msg.err{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
+.logo{font-size:28px;margin-bottom:16px}
+</style></head><body>
+<div class="card">
+  <div class="logo">🔗</div>
+  <h1>AI Bağlantı Onayı</h1>
+  <p class="sub">UYSA ERP AI asistanını bağlamak için widget\'teki kodu girin.</p>
+  <form id="vf" onsubmit="return doVerify(event)">
+    <label>Doğrulama Kodu</label>
+    <input id="codeInput" maxlength="9" placeholder="XXXX-XXXX" value="' . $prefillCode . '" autofocus required>
+    <button class="btn" type="submit" id="submitBtn">Bağlantıyı Onayla</button>
+  </form>
+  <div id="msg" class="msg"></div>
+</div>
+<script>
+async function doVerify(e){
+  e.preventDefault();
+  var btn=document.getElementById("submitBtn");
+  var msg=document.getElementById("msg");
+  btn.disabled=true; btn.textContent="Onaylanıyor...";
+  msg.className="msg"; msg.style.display="none";
+  try{
+    var code=document.getElementById("codeInput").value.trim().toUpperCase();
+    var r=await fetch("/uysa_api.php?action=ai.verifyDevice",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({device_code:code})
+    });
+    var d=await r.json();
+    if(d.ok){
+      msg.className="msg ok"; msg.textContent="✅ "+d.message; msg.style.display="block";
+      btn.textContent="Bağlantı Tamamlandı";
+      setTimeout(function(){ try{window.close();}catch(e){} },2000);
+    } else {
+      msg.className="msg err"; msg.textContent=d.error||"Hata oluştu"; msg.style.display="block";
+      btn.disabled=false; btn.textContent="Bağlantıyı Onayla";
+    }
+  }catch(e){
+    msg.className="msg err"; msg.textContent="Bağlantı hatası"; msg.style.display="block";
+    btn.disabled=false; btn.textContent="Bağlantıyı Onayla";
+  }
+  return false;
+}
+</script></body></html>';
+        exit;
+    }
+
+    // POST: Kodu doğrula ve onayla
+    $deviceCode = strtoupper(trim($body['device_code'] ?? ''));
+    if (!$deviceCode) {
+        jsonResponse(['ok' => false, 'error' => 'Kod gerekli'], 400);
+    }
+
+    // Expire olmuşları güncelle
+    $pdo->exec("UPDATE uysa_ai_device_auth SET status = 'expired'
+        WHERE status = 'pending' AND expires_at < NOW()");
+
+    $stmt = $pdo->prepare("SELECT * FROM uysa_ai_device_auth
+        WHERE device_code = ? AND status = 'pending' LIMIT 1");
+    $stmt->execute([$deviceCode]);
+    $authRow = $stmt->fetch();
+
+    if (!$authRow) {
+        jsonResponse(['ok' => false, 'error' => 'Geçersiz veya süresi dolmuş kod. Yeni kod alın.'], 404);
+    }
+
+    // AI provider kontrolü - API key var mı?
+    require_once __DIR__ . '/src/modules/TelegramBot.php';
+    $aiCfg = getAIProvider();
+    if (!$aiCfg['key']) {
+        $pdo->prepare("UPDATE uysa_ai_device_auth SET status = 'failed' WHERE id = ?")
+            ->execute([$authRow['id']]);
+        jsonResponse(['ok' => false, 'error' => 'AI servisi yapılandırılmamış. Yöneticinize başvurun.'], 503);
+    }
+
+    // Onayla
+    $pdo->prepare("UPDATE uysa_ai_device_auth SET status = 'approved', approved_at = NOW()
+        WHERE id = ?")->execute([$authRow['id']]);
+
+    auditLog($pdo, 'ai_device_auth_approved', $authRow['username'], null, json_encode([
+        'device_id' => $authRow['id'], 'provider' => $authRow['provider']
+    ]), $clientIp);
+
+    jsonResponse([
+        'ok'      => true,
+        'message' => 'AI bağlantısı başarıyla tamamlandı. Widget\'a dönebilirsiniz.',
+    ]);
+
+// ── AI Provider Auth: Çıkış ──────────────────────────────────
+case 'ai.providerAuthLogout':
+    if (!$actor) {
+        jsonResponse(['ok' => false, 'error' => 'ERP oturumu gerekli'], 401);
+    }
+    $pdo->prepare("UPDATE uysa_ai_device_auth SET status = 'expired'
+        WHERE username = ? AND status IN ('pending','approved')")->execute([$actor]);
+    auditLog($pdo, 'ai_device_auth_logout', $actor, null, null, $clientIp);
+    jsonResponse(['ok' => true, 'message' => 'AI bağlantısı kaldırıldı']);
 
 // ── JWT: Token Al ────────────────────────────────────────────
 case 'getToken':
@@ -845,7 +1582,151 @@ case 'fileUpload':
     auditLog($pdo, 'file_upload', $actor, $origName, json_encode(['size' => $file['size']]), $clientIp);
     jsonResponse(['ok' => true, 'filename' => $safeName, 'original' => $origName]);
 
+// ── Telegram Webhook ─────────────────────────────────────────
+case 'telegram.webhook':
+    require_once __DIR__ . '/src/modules/TelegramBot.php';
+    handleTelegramWebhook($pdo, $body);
+    jsonResponse(['ok' => true]);
+
+// ── Telegram Bot Kurulumu (superadmin) ───────────────────────
+case 'telegram.setup':
+    if (($authedUser['role'] ?? '') !== 'superadmin') {
+        jsonResponse(['ok' => false, 'error' => 'Yetki yok'], 403);
+    }
+    $botToken = getenv('TELEGRAM_BOT_TOKEN') ?: '';
+    if (!$botToken) {
+        jsonResponse(['ok' => false, 'error' => 'TELEGRAM_BOT_TOKEN env tanımlı değil'], 400);
+    }
+    $webhookUrl = sanitizeInput($body['webhook_url'] ?? '', 500);
+    if (!$webhookUrl) {
+        jsonResponse(['ok' => false, 'error' => 'webhook_url gerekli'], 400);
+    }
+    // Telegram API'ye webhook kaydet
+    $ch = curl_init("https://api.telegram.org/bot{$botToken}/setWebhook");
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => json_encode(['url' => $webhookUrl]),
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 10,
+    ]);
+    $result = json_decode(curl_exec($ch), true);
+    curl_close($ch);
+    jsonResponse(['ok' => $result['ok'] ?? false, 'result' => $result]);
+
+// ── AI Chat (ERP içi asistan — Device Auth + Provider-Agnostic) ──
+case 'ai.chat':
+    if (!$actor) {
+        jsonResponse(['ok' => false, 'error' => 'ERP oturumu gerekli'], 401);
+    }
+    $question = sanitizeInput($body['message'] ?? '', 2000);
+    if (!$question) {
+        jsonResponse(['ok' => false, 'error' => 'message gerekli'], 400);
+    }
+
+    // Device auth kontrolü
+    $authCheck = $pdo->prepare("SELECT id, provider FROM uysa_ai_device_auth
+        WHERE username = ? AND status = 'approved' AND expires_at > NOW()
+        ORDER BY id DESC LIMIT 1");
+    $authCheck->execute([$actor]);
+    $deviceAuth = $authCheck->fetch();
+    if (!$deviceAuth) {
+        jsonResponse(['ok' => false, 'error' => 'ai_auth_required', 'message' => 'AI bağlantısı gerekli. Widget üzerinden bağlantı kurun.'], 403);
+    }
+
+    require_once __DIR__ . '/src/modules/TelegramBot.php';
+
+    $aiCfg = getAIProvider();
+    if (!$aiCfg['key']) {
+        jsonResponse(['ok' => false, 'error' => 'AI servisi şu anda kullanılamıyor. Lütfen yöneticinize başvurun.'], 503);
+    }
+
+    // Kullanıcı mesajını kaydet
+    $pdo->prepare("INSERT INTO uysa_ai_chats (user, source, role, message) VALUES (?, 'erp', 'user', ?)")
+        ->execute([$actor, $question]);
+
+    // Son mesaj geçmişi (bağlam için)
+    $history = $pdo->prepare("SELECT role, message FROM uysa_ai_chats
+                              WHERE user = ? AND source = 'erp' ORDER BY created_at DESC LIMIT 10");
+    $history->execute([$actor]);
+    $historyRows = array_reverse($history->fetchAll());
+
+    // ERP bağlamı
+    $context = buildERPContext($pdo);
+
+    // Mesaj geçmişi oluştur
+    $messages = [];
+    foreach ($historyRows as $h) {
+        $messages[] = ['role' => $h['role'], 'content' => $h['message']];
+    }
+    if (empty($messages) || end($messages)['content'] !== $question) {
+        $messages[] = ['role' => 'user', 'content' => $question];
+    }
+
+    $systemPrompt = "Sen UYSA ERP sisteminin AI asistanısın. Yemek sektörü (food service) ERP'si hakkında sorulara yanıt veriyorsun. "
+                  . "Türkçe yanıt ver. Markdown formatı kullan. Kısa ve öz yanıtlar ver. "
+                  . "Kullanıcının ERP verileri hakkında sorularını yanıtla. "
+                  . "Güncel ERP verileri:\n\n{$context}";
+
+    // Sunucu API anahtarıyla AI çağrısı
+    $aiResponse = callAI($question, $systemPrompt, $messages);
+
+    if (!$aiResponse) {
+        jsonResponse(['ok' => false, 'error' => 'AI yanıt veremedi'], 503);
+    }
+
+    // Yanıtı kaydet
+    $pdo->prepare("INSERT INTO uysa_ai_chats (user, source, role, message) VALUES (?, 'erp', 'assistant', ?)")
+        ->execute([$actor, $aiResponse]);
+
+    jsonResponse(['ok' => true, 'response' => $aiResponse, 'provider' => $aiCfg['provider']]);
+
+// ── AI Sohbet Geçmişi ────────────────────────────────────────
+case 'ai.history':
+    $limit = min((int)($_GET['limit'] ?? 50), 200);
+    $source = sanitizeInput($_GET['source'] ?? '', 20);
+    $where = "user = ?";
+    $params = [$actor];
+    if ($source) {
+        $where .= " AND source = ?";
+        $params[] = $source;
+    }
+    $stmt = $pdo->prepare("SELECT id, role, message, source, created_at FROM uysa_ai_chats
+                           WHERE {$where} ORDER BY created_at DESC LIMIT {$limit}");
+    $stmt->execute($params);
+    jsonResponse(['ok' => true, 'messages' => array_reverse($stmt->fetchAll())]);
+
 // ── Default: 404 ─────────────────────────────────────────────
 default:
-    jsonResponse(['ok' => false, 'error' => "Bilinmeyen action: {$action}"], 404);
+    // ── Modül Router ─────────────────────────────────────────
+    // fin.*, inv.*, hr.*, portal.*, ai.* prefix'li action'lar ilgili modüle yönlendirilir
+    $moduleMap = [
+        'fin.'    => ['file' => 'modules/FinanceModule.php',   'handler' => 'handleFinanceAction'],
+        'inv.'    => ['file' => 'modules/InventoryModule.php', 'handler' => 'handleInventoryAction'],
+        'hr.'     => ['file' => 'modules/HRModule.php',        'handler' => 'handleHRAction'],
+        'portal.' => ['file' => 'modules/PortalModule.php',    'handler' => 'handlePortalAction'],
+    ];
+
+    $handled = false;
+    foreach ($moduleMap as $prefix => $mod) {
+        if (str_starts_with($action, $prefix)) {
+            $modFile = __DIR__ . '/src/' . $mod['file'];
+            if (!file_exists($modFile)) {
+                jsonResponse(['ok' => false, 'error' => "Modül dosyası bulunamadı: {$mod['file']}"], 500);
+            }
+            require_once $modFile;
+            $handler = $mod['handler'];
+            if (function_exists($handler)) {
+                $handler($action, $pdo, $body, $authedUser, $clientIp);
+            } else {
+                jsonResponse(['ok' => false, 'error' => "Modül handler bulunamadı: {$handler}"], 500);
+            }
+            $handled = true;
+            break;
+        }
+    }
+
+    if (!$handled) {
+        jsonResponse(['ok' => false, 'error' => "Bilinmeyen action: {$action}"], 404);
+    }
 }

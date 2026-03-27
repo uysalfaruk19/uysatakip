@@ -2,7 +2,7 @@ name: UYSA ERP — CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, 'claude/**' ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:          # Manuel tetikleme
@@ -36,6 +36,38 @@ jobs:
         run: |
           find public/ -name "*.php" -print0 | xargs -0 php -l
           echo "✅ PHP syntax OK"
+
+      - name: Check V5 Module Files Exist
+        run: |
+          MODULES=(
+            "public/src/modules/FinanceModule.php"
+            "public/src/modules/InventoryModule.php"
+            "public/src/modules/HRModule.php"
+            "public/src/modules/PortalModule.php"
+            "public/src/modules/TelegramBot.php"
+          )
+          for m in "${MODULES[@]}"; do
+            if [ ! -f "$m" ]; then
+              echo "❌ Missing module: $m"
+              exit 1
+            fi
+            php -l "$m"
+          done
+          echo "✅ All V5 modules present and valid"
+
+      - name: Validate Schema V5
+        run: |
+          if [ ! -f "sql/schema_v5.sql" ]; then
+            echo "❌ Missing sql/schema_v5.sql"
+            exit 1
+          fi
+          for table in uysa_accounts uysa_invoices uysa_products uysa_employees uysa_customers uysa_webhooks uysa_2fa; do
+            if ! grep -q "$table" sql/schema_v5.sql; then
+              echo "❌ Missing table $table in schema_v5.sql"
+              exit 1
+            fi
+          done
+          echo "✅ Schema V5 validated"
 
       - name: Check for Hardcoded Credentials
         run: |
@@ -74,7 +106,7 @@ jobs:
 
       - name: Check Required Files
         run: |
-          for f in public/index.html public/uysa_api.php public/health.php Dockerfile railway.toml; do
+          for f in public/index.html public/uysa_api.php public/health.php Dockerfile railway.toml sql/schema_v5.sql; do
             if [ ! -f "$f" ]; then
               echo "❌ Missing required file: $f"
               exit 1
@@ -138,6 +170,13 @@ jobs:
             --coverage-clover=coverage/unit-clover.xml \
             2>&1 | tee test-results-unit.txt
           echo "✅ Unit tests complete"
+
+      - name: Run Module Tests (V5)
+        run: |
+          ./vendor/bin/phpunit tests/ModuleTest.php \
+            --testdox --colors=always \
+            2>&1 | tee test-results-module.txt
+          echo "✅ Module tests complete"
 
       - name: Run Integration Tests (Mock/SQLite)
         run: |

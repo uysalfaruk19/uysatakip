@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UYSA ERP v5.0 — API Dokümantasyonu</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;line-height:1.6}
+.header{background:linear-gradient(135deg,#1e293b,#0f172a);border-bottom:1px solid #334155;padding:24px 32px}
+.header h1{font-size:28px;color:#f8fafc}
+.header p{color:#94a3b8;margin-top:4px}
+.container{max-width:1200px;margin:0 auto;padding:24px}
+.nav{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px}
+.nav a{background:#1e293b;color:#60a5fa;padding:8px 16px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;border:1px solid #334155;transition:all .2s}
+.nav a:hover,.nav a.active{background:#2563eb;color:#fff;border-color:#2563eb}
+.section{margin-bottom:32px}
+.section h2{font-size:20px;color:#60a5fa;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #334155}
+.section h3{font-size:15px;color:#f59e0b;margin:16px 0 8px}
+.endpoint{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:16px 20px;margin-bottom:12px}
+.endpoint .method{display:inline-block;padding:3px 10px;border-radius:5px;font-size:12px;font-weight:700;margin-right:8px}
+.endpoint .method.get{background:#065f46;color:#6ee7b7}
+.endpoint .method.post{background:#1e40af;color:#93c5fd}
+.endpoint .action{font-family:'Fira Code',monospace;font-weight:600;color:#f8fafc;font-size:14px}
+.endpoint .desc{color:#94a3b8;font-size:13px;margin-top:4px}
+.params{margin-top:8px}
+.params table{width:100%;border-collapse:collapse;font-size:13px}
+.params th{text-align:left;color:#60a5fa;padding:6px 8px;border-bottom:1px solid #334155;font-weight:600}
+.params td{padding:6px 8px;border-bottom:1px solid #1e293b;color:#cbd5e1}
+.params td:first-child{font-family:monospace;color:#f59e0b;white-space:nowrap}
+.params td:last-child{color:#94a3b8}
+code{background:#334155;padding:2px 6px;border-radius:4px;font-size:12px;color:#e2e8f0}
+pre{background:#0c1222;border:1px solid #334155;border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;color:#e2e8f0;margin:8px 0}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;margin-left:6px}
+.badge.auth{background:#7c3aed33;color:#a78bfa}
+.badge.public{background:#065f4633;color:#6ee7b7}
+.info-box{background:#172554;border:1px solid #1d4ed8;border-radius:8px;padding:14px 18px;margin:12px 0;font-size:13px;color:#93c5fd}
+.warn-box{background:#431407;border:1px solid #c2410c;border-radius:8px;padding:14px 18px;margin:12px 0;font-size:13px;color:#fdba74}
+footer{text-align:center;color:#475569;padding:32px;font-size:13px;border-top:1px solid #1e293b;margin-top:40px}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>UYSA ERP v5.0 — API Dokümantasyonu</h1>
+  <p>Yemek Sektörü ERP Sistemi | Finans &bull; Stok &bull; İK &bull; Portal &bull; AI</p>
+</div>
+
+<div class="container">
+
+<div class="nav">
+  <a href="#auth">Kimlik Doğrulama</a>
+  <a href="#finance">Finans & Muhasebe</a>
+  <a href="#inventory">Stok & Depo</a>
+  <a href="#hr">İK & Bordro</a>
+  <a href="#portal">Portal & Entegrasyon</a>
+  <a href="#ai">AI Asistan</a>
+  <a href="#telegram">Telegram Bot</a>
+</div>
+
+<!-- AUTH -->
+<div class="section" id="auth">
+  <h2>Kimlik Doğrulama</h2>
+  <div class="info-box">
+    API 3 farklı kimlik doğrulama yöntemini destekler:
+    <br><strong>1. JWT Bearer Token</strong> (önerilen): <code>Authorization: Bearer &lt;token&gt;</code>
+    <br><strong>2. API Key</strong>: <code>X-API-Key: &lt;key&gt;</code>
+    <br><strong>3. Legacy Token</strong>: <code>X-UYSA-Token: &lt;token&gt;</code>
+  </div>
+
+  <div class="endpoint">
+    <span class="method post">POST</span>
+    <span class="action">?action=login</span>
+    <span class="badge public">Public</span>
+    <span class="desc">JWT token al</span>
+    <div class="params"><table>
+      <tr><th>Parametre</th><th>Tip</th><th>Açıklama</th></tr>
+      <tr><td>username</td><td>string</td><td>Kullanıcı adı</td></tr>
+      <tr><td>password</td><td>string</td><td>Şifre</td></tr>
+    </table></div>
+  </div>
+
+  <h3>Örnek İstek</h3>
+  <pre>curl -X POST "https://app.up.railway.app/uysa_api.php?action=login" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"sifre"}'</pre>
+  <h3>Örnek Yanıt</h3>
+  <pre>{"ok": true, "token": "eyJhbGciOiJIUzI1NiJ9...", "user": "admin", "role": "admin"}</pre>
+</div>
+
+<!-- FINANCE -->
+<div class="section" id="finance">
+  <h2>Finans & Muhasebe Modülü</h2>
+  <p style="color:#94a3b8;margin-bottom:16px">Hesap planı, yevmiye, fatura, ödeme, banka. Çift taraflı kayıt sistemi.</p>
+
+  <div class="endpoint"><span class="method get">GET</span><span class="action">?action=fin.accounts</span><span class="badge auth">Auth</span><div class="desc">Hesap planı listesi</div></div>
+  <div class="endpoint"><span class="method post">POST</span><span class="action">?action=fin.accountSave</span><span class="badge auth">Auth</span><div class="desc">Hesap oluştur/güncelle (code, name, type, parent_code)</div></div>
+  <div class="endpoint"><span class="method get">GET</span><span class="action">?action=fin.journalList</span><span class="badge auth">Auth</span><div class="desc">Yevmiye kayıtları</div></div>
+  <div class="endpoint"><span class="method post">POST</span><span class="action">?action=fin.journalSave</span><span class="badge auth">Auth</span><div class="desc">Yevmiye kaydı (borç=alacak otomatik kontrol)</div>
+    <div class="params"><table>
+      <tr><th>Parametre</th><th>Tip</th><th>Açıklama</th></tr>
+      <tr><td>date</td><td>date</td><td>YYYY-MM-DD</td></tr>
+      <tr><td>description</td><td>string</td><td>Açıklama</td></tr>
+      <tr><td>lines</td><td>array</td><td>[{account_code, debit, credit, description}]</td></tr>
+    </table></div>
+  </div>
+  <div class="endpoint"><span class="method post">POST</span><span class="action">?action=fin.journalPost</span><span class="badge auth">Auth</span><div class="desc">Yevmiye onayla</div></div>
+  <div class="endpoint"><span class="method post">POST</span><span class="action">?action=fin.journalVoid</span><span class="badge auth">Auth</span><div class="desc">Yevmiye iptal et</div></div>
+  <div class="endpoint"><span class="method get">GET</span><span class="action">?action=fin.invoiceList</span><span class="badge auth">Auth</span><div class="desc">Fatura listesi (&type=sales|purchase)</div></div>
+  <div class="endpoint"><span class="method post">POST</span><span class="action">?action=fin.invoiceSave</span><span class="badge auth">Auth</span><div class="desc">Fatura oluştur</div>
+    <div class="params"><table>
+      <tr><th>Parametre</th><th>Tip</th><th>Açıklama</th></tr>
+      <tr><td>type</td><td>string</td><td>sales | purchase</td></tr>
+      <tr><td>customer_name</td><td>string</td><td>Müşteri/tedarikçi</td></tr>
+      <tr><td>lines</td><td>array</td><td>[{description, quantity, unit_price, vat_rate}]</td></tr>
+    </table></div>
+  </div>
+  <div class="endpoint"><span class="method post">POST</span><span class="action">?action=fin.paymentSave</span><span class="badge auth">Auth</span><div class="desc">Ödeme kaydet (fatura otomatik kapanır)</div></div>
+  <div class="endpoint"><span class="method get">GET</span><span class="action">?action=fin.bankAccounts</span><span class="badge auth">Auth</span><div class="desc">Banka hesapları</div></div>
+  <div class="endpoint"><span class="method post">POST</span><span class="action">?action=fin.bankAccountSave</span><span class="badge auth">Auth</span><div class="desc">Banka hesabı oluştur</div></div>
+  <div class="endpoint"><span class="method get">GET</span><span class="action">?action=fin.trialBalance</span><span class="badge auth">Auth</span><div class="desc">Mizan raporu</div></div>
+  <div class="endpoint"><span class="method get">GET</span><span class="action">?action=fin.balanceSheet</span><span class="badge auth">Auth</span><div class="desc">Bilanço</div></div>
+  <div class="endpoint"><span class="method get">GET</span><span class="action">?action=fin.incomeStatement</span><span class="badge auth">Auth</span><div class="desc">Gelir tablosu</div></div>
+  <div class="endpoint"><span class="method get">GET</span><span class="action">?action=fin.dashboard</span><span class="badge auth">Auth</span><div class="desc">Finans KPI dashboard</div></div>
+</div>
+
+<!-- INVENTORY -->
+<div class="section" id="inventory">
+  <h2>Stok & Depo Yönetimi</h2>
+  <p style="color:#94a3b8;margin-bottom:16px">Depo, ürün, tedarikçi, stok hareketi, satın alma, lot/seri takibi.</p>
+
+  <div class="endpoint"><span class="method get">GET</span><span class="action">?action=inv.warehouses</span><span class="badge auth">Auth</span><div class="desc">Depo listesi</div></div>
+  <div class="endpoint"><span class="method post">POST</span><span class="action">?action=inv.warehouseSave</span><span class="badge auth">Auth</span><div class="desc">Depo oluştur/güncelle</div></div>
+  <div class="endpoint"><span class="method get">GET</span><span class="action">?action=inv.products</span><span class="badge auth">Auth</span><div class="desc">Ürün listesi (&search=, &category=)</div></div>
+  <div class="endpoint"><span class="method post">POST</span><span class="action">?action=inv.productSave</span><span class="badge auth">Auth</span><div class="desc">Ürün oluştur (name, sku, barcode, category, unit, min_stock)</div></div>
+  <div class="endpoint"><span class="method get">GET</span><span class="action">?action=inv.barcodeSearch&barcode=XXX</span><span class="badge auth">Auth</span><div class="desc">Barkod ile ürün ara</div></div>
+  <div class="endpoint"><span class="method get">GET</span><span class="action">?action=inv.suppliers</span><span class="badge auth">Auth</span><div class="desc">Tedarikçi listesi</div></div>
+  <div class="endpoint"><span class="method post">POST</span><span class="action">?action=inv.stockMovementSave</span><span class="badge auth">Auth</span><div class="desc">Stok hareketi (in/out/transfer)</div>
+    <div class="params"><table>
+      <tr><th>Parametre</th><th>Tip</th><th>Açıklama</th></tr>
+      <tr><td>product_id</td><td>int</td><td>Ürün ID</td></tr>
+      <tr><td>warehouse_id</td><td>int</td><td>Depo ID</td></tr>
+      <tr><td>type</td><td>string</td><td>in | out | transfer</td></tr>
+      <tr><td>quantity</td><td>number</td><td>Miktar</td></tr>
+      <tr><td>to_warehouse_id</td><td>int?</td><td>Transfer hedef depo</td></tr>
+    </table></div>
+  </div>
+  <div class="endpoint"><span class="method post">POST</span><span class="action">?action=inv.purchaseOrderSave</span><span class="badge auth">Auth</span><div class="desc">Satın alma siparişi</div></div>
+  <div class="endpoint"><span class="method post">POST</span><span class="action">?action=inv.purchaseOrderReceive</span><span class="badge auth">Auth</span><div class="desc">Sipariş teslim al (stok otomatik güncellenir)</div></div>
+  <div class="endpoint"><span class="method get">GET</span><span class="action">?action=inv.lowStockAlert</span><span class="badge auth">Auth</span><div class="desc">Düşük stok uyarıları</div></div>
+  <div class="endpoint"><span class="method get">GET</span><span class="action">?action=inv.stockReport</span><span class="badge auth">Auth</span><div class="desc">Stok raporu (depo bazlı)</div></div>
+  <div class="endpoint"><span class="method get">GET</span><span class="action">?action=inv.dashboard</span><span class="badge auth">Auth</span><div class="desc">Stok KPI dashboard</div></div>
+</div>
+
+<!-- HR -->
+<div class="section" id="hr">
+  <h2>İnsan Kaynakları & Bordro</h2>
+  <p style="color:#94a3b8;margin-bottom:16px">Personel, izin, devamsızlık, vardiya, bordro, performans, eğitim. Türk mevzuatına uygun.</p>
+
+  <div class="endpoint"><span class="method get">GET</span><span class="action">?action=hr.employees</span><span class="badge auth">Auth</span><div class="desc">Personel listesi</div></div>
+  <div class="endpoint"><span class="method post">POST</span><span class="action">?action=hr.employeeSave</span><span class="badge auth">Auth</span><div class="desc">Personel oluştur/güncelle</div>
+    <div class="params"><table>
+      <tr><th>Parametre</th><th>Tip</th><th>Açıklama</th></tr>
+      <tr><td>first_name, last_name</td><td>string</td><td>Ad Soyad</td></tr>
+      <tr><td>tc_no</td><td>string</td><td>TC Kimlik (11 hane)</td></tr>
+      <tr><td>department</td><td>string</td><td>Departman</td></tr>
+      <tr><td>salary</td><td>number</td><td>Brüt maaş (TL)</td></tr>
+    </table></div>
+  </div>
+  <div class="endpoint"><span class="method post">POST</span><span class="action">?action=hr.leaveRequest</span><span class="badge auth">Auth</span><div class="desc">İzin talebi oluştur</div></div>
+  <div class="endpoint"><span class="method post">POST</span><span class="action">?action=hr.leaveApprove</span><span class="badge auth">Auth</span><div class="desc">İzin onayla/reddet</div></div>
+  <div class="endpoint"><span class="method post">POST</span><span class="action">?action=hr.attendanceSave</span><span class="badge auth">Auth</span><div class="desc">Devamsızlık kaydı (giriş/çıkış)</div></div>
+  <div class="endpoint"><span class="method get">GET</span><span class="action">?action=hr.shifts</span><span class="badge auth">Auth</span><div class="desc">Vardiya tanımları</div></div>
+  <div class="endpoint"><span class="method post">POST</span><span class="action">?action=hr.shiftAssign</span><span class="badge auth">Auth</span><div class="desc">Vardiya ata</div></div>
+  <div class="endpoint"><span class="method post">POST</span><span class="action">?action=hr.payrollGenerate</span><span class="badge auth">Auth</span><div class="desc">Bordro hesapla</div>
+    <div class="params"><table>
+      <tr><th>Parametre</th><th>Tip</th><th>Açıklama</th></tr>
+      <tr><td>employee_id</td><td>int</td><td>Personel ID</td></tr>
+      <tr><td>period</td><td>string</td><td>Dönem (YYYY-MM)</td></tr>
+      <tr><td>overtime_hours</td><td>number?</td><td>Fazla mesai saati</td></tr>
+      <tr><td>bonus</td><td>number?</td><td>Prim</td></tr>
+    </table></div>
+  </div>
+  <div class="warn-box">
+    <strong>Bordro Formülleri:</strong> SGK İşçi %14 | SGK İşveren %20.5 | Gelir Vergisi %15 | Damga %0.759 | Fazla Mesai: (brüt/225) x 1.5 x saat
+  </div>
+  <div class="endpoint"><span class="method post">POST</span><span class="action">?action=hr.performanceReview</span><span class="badge auth">Auth</span><div class="desc">Performans değerlendirmesi</div></div>
+  <div class="endpoint"><span class="method get">GET</span><span class="action">?action=hr.trainings</span><span class="badge auth">Auth</span><div class="desc">Eğitimler</div></div>
+  <div class="endpoint"><span class="method get">GET</span><span class="action">?action=hr.orgChart</span><span class="badge auth">Auth</span><div class="desc">Organizasyon şeması</div></div>
+  <div class="endpoint"><span class="method get">GET</span><span class="action">?action=hr.dashboard</span><span class="badge auth">Auth</span><div class="desc">İK KPI dashboard</div></div>
+</div>
+
+<!-- PORTAL -->
+<div class="section" id="portal">
+  <h2>Müşteri Portalı & Entegrasyon</h2>
+  <p style="color:#94a3b8;margin-bottom:16px">Müşteri self-servis portal, 2FA (TOTP), webhook sistemi.</p>
+
+  <div class="endpoint"><span class="method post">POST</span><span class="action">?action=portal.login</span><span class="badge public">Public</span><div class="desc">Müşteri portal girişi</div></div>
+  <div class="endpoint"><span class="method get">GET</span><span class="action">?action=portal.orders</span><span class="badge auth">Auth</span><div class="desc">Müşteri siparişleri</div></div>
+  <div class="endpoint"><span class="method post">POST</span><span class="action">?action=portal.orderCreate</span><span class="badge auth">Auth</span><div class="desc">Sipariş oluştur</div></div>
+  <div class="endpoint"><span class="method post">POST</span><span class="action">?action=portal.2faSetup</span><span class="badge auth">Auth</span><div class="desc">2FA etkinleştir (TOTP secret döner)</div></div>
+  <div class="endpoint"><span class="method post">POST</span><span class="action">?action=portal.2faVerify</span><span class="badge auth">Auth</span><div class="desc">TOTP kodu doğrula</div></div>
+  <div class="endpoint"><span class="method get">GET</span><span class="action">?action=portal.webhooks</span><span class="badge auth">Auth</span><div class="desc">Webhook listesi</div></div>
+  <div class="endpoint"><span class="method post">POST</span><span class="action">?action=portal.webhookSave</span><span class="badge auth">Auth</span><div class="desc">Webhook oluştur (url, events, secret)</div></div>
+  <div class="endpoint"><span class="method post">POST</span><span class="action">?action=portal.webhookTest</span><span class="badge auth">Auth</span><div class="desc">Webhook test ping</div></div>
+  <div class="info-box">
+    <strong>Webhook İmzası:</strong> <code>X-UYSA-Signature</code> header = HMAC-SHA256(body, secret)<br>
+    10 ardışık başarısızlıkta webhook otomatik devre dışı kalır.
+  </div>
+</div>
+
+<!-- AI -->
+<div class="section" id="ai">
+  <h2>AI Asistan (Provider-Agnostic)</h2>
+  <p style="color:#94a3b8;margin-bottom:16px">Anthropic (Claude), OpenAI (GPT), OpenClaw destekler. ERP verileri bağlamında akıllı yanıtlar.</p>
+
+  <div class="endpoint"><span class="method post">POST</span><span class="action">?action=ai.chat</span><span class="badge auth">Auth</span><div class="desc">AI'ya soru sor</div>
+    <div class="params"><table>
+      <tr><th>Parametre</th><th>Tip</th><th>Açıklama</th></tr>
+      <tr><td>message</td><td>string</td><td>Soru (max 2000 karakter)</td></tr>
+    </table></div>
+  </div>
+
+  <h3>Örnek</h3>
+  <pre>curl -X POST "https://app.up.railway.app/uysa_api.php?action=ai.chat" \
+  -H "Authorization: Bearer TOKEN" \
+  -d '{"message":"Bu ayki düşük stoklu ürünler?"}'</pre>
+  <pre>{"ok":true,"response":"Düşük stok: Dana Kıyma 5kg (min:20kg)...","provider":"openclaw"}</pre>
+
+  <div class="endpoint"><span class="method get">GET</span><span class="action">?action=ai.history</span><span class="badge auth">Auth</span><div class="desc">Sohbet geçmişi (&source=erp|telegram)</div></div>
+
+  <div class="info-box">
+    <strong>Provider Ayarları (.env):</strong><br>
+    <code>AI_PROVIDER=openclaw</code> — anthropic | openai | openclaw<br>
+    <code>AI_API_KEY=your-key</code><br>
+    <code>AI_BASE_URL=https://api.openclaw.com/v1/chat/completions</code> (opsiyonel)<br>
+    <code>AI_MODEL=model-name</code> (opsiyonel)
+  </div>
+</div>
+
+<!-- TELEGRAM -->
+<div class="section" id="telegram">
+  <h2>Telegram Bot</h2>
+  <p style="color:#94a3b8;margin-bottom:16px">Telegram üzerinden ERP erişimi. Webhook tabanlı.</p>
+
+  <div class="endpoint"><span class="method post">POST</span><span class="action">?action=telegram.webhook</span><span class="badge public">Public</span><div class="desc">Telegram webhook endpoint</div></div>
+  <div class="endpoint"><span class="method post">POST</span><span class="action">?action=telegram.setup</span><span class="badge auth">Auth</span><div class="desc">Webhook'u Telegram'a kaydet</div></div>
+
+  <h3>Komutlar</h3>
+  <div class="params"><table>
+    <tr><th>Komut</th><th>Açıklama</th></tr>
+    <tr><td>/start</td><td>Bot'u başlat</td></tr>
+    <tr><td>/baglanti kullanici sifre</td><td>ERP hesabı bağla</td></tr>
+    <tr><td>/stok</td><td>Stok özeti</td></tr>
+    <tr><td>/fatura</td><td>Fatura özeti</td></tr>
+    <tr><td>/personel</td><td>Personel sayıları</td></tr>
+    <tr><td>/ozet</td><td>Genel ERP özeti</td></tr>
+    <tr><td>/dusukstok</td><td>Düşük stok uyarıları</td></tr>
+    <tr><td>/siparisler</td><td>Bekleyen siparişler</td></tr>
+    <tr><td>/yardim</td><td>Tüm komutlar</td></tr>
+  </table></div>
+  <div class="info-box">Komut dışı mesajlar otomatik olarak AI asistana yönlendirilir.</div>
+</div>
+
+<footer>UYSA ERP v5.0 — Yemek Sektörü ERP Sistemi — 2026 UYSA</footer>
+</div>
+</body>
+</html>

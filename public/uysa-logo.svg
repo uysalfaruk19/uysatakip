@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 80" width="220" height="80">
+  <rect x="10" y="18" width="18" height="18" rx="2" fill="#999" opacity=".5"/>
+  <rect x="22" y="8" width="18" height="18" rx="2" fill="#2d3a45" opacity=".8"/>
+  <rect x="15" y="4" width="12" height="12" rx="2" fill="#c8d020"/>
+  <text x="48" y="46" font-family="Arial,sans-serif" font-size="40" font-weight="300" fill="#2d3a45" letter-spacing="3">UYSA</text>
+  <text x="48" y="66" font-family="Arial,sans-serif" font-size="13" fill="#777" letter-spacing="4" font-weight="300">yemek hizmetleri</text>
+</svg>
