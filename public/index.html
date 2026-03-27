@@ -5770,9 +5770,8 @@ function escapeHtml(s){
     downloadJson(`UYSA_${ymKey()}_AY.json`, {month: ymKey(), data:mo});
   }
 
-  // --- Excel Export (UYSA Format) ---
+  // --- Excel Export (UYSA Format with styles via HTML table → Blob) ---
   function exportMonthExcelUYSA(){
-    if (typeof XLSX === 'undefined') { toast('Excel kütüphanesi yüklenemedi'); return; }
     const y = parseInt(yearEl.value,10);
     const m0 = parseInt(monthEl.value,10)-1;
     const MN = ['OCAK','ŞUBAT','MART','NİSAN','MAYIS','HAZİRAN','TEMMUZ','AĞUSTOS','EYLÜL','EKİM','KASIM','ARALIK'];
@@ -5784,55 +5783,69 @@ function escapeHtml(s){
     const monthObj = store?.[ymKey()] || {weeks:{}};
     const weeksMatrix = buildMonthWeeksMatrix(y, m0);
 
-    const rows = [];
-    const merges = [];
-    const styles = {}; // row index → style type
+    // Build HTML table that Excel can open with full styling
+    let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="utf-8">
+<style>
+  td,th { font-family: Calibri, Arial, sans-serif; font-size: 11pt; text-align: center; vertical-align: middle; border: 1px solid #5a8ab5; font-weight: bold; mso-number-format:'\\@'; }
+  .title { font-size: 14pt; color: #1a3a6b; border: none; font-weight: 900; }
+  .dayH { background: #1a3a6b; color: #ffffff; font-size: 11pt; font-weight: 900; }
+  .dateR { background: #1976b5; color: #ffffff; font-size: 10pt; font-weight: 900; }
+  .food { background: #ffffff; color: #1e293b; font-size: 10pt; }
+  .footer { border: none; font-size: 8pt; color: #333; text-align: left; font-weight: normal; }
+</style></head><body>
+<table>`;
 
-    // Row 0: Title (merged)
-    rows.push([title,'','','','','','']);
-    merges.push({s:{r:0,c:0},e:{r:0,c:6}});
-    styles[0] = 'title';
+    // Title row
+    html += `<tr><td class="title" colspan="7">${esc(title)}</td></tr>`;
 
-    // Row 1: Day names (only once at top)
-    rows.push(dow7.slice());
-    styles[1] = 'dayHeader';
+    // Day names
+    html += `<tr>`;
+    dow7.forEach(d => { html += `<th class="dayH">${esc(d)}</th>`; });
+    html += `</tr>`;
 
-    let rowIdx = 2;
+    // Weeks
     weeksMatrix.forEach((weekDates, wi) => {
       // Date row
-      const dateRow = weekDates.map(d => {
-        if (d.getMonth() !== m0) return '';
-        return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
+      html += `<tr>`;
+      weekDates.forEach(d => {
+        if (d.getMonth() === m0) {
+          const ds = `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
+          html += `<td class="dateR">${ds}</td>`;
+        } else {
+          html += `<td class="dateR"></td>`;
+        }
       });
-      rows.push(dateRow);
-      styles[rowIdx] = 'dateRow';
-      rowIdx++;
+      html += `</tr>`;
 
       // 6 food rows
       const wk = monthObj?.weeks?.[`W${wi+1}`];
       const foodKeys = ['soups','mains','sides','salads','dessertFruitName','ayran'];
       foodKeys.forEach(fk => {
-        const r = weekDates.map((d, di) => {
-          if (d.getMonth() !== m0) return '';
-          if (!wk) return '';
-          if (fk === 'dessertFruitName') {
-            const dessert = wk.dessertFruitName?.[di] || '';
-            const drink = wk.drinks?.[di] || '';
-            return [dessert, drink].filter(Boolean).join('/') || 'TATLI/MEYVE';
+        html += `<tr>`;
+        weekDates.forEach((d, di) => {
+          let val = '';
+          if (d.getMonth() === m0 && wk) {
+            if (fk === 'dessertFruitName') {
+              const dessert = wk.dessertFruitName?.[di] || '';
+              const drink = wk.drinks?.[di] || '';
+              val = [dessert, drink].filter(Boolean).join('/') || 'TATLI/MEYVE';
+            } else if (fk === 'ayran') {
+              val = wk.ayran?.[di] || 'AYRAN/YOĞURT';
+            } else if (fk === 'salads') {
+              val = wk.salads?.[di] || 'SALATA';
+            } else {
+              val = (wk[fk]?.[di] || '').toUpperCase();
+            }
           }
-          if (fk === 'ayran') return wk.ayran?.[di] || 'AYRAN/YOĞURT';
-          if (fk === 'salads') return wk.salads?.[di] || 'SALATA';
-          return (wk[fk]?.[di] || '').toUpperCase();
+          html += `<td class="food">${esc(val)}</td>`;
         });
-        rows.push(r);
-        styles[rowIdx] = 'food';
-        rowIdx++;
+        html += `</tr>`;
       });
     });
 
-    // Footer notes
+    // Footer
     const footerLines = [
-      '',
       'İKİ DİLİM EKMEK 272 KALORİ',
       'MASA BAŞI ÇALIŞAN BAYAN:1700-1800KKAL ERKEK :2200-2400 KKAL',
       'AĞIR İŞ ÇALIŞAN BAYAN:2500-2900 KKAL ERKEK: 3400-3500 KKAL',
@@ -5840,36 +5853,26 @@ function escapeHtml(s){
       'YUKARIDA BELİRTİLEN DEĞERLER SADECE ANA YEMEKLERDE ALINMASI GEREKEN DEĞERLER DEĞİL ARA YEMEKLERİDE KAPSAMAKTADIR.',
       'TABLODA BELİRTİLEN ÖĞÜN BAŞINA ORTALAMA 500-600 KKAL OLACAK ŞEKİLDE DÜZENLENMİŞTİR.'
     ];
-    footerLines.forEach(line => { rows.push([line]); rowIdx++; });
+    html += `<tr><td class="footer" colspan="7"></td></tr>`;
+    footerLines.forEach(line => {
+      html += `<tr><td class="footer" colspan="7">${esc(line)}</td></tr>`;
+    });
 
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [{wch:24},{wch:24},{wch:24},{wch:24},{wch:24},{wch:24},{wch:24}];
-    ws['!merges'] = merges;
+    html += `</table></body></html>`;
 
-    // Apply cell styles
-    for (let r = 0; r < rows.length; r++) {
-      for (let c = 0; c < 7; c++) {
-        const addr = XLSX.utils.encode_cell({r, c});
-        if (!ws[addr]) ws[addr] = {v:'', t:'s'};
-        const cell = ws[addr];
-        if (styles[r] === 'title') {
-          cell.s = {font:{bold:true,sz:14,color:{rgb:'1A3A6B'}},alignment:{horizontal:'center',vertical:'center'},fill:{fgColor:{rgb:'FFFFFF'}}};
-        } else if (styles[r] === 'dayHeader') {
-          cell.s = {font:{bold:true,sz:11,color:{rgb:'FFFFFF'}},alignment:{horizontal:'center',vertical:'center'},fill:{fgColor:{rgb:'1A3A6B'}},border:{top:{style:'thin'},bottom:{style:'thin'},left:{style:'thin'},right:{style:'thin'}}};
-        } else if (styles[r] === 'dateRow') {
-          cell.s = {font:{bold:true,sz:10,color:{rgb:'FFFFFF'}},alignment:{horizontal:'center',vertical:'center'},fill:{fgColor:{rgb:'1976B5'}},border:{top:{style:'thin'},bottom:{style:'thin'},left:{style:'thin'},right:{style:'thin'}}};
-        } else if (styles[r] === 'food') {
-          cell.s = {font:{bold:true,sz:10},alignment:{horizontal:'center',vertical:'center'},border:{top:{style:'thin'},bottom:{style:'thin'},left:{style:'thin'},right:{style:'thin'}}};
-        }
-      }
-    }
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Menü');
-    const fn = `UYSA ${MN[m0]} ${y}.xlsx`;
-    XLSX.writeFile(wb, fn);
-    toast('Excel indirildi: ' + fn);
+    // Download as .xls (HTML format that Excel opens natively with styles)
+    const blob = new Blob([html], {type: 'application/vnd.ms-excel;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `UYSA ${MN[m0]} ${y}.xls`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast('Excel indirildi: UYSA ' + MN[m0] + ' ' + y + '.xls');
   }
+  function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
   // Keep old name as alias
   function exportMonthExcel(){ exportMonthExcelUYSA(); }
 
