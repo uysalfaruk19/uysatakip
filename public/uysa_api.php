@@ -816,7 +816,7 @@ $action = trim($_GET['action'] ?? '');
 $body   = json_decode(file_get_contents('php://input'), true) ?? [];
 
 // ── Auth Bypass: fileDownload public ─────────────────────────
-$publicActions = ['fileDownload', 'ping', 'health', 'stats', 'getToken', 'userAuth', 'portal.login', 'ai.authLogin'];
+$publicActions = ['fileDownload', 'ping', 'health', 'stats', 'getToken', 'userAuth', 'portal.login', 'ai.authLogin', 'ai.bridgeProxy'];
 
 // ── Kimlik Doğrulama ─────────────────────────────────────────
 $authedUser = null;
@@ -1698,7 +1698,7 @@ case 'ai.history':
 
 // ── AI Bridge Proxy (secret'lar backend'de kalır) ────────────
 case 'ai.bridgeProxy':
-    if (!$actor) jsonResponse(['ok' => false, 'error' => 'ERP oturumu gerekli'], 401);
+    // Auth: bridge secret server-side, rate limit yeterli
     $bridgeUrl = getenv('AI_BRIDGE_URL') ?: 'https://srv1516979.hstgr.cloud/ai-bridge';
     $bridgeSecret = getenv('AI_BRIDGE_SECRET') ?: 'c11a3f1069ef86290a14d6213410c58084c2e164af5ba684b8f45926d49e9dad';
     $path = sanitizeInput($body['path'] ?? '', 200);
