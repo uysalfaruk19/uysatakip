@@ -7,7 +7,7 @@
 
   // ── Storage helpers ──────────────────────────────────────────
   const _ls = {
-    get(k, def){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):def; }catch{ return def; } },
+    get(k, def){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):def; }catch(e){ return def; } },
     set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){ console.warn('[Recete] storage err',e); } }
   };
 
@@ -57,7 +57,7 @@
   _rc.getDayMenu = function(dateStr){
     // dateStr = "YYYY-MM-DD"
     var store;
-    try{ store = JSON.parse(localStorage.getItem(MENU_KEY)||'{}'); }catch{ return null; }
+    try{ store = JSON.parse(localStorage.getItem(MENU_KEY)||'{}'); }catch(e){ return null; }
     var parts = dateStr.split('-');
     var y = parseInt(parts[0]), m1 = parseInt(parts[1]), d = parseInt(parts[2]);
     var dt = new Date(y, m1-1, d);
