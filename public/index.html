@@ -1080,7 +1080,7 @@
 
   const CFG = {
     apiUrl   : '/uysa_api.php',
-    token    : atob('VXlzYUVSUDIwMjZ4UHJvZEtleTNmN2E5YzFi'),
+    getToken : function(){ try { return JSON.parse(sessionStorage.getItem('uysa_session')||'null')?.token||''; } catch(e){return '';} },
     syncDelay: 1500,
     syncInt  : 5 * 60 * 1000,
     bkpInt   : 30 * 60 * 1000,
@@ -1124,7 +1124,7 @@
         method : 'POST',
         headers: {
           'Content-Type' : 'application/json',
-          'X-UYSA-Token' : CFG.token,
+          'Authorization' : 'Bearer ' + CFG.getToken(),
         },
         body: JSON.stringify(body),
       });
@@ -1628,7 +1628,7 @@
 
   if (CFG.debug) console.log('[UYSA-Sync] ✅ Sunucu sync katmanı aktif');
   // Fix6: CFG'yi dışarıya aç — _sendAuditToServer ve diğer modüller için
-  window.UYSA_API_CFG = { apiUrl: CFG.apiUrl, token: CFG.token };
+  window.UYSA_API_CFG = { apiUrl: CFG.apiUrl };
 })();
 </script>
 
@@ -7888,6 +7888,22 @@ ${note}`);
     if(prev) sel.value = prev;
   }
   function syncAllCustomerDropdowns(){
+    // Tüm kaynaklardan müşterileri birleştir (üretim, gelir, CRM config, alacak)
+    try {
+      const raw = localStorage.getItem('uysa_customers_v1');
+      const store = raw ? JSON.parse(raw) : {customers:[]};
+      const existing = new Set((store.customers||[]).map(c=>c.toUpperCase()));
+      let added = 0;
+      // Gelirlerden
+      try { JSON.parse(localStorage.getItem('uysa_gelirler')||'[]').forEach(g=>{ if(g.musteri && !existing.has(g.musteri.toUpperCase())){ store.customers.push(g.musteri); existing.add(g.musteri.toUpperCase()); added++; }}); } catch(e){}
+      // Günlük üretimden
+      try { JSON.parse(localStorage.getItem('uysa_gunluk_sayilar')||'[]').forEach(u=>{ if(u.musteri && !existing.has(u.musteri.toUpperCase())){ store.customers.push(u.musteri); existing.add(u.musteri.toUpperCase()); added++; }}); } catch(e){}
+      // CRM config key'lerinden
+      for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(k&&k.startsWith('uysa_crm_')){ const c=k.replace('uysa_crm_',''); if(c&&c!=='GENEL'&&!existing.has(c.toUpperCase())){ store.customers.push(c); existing.add(c.toUpperCase()); added++; }}}
+      // Alacaklardan
+      try { JSON.parse(localStorage.getItem('uysa_alacaklar')||'[]').forEach(a=>{ if(a.musteri && !existing.has(a.musteri.toUpperCase())){ store.customers.push(a.musteri); existing.add(a.musteri.toUpperCase()); added++; }}); } catch(e){}
+      if(added>0){ store.customers.sort((a,b)=>a.localeCompare(b,'tr')); localStorage.setItem('uysa_customers_v1', JSON.stringify(store)); }
+    } catch(e){}
     const custs = getCustomers();
     fillSelect(document.getElementById('gelir-musteri'), custs);
     fillSelect(document.getElementById('ug-proje'), custs);
@@ -10042,7 +10058,7 @@ function toggleUserActive(userId) {
   const u = users[idx];
   fetch('/uysa_api.php?action=userSave', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-UYSA-Token': 'UysaERP2026xProdKey3f7a9c1b' },
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (JSON.parse(sessionStorage.getItem('uysa_session')||'null')?.token||'') },
     body: JSON.stringify({ id: typeof u.id==='number'&&u.id<1e10?u.id:0,
       username: u.username, phone: u.phone||'', display_name: u.displayName,
       role: u.role, active: u.active?1:0, created_by: sess?.username||'admin' })
@@ -10064,7 +10080,7 @@ function editUser(userId) {
     // Fix4: MySQL'e de yeni şifre gönder (PHP bcrypt ile saklar)
     fetch('/uysa_api.php?action=userSave', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-UYSA-Token': 'UysaERP2026xProdKey3f7a9c1b' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (JSON.parse(sessionStorage.getItem('uysa_session')||'null')?.token||'') },
       body: JSON.stringify({ id: typeof u.id==='number'&&u.id<1e10?u.id:0,
         username: u.username, password: newPass.trim(),
         phone: u.phone||'', display_name: u.displayName,
@@ -10129,11 +10145,12 @@ function _getAuditLogs() {
 
 function _sendAuditToServer(log) {
   // Fix6: window.UYSA_API_CFG üzerinden doğru token al
-  const CFG_obj = window.UYSA_API_CFG || { apiUrl: '/uysa_api.php', token: 'UysaERP2026xProdKey3f7a9c1b' };
+  const CFG_obj = window.UYSA_API_CFG || { apiUrl: '/uysa_api.php' };
   if (!CFG_obj.apiUrl) return;
+  const _sess = JSON.parse(sessionStorage.getItem('uysa_session')||'null');
   fetch(CFG_obj.apiUrl + '?action=auditLog', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-UYSA-Token': CFG_obj.token },
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (_sess?.token||'') },
     body: JSON.stringify(log)
   }).catch(() => {});
 }
@@ -14050,10 +14067,36 @@ window.excelIndir = function(tip) {
 // ─────────────────────────────────────────
 // J. MODÜL SWITCH GÜNCELLEMESI
 // ─────────────────────────────────────────
+// ── Timer Registry: modül bazlı timer yönetimi ──────────────
+(function(){
+  const _timers = {module:[], global:[]};
+  window._uysaRegTimer = function(id, scope){
+    if (scope==='global') _timers.global.push(id);
+    else _timers.module.push(id);
+  };
+  window._uysaClearModuleTimers = function(){
+    _timers.module.forEach(function(id){ clearInterval(id); clearTimeout(id); });
+    _timers.module = [];
+  };
+  // Chart.js instance cleanup (global _homeCharts kullanılıyor)
+  window._uysaDestroyCharts = function(){
+    if (window._homeCharts) {
+      Object.keys(window._homeCharts).forEach(function(k){
+        try { window._homeCharts[k].destroy(); } catch(e){}
+      });
+      window._homeCharts = {};
+    }
+  };
+})();
+
 // Mevcut switchMod veya navItems listener'ını genişlet
 (function extendNavigation() {
   const onModSwitch = function(module) {
+    // Modül değiştiğinde eski timer'ları ve chart'ları temizle
+    window._uysaClearModuleTimers();
+    window._uysaDestroyCharts();
     if (module === 'raporlama') setTimeout(window.renderRaporDashboard, 100);
+    if (module === 'satis') setTimeout(function(){ if(typeof window.syncAllCustomerDropdowns==='function') window.syncAllCustomerDropdowns(); if(typeof window.v75RenderMusteriListesi==='function') window.v75RenderMusteriListesi(); }, 100);
     if (module === 'finans') setTimeout(function(){ if(typeof window._fillTedarikciDropdown==='function') window._fillTedarikciDropdown(); }, 150); // FIX-V16
     if (module === 'portal') setTimeout(portalMusterileriYukle, 100);
     if (module === 'bildirim') setTimeout(window.renderTumBildirimler, 100);
@@ -14910,8 +14953,54 @@ window.addEventListener('load', function() {
     if (prev && items.includes(prev)) sel.value = prev;
   }
 
+  /* ── CRM: Müşteri senkronizasyonu — tüm kaynaklardan birleştir ── */
+  function _syncCustomersFromAllSources() {
+    try {
+      const raw = localStorage.getItem('uysa_customers_v1');
+      const store = raw ? JSON.parse(raw) : {customers:[]};
+      const existing = new Set((store.customers||[]).map(c => c.toUpperCase()));
+      let added = 0;
+
+      // 1. Gelir kayıtlarından müşteri çek
+      try {
+        const gelirler = JSON.parse(localStorage.getItem('uysa_gelirler')||'[]');
+        gelirler.forEach(g => { if(g.musteri && !existing.has(g.musteri.toUpperCase())){ store.customers.push(g.musteri); existing.add(g.musteri.toUpperCase()); added++; }});
+      } catch(e){}
+
+      // 2. Günlük üretim kayıtlarından
+      try {
+        const uretim = JSON.parse(localStorage.getItem('uysa_gunluk_sayilar')||'[]');
+        uretim.forEach(u => { if(u.musteri && !existing.has(u.musteri.toUpperCase())){ store.customers.push(u.musteri); existing.add(u.musteri.toUpperCase()); added++; }});
+      } catch(e){}
+
+      // 3. CRM config key'lerinden (uysa_crm_XXX)
+      for (let i=0; i<localStorage.length; i++){
+        const k = localStorage.key(i);
+        if(k && k.startsWith('uysa_crm_')){
+          const cust = k.replace('uysa_crm_','');
+          if(cust && cust!=='GENEL' && !existing.has(cust.toUpperCase())){
+            store.customers.push(cust); existing.add(cust.toUpperCase()); added++;
+          }
+        }
+      }
+
+      // 4. Alacak kayıtlarından
+      try {
+        const alacaklar = JSON.parse(localStorage.getItem('uysa_alacaklar')||'[]');
+        alacaklar.forEach(a => { if(a.musteri && !existing.has(a.musteri.toUpperCase())){ store.customers.push(a.musteri); existing.add(a.musteri.toUpperCase()); added++; }});
+      } catch(e){}
+
+      if (added > 0) {
+        store.customers.sort((a,b) => a.localeCompare(b,'tr'));
+        localStorage.setItem('uysa_customers_v1', JSON.stringify(store));
+        console.log('[CRM Sync] ' + added + ' yeni müşteri eklendi');
+      }
+    } catch(e) { console.error('[CRM Sync] Hata:', e); }
+  }
+
   /* ── CRM: Müşteri dropdown senkronizasyonu ──────────────────── */
   function _syncCrmDropdown() {
+    _syncCustomersFromAllSources();
     const custs = _getCustomers();
     _fillSelect(document.getElementById('crmCustomerSel'), custs);
     _fillSelect(document.getElementById('customerSelect'), custs);
@@ -21948,7 +22037,6 @@ document.addEventListener('DOMContentLoaded', function(){
 // ════════════════════════════════════════════════════════════
 (function() {
   'use strict';
-  const DAPI_TOKEN = 'UysaERP2026xProdKey3f7a9c1b';
   const DAPI_URL   = '/uysa_api.php';
   const _log = [];
   const MAX_LOG = 50;
@@ -21964,11 +22052,15 @@ document.addEventListener('DOMContentLoaded', function(){
   // Kritik key önceliği — bunlar mutlaka yedeklenir
   const BACKUP_PRIORITY = ['uysa_users_v6','uysa_migrated_to_v6'];
 
+  function _getAuthToken() {
+    try { const s = JSON.parse(sessionStorage.getItem('uysa_session')||'null'); return s?.token||''; } catch(e){return '';}
+  }
+
   async function dApi(action, body={}) {
     try {
       const r = await fetch(DAPI_URL + '?action=' + action, {
         method: 'POST',
-        headers: { 'Content-Type':'application/json', 'X-UYSA-Token': DAPI_TOKEN },
+        headers: { 'Content-Type':'application/json', 'Authorization': 'Bearer ' + _getAuthToken() },
         body: JSON.stringify(body)
       });
       return await r.json();
@@ -23548,18 +23640,23 @@ document.addEventListener('DOMContentLoaded', function(){
 (function(){
 'use strict';
 
-const BRIDGE_URL = 'https://srv1516979.hstgr.cloud/ai-bridge';
-const BRIDGE_SECRET = 'c11a3f1069ef86290a14d6213410c58084c2e164af5ba684b8f45926d49e9dad';
 const POLL_INTERVAL = 5000;
 const SESSION_KEY = 'uysa_ai_bridge_session';
 
 let _sid = null, _poll = null, _authed = false, _sending = false;
 
+// Bridge istekleri backend proxy üzerinden gider (secret client'ta tutulmaz)
 async function api(path, method, body) {
-  const o = { method: method||'GET', headers:{'Content-Type':'application/json','X-Bridge-Secret':BRIDGE_SECRET} };
-  if (body) o.body = JSON.stringify(body);
-  try { const r = await fetch(BRIDGE_URL+path, o); return await r.json(); }
-  catch(e) { return {error:e.message}; }
+  try {
+    const sess = JSON.parse(sessionStorage.getItem('uysa_session')||'null');
+    const token = sess?.token || '';
+    const r = await fetch('/uysa_api.php?action=ai.bridgeProxy', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json', 'Authorization':'Bearer '+token},
+      body: JSON.stringify({path, method: method||'GET', body: body||null})
+    });
+    return await r.json();
+  } catch(e) { return {error:e.message}; }
 }
 
 function erpOk() { try { return !!JSON.parse(sessionStorage.getItem('uysa_session')||'null'); } catch(e){return false;} }
@@ -23568,7 +23665,7 @@ function fabCheck() {
   const f = document.getElementById('uysa-ai-fab');
   if (f) f.style.display = erpOk() ? 'flex' : 'none';
 }
-setInterval(fabCheck, 2000);
+setInterval(fabCheck, 10000);
 document.readyState==='loading' ? document.addEventListener('DOMContentLoaded',fabCheck) : fabCheck();
 
 function loadSess() { try { const s=JSON.parse(localStorage.getItem(SESSION_KEY)||'null'); if(s&&s.sid){_sid=s.sid;_authed=s.ok||false;} } catch(e){} }

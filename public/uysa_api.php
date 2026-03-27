@@ -859,7 +859,7 @@ if (!in_array($action, $publicActions, true)) {
 // ── Rate Limiting — SADECE auth/güvenlik endpoint'leri ──────
 // Normal veri işlemleri (setBulk, get, set vb.) kısıtlanmaz.
 // Kısıtlanan: login, getToken, apiKeyCreate, userSave
-$AUTH_RATE_ACTIONS = ['getToken', 'userAuth', 'ai.authLogin', 'apiKeyCreate', 'userSave'];
+$AUTH_RATE_ACTIONS = ['getToken', 'userAuth', 'ai.authLogin', 'apiKeyCreate', 'userSave', 'ai.providerAuthStart', 'ai.verifyDevice'];
 
 if (in_array($action, $AUTH_RATE_ACTIONS, true)) {
     $rateLimitKey = 'login:' . md5($clientIp . ':' . $action);
@@ -978,7 +978,7 @@ case 'ai.providerAuthStart':
         WHERE user_id = ? AND status = 'pending'")->execute([$erpUser['id']]);
 
     // Yeni device code üret
-    $code = strtoupper(substr(bin2hex(random_bytes(3)), 0, 4) . '-' . substr(bin2hex(random_bytes(3)), 0, 4));
+    $code = strtoupper(substr(bin2hex(random_bytes(4)), 0, 6) . '-' . substr(bin2hex(random_bytes(4)), 0, 6));
     $sessionToken = bin2hex(random_bytes(32));
     $expiresIn = 600; // 10 dakika
     $provider = strtolower(getenv('AI_PROVIDER') ?: 'anthropic');
@@ -1695,6 +1695,37 @@ case 'ai.history':
                            WHERE {$where} ORDER BY created_at DESC LIMIT {$limit}");
     $stmt->execute($params);
     jsonResponse(['ok' => true, 'messages' => array_reverse($stmt->fetchAll())]);
+
+// ── AI Bridge Proxy (secret'lar backend'de kalır) ────────────
+case 'ai.bridgeProxy':
+    if (!$actor) jsonResponse(['ok' => false, 'error' => 'ERP oturumu gerekli'], 401);
+    $bridgeUrl = getenv('AI_BRIDGE_URL') ?: 'https://srv1516979.hstgr.cloud/ai-bridge';
+    $bridgeSecret = getenv('AI_BRIDGE_SECRET') ?: 'c11a3f1069ef86290a14d6213410c58084c2e164af5ba684b8f45926d49e9dad';
+    $path = sanitizeInput($body['path'] ?? '', 200);
+    $bMethod = strtoupper(sanitizeInput($body['method'] ?? 'GET', 10));
+    $bBody = $body['body'] ?? null;
+    if (!$path) jsonResponse(['ok' => false, 'error' => 'path gerekli'], 400);
+
+    $ch = curl_init($bridgeUrl . $path);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 30,
+        CURLOPT_HTTPHEADER => [
+            'Content-Type: application/json',
+            'X-Bridge-Secret: ' . $bridgeSecret
+        ],
+        CURLOPT_CUSTOMREQUEST => $bMethod,
+    ]);
+    if ($bBody && $bMethod !== 'GET') {
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($bBody));
+    }
+    $resp = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err = curl_error($ch);
+    curl_close($ch);
+    if ($err) jsonResponse(['ok' => false, 'error' => 'Bridge bağlantı hatası: ' . $err], 502);
+    $data = json_decode($resp, true);
+    jsonResponse($data ?: ['ok' => false, 'error' => 'Bridge yanıt hatası'], $httpCode ?: 200);
 
 // ── Default: 404 ─────────────────────────────────────────────
 default:
