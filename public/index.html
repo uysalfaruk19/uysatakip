@@ -5783,21 +5783,35 @@ function escapeHtml(s){
     const monthObj = store?.[ymKey()] || {weeks:{}};
     const weeksMatrix = buildMonthWeeksMatrix(y, m0);
 
+    const logoB64 = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMjAgODAiIHdpZHRoPSIyMjAiIGhlaWdodD0iODAiPgogIDxyZWN0IHg9IjEwIiB5PSIxOCIgd2lkdGg9IjE4IiBoZWlnaHQ9IjE4IiByeD0iMiIgZmlsbD0iIzk5OSIgb3BhY2l0eT0iLjUiLz4KICA8cmVjdCB4PSIyMiIgeT0iOCIgd2lkdGg9IjE4IiBoZWlnaHQ9IjE4IiByeD0iMiIgZmlsbD0iIzJkM2E0NSIgb3BhY2l0eT0iLjgiLz4KICA8cmVjdCB4PSIxNSIgeT0iNCIgd2lkdGg9IjEyIiBoZWlnaHQ9IjEyIiByeD0iMiIgZmlsbD0iI2M4ZDAyMCIvPgogIDx0ZXh0IHg9IjQ4IiB5PSI0NiIgZm9udC1mYW1pbHk9IkFyaWFsLHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iNDAiIGZvbnQtd2VpZ2h0PSIzMDAiIGZpbGw9IiMyZDNhNDUiIGxldHRlci1zcGFjaW5nPSIzIj5VWVNBPC90ZXh0PgogIDx0ZXh0IHg9IjQ4IiB5PSI2NiIgZm9udC1mYW1pbHk9IkFyaWFsLHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTMiIGZpbGw9IiM3NzciIGxldHRlci1zcGFjaW5nPSI0IiBmb250LXdlaWdodD0iMzAwIj55ZW1layBoaXptZXRsZXJpPC90ZXh0Pgo8L3N2Zz4K';
+
     // Build HTML table that Excel can open with full styling
     let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
 <head><meta charset="utf-8">
+<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>
+<x:Name>Menü</x:Name>
+<x:WorksheetOptions><x:FitToPage/><x:Print><x:FitWidth>1</x:FitWidth><x:FitHeight>1</x:FitHeight></x:Print></x:WorksheetOptions>
+</x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
 <style>
-  td,th { font-family: Calibri, Arial, sans-serif; font-size: 11pt; text-align: center; vertical-align: middle; border: 1px solid #5a8ab5; font-weight: bold; mso-number-format:'\\@'; }
-  .title { font-size: 14pt; color: #1a3a6b; border: none; font-weight: 900; }
-  .dayH { background: #1a3a6b; color: #ffffff; font-size: 11pt; font-weight: 900; }
-  .dateR { background: #1976b5; color: #ffffff; font-size: 10pt; font-weight: 900; }
-  .food { background: #ffffff; color: #1e293b; font-size: 10pt; }
-  .footer { border: none; font-size: 8pt; color: #333; text-align: left; font-weight: normal; }
+  table { border-collapse: collapse; width: 100%; }
+  col.c { width: 160px; }
+  td,th { font-family: Calibri, Arial, sans-serif; font-size: 10pt; text-align: center; vertical-align: middle; border: 1px solid #5a8ab5; font-weight: bold; padding: 4px 6px; mso-number-format:'\\@'; white-space: nowrap; }
+  .logo { border: none; padding: 4px; }
+  .title { font-size: 13pt; color: #1a3a6b; border: none; font-weight: 900; padding: 6px 0; }
+  .dayH { background: #1a3a6b; color: #ffffff; font-size: 10pt; font-weight: 900; padding: 6px 4px; }
+  .dateR { background: #1976b5; color: #ffffff; font-size: 9pt; font-weight: 900; padding: 4px 2px; }
+  .food { background: #ffffff; color: #1e293b; font-size: 9pt; padding: 3px 4px; }
+  .footer { border: none; font-size: 7pt; color: #333; text-align: left; font-weight: normal; padding: 1px 0; }
 </style></head><body>
-<table>`;
+<table>
+<colgroup><col class="c"/><col class="c"/><col class="c"/><col class="c"/><col class="c"/><col class="c"/><col class="c"/></colgroup>`;
 
-    // Title row
-    html += `<tr><td class="title" colspan="7">${esc(title)}</td></tr>`;
+    // Logo + Title row (logo left, title center, logo right)
+    html += `<tr>
+      <td class="logo"><img src="${logoB64}" width="90" height="36"/></td>
+      <td class="title" colspan="5">${esc(title)}</td>
+      <td class="logo" style="text-align:right"><img src="${logoB64}" width="90" height="36"/></td>
+    </tr>`;
 
     // Day names
     html += `<tr>`;
