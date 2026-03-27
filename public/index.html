@@ -21038,66 +21038,88 @@ document.addEventListener('DOMContentLoaded', function(){
 </script>
 
 <!-- ════════════════════════════════════════════════════════════════
-     UYSA AI Bridge Widget v1.0
-     Bridge endpoint: /ai-bridge/* on VPS
+     UYSA AI Bridge Widget v2.0
      ════════════════════════════════════════════════════════════════ -->
-<div id="uysa-ai-chat" style="display:none;position:fixed;bottom:80px;right:20px;width:380px;max-width:calc(100vw - 32px);height:520px;max-height:calc(100vh - 100px);background:#fff;border-radius:16px;box-shadow:0 8px 40px rgba(0,0,0,.18);z-index:99999;flex-direction:column;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-  <!-- Header -->
-  <div style="background:linear-gradient(135deg,#1a56db,#7c3aed);color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;cursor:move;flex-shrink:0;">
-    <div style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:15px;">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a7 7 0 017 7c0 3-2 5.5-4 7l-3 4-3-4c-2-1.5-4-4-4-7a7 7 0 017-7z"/><circle cx="12" cy="9" r="2"/></svg>
-      UYSA AI Asistan
+<style id="uysa-ai-styles">
+#uysa-ai-chat{display:none;position:fixed;bottom:86px;right:16px;width:400px;max-width:calc(100vw - 24px);height:560px;max-height:calc(100vh - 100px);background:#fff;border-radius:20px;box-shadow:0 12px 48px rgba(0,0,0,.15),0 2px 8px rgba(0,0,0,.08);z-index:99999;flex-direction:column;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;border:1px solid rgba(0,0,0,.06)}
+#uysa-ai-chat .ai-head{background:linear-gradient(135deg,#1a56db 0%,#6d28d9 100%);color:#fff;padding:16px 18px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+#uysa-ai-chat .ai-head-title{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;letter-spacing:-.2px}
+#uysa-ai-chat .ai-head-actions{display:flex;gap:6px;align-items:center}
+#uysa-ai-chat .ai-head-btn{background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:8px;padding:5px 10px;cursor:pointer;font-size:11px;font-weight:500;transition:background .15s}
+#uysa-ai-chat .ai-head-btn:hover{background:rgba(255,255,255,.25)}
+#uysa-ai-chat .ai-dot{width:8px;height:8px;border-radius:50%;transition:background .3s}
+#uysa-ai-chat .ai-msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:#f8fafc;scroll-behavior:smooth}
+#uysa-ai-chat .ai-msg{padding:10px 14px;border-radius:14px;font-size:13px;line-height:1.65;max-width:88%;word-wrap:break-word;animation:aiMsgIn .25s ease-out}
+#uysa-ai-chat .ai-msg.ai-user{background:linear-gradient(135deg,#1a56db,#6d28d9);color:#fff;align-self:flex-end;margin-left:auto;border-bottom-right-radius:4px}
+#uysa-ai-chat .ai-msg.ai-assistant{background:#fff;color:#1e293b;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,.04);border-bottom-left-radius:4px}
+#uysa-ai-chat .ai-msg code{background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:12px;font-family:'SF Mono',Monaco,monospace}
+#uysa-ai-chat .ai-msg strong{font-weight:700}
+#uysa-ai-chat .ai-input-wrap{padding:12px 14px;border-top:1px solid #edf0f4;display:flex;gap:8px;background:#fff;flex-shrink:0}
+#uysa-ai-chat .ai-input{flex:1;border:1.5px solid #dde1e8;border-radius:12px;padding:10px 14px;font-size:13px;outline:none;font-family:inherit;transition:border-color .2s,box-shadow .2s}
+#uysa-ai-chat .ai-input:focus{border-color:#6d28d9;box-shadow:0 0 0 3px rgba(109,40,217,.1)}
+#uysa-ai-chat .ai-send-btn{background:linear-gradient(135deg,#1a56db,#6d28d9);color:#fff;border:none;border-radius:12px;padding:10px 18px;cursor:pointer;font-weight:700;font-size:13px;transition:transform .1s,opacity .2s}
+#uysa-ai-chat .ai-send-btn:hover{transform:scale(1.03)}
+#uysa-ai-chat .ai-send-btn:disabled{opacity:.5;cursor:default;transform:none}
+#uysa-ai-chat .ai-typing{display:flex;gap:4px;padding:10px 14px;align-items:center}
+#uysa-ai-chat .ai-typing span{width:7px;height:7px;border-radius:50%;background:#94a3b8;animation:aiTyping 1.2s infinite}
+#uysa-ai-chat .ai-typing span:nth-child(2){animation-delay:.2s}
+#uysa-ai-chat .ai-typing span:nth-child(3){animation-delay:.4s}
+#uysa-ai-chat .ai-connect{display:none;padding:28px 22px;background:#f8fafc;flex-direction:column;gap:16px;flex:1;justify-content:center;align-items:center}
+#uysa-ai-chat .ai-connect-card{background:#fff;border:1.5px solid #e2e8f0;border-radius:14px;padding:20px;text-align:center;width:100%;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+#uysa-ai-fab{display:none;position:fixed;bottom:20px;right:20px;width:58px;height:58px;border-radius:50%;background:linear-gradient(135deg,#1a56db,#6d28d9);color:#fff;border:none;box-shadow:0 4px 20px rgba(26,86,219,.35);cursor:pointer;z-index:99998;align-items:center;justify-content:center;transition:transform .2s,box-shadow .2s}
+#uysa-ai-fab:hover{transform:scale(1.08);box-shadow:0 6px 24px rgba(26,86,219,.45)}
+@keyframes aiMsgIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes aiTyping{0%,60%,100%{opacity:.3;transform:scale(.8)}30%{opacity:1;transform:scale(1)}}
+@media(max-width:480px){#uysa-ai-chat{bottom:0;right:0;width:100vw;max-width:100vw;height:100vh;max-height:100vh;border-radius:0}#uysa-ai-fab{bottom:16px;right:16px}}
+</style>
+
+<div id="uysa-ai-chat">
+  <div class="ai-head">
+    <div class="ai-head-title">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+      UYSA AI
+      <span class="ai-dot" id="uysa-ai-dot" style="background:#fbbf24"></span>
     </div>
-    <div style="display:flex;gap:8px;align-items:center;">
-      <span id="uysa-ai-status-dot" style="width:8px;height:8px;border-radius:50%;background:#fbbf24;" title="Durum"></span>
-      <button onclick="event.stopPropagation();uysaAI.clear()" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px;">Temizle</button>
-      <button onclick="event.stopPropagation();uysaAI.close()" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;">&#215;</button>
+    <div class="ai-head-actions">
+      <button class="ai-head-btn" onclick="event.stopPropagation();uysaAI.clear()">Temizle</button>
+      <button class="ai-head-btn" onclick="event.stopPropagation();uysaAI.close()" style="font-size:16px;padding:3px 8px">&#215;</button>
     </div>
   </div>
-  <!-- Bridge Connect Panel -->
-  <div id="uysa-ai-connect" style="display:none;padding:24px 20px;background:#f8fafc;flex-direction:column;gap:14px;flex:1;justify-content:center;">
-    <div style="text-align:center;">
-      <div style="font-size:40px;margin-bottom:8px;">&#129302;</div>
-      <div style="font-size:15px;font-weight:700;color:#1e293b;">AI Baglantisi Gerekli</div>
-      <div id="uysa-ai-connect-provider" style="font-size:12px;color:#64748b;margin-top:4px;"></div>
-    </div>
-    <div id="uysa-ai-connect-info" style="background:#fff;border:1.5px solid #e2e8f0;border-radius:12px;padding:16px;text-align:center;">
-      <div style="font-size:12px;color:#64748b;margin-bottom:6px;">Bu adresi tarayicinizda acin:</div>
-      <a id="uysa-ai-connect-url" href="#" target="_blank" style="font-size:14px;font-weight:700;color:#1a56db;word-break:break-all;"></a>
-      <div style="margin-top:12px;font-size:12px;color:#64748b;">Kodu girin:</div>
-      <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:6px;">
-        <span id="uysa-ai-connect-code" style="font-size:24px;font-weight:900;letter-spacing:4px;color:#1e293b;font-family:monospace;"></span>
-        <button onclick="uysaAI.copyCode()" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px;" title="Kopyala">&#128203;</button>
+  <div class="ai-connect" id="uysa-ai-connect">
+    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#6d28d9" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+    <div style="font-size:16px;font-weight:700;color:#1e293b">AI Servisi Baglaniyor</div>
+    <div id="uysa-ai-connect-provider" style="font-size:12px;color:#64748b"></div>
+    <div class="ai-connect-card" id="uysa-ai-connect-info">
+      <div style="font-size:12px;color:#64748b;margin-bottom:6px">Bu adresi acin:</div>
+      <a id="uysa-ai-connect-url" href="#" target="_blank" style="font-size:14px;font-weight:700;color:#1a56db;word-break:break-all"></a>
+      <div style="margin-top:12px;font-size:12px;color:#64748b">Kodu girin:</div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:6px">
+        <span id="uysa-ai-connect-code" style="font-size:26px;font-weight:900;letter-spacing:5px;color:#1e293b;font-family:monospace"></span>
+        <button onclick="uysaAI.copyCode()" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px">Kopyala</button>
       </div>
     </div>
-    <div id="uysa-ai-connect-status" style="text-align:center;font-size:12px;color:#64748b;">
-      Yetkilendirme bekleniyor...
-    </div>
-    <button onclick="uysaAI.retryConnect()" style="background:linear-gradient(135deg,#1a56db,#7c3aed);color:#fff;border:none;border-radius:10px;padding:10px;cursor:pointer;font-weight:600;font-size:13px;width:100%;">Tekrar Dene</button>
-    <div id="uysa-ai-connect-error" style="display:none;color:#dc2626;font-size:12px;text-align:center;"></div>
+    <div id="uysa-ai-connect-status" style="font-size:12px;color:#64748b">Bekleniyor...</div>
+    <button onclick="uysaAI.retryConnect()" style="background:linear-gradient(135deg,#1a56db,#6d28d9);color:#fff;border:none;border-radius:12px;padding:11px 20px;cursor:pointer;font-weight:700;font-size:13px;width:100%">Tekrar Dene</button>
+    <div id="uysa-ai-connect-error" style="display:none;color:#dc2626;font-size:12px"></div>
   </div>
-  <!-- Chat Messages -->
-  <div id="uysa-ai-messages" style="flex:1;overflow-y:auto;padding:12px;min-height:0;display:flex;flex-direction:column;gap:8px;background:#f8fafc;">
-    <div class="ai-msg ai-assistant" style="background:#e8f0fe;padding:10px 12px;border-radius:12px;font-size:13px;line-height:1.5;max-width:90%;">
-      Merhaba! Ben UYSA ERP AI asistaniyim. Stok, finans, personel veya herhangi bir ERP konusunda soru sorabilirsiniz.
-    </div>
+  <div class="ai-msgs" id="uysa-ai-messages">
+    <div class="ai-msg ai-assistant">Merhaba! UYSA ERP AI asistaniyim. Stok, finans, personel veya siparis konularinda yardimci olabilirim.</div>
   </div>
-  <!-- Chat Input -->
-  <div id="uysa-ai-input-area" style="padding:10px 12px;border-top:1px solid #e2e8f0;display:flex;gap:8px;background:#fff;flex-shrink:0;">
-    <input id="uysa-ai-input" type="text" placeholder="Sorunuzu yazin..." style="flex:1;border:1px solid #d1d5db;border-radius:10px;padding:10px 14px;font-size:13px;outline:none;font-family:inherit;" onkeydown="if(event.key==='Enter')uysaAI.send()">
-    <button onclick="uysaAI.send()" style="background:linear-gradient(135deg,#1a56db,#7c3aed);color:#fff;border:none;border-radius:10px;padding:10px 16px;cursor:pointer;font-weight:600;font-size:13px;">Gonder</button>
+  <div class="ai-input-wrap" id="uysa-ai-input-area">
+    <input id="uysa-ai-input" class="ai-input" type="text" placeholder="Bir soru sorun..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();uysaAI.send()}">
+    <button class="ai-send-btn" id="uysa-ai-send" onclick="uysaAI.send()">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+    </button>
   </div>
 </div>
 
-<!-- AI Chat FAB Butonu -->
-<button id="uysa-ai-fab" style="display:none;position:fixed;bottom:20px;right:20px;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#1a56db,#7c3aed);color:#fff;border:none;box-shadow:0 4px 16px rgba(26,86,219,.4);cursor:pointer;z-index:99998;align-items:center;justify-content:center;transition:transform .2s;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'" onclick="uysaAI.open()">
-  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+<button id="uysa-ai-fab" onclick="uysaAI.open()">
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
 </button>
 
 <script>
 /* ═══════════════════════════════════════════════════════════════
-   UYSA AI Bridge Widget v1.0
-   Tum auth/provider islemleri VPS bridge uzerinden
+   UYSA AI Bridge Widget v2.0 — OpenClaw Connected
    ═══════════════════════════════════════════════════════════════ */
 (function(){
 'use strict';
@@ -21107,333 +21129,108 @@ const BRIDGE_SECRET = 'c11a3f1069ef86290a14d6213410c58084c2e164af5ba684b8f45926d
 const POLL_INTERVAL = 5000;
 const SESSION_KEY = 'uysa_ai_bridge_session';
 
-let _sessionId = null;
-let _pollTimer = null;
-let _isAuthenticated = false;
+let _sid = null, _poll = null, _authed = false, _sending = false;
 
-// ── Bridge API helper ────────────────────────────────────────
-async function bridgeCall(path, method, body) {
-  const opts = {
-    method: method || 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Bridge-Secret': BRIDGE_SECRET,
-    },
-  };
-  if (body) opts.body = JSON.stringify(body);
-  try {
-    const res = await fetch(BRIDGE_URL + path, opts);
-    return await res.json();
-  } catch(e) {
-    console.error('[AI Bridge]', path, e);
-    return { error: e.message };
-  }
+async function api(path, method, body) {
+  const o = { method: method||'GET', headers:{'Content-Type':'application/json','X-Bridge-Secret':BRIDGE_SECRET} };
+  if (body) o.body = JSON.stringify(body);
+  try { const r = await fetch(BRIDGE_URL+path, o); return await r.json(); }
+  catch(e) { return {error:e.message}; }
 }
 
-// ── ERP login kontrolu ──────────────────────────────────────
-function isErpLoggedIn() {
-  try {
-    return !!JSON.parse(sessionStorage.getItem('uysa_session') || 'null');
-  } catch(e) { return false; }
+function erpOk() { try { return !!JSON.parse(sessionStorage.getItem('uysa_session')||'null'); } catch(e){return false;} }
+
+function fabCheck() {
+  const f = document.getElementById('uysa-ai-fab');
+  if (f) f.style.display = erpOk() ? 'flex' : 'none';
+}
+setInterval(fabCheck, 2000);
+document.readyState==='loading' ? document.addEventListener('DOMContentLoaded',fabCheck) : fabCheck();
+
+function loadSess() { try { const s=JSON.parse(localStorage.getItem(SESSION_KEY)||'null'); if(s&&s.sid){_sid=s.sid;_authed=s.ok||false;} } catch(e){} }
+function saveSess(id,ok) { _sid=id;_authed=ok;localStorage.setItem(SESSION_KEY,JSON.stringify({sid:id,ok:ok})); }
+function clearSess() { _sid=null;_authed=false;localStorage.removeItem(SESSION_KEY); }
+
+function dot(color) { const d=document.getElementById('uysa-ai-dot'); if(d) d.style.background=color; }
+
+function panel(mode) {
+  const c=document.getElementById('uysa-ai-connect'), m=document.getElementById('uysa-ai-messages'), i=document.getElementById('uysa-ai-input-area');
+  if(mode==='connect'){c.style.display='flex';m.style.display='none';i.style.display='none';dot('#fbbf24');}
+  else{c.style.display='none';m.style.display='flex';i.style.display='flex';dot('#22c55e');}
 }
 
-// ── FAB gorunurluk ──────────────────────────────────────────
-function updateFabVisibility() {
-  const fab = document.getElementById('uysa-ai-fab');
-  if (!fab) return;
-  fab.style.display = isErpLoggedIn() ? 'flex' : 'none';
+async function startConn(prov) {
+  const el=document.getElementById;
+  document.getElementById('uysa-ai-connect-error').style.display='none';
+  document.getElementById('uysa-ai-connect-status').textContent='Baglaniyor...';
+  const r = await api('/connect/start','POST',{provider:prov});
+  if(r.error){document.getElementById('uysa-ai-connect-error').textContent=r.error;document.getElementById('uysa-ai-connect-error').style.display='block';return;}
+  saveSess(r.session_id,false);
+  if(r.status==='authenticated'){saveSess(r.session_id,true);panel('chat');document.getElementById('uysa-ai-input').focus();return;}
+  document.getElementById('uysa-ai-connect-provider').textContent=r.provider||'';
+  const u=document.getElementById('uysa-ai-connect-url');u.href=r.verification_url||'#';u.textContent=r.verification_url||'';
+  document.getElementById('uysa-ai-connect-code').textContent=r.code||'';
+  panel('connect');
+  document.getElementById('uysa-ai-connect-status').textContent='Yetkilendirme bekleniyor...';
+  pollStart();
 }
 
-// Her 2 saniyede ERP login durumunu kontrol et
-setInterval(updateFabVisibility, 2000);
-// Sayfa yuklenince de kontrol et
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', updateFabVisibility);
-} else {
-  updateFabVisibility();
+function pollStart() { pollStop(); _poll=setInterval(async()=>{if(!_sid){pollStop();return;}const r=await api('/connect/status/'+_sid);if(!r)return;if(r.status==='authenticated'){pollStop();saveSess(_sid,true);panel('chat');document.getElementById('uysa-ai-input').focus();}else if(r.status==='failed'){pollStop();document.getElementById('uysa-ai-connect-error').textContent=r.error||'Basarisiz';document.getElementById('uysa-ai-connect-error').style.display='block';}},POLL_INTERVAL); }
+function pollStop() { if(_poll){clearInterval(_poll);_poll=null;} }
+
+async function checkSess() { if(!_sid)return false;const r=await api('/connect/status/'+_sid);if(r&&r.status==='authenticated'){_authed=true;saveSess(_sid,true);return true;}return false; }
+
+function renderMsg(role, text) {
+  const wrap=document.getElementById('uysa-ai-messages'), d=document.createElement('div');
+  d.className='ai-msg ai-'+role;
+  let h=text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  h=h.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>');
+  h=h.replace(/`(.*?)`/g,'<code>$1</code>');
+  h=h.replace(/\n/g,'<br>');
+  d.innerHTML=h; wrap.appendChild(d); wrap.scrollTop=wrap.scrollHeight;
 }
 
-// ── Kayitli session'i yukle ─────────────────────────────────
-function loadSession() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
-    if (saved && saved.session_id) {
-      _sessionId = saved.session_id;
-      _isAuthenticated = saved.authenticated || false;
-    }
-  } catch(e) {}
+function showTyping() {
+  const wrap=document.getElementById('uysa-ai-messages'), d=document.createElement('div');
+  d.className='ai-typing'; d.id='ai-typing-ind';
+  d.innerHTML='<span></span><span></span><span></span>';
+  wrap.appendChild(d); wrap.scrollTop=wrap.scrollHeight;
 }
+function hideTyping() { const t=document.getElementById('ai-typing-ind'); if(t)t.remove(); }
 
-function saveSession(sessionId, authenticated) {
-  _sessionId = sessionId;
-  _isAuthenticated = authenticated;
-  localStorage.setItem(SESSION_KEY, JSON.stringify({
-    session_id: sessionId,
-    authenticated: authenticated,
-  }));
-}
-
-function clearSession() {
-  _sessionId = null;
-  _isAuthenticated = false;
-  localStorage.removeItem(SESSION_KEY);
-}
-
-// ── UI helpers ──────────────────────────────────────────────
-function showPanel(panel) {
-  const connect = document.getElementById('uysa-ai-connect');
-  const msgs = document.getElementById('uysa-ai-messages');
-  const input = document.getElementById('uysa-ai-input-area');
-  const dot = document.getElementById('uysa-ai-status-dot');
-
-  if (panel === 'connect') {
-    connect.style.display = 'flex';
-    msgs.style.display = 'none';
-    input.style.display = 'none';
-    if (dot) dot.style.background = '#fbbf24';
-  } else {
-    connect.style.display = 'none';
-    msgs.style.display = 'flex';
-    input.style.display = 'flex';
-    if (dot) dot.style.background = '#22c55e';
-  }
-}
-
-function setConnectError(msg) {
-  const el = document.getElementById('uysa-ai-connect-error');
-  if (el) {
-    el.textContent = msg;
-    el.style.display = msg ? 'block' : 'none';
-  }
-}
-
-function setConnectStatus(msg) {
-  const el = document.getElementById('uysa-ai-connect-status');
-  if (el) el.textContent = msg;
-}
-
-// ── Bridge health check ─────────────────────────────────────
-async function checkBridgeHealth() {
-  const result = await bridgeCall('/health');
-  return result && result.status === 'ok';
-}
-
-// ── Connect/auth flow ───────────────────────────────────────
-async function startConnect(provider) {
-  setConnectError('');
-  setConnectStatus('Baglanti baslatiliyor...');
-
-  const result = await bridgeCall('/connect/start', 'POST', { provider: provider });
-
-  if (result.error) {
-    setConnectError('Baglanti hatasi: ' + result.error);
-    return;
-  }
-
-  saveSession(result.session_id, false);
-
-  // Eger provider zaten authenticated ise (API key gibi)
-  if (result.status === 'authenticated') {
-    saveSession(result.session_id, true);
-    showPanel('chat');
-    window.uysaAI.addMsg('assistant', 'AI baglantisi hazir! Sorularinizi sorabilirsiniz.');
-    document.getElementById('uysa-ai-input').focus();
-    return;
-  }
-
-  // Device auth: goster
-  const provEl = document.getElementById('uysa-ai-connect-provider');
-  const urlEl = document.getElementById('uysa-ai-connect-url');
-  const codeEl = document.getElementById('uysa-ai-connect-code');
-
-  if (provEl) provEl.textContent = 'Saglayici: ' + (result.provider || provider);
-  if (urlEl) {
-    urlEl.href = result.verification_url || '#';
-    urlEl.textContent = result.verification_url || '';
-  }
-  if (codeEl) codeEl.textContent = result.code || '';
-
-  showPanel('connect');
-  setConnectStatus('Yetkilendirme bekleniyor...');
-
-  // Start polling
-  startPolling();
-}
-
-// ── Poll auth status ────────────────────────────────────────
-function startPolling() {
-  stopPolling();
-  _pollTimer = setInterval(async () => {
-    if (!_sessionId) { stopPolling(); return; }
-
-    const result = await bridgeCall('/connect/status/' + _sessionId);
-    if (!result || result.error) return;
-
-    if (result.status === 'authenticated') {
-      stopPolling();
-      saveSession(_sessionId, true);
-      showPanel('chat');
-      window.uysaAI.addMsg('assistant', 'AI baglantisi basarili! Sorularinizi sorabilirsiniz.');
-      document.getElementById('uysa-ai-input').focus();
-    } else if (result.status === 'failed') {
-      stopPolling();
-      setConnectError('Yetkilendirme basarisiz: ' + (result.error || ''));
-      setConnectStatus('');
-    }
-  }, POLL_INTERVAL);
-}
-
-function stopPolling() {
-  if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
-}
-
-// ── Check existing session ──────────────────────────────────
-async function checkExistingSession() {
-  if (!_sessionId) return false;
-
-  const result = await bridgeCall('/connect/status/' + _sessionId);
-  if (result && result.status === 'authenticated') {
-    _isAuthenticated = true;
-    saveSession(_sessionId, true);
-    return true;
-  }
-  return false;
-}
-
-// ── Widget API ──────────────────────────────────────────────
 window.uysaAI = {
   async open() {
-    if (!isErpLoggedIn()) return;
-
-    const chat = document.getElementById('uysa-ai-chat');
-    const fab = document.getElementById('uysa-ai-fab');
-    chat.style.display = 'flex';
-    fab.style.display = 'none';
-
-    // Health check
-    const healthy = await checkBridgeHealth();
-    if (!healthy) {
-      showPanel('connect');
-      setConnectError('AI Bridge servisine ulasilamiyor.');
-      setConnectStatus('');
-      return;
-    }
-
-    // Kayitli session var mi?
-    loadSession();
-
-    if (_sessionId && _isAuthenticated) {
-      // Session'i dogrula
-      const valid = await checkExistingSession();
-      if (valid) {
-        showPanel('chat');
-        document.getElementById('uysa-ai-input').focus();
-        return;
-      }
-    }
-
-    // Yeni baglanti baslat
-    await startConnect();
+    if(!erpOk())return;
+    document.getElementById('uysa-ai-chat').style.display='flex';
+    document.getElementById('uysa-ai-fab').style.display='none';
+    const ok=await api('/health');
+    if(!ok||ok.status!=='ok'){panel('connect');document.getElementById('uysa-ai-connect-error').textContent='AI servisi ulasilamiyor';document.getElementById('uysa-ai-connect-error').style.display='block';return;}
+    loadSess();
+    if(_sid&&_authed){const v=await checkSess();if(v){panel('chat');document.getElementById('uysa-ai-input').focus();return;}}
+    await startConn();
   },
-
-  close() {
-    document.getElementById('uysa-ai-chat').style.display = 'none';
-    document.getElementById('uysa-ai-fab').style.display = isErpLoggedIn() ? 'flex' : 'none';
-    stopPolling();
-  },
-
-  clear() {
-    const msgs = document.getElementById('uysa-ai-messages');
-    msgs.innerHTML = '<div class="ai-msg ai-assistant" style="background:#e8f0fe;padding:10px 12px;border-radius:12px;font-size:13px;line-height:1.5;max-width:90%;">Sohbet temizlendi. Yeni bir soru sorabilirsiniz.</div>';
-  },
-
-  addMsg(role, text) {
-    const msgs = document.getElementById('uysa-ai-messages');
-    const div = document.createElement('div');
-    div.className = 'ai-msg ai-' + role;
-    const isUser = role === 'user';
-    div.style.cssText = 'padding:10px 12px;border-radius:12px;font-size:13px;line-height:1.6;max-width:90%;word-wrap:break-word;'
-      + (isUser ? 'background:#1a56db;color:#fff;align-self:flex-end;margin-left:auto;' : 'background:#e8f0fe;color:#1e293b;');
-    let html = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-    html = html.replace(/`(.*?)`/g, '<code style="background:#f1f5f9;padding:1px 4px;border-radius:4px;font-size:12px;">$1</code>');
-    html = html.replace(/\n/g, '<br>');
-    div.innerHTML = html;
-    msgs.appendChild(div);
-    msgs.scrollTop = msgs.scrollHeight;
-  },
-
+  close() { document.getElementById('uysa-ai-chat').style.display='none';document.getElementById('uysa-ai-fab').style.display=erpOk()?'flex':'none';pollStop(); },
+  clear() { document.getElementById('uysa-ai-messages').innerHTML='<div class="ai-msg ai-assistant">Sohbet temizlendi. Yeni bir soru sorabilirsiniz.</div>'; },
   async send() {
-    const input = document.getElementById('uysa-ai-input');
-    const msg = input.value.trim();
-    if (!msg) return;
-    input.value = '';
-    this.addMsg('user', msg);
-
-    if (!_sessionId || !_isAuthenticated) {
-      this.addMsg('assistant', 'AI baglantisi yok. Lutfen once baglanin.');
-      return;
-    }
-
-    const loadDiv = document.createElement('div');
-    loadDiv.className = 'ai-loading';
-    loadDiv.style.cssText = 'padding:10px;font-size:13px;color:#94a3b8;';
-    loadDiv.innerHTML = '<span style="animation:pulse 1.5s infinite;">Dusunuyorum...</span>';
-    document.getElementById('uysa-ai-messages').appendChild(loadDiv);
-
-    const result = await bridgeCall('/chat', 'POST', {
-      session_id: _sessionId,
-      message: msg,
-    });
-
-    loadDiv.remove();
-
-    if (result.message) {
-      this.addMsg('assistant', result.message);
-    } else if (result.error) {
-      if (result.error.indexOf('not authenticated') !== -1 || result.error.indexOf('Session not') !== -1) {
-        clearSession();
-        this.addMsg('assistant', 'Oturum suresi dolmus. Lutfen tekrar baglanin.');
-        showPanel('connect');
-        await startConnect();
-      } else {
-        this.addMsg('assistant', 'Hata: ' + result.error);
-      }
-    } else {
-      this.addMsg('assistant', 'Yanit alinamadi.');
-    }
+    if(_sending)return;
+    const inp=document.getElementById('uysa-ai-input'), msg=inp.value.trim();
+    if(!msg)return; inp.value=''; renderMsg('user',msg);
+    if(!_sid||!_authed){renderMsg('assistant','Baglanti yok. Lutfen tekrar deneyin.');return;}
+    _sending=true; const btn=document.getElementById('uysa-ai-send'); btn.disabled=true;
+    showTyping();
+    const r=await api('/chat','POST',{session_id:_sid,message:msg});
+    hideTyping(); _sending=false; btn.disabled=false;
+    if(r.message){renderMsg('assistant',r.message);}
+    else if(r.error){
+      if(r.error.indexOf('not authenticated')!==-1||r.error.indexOf('Session not')!==-1){clearSess();renderMsg('assistant','Oturum suresi doldu.');panel('connect');await startConn();}
+      else renderMsg('assistant','Hata: '+r.error);
+    } else renderMsg('assistant','Yanit alinamadi.');
+    inp.focus();
   },
-
-  copyCode() {
-    const code = document.getElementById('uysa-ai-connect-code')?.textContent;
-    if (code) {
-      navigator.clipboard.writeText(code).then(() => {
-        const btn = event.target.closest('button');
-        if (btn) { const old = btn.textContent; btn.textContent = 'Kopyalandi!'; setTimeout(() => btn.textContent = old, 1500); }
-      });
-    }
-  },
-
-  async retryConnect() {
-    clearSession();
-    setConnectError('');
-    await startConnect();
-  },
-
-  async logout() {
-    if (_sessionId) {
-      await bridgeCall('/logout', 'POST', { session_id: _sessionId });
-    }
-    clearSession();
-    showPanel('connect');
-    setConnectStatus('Cikis yapildi.');
-  },
+  copyCode() { const c=document.getElementById('uysa-ai-connect-code')?.textContent;if(c)navigator.clipboard.writeText(c).catch(()=>{}); },
+  async retryConnect() { clearSess();await startConn(); },
+  addMsg: renderMsg,
 };
-
-// Pulse animation
-const style = document.createElement('style');
-style.textContent = '@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}';
-document.head.appendChild(style);
 
 })();
 </script>
