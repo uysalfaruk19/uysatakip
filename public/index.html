@@ -5866,10 +5866,17 @@ function escapeHtml(s){
   }
 
   function clearMonth(){
+    const key = ymKey();
+    const parts = key.split('::');
+    const ayBilgi = parts[0] || '';
+    const musteri = parts[1] || 'GENEL';
+    if(!confirm('⚠️ ' + musteri + ' müşterisi için ' + ayBilgi + ' ayındaki tüm menü verileri silinecek.\n\nBu işlem geri alınamaz. Devam etmek istiyor musunuz?')) return;
     const store = getStore();
-    delete store[ymKey()];
+    delete store[key];
     setStore(store);
-    statusLine.innerHTML = '<span class="statusOk">✅ Ay kayıtları silindi</span>';
+    statusLine.innerHTML = '<span class="statusOk">✅ ' + musteri + ' — ' + ayBilgi + ' ay kayıtları silindi</span>';
+    // Tabloyu yenile
+    if(typeof renderTable === 'function') try{ renderTable(); }catch(e){}
   }
 
   function downloadJson(filename, obj){
