@@ -4375,6 +4375,20 @@
             <div id="perMaliyetSonuc" style="margin-top:10px"></div>
           </div>
           </div>
+
+          <!-- ═══ 6.7 AYLIK ÖZET RAPOR (Nisan formatı) ═══ -->
+          <div class="panel" style="grid-column:1/-1;margin-top:14px;border:2px solid #0f766e;background:linear-gradient(135deg,#f0fdfa,#fff)">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+              <h3 style="color:#0f766e;margin:0">📋 6.7 — Aylık Özet Rapor</h3>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <select id="aoRaporAy" style="padding:6px 10px;border:1px solid #99f6e4;border-radius:8px;font-size:13px"></select>
+                <button class="btn primary" onclick="renderAylikOzetRapor()" style="background:#0f766e">📊 Rapor Oluştur</button>
+                <button class="btn success" onclick="aylikOzetPdf()" style="background:#059669">📄 PDF İndir</button>
+              </div>
+            </div>
+            <div class="hint" style="margin-top:6px">Tedarikçi bazlı harcamalar, müşteri bazlı satışlar, personel maaşları ve birim maliyet özeti — tek sayfada.</div>
+            <div id="aoRaporDiv" style="margin-top:14px;font-size:12px"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -22870,6 +22884,7 @@ document.addEventListener('DOMContentLoaded', function(){
 <script src="/js/recete-kutuphane.js" defer></script>
 <script src="/js/recete-gunluk.js" defer></script>
 <script src="/js/recete-analiz.js" defer></script>
+<script src="/js/rapor-aylik-ozet.js" defer></script>
 
 <script>
 
