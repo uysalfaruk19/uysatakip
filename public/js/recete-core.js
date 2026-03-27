@@ -50,6 +50,7 @@
     if(cat.soups) cat.soups.forEach(function(x){ set.add(x); });
     if(cat.mainsByType) Object.values(cat.mainsByType).forEach(function(arr){ arr.forEach(function(x){ set.add(x); }); });
     if(cat.sidesByGroup) Object.values(cat.sidesByGroup).forEach(function(arr){ arr.forEach(function(x){ set.add(x); }); });
+    if(cat.salads) cat.salads.forEach(function(x){ set.add(x); });
     return Array.from(set).filter(Boolean).sort(function(a,b){ return a.localeCompare(b,'tr'); });
   };
 

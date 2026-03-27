@@ -4805,7 +4805,11 @@
           <div class="panel" style="max-height:75vh;overflow:auto">
             <h3 style="margin-bottom:10px">Yemek Listesi</h3>
             <input id="rcYemekAra" placeholder="Yemek ara..." oninput="rcFilterYemekList()" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px;margin-bottom:8px;font-size:13px"/>
-            <button class="btn success" onclick="rcYeniYemek()" style="width:100%;margin-bottom:10px">+ Yeni Yemek Ekle</button>
+            <div style="display:flex;gap:6px;margin-bottom:10px">
+              <button class="btn success" onclick="rcYeniYemek()" style="flex:1;font-size:12px">+ Yeni Yemek Ekle</button>
+              <button class="btn" onclick="document.getElementById('rcExcelInput').click()" style="flex:1;font-size:12px;background:#eff6ff;border-color:#93c5fd;color:#1d4ed8">📥 Excel Yükle</button>
+              <input type="file" id="rcExcelInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="rcImportExcel(this)"/>
+            </div>
             <div id="rcYemekListDiv" style="font-size:13px"></div>
           </div>
           <!-- Sağ: Reçete Düzenleme -->
@@ -22861,6 +22865,7 @@ document.addEventListener('DOMContentLoaded', function(){
 </script>
 
 <script src="/uysa-ux-manager.js" defer></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js" defer></script>
 <script src="/js/recete-core.js" defer></script>
 <script src="/js/recete-kutuphane.js" defer></script>
 <script src="/js/recete-gunluk.js" defer></script>

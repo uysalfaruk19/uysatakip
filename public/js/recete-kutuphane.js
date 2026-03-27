@@ -1,35 +1,148 @@
 // ═══════════════════════════════════════════════════════════════
-// REÇETE & MALİYET MODÜLÜ — Reçete Kütüphanesi
+// REÇETE & MALİYET MODÜLÜ — Reçete Kütüphanesi (Kategorili)
 // ═══════════════════════════════════════════════════════════════
 
 (function(){
   'use strict';
   var rc = window._rc;
-  var _currentRecipe = null; // Currently editing recipe name
+  var _currentRecipe = null;
 
-  // ── Yemek listesi render ─────────────────────────────────────
+  // Kategori açık/kapalı durumu
+  var _openCats = {};
+
+  // ── Kategori etiketleri ────────────────────────────────────
+  var CAT_LABELS = {
+    soups: '🥣 Çorbalar',
+    meat: '🥩 Kırmızı Et',
+    chicken: '🍗 Beyaz Et',
+    legume: '🫘 Bakliyat',
+    kebab: '🍖 Köfte',
+    vegetable: '🥦 Sebze',
+    sides: '🍚 Yardımcı Yemek',
+    salatabar: '🥗 Salatabar',
+    diger: '📋 Diğer'
+  };
+
+  // ── Yemekleri kategorilere ayır ─────────────────────────────
+  function _categorize(){
+    var cat = rc.getCatalog();
+    var recipes = rc.getRecipes();
+    var groups = {};
+
+    // Tüm kategorileri başlat
+    Object.keys(CAT_LABELS).forEach(function(k){ groups[k] = []; });
+
+    var assigned = new Set();
+
+    // Çorbalar
+    if(cat.soups) cat.soups.forEach(function(n){
+      if(n){ groups.soups.push(n); assigned.add(n); }
+    });
+
+    // Ana yemekler — alt kategoriler
+    if(cat.mainsByType){
+      ['meat','chicken','legume','kebab','vegetable'].forEach(function(key){
+        if(cat.mainsByType[key]) cat.mainsByType[key].forEach(function(n){
+          if(n){ groups[key].push(n); assigned.add(n); }
+        });
+      });
+      // Bilinmeyen alt kategori varsa
+      Object.keys(cat.mainsByType).forEach(function(key){
+        if(!groups[key]) groups[key] = [];
+        if(['meat','chicken','legume','kebab','vegetable'].indexOf(key) < 0){
+          cat.mainsByType[key].forEach(function(n){
+            if(n && !assigned.has(n)){ groups.diger.push(n); assigned.add(n); }
+          });
+        }
+      });
+    }
+
+    // Yardımcı yemekler
+    if(cat.sidesByGroup) Object.values(cat.sidesByGroup).forEach(function(arr){
+      arr.forEach(function(n){
+        if(n){ groups.sides.push(n); assigned.add(n); }
+      });
+    });
+
+    // Salatabar (catalog'da varsa)
+    if(cat.salads) cat.salads.forEach(function(n){
+      if(n){ groups.salatabar.push(n); assigned.add(n); }
+    });
+
+    // Recipes'da olan ama catalog'da olmayan yemekler
+    Object.keys(recipes).forEach(function(name){
+      if(!assigned.has(name)){
+        groups.diger.push(name);
+        assigned.add(name);
+      }
+    });
+
+    // Her grubu sırala
+    Object.keys(groups).forEach(function(k){
+      groups[k].sort(function(a,b){ return a.localeCompare(b,'tr'); });
+    });
+
+    return groups;
+  }
+
+  // ── Yemek listesi render (kategorili) ──────────────────────
   window.rcRenderYemekList = function(){
     var div = document.getElementById('rcYemekListDiv');
     if(!div) return;
     var recipes = rc.getRecipes();
-    var names = rc.getAllDishNames();
+    var groups = _categorize();
     var filter = (document.getElementById('rcYemekAra')?.value||'').toLowerCase();
-    if(filter) names = names.filter(function(n){ return n.toLowerCase().indexOf(filter)>=0; });
 
-    if(!names.length){ div.innerHTML='<div style="color:#94a3b8;padding:10px">Henüz yemek yok.</div>'; return; }
+    var html = '';
+    var catOrder = ['soups','meat','chicken','legume','kebab','vegetable','sides','salatabar','diger'];
 
-    div.innerHTML = names.map(function(name){
-      var hasRecipe = recipes[name] && recipes[name].length > 0;
-      var bg = (name===_currentRecipe) ? '#dbeafe' : (hasRecipe ? '#f0fdf4' : '#fff');
-      var badge = hasRecipe ? '<span style="color:#16a34a;font-size:10px">&#10003; reçete</span>' : '<span style="color:#d97706;font-size:10px">reçete yok</span>';
-      return '<div onclick="rcOpenRecipe(\''+name.replace(/'/g,"\\'")+'\')" style="padding:8px 10px;border-bottom:1px solid #f1f5f9;cursor:pointer;background:'+bg+';border-radius:6px;margin-bottom:2px;display:flex;justify-content:space-between;align-items:center" onmouseover="this.style.background=\'#eff6ff\'" onmouseout="this.style.background=\''+bg+'\'">'
-        +'<span style="font-weight:600">'+name+'</span>'+badge+'</div>';
-    }).join('');
+    catOrder.forEach(function(catKey){
+      var items = groups[catKey] || [];
+      if(filter){
+        items = items.filter(function(n){ return n.toLowerCase().indexOf(filter)>=0; });
+      }
+      if(!items.length) return;
+
+      var isOpen = filter ? true : (_openCats[catKey] !== false); // default open when filtering
+      var label = CAT_LABELS[catKey] || catKey;
+      var count = items.length;
+      var recipeCount = items.filter(function(n){ return recipes[n] && recipes[n].length>0; }).length;
+
+      html += '<div style="margin-bottom:4px">';
+      html += '<div onclick="rcToggleCat(\''+catKey+'\')" style="padding:8px 10px;background:linear-gradient(135deg,#f1f5f9,#e2e8f0);border-radius:8px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:13px;color:#334155;user-select:none">';
+      html += '<span>'+(isOpen?'▼':'▶')+'  '+label+'</span>';
+      html += '<span style="font-size:10px;color:#64748b;font-weight:500">'+recipeCount+'/'+count+' reçete</span>';
+      html += '</div>';
+
+      if(isOpen){
+        html += '<div style="padding-left:6px">';
+        items.forEach(function(name){
+          var hasRecipe = recipes[name] && recipes[name].length > 0;
+          var bg = (name===_currentRecipe) ? '#dbeafe' : (hasRecipe ? '#f0fdf4' : '#fff');
+          var badge = hasRecipe
+            ? '<span style="color:#16a34a;font-size:10px">&#10003; reçete</span>'
+            : '<span style="color:#d97706;font-size:10px">reçete yok</span>';
+          html += '<div onclick="rcOpenRecipe(\''+name.replace(/'/g,"\\'")+'\')" style="padding:7px 10px;border-bottom:1px solid #f1f5f9;cursor:pointer;background:'+bg+';border-radius:5px;margin:2px 0;display:flex;justify-content:space-between;align-items:center;font-size:12px" onmouseover="this.style.background=\'#eff6ff\'" onmouseout="this.style.background=\''+bg+'\'">';
+          html += '<span style="font-weight:600">'+name+'</span>'+badge+'</div>';
+        });
+        html += '</div>';
+      }
+      html += '</div>';
+    });
+
+    if(!html) html = '<div style="color:#94a3b8;padding:10px">Sonuç bulunamadı.</div>';
+    div.innerHTML = html;
+  };
+
+  // ── Kategori aç/kapa toggle ────────────────────────────────
+  window.rcToggleCat = function(catKey){
+    _openCats[catKey] = _openCats[catKey] === false ? true : false;
+    window.rcRenderYemekList();
   };
 
   window.rcFilterYemekList = function(){ window.rcRenderYemekList(); };
 
-  // ── Yeni yemek ekle ──────────────────────────────────────────
+  // ── Yeni yemek ekle ────────────────────────────────────────
   window.rcYeniYemek = function(){
     var name = prompt('Yeni yemek adı:');
     if(!name || !name.trim()) return;
@@ -41,7 +154,7 @@
     window.rcOpenRecipe(name);
   };
 
-  // ── Reçete aç ────────────────────────────────────────────────
+  // ── Reçete aç ──────────────────────────────────────────────
   window.rcOpenRecipe = function(name){
     _currentRecipe = name;
     var placeholder = document.getElementById('rcEditorPlaceholder');
@@ -54,13 +167,11 @@
     var tbody = document.getElementById('rcIngredientTbody');
     if(tbody) tbody.innerHTML='';
 
-    // Kişi sayısını 1'e sıfırla (kişi başı gramaj modu)
     var kisiInp = document.getElementById('rcKisiSayisi');
     if(kisiInp) kisiInp.value = '1';
     var ters = document.getElementById('rcTersHesap');
     if(ters) ters.checked = false;
 
-    // Mevcut reçeteyi yükle
     var recipes = rc.getRecipes();
     var ings = recipes[name] || [];
     var prices = rc.getPrices();
@@ -70,7 +181,6 @@
     });
 
     if(!ings.length){
-      // Boş reçete - 3 boş satır ekle
       _addRow('','',0);
       _addRow('','',0);
       _addRow('','',0);
@@ -80,15 +190,12 @@
     window.rcRenderYemekList();
   };
 
-  // ── Malzeme satırı ekle ──────────────────────────────────────
+  // ── Malzeme satırı ekle ────────────────────────────────────
   function _addRow(name, gram, price){
     var tbody = document.getElementById('rcIngredientTbody');
     if(!tbody) return;
     var tr = document.createElement('tr');
     tr.style.borderBottom = '1px solid #f1f5f9';
-
-    var ters = document.getElementById('rcTersHesap');
-    var isTers = ters && ters.checked;
 
     tr.innerHTML =
       '<td style="padding:6px"><input type="text" value="'+(name||'')+'" placeholder="Malzeme adı" style="width:100%;padding:6px;border:1px solid #d1d5db;border-radius:6px;font-size:12px" oninput="rcOnMalzemeInput(this)" list="rcMalzemeDatalist"/></td>'
@@ -103,7 +210,7 @@
 
   window.rcAddIngredientRow = function(){ _addRow('','',0); };
 
-  // ── Malzeme adı girilince fiyat otomatik doldur ──────────────
+  // ── Malzeme adı girilince fiyat otomatik doldur ────────────
   window.rcOnMalzemeInput = function(inp){
     var name = (inp.value||'').trim();
     if(!name) return;
@@ -116,10 +223,10 @@
     window.rcRecalc();
   };
 
-  // ── Ters hesaplama: toplam KG girilince gramaj hesapla ───────
+  // ── Ters hesaplama ─────────────────────────────────────────
   window.rcOnTotalKgInput = function(inp){
     var ters = document.getElementById('rcTersHesap');
-    if(!ters || !ters.checked) return; // Sadece ters modda çalışsın
+    if(!ters || !ters.checked) return;
     var kisi = parseInt(document.getElementById('rcKisiSayisi')?.value) || 1;
     var totalKg = parseFloat(inp.value) || 0;
     var gramPerPerson = kisi > 0 ? (totalKg * 1000 / kisi) : 0;
@@ -129,7 +236,7 @@
     window.rcRecalc();
   };
 
-  // ── Hesaplama (recalc) ───────────────────────────────────────
+  // ── Hesaplama ──────────────────────────────────────────────
   window.rcRecalc = function(){
     var tbody = document.getElementById('rcIngredientTbody');
     if(!tbody) return;
@@ -150,11 +257,8 @@
       var kg;
 
       if(isTers){
-        // Ters mod: kg input'tan oku, gramı hesapla
         kg = parseFloat(kgInp?.value) || 0;
-        // gramInp güncelleme rcOnTotalKgInput'ta yapılıyor
       } else {
-        // Normal mod: gramdan kg hesapla
         kg = (gram * kisi) / 1000;
         if(kgInp) kgInp.value = kg > 0 ? kg.toFixed(3) : '';
       }
@@ -174,7 +278,7 @@
     el('rcKisiBasiMaliyet', rc.fmtTL(kisi > 0 ? totalCost / kisi : 0));
   };
 
-  // ── Reçete kaydet ────────────────────────────────────────────
+  // ── Reçete kaydet ──────────────────────────────────────────
   window.rcSaveRecipe = function(){
     if(!_currentRecipe){ alert('Önce bir yemek seçin.'); return; }
     var tbody = document.getElementById('rcIngredientTbody');
@@ -192,7 +296,6 @@
     recipes[_currentRecipe] = list;
     rc.setRecipes(recipes);
 
-    // Fiyatları da güncelle
     var prices = rc.getPrices();
     tbody.querySelectorAll('tr').forEach(function(tr){
       var nameInp = tr.querySelector('input[type="text"]');
@@ -207,7 +310,7 @@
     window.rcRenderYemekList();
   };
 
-  // ── Reçete sil ───────────────────────────────────────────────
+  // ── Reçete sil ─────────────────────────────────────────────
   window.rcSilRecipe = function(){
     if(!_currentRecipe) return;
     if(!confirm(_currentRecipe + ' reçetesini silmek istediğinize emin misiniz?')) return;
@@ -220,7 +323,129 @@
     window.rcRenderYemekList();
   };
 
-  // ── Malzeme datalist (autocomplete) ──────────────────────────
+  // ── Excel ile reçete yükleme ───────────────────────────────
+  // Format beklentisi:
+  //   A sütunu: Yemek Adı
+  //   B sütunu: Malzeme Adı
+  //   C sütunu: Gramaj (g/kişi)
+  //   D sütunu (opsiyonel): Fiyat (₺/kg)
+  //
+  // Veya tek yemek formatı:
+  //   A sütunu: Malzeme Adı
+  //   B sütunu: Gramaj (g/kişi)
+  //   C sütunu (opsiyonel): Fiyat (₺/kg)
+  window.rcImportExcel = function(input){
+    var file = input.files[0];
+    if(!file) return;
+    input.value = '';
+
+    if(typeof XLSX === 'undefined'){
+      alert('Excel kütüphanesi yüklenemedi. Sayfayı yenileyip tekrar deneyin.');
+      return;
+    }
+
+    var reader = new FileReader();
+    reader.onload = function(e){
+      try {
+        var wb = XLSX.read(e.target.result, {type:'array'});
+        var ws = wb.Sheets[wb.SheetNames[0]];
+        var rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+
+        if(!rows.length){ alert('Excel dosyası boş.'); return; }
+
+        // Başlık satırını kontrol et
+        var headerRow = rows[0];
+        var hasHeader = false;
+        if(headerRow && headerRow.length > 0){
+          var h0 = String(headerRow[0]).toLowerCase().trim();
+          if(h0.indexOf('yemek')>=0 || h0.indexOf('malzeme')>=0 || h0.indexOf('ad')>=0 || h0===''){
+            hasHeader = true;
+          }
+        }
+        var dataRows = hasHeader ? rows.slice(1) : rows;
+        dataRows = dataRows.filter(function(r){ return r.some(function(c){ return c!=='' && c!=null; }); });
+
+        if(!dataRows.length){ alert('Veri satırı bulunamadı.'); return; }
+
+        // Format tespiti: 4+ sütun = çok yemekli, 2-3 sütun = tek yemekli
+        var maxCols = 0;
+        dataRows.forEach(function(r){ if(r.length > maxCols) maxCols = r.length; });
+
+        var recipes = rc.getRecipes();
+        var prices = rc.getPrices();
+        var importedCount = 0;
+        var importedDishes = [];
+
+        if(maxCols >= 4){
+          // Çok yemekli format: Yemek | Malzeme | Gram | Fiyat
+          var currentDish = '';
+          dataRows.forEach(function(r){
+            var dish = String(r[0]||'').trim();
+            var malzeme = String(r[1]||'').trim();
+            var gram = parseFloat(r[2]) || 0;
+            var fiyat = parseFloat(r[3]) || 0;
+
+            if(dish) currentDish = dish;
+            if(!currentDish || !malzeme) return;
+
+            if(!recipes[currentDish]){
+              recipes[currentDish] = [];
+              importedDishes.push(currentDish);
+            }
+            // Aynı malzeme varsa güncelle, yoksa ekle
+            var existing = recipes[currentDish].find(function(i){ return i.name === malzeme; });
+            if(existing){
+              existing.gram = gram;
+            } else {
+              recipes[currentDish].push({name: malzeme, gram: gram});
+            }
+            if(fiyat > 0) prices[malzeme] = fiyat;
+            importedCount++;
+          });
+        } else {
+          // Tek yemekli format: Malzeme | Gram | Fiyat
+          var dishName = prompt('Bu reçetenin yemek adını girin:');
+          if(!dishName || !dishName.trim()) return;
+          dishName = dishName.trim();
+
+          if(!recipes[dishName]) recipes[dishName] = [];
+          importedDishes.push(dishName);
+
+          dataRows.forEach(function(r){
+            var malzeme = String(r[0]||'').trim();
+            var gram = parseFloat(r[1]) || 0;
+            var fiyat = parseFloat(r[2]) || 0;
+
+            if(!malzeme) return;
+            var existing = recipes[dishName].find(function(i){ return i.name === malzeme; });
+            if(existing){
+              existing.gram = gram;
+            } else {
+              recipes[dishName].push({name: malzeme, gram: gram});
+            }
+            if(fiyat > 0) prices[malzeme] = fiyat;
+            importedCount++;
+          });
+        }
+
+        rc.setRecipes(recipes);
+        try{ localStorage.setItem('uysa_prices_tl_per_kg_v1', JSON.stringify(prices)); }catch(e){}
+
+        alert('Excel yüklendi!\n' + importedDishes.length + ' yemek, ' + importedCount + ' malzeme satırı aktarıldı.\n\nYemekler: ' + importedDishes.join(', '));
+        window.rcRenderYemekList();
+
+        // İlk yüklenen yemeği aç
+        if(importedDishes.length > 0) window.rcOpenRecipe(importedDishes[0]);
+
+      } catch(err) {
+        console.error('[Recete] Excel import error:', err);
+        alert('Excel okunamadı: ' + err.message);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  // ── Malzeme datalist (autocomplete) ────────────────────────
   function _ensureDatalist(){
     if(document.getElementById('rcMalzemeDatalist')) return;
     var dl = document.createElement('datalist');
@@ -234,7 +459,6 @@
     document.body.appendChild(dl);
   }
 
-  // Init datalist on first load
   var _origRender = window.rcRenderYemekList;
   window.rcRenderYemekList = function(){
     _ensureDatalist();
