@@ -13,6 +13,7 @@
   // ── Kategori etiketleri ────────────────────────────────────
   var CAT_LABELS = {
     soups: '🥣 Çorbalar',
+    anayemek: '🍽️ Ana Yemek',
     meat: '🥩 Kırmızı Et',
     chicken: '🍗 Beyaz Et',
     legume: '🫘 Bakliyat',
@@ -22,6 +23,9 @@
     salatabar: '🥗 Salatabar',
     diger: '📋 Diğer'
   };
+
+  // Alt kategoriler (anayemek'in altında)
+  var ANAYEMEK_SUBS = ['meat','chicken','legume','kebab','vegetable'];
 
   // ── Yemekleri kategorilere ayır ─────────────────────────────
   function _categorize(){
@@ -85,6 +89,30 @@
     return groups;
   }
 
+  // ── Yemek satırı HTML ────────────────────────────────────────
+  function _dishRow(name, recipes){
+    var hasRecipe = recipes[name] && recipes[name].length > 0;
+    var bg = (name===_currentRecipe) ? '#dbeafe' : (hasRecipe ? '#f0fdf4' : '#fff');
+    var badge = hasRecipe
+      ? '<span style="color:#16a34a;font-size:10px">&#10003; reçete</span>'
+      : '<span style="color:#d97706;font-size:10px">reçete yok</span>';
+    return '<div onclick="rcOpenRecipe(\''+name.replace(/'/g,"\\'")+'\')" style="padding:7px 10px;border-bottom:1px solid #f1f5f9;cursor:pointer;background:'+bg+';border-radius:5px;margin:2px 0;display:flex;justify-content:space-between;align-items:center;font-size:12px" onmouseover="this.style.background=\'#eff6ff\'" onmouseout="this.style.background=\''+bg+'\'">'
+      +'<span style="font-weight:600">'+name+'</span>'+badge+'</div>';
+  }
+
+  // ── Kategori başlığı HTML ──────────────────────────────────
+  function _catHeader(catKey, label, recipeCount, count, isOpen, indent){
+    var pad = indent ? 'padding-left:14px;' : '';
+    var bg = indent
+      ? 'background:linear-gradient(135deg,#f8fafc,#f1f5f9);'
+      : 'background:linear-gradient(135deg,#f1f5f9,#e2e8f0);';
+    var fontSize = indent ? 'font-size:12px;' : 'font-size:13px;';
+    return '<div onclick="rcToggleCat(\''+catKey+'\')" style="'+pad+pad+'padding:8px 10px;'+bg+'border-radius:8px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-weight:700;'+fontSize+'color:#334155;user-select:none">'
+      +'<span>'+(isOpen?'▼':'▶')+'  '+label+'</span>'
+      +'<span style="font-size:10px;color:#64748b;font-weight:500">'+recipeCount+'/'+count+' reçete</span>'
+      +'</div>';
+  }
+
   // ── Yemek listesi render (kategorili) ──────────────────────
   window.rcRenderYemekList = function(){
     var div = document.getElementById('rcYemekListDiv');
@@ -94,37 +122,73 @@
     var filter = (document.getElementById('rcYemekAra')?.value||'').toLowerCase();
 
     var html = '';
-    var catOrder = ['soups','meat','chicken','legume','kebab','vegetable','sides','salatabar','diger'];
+    // Üst kategori sırası: Çorbalar, Ana Yemek, Yardımcı, Salatabar, Diğer
+    var topOrder = ['soups','anayemek','sides','salatabar','diger'];
 
-    catOrder.forEach(function(catKey){
-      var items = groups[catKey] || [];
-      if(filter){
-        items = items.filter(function(n){ return n.toLowerCase().indexOf(filter)>=0; });
+    topOrder.forEach(function(topKey){
+
+      // === ANA YEMEK: özel — altında alt kategoriler var ===
+      if(topKey === 'anayemek'){
+        // Tüm alt kategorilerdeki yemekleri topla
+        var allSubItems = [];
+        var allSubRecipeCount = 0;
+        var hasAnyItem = false;
+
+        ANAYEMEK_SUBS.forEach(function(subKey){
+          var items = groups[subKey] || [];
+          if(filter) items = items.filter(function(n){ return n.toLowerCase().indexOf(filter)>=0; });
+          allSubItems = allSubItems.concat(items);
+          allSubRecipeCount += items.filter(function(n){ return recipes[n] && recipes[n].length>0; }).length;
+          if(items.length) hasAnyItem = true;
+        });
+
+        if(!hasAnyItem) return;
+
+        var anayemekOpen = filter ? true : (_openCats.anayemek !== false);
+        html += '<div style="margin-bottom:4px">';
+        html += _catHeader('anayemek', CAT_LABELS.anayemek, allSubRecipeCount, allSubItems.length, anayemekOpen, false);
+
+        if(anayemekOpen){
+          html += '<div style="padding-left:8px">';
+          ANAYEMEK_SUBS.forEach(function(subKey){
+            var items = groups[subKey] || [];
+            if(filter) items = items.filter(function(n){ return n.toLowerCase().indexOf(filter)>=0; });
+            if(!items.length) return;
+
+            var subOpen = filter ? true : (_openCats[subKey] !== false);
+            var subLabel = CAT_LABELS[subKey] || subKey;
+            var subRecipeCount = items.filter(function(n){ return recipes[n] && recipes[n].length>0; }).length;
+
+            html += '<div style="margin:3px 0">';
+            html += _catHeader(subKey, subLabel, subRecipeCount, items.length, subOpen, true);
+            if(subOpen){
+              html += '<div style="padding-left:12px">';
+              items.forEach(function(name){ html += _dishRow(name, recipes); });
+              html += '</div>';
+            }
+            html += '</div>';
+          });
+          html += '</div>';
+        }
+        html += '</div>';
+        return;
       }
+
+      // === Normal kategoriler ===
+      var items = groups[topKey] || [];
+      if(filter) items = items.filter(function(n){ return n.toLowerCase().indexOf(filter)>=0; });
       if(!items.length) return;
 
-      var isOpen = filter ? true : (_openCats[catKey] !== false); // default open when filtering
-      var label = CAT_LABELS[catKey] || catKey;
+      var isOpen = filter ? true : (_openCats[topKey] !== false);
+      var label = CAT_LABELS[topKey] || topKey;
       var count = items.length;
       var recipeCount = items.filter(function(n){ return recipes[n] && recipes[n].length>0; }).length;
 
       html += '<div style="margin-bottom:4px">';
-      html += '<div onclick="rcToggleCat(\''+catKey+'\')" style="padding:8px 10px;background:linear-gradient(135deg,#f1f5f9,#e2e8f0);border-radius:8px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:13px;color:#334155;user-select:none">';
-      html += '<span>'+(isOpen?'▼':'▶')+'  '+label+'</span>';
-      html += '<span style="font-size:10px;color:#64748b;font-weight:500">'+recipeCount+'/'+count+' reçete</span>';
-      html += '</div>';
-
+      html += _catHeader(topKey, label, recipeCount, count, isOpen, false);
       if(isOpen){
         html += '<div style="padding-left:6px">';
-        items.forEach(function(name){
-          var hasRecipe = recipes[name] && recipes[name].length > 0;
-          var bg = (name===_currentRecipe) ? '#dbeafe' : (hasRecipe ? '#f0fdf4' : '#fff');
-          var badge = hasRecipe
-            ? '<span style="color:#16a34a;font-size:10px">&#10003; reçete</span>'
-            : '<span style="color:#d97706;font-size:10px">reçete yok</span>';
-          html += '<div onclick="rcOpenRecipe(\''+name.replace(/'/g,"\\'")+'\')" style="padding:7px 10px;border-bottom:1px solid #f1f5f9;cursor:pointer;background:'+bg+';border-radius:5px;margin:2px 0;display:flex;justify-content:space-between;align-items:center;font-size:12px" onmouseover="this.style.background=\'#eff6ff\'" onmouseout="this.style.background=\''+bg+'\'">';
-          html += '<span style="font-weight:600">'+name+'</span>'+badge+'</div>';
-        });
+        items.forEach(function(name){ html += _dishRow(name, recipes); });
         html += '</div>';
       }
       html += '</div>';
