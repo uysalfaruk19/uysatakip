@@ -14160,10 +14160,12 @@ window.autoSaveToFolder = async function () {
     await writeJson(`stok_${day}.json`, stokPayload);
 
     // ── CRM ───────────────────────────────
-    const customers = lsGet('uysa_customers_v1', []);
+    const customersRaw = lsGet('uysa_customers_v1', {});
+    const customersList = Array.isArray(customersRaw) ? customersRaw : (customersRaw.customers || []);
+    const customersSummaries = (!Array.isArray(customersRaw) && customersRaw.summaries) ? customersRaw.summaries : {};
     const pasifMusteriler = lsGet('uysa_pasif_musteriler', []);
     const detaylar = collectMapBySuffix('uysa_crm_'); // müşteri -> detay
-    const crmPayload = { __savedAt: savedAt, __version: version, customers, pasifMusteriler, detaylar };
+    const crmPayload = { __savedAt: savedAt, __version: version, customers: customersList, customersSummaries, pasifMusteriler, detaylar };
     await writeJson('crm.json', crmPayload);
     await writeJson(`crm_${day}.json`, crmPayload);
 
@@ -14191,8 +14193,35 @@ window.autoSaveToFolder = async function () {
     await writeJson('personel.json', personelPayload);
     await writeJson(`personel_${day}.json`, personelPayload);
 
+    // ── SATIN ALMA / FATURA ──────────────
+    const faturalar = lsGet('uysa_faturalar', []);
+    const gidenFaturalar = lsGet('uysa_giden_faturalar', []);
+    const tedarikci = lsGet('uysa_tedarikci', []);
+    const satinAlmaPayload = { __savedAt: savedAt, __version: version, faturalar, gidenFaturalar, tedarikci };
+    await writeJson('satinalma.json', satinAlmaPayload);
+    await writeJson(`satinalma_${day}.json`, satinAlmaPayload);
+
+    // ── CARİ HESAP (Borç / Alacak / Tahsilat / Ödeme) ──
+    const borclar = lsGet('uysa_borclar', []);
+    const alacaklar = lsGet('uysa_alacaklar', []);
+    const tahsilatlar = lsGet('uysa_tahsilatlar', []);
+    const odemeler = lsGet('uysa_odemeler', []);
+    const sabitGiderler = lsGet('uysa_sabit_giderler', []);
+    const cariPayload = { __savedAt: savedAt, __version: version, borclar, alacaklar, tahsilatlar, odemeler, sabitGiderler };
+    await writeJson('cari.json', cariPayload);
+    await writeJson(`cari_${day}.json`, cariPayload);
+
+    // ── MENÜ / REÇETE / FİYAT ────────────
+    const menuGrid = lsGet('uysa_menu_grid_v2_dates', {});
+    const recipes = lsGet('uysa_recipes_v2', {});
+    const prices = lsGet('uysa_prices_tl_per_kg_v1', {});
+    const gunlukUretim = lsGet('uysa_gunluk_uretim', {});
+    const menuPayload = { __savedAt: savedAt, __version: version, menuGrid, recipes, prices, gunlukUretim };
+    await writeJson('menu_recete.json', menuPayload);
+    await writeJson(`menu_recete_${day}.json`, menuPayload);
+
     if (typeof window._uysaToast === 'function') {
-      window._uysaToast('💾 Klasöre kaydedildi: Finans + Stok + CRM + Personel (güncel + günlük)', 3000);
+      window._uysaToast('💾 Klasöre kaydedildi: Tüm modüller (Finans + Stok + CRM + Satın Alma + Cari + Menü/Reçete + Personel)', 3000);
     }
     console.log('✅ Modül bazlı kayıt tamamlandı.');
   } catch (e) {
@@ -14311,7 +14340,10 @@ setInterval(() => { if (_saveFolder) window.autoSaveToFolder(); }, 5 * 60 * 1000
       personel:'Personel',
       gelirler:'Finans • Gelirler',
       giderler:'Finans • Giderler',
-      uretim_giderleri:'Finans • Üretim Giderleri'
+      uretim_giderleri:'Finans • Üretim Giderleri',
+      satinalma:'Satın Alma / Faturalar',
+      cari:'Cari Hesap (Borç/Alacak)',
+      menu_recete:'Menü / Reçete / Fiyatlar'
     })[m] || m;
   }
 
@@ -14362,7 +14394,7 @@ setInterval(() => { if (_saveFolder) window.autoSaveToFolder(); }, 5 * 60 * 1000
       localStorage.removeItem('uysa_pasif_musteriler');
       removeByPrefix('uysa_crm_');
     }
-    lsSet('uysa_customers_v1', snap.customers || []);
+    lsSet('uysa_customers_v1', { customers: snap.customers || [], summaries: snap.customersSummaries || {} });
     lsSet('uysa_pasif_musteriler', snap.pasifMusteriler || []);
     const det = snap.detaylar || {};
     Object.keys(det).forEach(custKey => lsSet('uysa_crm_'+custKey, det[custKey] || {}));
@@ -14386,6 +14418,48 @@ setInterval(() => { if (_saveFolder) window.autoSaveToFolder(); }, 5 * 60 * 1000
     });
   }
 
+  async function restoreSatinalma(fileName, purge){
+    const snap = await readJsonFromFolder(fileName);
+    if(purge){
+      localStorage.removeItem('uysa_faturalar');
+      localStorage.removeItem('uysa_giden_faturalar');
+      localStorage.removeItem('uysa_tedarikci');
+    }
+    lsSet('uysa_faturalar', snap.faturalar || []);
+    lsSet('uysa_giden_faturalar', snap.gidenFaturalar || []);
+    lsSet('uysa_tedarikci', snap.tedarikci || []);
+  }
+
+  async function restoreCari(fileName, purge){
+    const snap = await readJsonFromFolder(fileName);
+    if(purge){
+      localStorage.removeItem('uysa_borclar');
+      localStorage.removeItem('uysa_alacaklar');
+      localStorage.removeItem('uysa_tahsilatlar');
+      localStorage.removeItem('uysa_odemeler');
+      localStorage.removeItem('uysa_sabit_giderler');
+    }
+    lsSet('uysa_borclar', snap.borclar || []);
+    lsSet('uysa_alacaklar', snap.alacaklar || []);
+    lsSet('uysa_tahsilatlar', snap.tahsilatlar || []);
+    lsSet('uysa_odemeler', snap.odemeler || []);
+    lsSet('uysa_sabit_giderler', snap.sabitGiderler || []);
+  }
+
+  async function restoreMenuRecete(fileName, purge){
+    const snap = await readJsonFromFolder(fileName);
+    if(purge){
+      localStorage.removeItem('uysa_menu_grid_v2_dates');
+      localStorage.removeItem('uysa_recipes_v2');
+      localStorage.removeItem('uysa_prices_tl_per_kg_v1');
+      localStorage.removeItem('uysa_gunluk_uretim');
+    }
+    lsSet('uysa_menu_grid_v2_dates', snap.menuGrid || {});
+    lsSet('uysa_recipes_v2', snap.recipes || {});
+    lsSet('uysa_prices_tl_per_kg_v1', snap.prices || {});
+    lsSet('uysa_gunluk_uretim', snap.gunlukUretim || {});
+  }
+
   window.openRestoreDialog = async function(){
     if (!_saveFolder){ alert('Önce 📁 Klasör seçmelisiniz.'); return; }
 
@@ -14400,7 +14474,7 @@ setInterval(() => { if (_saveFolder) window.autoSaveToFolder(); }, 5 * 60 * 1000
     const modFiles = {};
     files.forEach(f => { const m = getMod(f); (modFiles[m] ||= []).push(f); });
 
-    const moduleOptions = ['ALL','stok','crm','personel','gelirler','giderler','uretim_giderleri']
+    const moduleOptions = ['ALL','stok','crm','personel','gelirler','giderler','uretim_giderleri','satinalma','cari','menu_recete']
       .filter(m => m==='ALL' || (modFiles[m] && modFiles[m].length));
 
     modSel.innerHTML = moduleOptions.map(m => `<option value="${m}">${label(m)}</option>`).join('');
@@ -14459,12 +14533,21 @@ setInterval(() => { if (_saveFolder) window.autoSaveToFolder(); }, 5 * 60 * 1000
           await restoreFinance('gelirler', `gelirler_${day}.json`, purge);
           await restoreFinance('giderler', `giderler_${day}.json`, purge);
           await restoreFinance('uretim_giderleri', `uretim_giderleri_${day}.json`, purge);
+          try{ await restoreSatinalma(`satinalma_${day}.json`, purge); }catch(e){}
+          try{ await restoreCari(`cari_${day}.json`, purge); }catch(e){}
+          try{ await restoreMenuRecete(`menu_recete_${day}.json`, purge); }catch(e){}
         } else if (mod === 'stok'){
           await restoreStok(`stok_${day}.json`, purge);
         } else if (mod === 'crm'){
           await restoreCrm(`crm_${day}.json`, purge);
         } else if (mod === 'personel'){
           await restorePersonel(`personel_${day}.json`, purge);
+        } else if (mod === 'satinalma'){
+          await restoreSatinalma(`satinalma_${day}.json`, purge);
+        } else if (mod === 'cari'){
+          await restoreCari(`cari_${day}.json`, purge);
+        } else if (mod === 'menu_recete'){
+          await restoreMenuRecete(`menu_recete_${day}.json`, purge);
         } else if (['gelirler','giderler','uretim_giderleri'].includes(mod)){
           await restoreFinance(mod, `${mod}_${day}.json`, purge);
         }
