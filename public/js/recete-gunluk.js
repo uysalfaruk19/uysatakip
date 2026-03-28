@@ -187,15 +187,18 @@
     var dishes = [];
     var dishCustomerMap = {}; // {yemekAdı: [müşteri1, müşteri2]}
     var menuGrid = _ls2.get('uysa_menu_grid_v2_dates',{});
-    var ym = tarih.slice(0,7);
     var dt = new Date(tarih+'T00:00:00');
     var dow = (dt.getDay()+6)%7;
     var wIdx = 'W'+_calcWeekIdx(tarih);
+    // Key format: "YYYY-M::CUST" veya "YYYY-MM::CUST" (her ikisini dene)
+    var yy = dt.getFullYear();
+    var mm = dt.getMonth()+1;
+    var ymPadded = yy+'-'+(mm<10?'0':'')+mm;   // 2026-03
+    var ymNoPad  = yy+'-'+mm;                    // 2026-3
 
     var custList = sel.length > 0 ? sel : ['GENEL'];
     custList.forEach(function(cust){
-      var key = ym+'::'+cust;
-      var grid = menuGrid[key];
+      var grid = menuGrid[ymPadded+'::'+cust] || menuGrid[ymNoPad+'::'+cust];
       if(!grid || !grid.weeks || !grid.weeks[wIdx]) return;
       var w = grid.weeks[wIdx];
       ['soups','soups2','mains','mains2','sides','sides2','salads'].forEach(function(cat){
