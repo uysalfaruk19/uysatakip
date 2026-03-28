@@ -196,9 +196,17 @@
     var ymPadded = yy+'-'+(mm<10?'0':'')+mm;   // 2026-03
     var ymNoPad  = yy+'-'+mm;                    // 2026-3
 
+    // DEBUG — konsolda key eşleşmesini göster
+    var allKeys = Object.keys(menuGrid);
+    console.log('[GunlukMenu] tarih='+tarih+' dow='+dow+' wIdx='+wIdx+' ymPadded='+ymPadded+' ymNoPad='+ymNoPad);
+    console.log('[GunlukMenu] store keys:', allKeys.filter(function(k){ return k.indexOf('CANTA')>=0 || k.indexOf('canta')>=0; }));
+    console.log('[GunlukMenu] all keys:', allKeys.slice(0,20));
+
     var custList = sel.length > 0 ? sel : ['GENEL'];
     custList.forEach(function(cust){
-      var grid = menuGrid[ymPadded+'::'+cust] || menuGrid[ymNoPad+'::'+cust];
+      var keyA = ymPadded+'::'+cust, keyB = ymNoPad+'::'+cust;
+      var grid = menuGrid[keyA] || menuGrid[keyB];
+      console.log('[GunlukMenu] trying cust='+cust+' keyA='+keyA+' keyB='+keyB+' found='+(!!grid)+' hasWeeks='+(grid?!!grid.weeks:false)+' hasW='+(grid&&grid.weeks?!!grid.weeks[wIdx]:false));
       if(!grid || !grid.weeks || !grid.weeks[wIdx]) return;
       var w = grid.weeks[wIdx];
       ['soups','soups2','mains','mains2','sides','sides2','salads'].forEach(function(cat){
