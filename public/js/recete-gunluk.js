@@ -102,9 +102,10 @@
     div.innerHTML = html;
   };
 
-  // Müşteri checkbox değişince
+  // Müşteri checkbox değişince — kişi + menü yeniden yükle
   window._rcCustChanged = function(){
     _calcAutoKisi();
+    _loadMenuImpl();
   };
 
   // Tümünü seç/kaldır
@@ -114,6 +115,7 @@
     cbs.forEach(function(cb){ if(!cb.checked) allChecked = false; });
     cbs.forEach(function(cb){ cb.checked = !allChecked; });
     _calcAutoKisi();
+    _loadMenuImpl();
   };
 
   // Tarih aralığı toggle
@@ -163,33 +165,59 @@
     // Mevcut kayıt varsa tüketim verisini yükle
     _loadExistingTuketim(tarih);
 
-    // Seçili müşterilerden menü yemeklerini topla
+    // Hafta indeksi hesapla (recete-core.js ile aynı mantık)
+    function _calcWeekIdx(dateStr){
+      var p = dateStr.split('-');
+      var y = parseInt(p[0]), m1 = parseInt(p[1]), d = parseInt(p[2]);
+      var dt2 = new Date(y, m1-1, d);
+      // Pazartesi bazlı hafta başlangıçları
+      var first = new Date(y, m1-1, 1);
+      var shift = (first.getDay()+6)%7;
+      var mon = new Date(first); mon.setDate(1-shift);
+      for(var i=0;i<6;i++){
+        var wStart = new Date(mon); wStart.setDate(mon.getDate()+7*i);
+        var wEnd = new Date(wStart); wEnd.setDate(wStart.getDate()+6);
+        if(dt2>=wStart && dt2<=wEnd) return i+1;
+      }
+      return 1;
+    }
+
+    // Seçili müşterilerden menü yemeklerini topla (müşteri bazlı)
     var sel = _getSelectedCustomers();
     var dishes = [];
-    if(sel.length > 0){
-      var menuGrid = _ls2.get('uysa_menu_grid_v2_dates',{});
-      var ym = tarih.slice(0,7); // YYYY-MM
-      var dt = new Date(tarih+'T00:00:00');
-      var dow = (dt.getDay()+6)%7; // 0=Pzt
-      var dayOfMonth = dt.getDate();
-      var wIdx = 'W'+(Math.ceil(dayOfMonth/7));
-      sel.forEach(function(cust){
-        var key = ym+'::'+cust;
-        var grid = menuGrid[key];
-        if(!grid || !grid.weeks || !grid.weeks[wIdx]) return;
-        var w = grid.weeks[wIdx];
-        ['soups','mains','sides','salads'].forEach(function(cat){
-          var arr = w[cat]; if(!arr) return;
-          var v = arr[dow]; if(v && v.trim() && dishes.indexOf(v)<0) dishes.push(v);
-        });
-        ['soups2','mains2','sides2'].forEach(function(cat){
-          var arr = w[cat]; if(!arr) return;
-          var v = arr[dow]; if(v && v.trim() && dishes.indexOf(v)<0) dishes.push(v);
-        });
+    var dishCustomerMap = {}; // {yemekAdı: [müşteri1, müşteri2]}
+    var menuGrid = _ls2.get('uysa_menu_grid_v2_dates',{});
+    var ym = tarih.slice(0,7);
+    var dt = new Date(tarih+'T00:00:00');
+    var dow = (dt.getDay()+6)%7;
+    var wIdx = 'W'+_calcWeekIdx(tarih);
+
+    var custList = sel.length > 0 ? sel : ['GENEL'];
+    custList.forEach(function(cust){
+      var key = ym+'::'+cust;
+      var grid = menuGrid[key];
+      if(!grid || !grid.weeks || !grid.weeks[wIdx]) return;
+      var w = grid.weeks[wIdx];
+      ['soups','soups2','mains','mains2','sides','sides2','salads'].forEach(function(cat){
+        var arr = w[cat]; if(!arr) return;
+        var v = arr[dow]; if(!v || !v.trim()) return;
+        v = v.trim();
+        if(dishes.indexOf(v)<0) dishes.push(v);
+        if(!dishCustomerMap[v]) dishCustomerMap[v] = [];
+        if(dishCustomerMap[v].indexOf(cust)<0) dishCustomerMap[v].push(cust);
       });
-    }
-    // Fallback: GENEL menüden çek
-    if(!dishes.length){
+      // dessert/ayran
+      ['dessertFruitName','ayran'].forEach(function(cat){
+        var arr = w[cat]; if(!arr) return;
+        var v = arr[dow]; if(!v || !v.trim()) return;
+        v = v.trim();
+        if(dishes.indexOf(v)<0) dishes.push(v);
+        if(!dishCustomerMap[v]) dishCustomerMap[v] = [];
+        if(dishCustomerMap[v].indexOf(cust)<0) dishCustomerMap[v].push(cust);
+      });
+    });
+    // Fallback: GENEL
+    if(!dishes.length && sel.length > 0){
       var fallback = rc.getDayMenu(tarih);
       if(fallback) dishes = fallback;
     }
@@ -209,9 +237,12 @@
     dishes.forEach(function(d){
       var hasTuk = (st.tuketimData[d] && st.tuketimData[d].length > 0);
       var sel2 = (st.selectedDish === d);
+      var custInfo = dishCustomerMap[d] ? dishCustomerMap[d].join(', ') : '';
       html += '<div onclick="rcSelectDish(\''+d.replace(/'/g,"\\'")+'\')" style="padding:8px 10px;margin-bottom:4px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;'
         +(sel2?'background:#1e40af;color:#fff;':'background:#f8fafc;border:1px solid #e2e8f0;')
-        +'">'+(hasTuk?'<span style="color:'+(sel2?'#bbf7d0':'#16a34a')+'">&#10003;</span> ':'')+d+'</div>';
+        +'">'+(hasTuk?'<span style="color:'+(sel2?'#bbf7d0':'#16a34a')+'">&#10003;</span> ':'')+d
+        +(custInfo?'<div style="font-size:9px;font-weight:400;color:'+(sel2?'#93c5fd':'#94a3b8')+';margin-top:2px">'+custInfo+'</div>':'')
+        +'</div>';
     });
     html += '<button class="btn" onclick="rcManuelYemekEkle()" style="width:100%;margin-top:8px;font-size:11px">+ Manuel Yemek Ekle</button>';
     html += '</div>';
