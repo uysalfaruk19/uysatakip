@@ -1,428 +1,50 @@
 // ═══════════════════════════════════════════════════════════════
-// REÇETE & MALİYET MODÜLÜ — Günlük Üretim Girişi
+// REÇETE & MALİYET MODÜLÜ — Günlük Üretim (Tüketim Bazlı)
 // ═══════════════════════════════════════════════════════════════
 
 (function(){
   'use strict';
   var rc = window._rc;
 
-  // ── Müşterilerden kişi sayısı çek ────────────────────────────
-  window.rcCekKisiSayisi = function(){
-    var tarih = document.getElementById('rcGunTarih')?.value;
-    if(!tarih){ alert('Önce tarih seçin.'); return; }
-    var gunluk = rc.getGunluk();
-    var total = gunluk.filter(function(g){ return g.tarih === tarih; })
-                      .reduce(function(s,g){ return s + (parseInt(g.kisi)||0); }, 0);
-    if(total > 0){
-      document.getElementById('rcGunKisi').value = total;
-      document.getElementById('rcOtomatikKisi').textContent = total + ' kişi';
-      window.rcRecalcGunluk();
-    } else {
-      alert('Bu tarih için günlük üretim kaydı bulunamadı. Manuel girin veya önce Günlük Sayılar modülünden kayıt ekleyin.');
-    }
+  // ── localStorage helper ─────────────────────────────────────
+  var _ls2 = {
+    get: function(k,d){ try{ var v=localStorage.getItem(k); return v?JSON.parse(v):d; }catch(e){ return d; } },
+    set: function(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
   };
 
-  // ── Günün menüsünü yükle ─────────────────────────────────────
-  window.rcLoadGunlukMenu = function(){
-    var tarih = document.getElementById('rcGunTarih')?.value;
-    var div = document.getElementById('rcGunMenuDiv');
-    if(!tarih || !div) return;
-
-    // Otomatik kişi sayısını da göster
-    var gunluk = rc.getGunluk();
-    var total = gunluk.filter(function(g){ return g.tarih === tarih; })
-                      .reduce(function(s,g){ return s + (parseInt(g.kisi)||0); }, 0);
-    var otEl = document.getElementById('rcOtomatikKisi');
-    if(otEl) otEl.textContent = total > 0 ? (total + ' kişi') : '—';
-
-    // Menüden yemekleri çek
-    var dishes = rc.getDayMenu(tarih);
-    if(!dishes || !dishes.length){
-      div.innerHTML = '<div class="panel" style="text-align:center;color:#d97706;padding:30px">'
-        +'<b>Bu tarih için menü bulunamadı.</b><br>Menü modülünden önce menüyü girmeniz gerekiyor.'
-        +'<br><br>Veya manuel yemek ekleyebilirsiniz:'
-        +'<br><button class="btn" onclick="rcManuelYemekEkle()" style="margin-top:10px">+ Manuel Yemek Ekle</button>'
-        +'</div>';
-      return;
-    }
-
-    var recipes = rc.getRecipes();
-    var prices = rc.getPrices();
-    var kisi = parseInt(document.getElementById('rcGunKisi')?.value) || 100;
-
-    // Ortalama porsiyon katsayısı hesapla (tüm aktif müşterilerin ağırlıklı ortalaması)
-    var avgKatsayi = _hesaplaOrtKatsayi();
-
-    var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
-      +'<h3 style="margin:0">'+_formatDate(tarih)+' Menüsü — '+dishes.length+' kalem</h3>'
-      +'<div style="display:flex;gap:8px;align-items:center">'
-      +'<span style="font-size:11px;color:#7c3aed;font-weight:700">⚖️ Ort. Katsayı: ×'+avgKatsayi.toFixed(2)+'</span>'
-      +'<button class="btn" onclick="rcManuelYemekEkle()" style="font-size:12px">+ Manuel Yemek Ekle</button>'
-      +'</div></div>';
-
-    dishes.forEach(function(dish, idx){
-      var recipe = recipes[dish] || [];
-      var hasRecipe = recipe.length > 0;
-      var totalCost = 0;
-
-      html += '<div class="panel" style="margin-bottom:10px;border:'+(hasRecipe?'2px solid #bbf7d0':'2px dashed #fde68a')+'">';
-      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
-      html += '<h4 style="margin:0;font-size:14px">'+(hasRecipe?'&#9989;':'&#9888;&#65039;')+' '+dish+'</h4>';
-      if(!hasRecipe){
-        html += '<button class="btn" onclick="rcQuickRecipe(\''+dish.replace(/'/g,"\\'")+'\')" style="font-size:11px">Reçete Oluştur</button>';
-      }
-      html += '</div>';
-
-      if(hasRecipe){
-        html += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
-        html += '<tr style="background:#f1f5f9"><th style="padding:4px 6px;text-align:left">Malzeme</th><th style="padding:4px 6px;text-align:right">g/kişi</th><th style="padding:4px 6px;text-align:right">Toplam KG</th><th style="padding:4px 6px;text-align:right">Birim ₺</th><th style="padding:4px 6px;text-align:right">Maliyet</th></tr>';
-        recipe.forEach(function(ing){
-          var kg = (ing.gram * kisi) / 1000;
-          var price = prices[ing.name] || 0;
-          var cost = kg * price;
-          totalCost += cost;
-          html += '<tr style="border-bottom:1px solid #f1f5f9">';
-          html += '<td style="padding:4px 6px">'+ing.name+'</td>';
-          html += '<td style="padding:4px 6px;text-align:right">'+rc.fmt(ing.gram,1)+'</td>';
-          html += '<td style="padding:4px 6px;text-align:right">'+rc.fmt(kg,3)+'</td>';
-          html += '<td style="padding:4px 6px;text-align:right">'+(price>0?rc.fmtTL(price):'<span style="color:#d97706">?</span>')+'</td>';
-          html += '<td style="padding:4px 6px;text-align:right;font-weight:700;color:#dc2626">'+rc.fmtTL(cost)+'</td>';
-          html += '</tr>';
-        });
-        html += '<tr style="background:#ecfdf5;font-weight:800"><td colspan="4" style="padding:6px">Toplam</td><td style="padding:6px;text-align:right;color:#166534">'+rc.fmtTL(totalCost)+'</td></tr>';
-        html += '<tr style="background:#f0fdf4"><td colspan="4" style="padding:6px;font-size:11px;color:#64748b">Kişi başı maliyet</td><td style="padding:6px;text-align:right;font-weight:700;color:#166534;font-size:11px">'+rc.fmtTL(totalCost/kisi)+'</td></tr>';
-        html += '</table>';
-      } else {
-        html += '<div style="color:#94a3b8;font-size:12px;padding:8px">Bu yemek için reçete tanımlanmamış.</div>';
-      }
-      html += '</div>';
-    });
-
-    // Genel toplam
-    var grandTotal = 0;
-    dishes.forEach(function(dish){
-      var recipe = recipes[dish] || [];
-      recipe.forEach(function(ing){
-        var kg = (ing.gram * kisi) / 1000;
-        grandTotal += kg * (prices[ing.name]||0);
-      });
-    });
-
-    html += '<div class="panel" style="background:linear-gradient(135deg,#eff6ff,#dbeafe);border:2px solid #93c5fd">';
-    html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;text-align:center">';
-    html += '<div><div style="font-size:11px;color:#64748b">Toplam Üretim Maliyeti</div><div style="font-size:22px;font-weight:900;color:#dc2626">'+rc.fmtTL(grandTotal)+'</div></div>';
-    html += '<div><div style="font-size:11px;color:#64748b">Kişi Başı Maliyet</div><div style="font-size:22px;font-weight:900;color:#166534">'+rc.fmtTL(kisi>0?grandTotal/kisi:0)+'</div></div>';
-    html += '<div><div style="font-size:11px;color:#64748b">Toplam Kişi</div><div style="font-size:22px;font-weight:900;color:#1e40af">'+kisi+'</div></div>';
-    html += '</div></div>';
-
-    div.innerHTML = html;
+  // ── Modül State ─────────────────────────────────────────────
+  window._rcGunState = {
+    selectedDish: null,
+    activeTab: 'tuketim',       // 'tuketim' veya 'recete'
+    tuketimData: {},             // { yemekAdi: [{name:'Tavuk', kg:12.5}, ...] }
+    dishes: [],                  // o günün yemek listesi
+    aralikMode: false
   };
 
-  window.rcRecalcGunluk = function(){ window.rcLoadGunlukMenu(); };
-
-  // ── Manuel yemek ekle ────────────────────────────────────────
-  window.rcManuelYemekEkle = function(){
-    var name = prompt('Yemek adı:');
-    if(!name || !name.trim()) return;
-    // Eğer reçetesi yoksa oluştur
-    var recipes = rc.getRecipes();
-    if(!recipes[name.trim()]) recipes[name.trim()] = [];
-    rc.setRecipes(recipes);
-    // Menüye eklenemez ama reçete kütüphanesine eklendi
-    alert(name.trim() + ' eklendi. Reçete Kütüphanesi sekmesinden reçetesini tanımlayabilirsiniz.');
-    window.rcLoadGunlukMenu();
-  };
-
-  // ── Hızlı reçete oluştur ─────────────────────────────────────
-  window.rcQuickRecipe = function(dishName){
-    window.switchReceteTab('kutuphane');
-    setTimeout(function(){ window.rcOpenRecipe(dishName); }, 200);
-  };
-
-  // ── Üretim Fişi Oluştur (Hammadde Gereksinim Tablosu) ────────
-  window.rcUretimFisiOlustur = function(){
-    var tarih = document.getElementById('rcGunTarih')?.value;
-    var kisi = parseInt(document.getElementById('rcGunKisi')?.value) || 0;
-    if(!tarih){ alert('Tarih seçin.'); return; }
-    if(kisi <= 0){ alert('Kişi sayısı girin.'); return; }
-
-    var dishes = rc.getDayMenu(tarih) || [];
-    if(!dishes.length){ alert('Bu tarih için menü bulunamadı.'); return; }
-
-    var recipes = rc.getRecipes();
-    var prices = rc.getPrices();
-    var porsiyonKatsayi = _hesaplaOrtKatsayi();
-    var musteriPorsiyon = _getMusteriPorsiyonDetay();
-
-    // Hammadde gereksinim tablosu — tüm reçetelerden konsolide et
-    var ihtiyac = {};
-    var yemekDetay = [];
-
-    dishes.forEach(function(dish){
-      var recipe = recipes[dish];
-      if(!recipe || !recipe.length) return;
-      var yemekMaliyet = 0;
-      recipe.forEach(function(ing){
-        var kg = (ing.gram * kisi * porsiyonKatsayi) / 1000;
-        var price = prices[ing.name] || 0;
-        var cost = kg * price;
-        yemekMaliyet += cost;
-        if(!ihtiyac[ing.name]) ihtiyac[ing.name] = { kg:0, maliyet:0, yemekler:[] };
-        ihtiyac[ing.name].kg += kg;
-        ihtiyac[ing.name].maliyet += cost;
-        if(ihtiyac[ing.name].yemekler.indexOf(dish)<0) ihtiyac[ing.name].yemekler.push(dish);
-      });
-      yemekDetay.push({ dish:dish, maliyet:yemekMaliyet, receteVar:true });
-    });
-
-    // Aktif depo stok kontrolü
-    var _ls = { get:function(k,d){ try{var v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch(e){return d;}} };
-    var aktifDepo = _ls.get('uysa_aktif_depo','');
-    var depoStok = aktifDepo ? _ls.get('uysa_stok_'+aktifDepo,{}) : {};
-
-    // Stok karşılaştırma
-    var eksikler = [], yeterliler = [];
-    var topMaliyet = 0;
-    Object.entries(ihtiyac).forEach(function(e){
-      var mal = e[0], v = e[1];
-      var mevcut = depoStok[mal] ? (depoStok[mal].miktar||0) : 0;
-      var fark = mevcut - v.kg;
-      topMaliyet += v.maliyet;
-      var item = { mal:mal, gerekli:v.kg, mevcut:mevcut, fark:fark, maliyet:v.maliyet, yemekler:v.yemekler };
-      if(fark < 0) eksikler.push(item);
-      else yeterliler.push(item);
-    });
-
-    // Üretim fişi HTML göster
-    var div = document.getElementById('rcGunMenuDiv');
-    var html = '<div class="panel" style="border:3px solid #1e40af;background:linear-gradient(135deg,#eff6ff,#dbeafe)">';
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
-    html += '<h3 style="margin:0;color:#1e40af">📋 Üretim Fişi — '+_formatDate(tarih)+'</h3>';
-    html += '<div style="font-size:12px;color:#64748b">Fiş No: UF-'+tarih.replace(/-/g,'')+' | '+kisi+' kişi | Katsayı: ×'+porsiyonKatsayi.toFixed(2)+'</div>';
-    html += '</div>';
-
-    // Müşteri porsiyon detay
-    if(musteriPorsiyon.length>0){
-      html += '<div style="background:#faf5ff;border:1px solid #d8b4fe;border-radius:8px;padding:10px;margin-bottom:12px;font-size:12px">';
-      html += '<b style="color:#7c3aed">⚖️ Müşteri Porsiyon Katsayıları:</b> ';
-      html += musteriPorsiyon.map(function(mp){ return mp.musteri+' ('+mp.kisi+' kişi × '+mp.katsayi.toFixed(2)+')'; }).join(' · ');
-      html += ' → <b>Ağırlıklı ort: ×'+porsiyonKatsayi.toFixed(2)+'</b></div>';
-    }
-
-    // Özet kartlar
-    html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:14px">';
-    html += '<div style="text-align:center;padding:10px;background:#fff;border-radius:8px;border:1px solid #e5e7eb"><div style="font-size:11px;color:#64748b">Toplam Yemek</div><div style="font-size:20px;font-weight:900;color:#1e40af">'+dishes.length+'</div></div>';
-    html += '<div style="text-align:center;padding:10px;background:#fff;border-radius:8px;border:1px solid #e5e7eb"><div style="font-size:11px;color:#64748b">Malzeme Çeşidi</div><div style="font-size:20px;font-weight:900;color:#7c3aed">'+Object.keys(ihtiyac).length+'</div></div>';
-    html += '<div style="text-align:center;padding:10px;background:#fff;border-radius:8px;border:1px solid #e5e7eb"><div style="font-size:11px;color:#64748b">Toplam Maliyet</div><div style="font-size:20px;font-weight:900;color:#dc2626">'+rc.fmtTL(topMaliyet)+'</div></div>';
-    html += '<div style="text-align:center;padding:10px;background:'+(eksikler.length>0?'#fef2f2':'#f0fdf4')+';border-radius:8px;border:1px solid '+(eksikler.length>0?'#fca5a5':'#86efac')+'"><div style="font-size:11px;color:#64748b">Stok Durumu</div><div style="font-size:20px;font-weight:900;color:'+(eksikler.length>0?'#dc2626':'#16a34a')+'">'+(eksikler.length>0?eksikler.length+' eksik':'✅ Tamam')+'</div></div>';
-    html += '</div>';
-
-    // Hammadde Gereksinim Tablosu
-    html += '<h4 style="margin:8px 0 4px;color:#1e40af">📦 Hammadde Gereksinim Tablosu</h4>';
-    html += '<table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff;border-radius:8px;overflow:hidden">';
-    html += '<thead><tr style="background:#1e40af;color:#fff"><th style="padding:6px;text-align:left">Malzeme</th><th style="padding:6px;text-align:right">Gerekli (kg)</th><th style="padding:6px;text-align:right">Depoda</th><th style="padding:6px;text-align:right">Fark</th><th style="padding:6px;text-align:right">Maliyet</th><th style="padding:6px;text-align:left">Kullanıldığı Yemekler</th></tr></thead>';
-    html += '<tbody>';
-
-    // Önce eksikler
-    var allItems = eksikler.concat(yeterliler);
-    allItems.forEach(function(item){
-      var bg = item.fark<0 ? '#fef2f2' : '';
-      html += '<tr style="border-bottom:1px solid #f1f5f9;background:'+bg+'">';
-      html += '<td style="padding:4px 6px;font-weight:700">'+item.mal+'</td>';
-      html += '<td style="padding:4px 6px;text-align:right">'+rc.fmt(item.gerekli,2)+'</td>';
-      html += '<td style="padding:4px 6px;text-align:right;color:'+(aktifDepo?'inherit':'#d97706')+'">'+( aktifDepo ? rc.fmt(item.mevcut,2) : '—' )+'</td>';
-      html += '<td style="padding:4px 6px;text-align:right;font-weight:700;color:'+(item.fark<0?'#dc2626':'#16a34a')+'">'+( aktifDepo ? (item.fark>=0?'+':'')+rc.fmt(item.fark,2) : '—' )+'</td>';
-      html += '<td style="padding:4px 6px;text-align:right">'+rc.fmtTL(item.maliyet)+'</td>';
-      html += '<td style="padding:4px 6px;font-size:11px;color:#64748b">'+item.yemekler.join(', ')+'</td>';
-      html += '</tr>';
-    });
-    html += '</tbody></table>';
-
-    if(!aktifDepo){
-      html += '<div style="margin-top:8px;padding:8px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;font-size:12px;color:#92400e">⚠️ Aktif depo seçili değil. Stok kontrolü yapılamadı. Depo modülünden aktif depo seçin.</div>';
-    }
-
-    if(eksikler.length > 0 && aktifDepo){
-      html += '<div style="margin-top:8px;padding:8px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;font-size:12px;color:#991b1b">🔴 <b>'+eksikler.length+' malzeme depoda yetersiz!</b> Üretimi onaylarsanız stok eksi bakiyeye düşecektir. Önce tedarik önerilir.</div>';
-    }
-
-    // Butonlar
-    html += '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">';
-    html += '<button class="btn success" onclick="rcSaveGunlukUretim()" style="font-size:14px;padding:10px 24px">✅ Üretimi Onayla & Stoktan Düş</button>';
-    html += '<button class="btn" onclick="rcLoadGunlukMenu()" style="font-size:14px;padding:10px 24px">← Menüye Dön</button>';
-    html += '<button class="btn" onclick="rcUretimFisiYazdir()" style="font-size:14px;padding:10px 24px">🖨️ Yazdır</button>';
-    html += '</div>';
-    html += '</div>';
-
-    div.innerHTML = html;
-  };
-
-  // ── Üretim Fişi Yazdır ──────────────────────────────────────
-  window.rcUretimFisiYazdir = function(){
-    var content = document.getElementById('rcGunMenuDiv')?.innerHTML || '';
-    var w = window.open('','_blank','width=900,height=700');
-    w.document.write('<!DOCTYPE html><html><head><title>Üretim Fişi</title><style>body{font-family:Arial,sans-serif;padding:20px;font-size:12px}table{width:100%;border-collapse:collapse}th,td{padding:4px 6px;border:1px solid #ccc;text-align:left}th{background:#1e40af;color:#fff}.btn{display:none}@media print{.btn{display:none}}</style></head><body>'+content+'</body></html>');
-    w.document.close();
-    setTimeout(function(){ w.print(); }, 500);
-  };
-
-  // ── Günlük üretimi kaydet (stoktan düş) ─────────────────────
-  window.rcSaveGunlukUretim = function(){
-    var tarih = document.getElementById('rcGunTarih')?.value;
-    var kisi = parseInt(document.getElementById('rcGunKisi')?.value) || 0;
-    if(!tarih){ alert('Tarih seçin.'); return; }
-    if(kisi <= 0){ alert('Kişi sayısı girin.'); return; }
-
-    var dishes = rc.getDayMenu(tarih) || [];
-    if(!dishes.length){ alert('Bu tarih için menü bulunamadı.'); return; }
-
-    var recipes = rc.getRecipes();
-    var prices = rc.getPrices();
-    var history = rc.getHistory();
-
-    // Üretim gider kayıtları
-    var uretimArr = rc.getUretimGider();
-    var addedCount = 0;
-
-    // Stok düşme için konsolide hammadde
-    var konsolide = {};
-
-    dishes.forEach(function(dish){
-      var recipe = recipes[dish];
-      if(!recipe || !recipe.length) return;
-
-      // Reçete geçmişine kaydet
-      history.push({
-        tarih: tarih,
-        yemek: dish,
-        kisi: kisi,
-        malzemeler: recipe.map(function(ing){
-          return { name: ing.name, gram: ing.gram, totalKg: (ing.gram*kisi)/1000 };
-        }),
-        kaydedilme: new Date().toISOString()
-      });
-
-      // Üretim gider kayıtlarına ekle
-      recipe.forEach(function(ing){
-        var kg = (ing.gram * kisi) / 1000;
-        var price = prices[ing.name] || 0;
-        uretimArr.push({
-          tarih: tarih,
-          proje: '',
-          malzeme: ing.name,
-          kg: kg,
-          fiyat: price,
-          toplam: kg * price,
-          kaynak: 'recete:' + dish
-        });
-        addedCount++;
-        // Konsolide
-        if(!konsolide[ing.name]) konsolide[ing.name] = 0;
-        konsolide[ing.name] += kg;
-      });
-    });
-
-    rc.setHistory(history);
-    rc.setUretimGider(uretimArr);
-
-    // Aktif depodan stok düş
-    var _ls2 = {
-      get:function(k,d){ try{var v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch(e){return d;} },
-      set:function(k,v){ try{localStorage.setItem(k,JSON.stringify(v));}catch(e){} }
-    };
-    var aktifDepo = _ls2.get('uysa_aktif_depo','');
-    var dusCount = 0;
-    if(aktifDepo){
-      var depoStok = _ls2.get('uysa_stok_'+aktifDepo,{});
-      Object.entries(konsolide).forEach(function(e){
-        var mal = e[0], kg = e[1];
-        if(depoStok[mal]){
-          depoStok[mal].miktar = Math.max(0, (depoStok[mal].miktar||0) - kg);
-          dusCount++;
+  // ── En iyi fiyat: fatura → prices → 0 ──────────────────────
+  function _getBestPrice(malzemeAdi){
+    if(!malzemeAdi) return 0;
+    var best = 0;
+    // 1) Faturalardan en yüksek birimFiyat
+    try {
+      var faturalar = _ls2.get('uysa_faturalar',[]);
+      var lower = malzemeAdi.toLowerCase().trim();
+      faturalar.forEach(function(f){
+        if(f && f.urun && f.urun.toLowerCase().trim() === lower){
+          var p = parseFloat(f.birimFiyat)||0;
+          if(p > best) best = p;
         }
       });
-      _ls2.set('uysa_stok_'+aktifDepo, depoStok);
-
-      // Hareket logları
-      var hareketler = _ls2.get('uysa_stok_hareketler',[]);
-      Object.entries(konsolide).forEach(function(e){
-        hareketler.push({
-          tip: 'uretim',
-          malzeme: e[0],
-          miktar: e[1],
-          depo: aktifDepo,
-          aciklama: 'Üretim fişi: '+tarih+' ('+kisi+' kişi)',
-          tarih: tarih,
-          saat: new Date().toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit'}),
-          id: Date.now()+Math.random()
-        });
-      });
-      _ls2.set('uysa_stok_hareketler', hareketler);
-    }
-
-    // Üretim fişi geçmişine kaydet
-    var uretimFisleri = _ls2.get('uysa_uretim_fisleri',[]);
-    uretimFisleri.push({
-      fisNo: 'UF-'+tarih.replace(/-/g,''),
-      tarih: tarih,
-      kisi: kisi,
-      yemekler: dishes,
-      malzemeler: konsolide,
-      toplamMaliyet: Object.entries(konsolide).reduce(function(s,e){ return s + e[1]*(prices[e[0]]||0); },0),
-      depo: aktifDepo||'—',
-      kaydedilme: new Date().toISOString()
-    });
-    _ls2.set('uysa_uretim_fisleri', uretimFisleri);
-
-    var msg = '✅ Üretim fişi kaydedildi!\n\n'
-      + '📋 Fiş No: UF-'+tarih.replace(/-/g,'')+'\n'
-      + '📅 Tarih: '+tarih+'\n'
-      + '👥 Kişi: '+kisi+'\n'
-      + '🍽️ '+dishes.length+' yemek, '+addedCount+' malzeme satırı\n';
-    if(aktifDepo) msg += '📦 '+dusCount+' kalem stoktan düşüldü ('+aktifDepo+')';
-    else msg += '⚠️ Aktif depo seçili değil, stok düşülmedi.';
-
-    alert(msg);
-    window.rcLoadGunlukMenu();
-  };
-
-  // ── Porsiyon katsayısı hesapla ─────────────────────────────────
-  function _hesaplaOrtKatsayi(){
-    // Tüm müşterilerin CRM verisinden porsiyon katsayısını al, kişi sayısıyla ağırlıklı ortalama
-    try {
-      var _ls2 = { get:function(k,d){ try{var v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch(e){return d;}} };
-      var custRaw = _ls2.get('uysa_customers_v1',{});
-      var custs = (custRaw.customers||[]).filter(function(c){ return c && c!=='GENEL'; });
-      var topKisi=0, topAgirlik=0;
-      custs.forEach(function(c){
-        var crm = _ls2.get('uysa_crm_'+c,{});
-        var kisi = parseInt(crm.kisi)||0;
-        var katsayi = parseFloat(crm.porsiyonKatsayi)||1.0;
-        if(kisi>0){ topKisi+=kisi; topAgirlik+=kisi*katsayi; }
-      });
-      return topKisi>0 ? topAgirlik/topKisi : 1.0;
-    } catch(e){ return 1.0; }
+    } catch(e){}
+    if(best > 0) return best;
+    // 2) Fiyat tablosundan
+    var prices = rc.getPrices();
+    if(prices[malzemeAdi]) return parseFloat(prices[malzemeAdi])||0;
+    // 3) 0
+    return 0;
   }
 
-  // Müşteri bazlı porsiyon detayları
-  function _getMusteriPorsiyonDetay(){
-    try {
-      var _ls2 = { get:function(k,d){ try{var v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch(e){return d;}} };
-      var custRaw = _ls2.get('uysa_customers_v1',{});
-      var custs = (custRaw.customers||[]).filter(function(c){ return c && c!=='GENEL'; });
-      var result = [];
-      custs.forEach(function(c){
-        var crm = _ls2.get('uysa_crm_'+c,{});
-        var kisi = parseInt(crm.kisi)||0;
-        var katsayi = parseFloat(crm.porsiyonKatsayi)||1.0;
-        var tip = crm.porsiyonTip||'standart';
-        if(kisi>0) result.push({ musteri:c, kisi:kisi, katsayi:katsayi, tip:tip });
-      });
-      return result;
-    } catch(e){ return []; }
-  }
-
-  // ── Tarih formatlama ─────────────────────────────────────────
+  // ── Tarih formatlama ────────────────────────────────────────
   function _formatDate(str){
     if(!str) return '';
     var p = str.split('-');
@@ -430,5 +52,459 @@
     var d = new Date(parseInt(p[0]), parseInt(p[1])-1, parseInt(p[2]));
     return p[2]+'.'+p[1]+'.'+p[0]+' '+gunler[d.getDay()];
   }
+
+  // ── Seçili müşteri listesi ──────────────────────────────────
+  function _getSelectedCustomers(){
+    var cbs = document.querySelectorAll('#rcGunCustList input[type=checkbox]');
+    var sel = [];
+    cbs.forEach(function(cb){ if(cb.checked) sel.push(cb.value); });
+    return sel;
+  }
+
+  // ── Seçili müşterilerden otomatik kişi hesapla ──────────────
+  function _calcAutoKisi(){
+    var sel = _getSelectedCustomers();
+    var total = 0;
+    sel.forEach(function(c){
+      var crm = _ls2.get('uysa_crm_'+c, {});
+      total += parseInt(crm.kisi)||0;
+    });
+    var inp = document.getElementById('rcGunKisi');
+    var lbl = document.getElementById('rcOtomatikKisi');
+    if(total > 0){
+      if(inp) inp.value = total;
+      if(lbl) lbl.textContent = total + ' kişi';
+    } else {
+      if(lbl) lbl.textContent = '—';
+    }
+  }
+
+  // ── Müşteri checkbox listesi render ─────────────────────────
+  window.rcRenderGunCustList = function(){
+    var div = document.getElementById('rcGunCustList');
+    if(!div) return;
+    var custRaw = _ls2.get('uysa_customers_v1', {});
+    var custs = (custRaw.customers||[]).filter(function(c){ return c && c!=='GENEL'; });
+    if(!custs.length){
+      div.innerHTML = '<span style="color:#94a3b8;font-size:12px">Müşteri bulunamadı. CRM modülünden müşteri ekleyin.</span>';
+      return;
+    }
+    var html = '';
+    custs.forEach(function(c){
+      var crm = _ls2.get('uysa_crm_'+c, {});
+      var kisi = parseInt(crm.kisi)||0;
+      html += '<label style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;cursor:pointer;user-select:none">'
+        +'<input type="checkbox" value="'+c+'" onchange="window._rcCustChanged()" style="margin:0"/>'
+        +'<span style="font-weight:600">'+c+'</span>'
+        +(kisi>0?'<span style="color:#64748b;font-size:10px">('+kisi+')</span>':'')
+        +'</label>';
+    });
+    div.innerHTML = html;
+  };
+
+  // Müşteri checkbox değişince
+  window._rcCustChanged = function(){
+    _calcAutoKisi();
+  };
+
+  // Tümünü seç/kaldır
+  window.rcGunToggleAllCust = function(){
+    var cbs = document.querySelectorAll('#rcGunCustList input[type=checkbox]');
+    var allChecked = true;
+    cbs.forEach(function(cb){ if(!cb.checked) allChecked = false; });
+    cbs.forEach(function(cb){ cb.checked = !allChecked; });
+    _calcAutoKisi();
+  };
+
+  // Tarih aralığı toggle
+  window.rcToggleAralik = function(){
+    var cb = document.getElementById('rcGunAralikToggle');
+    var wrap = document.getElementById('rcGunAralikWrap');
+    var tek = document.getElementById('rcGunTarih');
+    if(!cb || !wrap) return;
+    window._rcGunState.aralikMode = cb.checked;
+    wrap.style.display = cb.checked ? 'inline' : 'none';
+    if(tek) tek.style.display = cb.checked ? 'none' : '';
+  };
+
+  // ── Recalc (kişi sayısı değişince) ──────────────────────────
+  window.rcRecalcGunluk = function(){
+    // Maliyet barını güncelle
+    if(typeof window.rcUpdateMaliyetBar === 'function') window.rcUpdateMaliyetBar();
+    // Sağ paneli güncelle (reçete sekmesinde gram/kişi değişir)
+    var st = window._rcGunState;
+    if(st.selectedDish && typeof window.rcRenderDishDetail === 'function'){
+      window.rcRenderDishDetail(st.selectedDish);
+    }
+  };
+
+  // ── Sayfa açılınca müşteri listesini render et ──────────────
+  // switchReceteTab('gunluk') çağrıldığında rcLoadGunlukMenu çalışır
+  // Ama önce müşteri listesini render etmeliyiz
+  var _custRendered = false;
+  var _origLoad = window.rcLoadGunlukMenu;
+  window.rcLoadGunlukMenu = function(){
+    if(!_custRendered){
+      window.rcRenderGunCustList();
+      _custRendered = true;
+    }
+    // Push 2'de gerçek menü yükleme yazılacak
+    _loadMenuImpl();
+  };
+
+  // ── Menü yükleme (sol/sağ split) ─────────────────────────────
+  function _loadMenuImpl(){
+    var tarihEl = document.getElementById('rcGunTarih');
+    if(tarihEl && !tarihEl.value) tarihEl.value = new Date().toISOString().slice(0,10);
+    var tarih = tarihEl ? tarihEl.value : '';
+    var div = document.getElementById('rcGunMenuDiv');
+    if(!div || !tarih) return;
+
+    // Mevcut kayıt varsa tüketim verisini yükle
+    _loadExistingTuketim(tarih);
+
+    // Seçili müşterilerden menü yemeklerini topla
+    var sel = _getSelectedCustomers();
+    var dishes = [];
+    if(sel.length > 0){
+      var menuGrid = _ls2.get('uysa_menu_grid_v2_dates',{});
+      var ym = tarih.slice(0,7); // YYYY-MM
+      var dt = new Date(tarih+'T00:00:00');
+      var dow = (dt.getDay()+6)%7; // 0=Pzt
+      var dayOfMonth = dt.getDate();
+      var wIdx = 'W'+(Math.ceil(dayOfMonth/7));
+      sel.forEach(function(cust){
+        var key = ym+'::'+cust;
+        var grid = menuGrid[key];
+        if(!grid || !grid.weeks || !grid.weeks[wIdx]) return;
+        var w = grid.weeks[wIdx];
+        ['soups','mains','sides','salads'].forEach(function(cat){
+          var arr = w[cat]; if(!arr) return;
+          var v = arr[dow]; if(v && v.trim() && dishes.indexOf(v)<0) dishes.push(v);
+        });
+        ['soups2','mains2','sides2'].forEach(function(cat){
+          var arr = w[cat]; if(!arr) return;
+          var v = arr[dow]; if(v && v.trim() && dishes.indexOf(v)<0) dishes.push(v);
+        });
+      });
+    }
+    // Fallback: GENEL menüden çek
+    if(!dishes.length){
+      var fallback = rc.getDayMenu(tarih);
+      if(fallback) dishes = fallback;
+    }
+    var st = window._rcGunState;
+    st.dishes = dishes;
+
+    if(!dishes.length){
+      div.innerHTML = '<div style="color:#94a3b8;text-align:center;padding:40px">Bu tarih/müşteri için menü bulunamadı.</div>';
+      return;
+    }
+
+    // Sol-sağ split render
+    var html = '<div style="display:flex;gap:12px;min-height:400px">';
+    // SOL — Yemek listesi
+    html += '<div style="flex:0 0 220px;border-right:1px solid #e2e8f0;padding-right:12px">';
+    html += '<h4 style="margin:0 0 8px;font-size:13px;color:#1e40af">'+_formatDate(tarih)+' ('+dishes.length+' kalem)</h4>';
+    dishes.forEach(function(d){
+      var hasTuk = (st.tuketimData[d] && st.tuketimData[d].length > 0);
+      var sel2 = (st.selectedDish === d);
+      html += '<div onclick="rcSelectDish(\''+d.replace(/'/g,"\\'")+'\')" style="padding:8px 10px;margin-bottom:4px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;'
+        +(sel2?'background:#1e40af;color:#fff;':'background:#f8fafc;border:1px solid #e2e8f0;')
+        +'">'+(hasTuk?'<span style="color:'+(sel2?'#bbf7d0':'#16a34a')+'">&#10003;</span> ':'')+d+'</div>';
+    });
+    html += '<button class="btn" onclick="rcManuelYemekEkle()" style="width:100%;margin-top:8px;font-size:11px">+ Manuel Yemek Ekle</button>';
+    html += '</div>';
+    // SAĞ — Detay paneli
+    html += '<div id="rcGunDetailPanel" style="flex:1;min-width:0">';
+    if(st.selectedDish){
+      html += _renderDishDetail(st.selectedDish);
+    } else {
+      html += '<div style="color:#94a3b8;text-align:center;padding:60px">Soldaki listeden bir yemek seçin.</div>';
+    }
+    html += '</div></div>';
+    div.innerHTML = html;
+    _updateMaliyetBar();
+  }
+
+  // ── Yemek seç ──────────────────────────────────────────────
+  window.rcSelectDish = function(name){
+    window._rcGunState.selectedDish = name;
+    _loadMenuImpl();
+  };
+
+  // ── Manuel yemek ekle ──────────────────────────────────────
+  window.rcManuelYemekEkle = function(){
+    var name = prompt('Yemek adi:');
+    if(!name || !name.trim()) return;
+    name = name.trim();
+    var st = window._rcGunState;
+    if(st.dishes.indexOf(name)<0) st.dishes.push(name);
+    st.selectedDish = name;
+    _loadMenuImpl();
+  };
+
+  // ── Sağ panel — Tüketim / Reçete detay ─────────────────────
+  function _renderDishDetail(dishName){
+    var st = window._rcGunState;
+    var tab = st.activeTab || 'tuketim';
+    var kisi = parseInt(document.getElementById('rcGunKisi')?.value)||100;
+    var rows = st.tuketimData[dishName] || [];
+
+    var h = '<div style="margin-bottom:10px;display:flex;gap:4px">';
+    h += '<button class="btn" onclick="rcSwitchDishTab(\'tuketim\')" style="font-size:12px;padding:6px 14px;'+(tab==='tuketim'?'background:#1e40af;color:#fff':'background:#f1f5f9')+'">Tuketim</button>';
+    h += '<button class="btn" onclick="rcSwitchDishTab(\'recete\')" style="font-size:12px;padding:6px 14px;'+(tab==='recete'?'background:#7c3aed;color:#fff':'background:#f1f5f9')+'">Recete (g/kisi)</button>';
+    h += '</div>';
+    h += '<h4 style="margin:0 0 10px;font-size:15px">'+dishName+'</h4>';
+
+    if(tab === 'tuketim'){
+      // Giriş formu
+      h += '<div style="display:flex;gap:6px;margin-bottom:10px">';
+      h += '<input id="rcTukMalzeme" placeholder="Malzeme adi" style="flex:1;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px"/>';
+      h += '<input id="rcTukKg" type="number" step="0.1" min="0" placeholder="KG" style="width:80px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px"/>';
+      h += '<button class="btn" onclick="rcAddTuketimRow(\''+dishName.replace(/'/g,"\\'")+'\')" style="font-size:12px;padding:6px 12px;background:#16a34a;color:#fff">+ Ekle</button>';
+      h += '</div>';
+      // Tablo
+      if(rows.length > 0){
+        h += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+        h += '<tr style="background:#f1f5f9"><th style="padding:4px 6px;text-align:left">Malzeme</th><th style="padding:4px 6px;text-align:right">KG</th><th style="padding:4px 6px;width:30px"></th></tr>';
+        rows.forEach(function(r, i){
+          h += '<tr style="border-bottom:1px solid #f1f5f9"><td style="padding:4px 6px">'+r.name+'</td>';
+          h += '<td style="padding:4px 6px;text-align:right;font-weight:700">'+rc.fmt(r.kg,2)+'</td>';
+          h += '<td style="padding:4px 6px;text-align:center"><button onclick="rcDelTuketimRow(\''+dishName.replace(/'/g,"\\'")+'\','+i+')" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px">&#10005;</button></td></tr>';
+        });
+        h += '</table>';
+      } else {
+        h += '<div style="color:#94a3b8;font-size:12px;padding:20px;text-align:center">Henuz tuketim girisi yapilmadi.</div>';
+      }
+    } else {
+      // Reçete sekmesi — gram/kişi hesabı
+      if(rows.length > 0){
+        var topMaliyet = 0;
+        h += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+        h += '<tr style="background:#f5f3ff"><th style="padding:4px 6px;text-align:left">Malzeme</th><th style="padding:4px 6px;text-align:right">Toplam KG</th><th style="padding:4px 6px;text-align:right">g/kisi</th><th style="padding:4px 6px;text-align:right">Birim TL</th><th style="padding:4px 6px;text-align:right">Maliyet</th></tr>';
+        rows.forEach(function(r){
+          var gpk = kisi > 0 ? (r.kg * 1000 / kisi) : 0;
+          var price = _getBestPrice(r.name);
+          var cost = r.kg * price;
+          topMaliyet += cost;
+          h += '<tr style="border-bottom:1px solid #f1f5f9">';
+          h += '<td style="padding:4px 6px">'+r.name+'</td>';
+          h += '<td style="padding:4px 6px;text-align:right">'+rc.fmt(r.kg,2)+'</td>';
+          h += '<td style="padding:4px 6px;text-align:right;font-weight:700;color:#7c3aed">'+rc.fmt(gpk,1)+'</td>';
+          h += '<td style="padding:4px 6px;text-align:right">'+(price>0?rc.fmtTL(price):'<span style="color:#d97706">?</span>')+'</td>';
+          h += '<td style="padding:4px 6px;text-align:right;font-weight:700;color:#dc2626">'+rc.fmtTL(cost)+'</td>';
+          h += '</tr>';
+        });
+        h += '<tr style="background:#ecfdf5;font-weight:800"><td colspan="4" style="padding:6px">Toplam</td><td style="padding:6px;text-align:right;color:#166534">'+rc.fmtTL(topMaliyet)+'</td></tr>';
+        if(kisi>0) h += '<tr style="background:#f0fdf4"><td colspan="4" style="padding:6px;font-size:11px;color:#64748b">Kisi basi</td><td style="padding:6px;text-align:right;font-weight:700;color:#166534;font-size:11px">'+rc.fmtTL(topMaliyet/kisi)+'</td></tr>';
+        h += '</table>';
+      } else {
+        h += '<div style="color:#94a3b8;font-size:12px;padding:20px;text-align:center">Tuketim verisi girilmeden recete hesabi yapilamaz.</div>';
+      }
+    }
+    return h;
+  }
+
+  window.rcSwitchDishTab = function(tab){
+    window._rcGunState.activeTab = tab;
+    var panel = document.getElementById('rcGunDetailPanel');
+    if(panel && window._rcGunState.selectedDish){
+      panel.innerHTML = _renderDishDetail(window._rcGunState.selectedDish);
+    }
+  };
+
+  // ── Tüketim satır ekle/sil ─────────────────────────────────
+  window.rcAddTuketimRow = function(dishName){
+    var mEl = document.getElementById('rcTukMalzeme');
+    var kEl = document.getElementById('rcTukKg');
+    if(!mEl || !kEl) return;
+    var name = mEl.value.trim();
+    var kg = parseFloat(kEl.value)||0;
+    if(!name){ alert('Malzeme adi girin.'); return; }
+    if(kg <= 0){ alert('KG girin.'); return; }
+    var st = window._rcGunState;
+    if(!st.tuketimData[dishName]) st.tuketimData[dishName] = [];
+    st.tuketimData[dishName].push({name:name, kg:kg});
+    mEl.value = ''; kEl.value = '';
+    _loadMenuImpl();
+  };
+
+  window.rcDelTuketimRow = function(dishName, idx){
+    var st = window._rcGunState;
+    if(st.tuketimData[dishName]) st.tuketimData[dishName].splice(idx,1);
+    _loadMenuImpl();
+  };
+
+  // ── Maliyet bar güncelle ────────────────────────────────────
+  function _updateMaliyetBar(){
+    var bar = document.getElementById('rcGunMaliyetBar');
+    if(!bar) return;
+    var st = window._rcGunState;
+    var kisi = parseInt(document.getElementById('rcGunKisi')?.value)||0;
+    var topMaliyet = 0;
+    Object.keys(st.tuketimData).forEach(function(dish){
+      (st.tuketimData[dish]||[]).forEach(function(r){
+        topMaliyet += r.kg * _getBestPrice(r.name);
+      });
+    });
+    if(topMaliyet > 0){
+      bar.style.display = 'flex';
+      bar.innerHTML = '<div>Gunluk Maliyet: <b>'+rc.fmtTL(topMaliyet)+'</b></div>'
+        +'<div>Kisi Basi: <b>'+(kisi>0?rc.fmtTL(topMaliyet/kisi):'—')+'</b></div>'
+        +'<div>Toplam Kisi: <b>'+kisi+'</b></div>';
+    } else {
+      bar.style.display = 'none';
+    }
+  }
+  window.rcUpdateMaliyetBar = _updateMaliyetBar;
+
+  // ── Mevcut kayıtları yükle ──────────────────────────────────
+  function _loadExistingTuketim(tarih){
+    var st = window._rcGunState;
+    if(st._loadedTarih === tarih) return; // zaten yüklü
+    st._loadedTarih = tarih;
+    var gunlukArr = _ls2.get('uysa_gunluk_uretim',[]);
+    var found = false;
+    gunlukArr.forEach(function(g){
+      if(g.tarih === tarih && g.tuketim){
+        // tuketim: {yemek1:[{name,kg}], yemek2:[...]}
+        if(typeof g.tuketim === 'object' && !Array.isArray(g.tuketim)){
+          Object.keys(g.tuketim).forEach(function(k){
+            st.tuketimData[k] = g.tuketim[k];
+          });
+          found = true;
+        }
+      }
+    });
+  }
+
+  // ── Kaydet — uysa_gunluk_uretim + depo stok düş ────────────
+  window.rcSaveGunlukUretim = function(){
+    var tarih = document.getElementById('rcGunTarih')?.value;
+    var kisi = parseInt(document.getElementById('rcGunKisi')?.value)||0;
+    if(!tarih){ alert('Tarih secin.'); return; }
+    if(kisi<=0){ alert('Kisi sayisi girin.'); return; }
+    var st = window._rcGunState;
+    if(!Object.keys(st.tuketimData).length){ alert('Tuketim verisi girin.'); return; }
+
+    // Konsolide malzeme
+    var konsolide = {};
+    Object.keys(st.tuketimData).forEach(function(dish){
+      (st.tuketimData[dish]||[]).forEach(function(r){
+        if(!konsolide[r.name]) konsolide[r.name] = 0;
+        konsolide[r.name] += r.kg;
+      });
+    });
+
+    // Maliyet hesapla
+    var topMaliyet = 0;
+    Object.keys(konsolide).forEach(function(m){
+      topMaliyet += konsolide[m] * _getBestPrice(m);
+    });
+
+    // uysa_gunluk_uretim'e kaydet
+    var sel = _getSelectedCustomers();
+    var gunlukArr = _ls2.get('uysa_gunluk_uretim',[]);
+    gunlukArr.push({
+      tarih: tarih,
+      kisi: kisi,
+      musteriler: sel,
+      tuketim: JSON.parse(JSON.stringify(st.tuketimData)),
+      toplamMaliyet: topMaliyet,
+      kisiBasi: kisi>0 ? topMaliyet/kisi : 0,
+      kaydedilme: new Date().toISOString()
+    });
+    _ls2.set('uysa_gunluk_uretim', gunlukArr);
+
+    // Depo stok düş
+    var aktifDepo = _ls2.get('uysa_aktif_depo','');
+    var dusCount = 0, eksikler = [];
+    if(aktifDepo){
+      var depoStok = _ls2.get('uysa_stok_'+aktifDepo,{});
+      var hareketler = _ls2.get('uysa_stok_hareketler',[]);
+      Object.keys(konsolide).forEach(function(mal){
+        var kg = konsolide[mal];
+        if(depoStok[mal]){
+          depoStok[mal].miktar = Math.max(0,(depoStok[mal].miktar||0)-kg);
+          dusCount++;
+        } else {
+          eksikler.push(mal);
+        }
+        hareketler.push({
+          tip:'uretim', malzeme:mal, miktar:kg, depo:aktifDepo,
+          aciklama:'Tuketim: '+tarih+' ('+kisi+' kisi)',
+          tarih:tarih, saat:new Date().toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit'}),
+          id:Date.now()+Math.random()
+        });
+      });
+      _ls2.set('uysa_stok_'+aktifDepo, depoStok);
+      _ls2.set('uysa_stok_hareketler', hareketler);
+    }
+
+    var msg = 'Kaydedildi!\n\nTarih: '+tarih+'\nKisi: '+kisi+'\nMaliyet: '+rc.fmtTL(topMaliyet);
+    if(aktifDepo) msg += '\nStok dusulen: '+dusCount+' kalem ('+aktifDepo+')';
+    if(eksikler.length) msg += '\n\nDepoda bulunamayan: '+eksikler.join(', ');
+    alert(msg);
+  };
+
+  // ── Üretim fişi oluştur ────────────────────────────────────
+  window.rcUretimFisiOlustur = function(){
+    var tarih = document.getElementById('rcGunTarih')?.value;
+    var kisi = parseInt(document.getElementById('rcGunKisi')?.value)||0;
+    if(!tarih){ alert('Tarih secin.'); return; }
+    var st = window._rcGunState;
+    var konsolide = {};
+    Object.keys(st.tuketimData).forEach(function(dish){
+      (st.tuketimData[dish]||[]).forEach(function(r){
+        if(!konsolide[r.name]) konsolide[r.name] = {kg:0, yemekler:[]};
+        konsolide[r.name].kg += r.kg;
+        if(konsolide[r.name].yemekler.indexOf(dish)<0) konsolide[r.name].yemekler.push(dish);
+      });
+    });
+    if(!Object.keys(konsolide).length){ alert('Tuketim verisi girin.'); return; }
+
+    var div = document.getElementById('rcGunMenuDiv');
+    var topMaliyet = 0;
+    var html = '<div class="panel" style="border:3px solid #1e40af;background:linear-gradient(135deg,#eff6ff,#dbeafe)">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
+    html += '<h3 style="margin:0;color:#1e40af">Uretim Fisi - '+_formatDate(tarih)+'</h3>';
+    html += '<span style="font-size:12px;color:#64748b">'+kisi+' kisi</span></div>';
+    html += '<table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff;border-radius:8px;overflow:hidden">';
+    html += '<thead><tr style="background:#1e40af;color:#fff"><th style="padding:6px;text-align:left">Malzeme</th><th style="padding:6px;text-align:right">KG</th><th style="padding:6px;text-align:right">Birim TL</th><th style="padding:6px;text-align:right">Maliyet</th><th style="padding:6px;text-align:left">Yemekler</th></tr></thead><tbody>';
+    Object.keys(konsolide).forEach(function(mal){
+      var v = konsolide[mal];
+      var price = _getBestPrice(mal);
+      var cost = v.kg * price;
+      topMaliyet += cost;
+      html += '<tr style="border-bottom:1px solid #f1f5f9"><td style="padding:4px 6px;font-weight:700">'+mal+'</td>';
+      html += '<td style="padding:4px 6px;text-align:right">'+rc.fmt(v.kg,2)+'</td>';
+      html += '<td style="padding:4px 6px;text-align:right">'+(price>0?rc.fmtTL(price):'?')+'</td>';
+      html += '<td style="padding:4px 6px;text-align:right;font-weight:700;color:#dc2626">'+rc.fmtTL(cost)+'</td>';
+      html += '<td style="padding:4px 6px;font-size:11px;color:#64748b">'+v.yemekler.join(', ')+'</td></tr>';
+    });
+    html += '</tbody></table>';
+    html += '<div style="margin-top:10px;text-align:right;font-size:16px;font-weight:900;color:#1e40af">Toplam: '+rc.fmtTL(topMaliyet)+'</div>';
+    html += '<div style="display:flex;gap:8px;margin-top:12px">';
+    html += '<button class="btn" onclick="rcLoadGunlukMenu()" style="padding:8px 16px">Geri</button>';
+    html += '<button class="btn" onclick="rcUretimFisiYazdir()" style="padding:8px 16px">Yazdir</button>';
+    html += '</div></div>';
+    div.innerHTML = html;
+  };
+
+  // ── Yazdır ──────────────────────────────────────────────────
+  window.rcUretimFisiYazdir = function(){
+    var content = document.getElementById('rcGunMenuDiv')?.innerHTML||'';
+    var w = window.open('','_blank','width=900,height=700');
+    w.document.write('<!DOCTYPE html><html><head><title>Uretim Fisi</title><style>body{font-family:Arial,sans-serif;padding:20px;font-size:12px}table{width:100%;border-collapse:collapse}th,td{padding:4px 6px;border:1px solid #ccc}.btn{display:none}@media print{.btn{display:none}}</style></head><body>'+content+'</body></html>');
+    w.document.close();
+    setTimeout(function(){ w.print(); },500);
+  };
+
+  // ── Hızlı reçete oluştur ───────────────────────────────────
+  window.rcQuickRecipe = function(dishName){
+    window.switchReceteTab('kutuphane');
+    setTimeout(function(){ window.rcOpenRecipe(dishName); },200);
+  };
 
 })();
