@@ -2707,6 +2707,7 @@
             <button class="btn" id="finTabOzet" onclick="switchFinTab('ozet')">Tablo</button>
             <button class="btn" id="finTabUretim" onclick="switchFinTab('uretim')">Üretim Gideri</button>
             <button class="btn" id="finTabButce" onclick="switchFinTab('butce')">Bütçe</button>
+            <button class="btn" id="finTabPatron" onclick="switchFinTab('patron')" style="background:#7c3aed;color:#fff;font-weight:800">👔 Patron Sayfası</button>
           </div>
         </div>
 
@@ -2887,6 +2888,70 @@
           </div>
         </div>
 
+        <!-- TAB: PATRON SAYFASI -->
+        <div id="finPane-patron" class="fin-pane" style="display:none">
+          <div style="background:linear-gradient(135deg,#1e1b4b,#312e81);color:#fff;border-radius:16px;padding:24px;margin-bottom:16px">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+              <div>
+                <h2 style="margin:0;font-size:24px">👔 Patron Sayfası</h2>
+                <div style="font-size:13px;color:#c7d2fe;margin-top:4px">Firma genel durumu — dönemsel analiz</div>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center">
+                <select id="patronDonem" onchange="renderPatronSayfasi()" style="padding:8px 12px;border:none;border-radius:8px;font-size:13px;font-weight:700">
+                  <option value="bu_ay">Bu Ay</option>
+                  <option value="gecen_ay">Geçen Ay</option>
+                  <option value="son3ay">Son 3 Ay</option>
+                  <option value="son6ay">Son 6 Ay</option>
+                  <option value="bu_yil">Bu Yıl</option>
+                  <option value="tumu">Tüm Zamanlar</option>
+                </select>
+                <button class="btn" onclick="patronSayfasiYazdir()" style="background:#7c3aed;color:#fff;border:none;padding:8px 16px;border-radius:8px;font-weight:700">🖨️ Yazdır</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Patron KPI'lar -->
+          <div id="patronKpiDiv" style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px"></div>
+
+          <!-- Grafik + Detay Grid -->
+          <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px">
+            <div class="panel" style="padding:16px">
+              <h3 style="margin:0 0 12px">📈 Aylık Gelir-Gider Trendi</h3>
+              <canvas id="patronTrendChart" height="200"></canvas>
+            </div>
+            <div class="panel" style="padding:16px">
+              <h3 style="margin:0 0 12px">🥧 Gider Dağılımı</h3>
+              <canvas id="patronGiderPie" height="200"></canvas>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+            <!-- Müşteri bazlı gelir -->
+            <div class="panel" style="padding:16px">
+              <h3 style="margin:0 0 12px">🏢 Müşteri Bazlı Gelir</h3>
+              <div id="patronMusteriDiv" style="max-height:300px;overflow:auto;font-size:12px"></div>
+            </div>
+            <!-- Birim maliyet analizi -->
+            <div class="panel" style="padding:16px">
+              <h3 style="margin:0 0 12px">💰 Birim Maliyet Analizi</h3>
+              <div id="patronBirimDiv" style="font-size:12px"></div>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+            <!-- Dönemsel K/Z tablosu -->
+            <div class="panel" style="padding:16px">
+              <h3 style="margin:0 0 12px">📊 Dönemsel Kâr / Zarar</h3>
+              <div id="patronKZDiv" style="font-size:12px;overflow:auto"></div>
+            </div>
+            <!-- Tedarikçi harcama -->
+            <div class="panel" style="padding:16px">
+              <h3 style="margin:0 0 12px">🚚 Tedarikçi Harcamaları</h3>
+              <div id="patronTedarikciDiv" style="max-height:300px;overflow:auto;font-size:12px"></div>
+            </div>
+          </div>
+        </div>
+
         <!-- TAB: GELİR EKLE -->
         <div id="finPane-gelir" class="fin-pane">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
@@ -2997,6 +3062,24 @@
               <!-- Son Tahsilatlar -->
               <h4 style="margin-top:16px;font-size:13px;color:#475569">Son Tahsilatlar</h4>
               <div id="tahsilatListDiv" style="max-height:200px;overflow:auto;font-size:12px"></div>
+            </div>
+          </div>
+
+          <!-- Cari Hesap Extresi -->
+          <div class="panel" style="margin-top:14px;border:2px solid #6366f1;background:#eef2ff">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+              <h3 style="margin:0;color:#4338ca">📄 Cari Hesap Extresi</h3>
+              <div style="display:flex;gap:8px;align-items:center">
+                <select id="cariEkstreMusteri" onchange="renderCariEkstre()" style="min-width:180px;padding:8px;border:1px solid #c7d2fe;border-radius:8px;font-size:13px">
+                  <option value="">— Müşteri seçin —</option>
+                </select>
+                <input id="cariEkstreBaslangic" type="date" style="padding:6px;border:1px solid #c7d2fe;border-radius:8px" onchange="renderCariEkstre()"/>
+                <input id="cariEkstreBitis" type="date" style="padding:6px;border:1px solid #c7d2fe;border-radius:8px" onchange="renderCariEkstre()"/>
+                <button class="btn" onclick="cariEkstreYazdir()" style="background:#4338ca;color:#fff;border:none;padding:6px 14px;border-radius:8px;font-weight:700">🖨️ Yazdır</button>
+              </div>
+            </div>
+            <div id="cariEkstreDiv" style="font-size:12px">
+              <div style="color:var(--muted);text-align:center;padding:30px">Müşteri seçerek cari hesap extresini görüntüleyin.</div>
             </div>
           </div>
         </div>
@@ -3366,6 +3449,11 @@
             <div class="sc-value" id="stock-value">0 ₺</div>
             <div class="sc-sub">Birim fiyat × stok</div>
           </div>
+          <div class="stat-card">
+            <div class="sc-label">HAREKET SAYISI</div>
+            <div class="sc-value" style="color:#0b3aa6" id="stock-movements">0</div>
+            <div class="sc-sub">Toplam stok hareketi</div>
+          </div>
         </div>
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
@@ -3375,19 +3463,47 @@
             <div class="hint">Seçili depoya stok girişi yapın. Üretim gideri girişlerinde stok otomatik düşülür.</div>
             <div style="display:grid;grid-template-columns:1fr;gap:8px;margin-top:8px">
               <div><label>Malzeme Adı</label><input id="stok-malzeme" placeholder="Domates, et, un..." list="malzemeListesi"/></div>
-              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
                 <div><label>Miktar (kg)</label><input id="stok-miktar" type="number" min="0" step="0.001" value="0"/></div>
-                <div><label>Kritik Eşik (kg)</label><input id="stok-kritik" type="number" min="0" step="0.001" value="0"/></div>
                 <div><label>Birim Fiyat (₺/kg)</label><input id="stok-fiyat" type="number" min="0" step="0.01" value="0"/></div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+                <div><label>Min Seviye (kg)</label><input id="stok-kritik" type="number" min="0" step="0.001" value="0" title="Bu seviyenin altına düşünce uyarı verilir"/></div>
+                <div><label>Max Seviye (kg)</label><input id="stok-max" type="number" min="0" step="0.001" value="0" title="Maksimum stok kapasitesi (0=sınırsız)"/></div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+                <div><label>Kategori</label>
+                  <select id="stok-kategori" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:8px">
+                    <option value="">— Seçiniz —</option>
+                    <option value="et">🥩 Et Ürünleri</option>
+                    <option value="tahil">🌾 Tahıllar</option>
+                    <option value="yag">🫒 Yağ/Salça</option>
+                    <option value="sebze">🥬 Sebze/Meyve</option>
+                    <option value="sut">🥛 Süt Ürünleri</option>
+                    <option value="baharat">🧂 Baharat/Sos</option>
+                    <option value="tek_kull">🥤 Tek Kullanımlık</option>
+                    <option value="temizlik">🧹 Temizlik</option>
+                    <option value="diger">📦 Diğer</option>
+                  </select>
+                </div>
+                <div><label>Birim</label>
+                  <select id="stok-birim" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:8px">
+                    <option value="kg">kg</option>
+                    <option value="lt">lt</option>
+                    <option value="adet">adet</option>
+                    <option value="paket">paket</option>
+                    <option value="kutu">kutu</option>
+                  </select>
+                </div>
               </div>
               <button class="btn success" id="stokEkleBtn">Stoka Ekle / Güncelle</button>
             </div>
             <div class="divider"></div>
             <div class="alert-warning" id="stockAlertsDiv" style="display:none"></div>
-            <div id="stockTableWrap" style="max-height:300px;overflow:auto">
+            <div id="stockTableWrap" style="max-height:400px;overflow:auto">
               <table class="monthTable" style="margin-top:8px">
-                <thead><tr><th>Malzeme</th><th>Stok (kg)</th><th>Kritik Eşik</th><th>₺/kg</th><th>Durum</th></tr></thead>
-                <tbody id="stockTableBody"><tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px">Depo seçin ve ürün ekleyin.</td></tr></tbody>
+                <thead><tr><th>Malzeme</th><th>Kategori</th><th>Stok</th><th>Min</th><th>Max</th><th>₺/Birim</th><th>Değer</th><th>Doluluk</th><th>Durum</th><th>İşlem</th></tr></thead>
+                <tbody id="stockTableBody"><tr><td colspan="10" style="text-align:center;color:var(--muted);padding:20px">Depo seçin ve ürün ekleyin.</td></tr></tbody>
               </table>
             </div>
           </div>
@@ -3434,6 +3550,39 @@
               <button class="btn success" id="siparisOneriBtn">📋 Sipariş Önerisi Al</button>
             </div>
             <div id="siparisOneriDiv" style="font-size:12px;max-height:300px;overflow:auto"></div>
+          </div>
+
+          <!-- Stok Hareket Geçmişi -->
+          <div class="panel" style="grid-column:1/-1">
+            <h3>📜 Stok Hareket Geçmişi</h3>
+            <div class="hint">Tüm stok giriş, çıkış, transfer ve sayım hareketleri kronolojik sırayla gösterilir.</div>
+            <div style="display:flex;gap:8px;margin:8px 0;flex-wrap:wrap;align-items:center">
+              <select id="stokHareketFiltre" style="padding:6px;border:1px solid var(--border);border-radius:8px">
+                <option value="">Tüm Hareketler</option>
+                <option value="giris">📥 Giriş</option>
+                <option value="cikis">📤 Çıkış</option>
+                <option value="transfer">🔄 Transfer</option>
+                <option value="sayim">📋 Sayım Düzeltme</option>
+                <option value="uretim">🏭 Üretim Sarf</option>
+              </select>
+              <input id="stokHareketAra" placeholder="Malzeme ara..." style="padding:6px;border:1px solid var(--border);border-radius:8px;flex:1"/>
+              <button class="btn" onclick="renderStokHareketler()">🔍 Filtrele</button>
+            </div>
+            <div id="stokHareketDiv" style="max-height:300px;overflow:auto;font-size:12px">
+              <div style="color:var(--muted);padding:20px;text-align:center">Henüz hareket kaydı yok.</div>
+            </div>
+          </div>
+
+          <!-- Stok Sayım Fişi -->
+          <div class="panel" style="grid-column:1/-1;border:2px solid #f59e0b;background:#fffbeb">
+            <h3>📋 Stok Sayım Fişi</h3>
+            <div class="hint">Fiziksel sayım sonuçlarını girerek stok miktarlarını düzeltin. Fark otomatik hesaplanır ve hareket kaydı oluşturulur.</div>
+            <div style="display:flex;gap:8px;margin:8px 0;flex-wrap:wrap;align-items:center">
+              <input id="sayimTarih" type="date" style="padding:6px;border:1px solid var(--border);border-radius:8px"/>
+              <input id="sayimNot" placeholder="Sayım notu (opsiyonel)" style="padding:6px;border:1px solid var(--border);border-radius:8px;flex:1"/>
+              <button class="btn success" onclick="stokSayimBaslat()">📋 Sayım Başlat</button>
+            </div>
+            <div id="sayimDiv" style="max-height:350px;overflow:auto;font-size:12px"></div>
           </div>
         </div>
       </div>
@@ -3588,6 +3737,31 @@
                     </select>
                   </div>
 
+                </div>
+              </div>
+
+              <!-- Porsiyon Ayarları -->
+              <div style="background:#faf5ff;border:1px solid #d8b4fe;border-radius:10px;padding:10px;margin-bottom:10px">
+                <div style="font-weight:800;color:#7c3aed;font-size:12px;margin-bottom:8px">⚖️ Porsiyon Ayarları (Reçete Katsayısı)</div>
+                <div class="hint" style="margin-bottom:8px">Her müşteri için farklı porsiyon gramajı tanımlayabilirsiniz. Reçete katsayısı üretim hesaplamalarında kullanılır.</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+                  <div>
+                    <label style="font-size:11px">Porsiyon Tipi</label>
+                    <select id="crmPorsiyonTip" onchange="crmPorsiyonTipDegisti()">
+                      <option value="standart">Standart</option>
+                      <option value="buyuk">Büyük (+%25)</option>
+                      <option value="kucuk">Küçük (-%25)</option>
+                      <option value="ozel">Özel Katsayı</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style="font-size:11px">Katsayı</label>
+                    <input id="crmPorsiyonKatsayi" type="number" min="0.1" max="5" step="0.05" value="1.00" style="font-weight:700" title="1.0 = standart, 1.25 = büyük, 0.75 = küçük"/>
+                  </div>
+                  <div>
+                    <label style="font-size:11px">Not</label>
+                    <input id="crmPorsiyonNot" placeholder="Ağır sanayi, ofis vb."/>
+                  </div>
                 </div>
               </div>
 
@@ -3763,6 +3937,37 @@
               <button class="btn" id="sozlesmeSablonKaydetBtn">Şablonu Kaydet</button>
             </div>
             <div id="sablonStatusDiv" style="font-size:11px;color:#166534;margin-top:4px"></div>
+          </div>
+
+          <!-- 3.2b İrsaliye Oluştur -->
+          <div class="panel" style="grid-column:1/-1;border:2px solid #0891b2;background:#ecfeff">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+              <h3 style="margin:0;color:#0e7490">📜 İrsaliye Oluştur (Teslimat Belgesi)</h3>
+              <button class="btn" onclick="irsaliyeListGoster()" style="font-size:12px">📋 Geçmiş İrsaliyeler</button>
+            </div>
+            <div class="hint">Müşteriye gönderilecek yemek teslimatları için irsaliye oluşturun. Menüden otomatik çekilir.</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-top:10px">
+              <div><label>Müşteri</label>
+                <select id="irsaliyeMusteri" style="width:100%;padding:8px;border:1px solid #67e8f9;border-radius:8px">
+                  <option value="">— Seçiniz —</option>
+                </select>
+              </div>
+              <div><label>Tarih</label><input id="irsaliyeTarih" type="date" style="padding:8px;border:1px solid #67e8f9;border-radius:8px"/></div>
+              <div><label>Öğün</label>
+                <select id="irsaliyeOgun" style="width:100%;padding:8px;border:1px solid #67e8f9;border-radius:8px">
+                  <option value="ogle">Öğle</option>
+                  <option value="aksam">Akşam</option>
+                  <option value="sabah">Kahvaltı</option>
+                  <option value="gece">Gece</option>
+                </select>
+              </div>
+              <div><label>Kişi Sayısı</label><input id="irsaliyeKisi" type="number" min="0" value="0" style="padding:8px;border:1px solid #67e8f9;border-radius:8px"/></div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+              <button class="btn success" onclick="irsaliyeOlustur()" style="font-weight:700">📜 İrsaliye Oluştur</button>
+              <button class="btn" onclick="irsaliyeMenudenCek()" style="font-weight:700">📅 Menüden Otomatik Çek</button>
+            </div>
+            <div id="irsaliyeOnizlemeDiv" style="margin-top:12px;font-size:12px"></div>
           </div>
 
           <!-- 3.3 Sözleşme -->
@@ -4109,6 +4314,37 @@
             <div class="panel" id="puantajOzetPanel" style="display:none">
               <h3>💰 Maaş Hakediş Hesabı</h3>
               <div id="puantajOzetDiv" style="font-size:13px"></div>
+            </div>
+
+            <!-- Giriş/Çıkış & Fazla Mesai -->
+            <div class="panel" style="border:2px solid #f59e0b;background:#fffbeb">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                <h3 style="margin:0;color:#92400e">⏰ Giriş/Çıkış Saatleri & Fazla Mesai</h3>
+                <div style="display:flex;gap:8px;align-items:center">
+                  <select id="mesaiPersonel" style="padding:6px;border:1px solid #fde68a;border-radius:8px;min-width:160px" onchange="renderMesaiTablosu()">
+                    <option value="">— Personel seçin —</option>
+                  </select>
+                  <input type="month" id="mesaiAy" style="padding:6px;border:1px solid #fde68a;border-radius:8px" onchange="renderMesaiTablosu()"/>
+                </div>
+              </div>
+
+              <!-- Hızlı giriş -->
+              <div style="display:grid;grid-template-columns:auto 1fr 1fr 1fr 1fr auto;gap:8px;align-items:end;margin-bottom:12px;padding:10px;background:#fff;border-radius:8px;border:1px solid #fde68a">
+                <div><label style="font-size:11px">Tarih</label><input id="mesaiTarih" type="date" style="padding:6px;border:1px solid #fde68a;border-radius:8px;width:130px"/></div>
+                <div><label style="font-size:11px">Giriş</label><input id="mesaiGiris" type="time" value="08:00" style="padding:6px;border:1px solid #fde68a;border-radius:8px"/></div>
+                <div><label style="font-size:11px">Çıkış</label><input id="mesaiCikis" type="time" value="17:00" style="padding:6px;border:1px solid #fde68a;border-radius:8px"/></div>
+                <div><label style="font-size:11px">Mola (dk)</label><input id="mesaiMola" type="number" value="60" min="0" style="padding:6px;border:1px solid #fde68a;border-radius:8px;width:70px"/></div>
+                <div><label style="font-size:11px">Not</label><input id="mesaiNot" placeholder="Opsiyonel" style="padding:6px;border:1px solid #fde68a;border-radius:8px"/></div>
+                <div><button class="btn success" onclick="mesaiKaydet()" style="white-space:nowrap">Kaydet</button></div>
+              </div>
+
+              <!-- Mesai tablosu -->
+              <div id="mesaiTabloDiv" style="max-height:350px;overflow:auto;font-size:12px">
+                <div style="color:var(--muted);text-align:center;padding:20px">Personel ve ay seçin.</div>
+              </div>
+
+              <!-- Özet -->
+              <div id="mesaiOzetDiv" style="margin-top:10px;font-size:12px"></div>
             </div>
           </div>
         </div>
@@ -4901,7 +5137,8 @@
                 <span style="font-size:11px;color:#94a3b8">(Müşteri toplamı: <b id="rcOtomatikKisi">—</b>)</span>
               </div>
               <button class="btn" onclick="rcCekKisiSayisi()" title="Günlük üretim kayıtlarından kişi sayısını çek">Müşterilerden Çek</button>
-              <button class="btn success" onclick="rcSaveGunlukUretim()">Günlük Üretimi Kaydet</button>
+              <button class="btn" style="background:#1e40af;color:#fff" onclick="rcUretimFisiOlustur()">📋 Üretim Fişi Oluştur</button>
+              <button class="btn success" onclick="rcSaveGunlukUretim()">✅ Üretimi Kaydet</button>
             </div>
           </div>
           <!-- Günün Menüsü & Malzeme -->
@@ -8098,14 +8335,16 @@ ${note}`);
     const el = document.getElementById('finPane-'+tab);
     if(el) el.style.display='';
     // Highlight active tab button
-    ['dashboard','gelir','gider','uretim','sayi','ozet','butce','alacak','borc'].forEach(t=>{
+    if (tab === 'patron') { setTimeout(function(){ if(typeof window.renderPatronSayfasi==='function') window.renderPatronSayfasi(); },100); }
+    ['dashboard','gelir','gider','uretim','sayi','ozet','butce','alacak','borc','patron'].forEach(t=>{
       const b = document.getElementById('finTab'+t.charAt(0).toUpperCase()+t.slice(1));
       if(b){
         b.className = t===tab ? 'btn primary' : 'btn';
         // Alacak/Borç özel renkleri koru
         if(t==='alacak' && t!==tab){ b.style.borderColor='#10b981'; b.style.color='#059669'; }
         else if(t==='borc' && t!==tab){ b.style.borderColor='#ef4444'; b.style.color='#dc2626'; }
-        else if(t===tab){ b.style.borderColor=''; b.style.color=''; }
+        else if(t==='patron' && t!==tab){ b.style.background='#7c3aed'; b.style.color='#fff'; }
+        else if(t===tab){ b.style.borderColor=''; b.style.color=''; if(t==='patron'){b.style.background='#4c1d95';b.style.color='#fff';} }
       }
     });
     if(tab==='uretim') syncAllCustomerDropdowns();
@@ -8847,6 +9086,18 @@ alert('Malzeme ve miktar giriniz.'); return; }
     refreshStok();
   });
 
+  // Stok hareket logları
+  function getStokHareketler(){ return ls.get('uysa_stok_hareketler',[]); }
+  function saveStokHareketler(d){ ls.set('uysa_stok_hareketler',d); }
+  function addStokHareket(tip, malzeme, miktar, depo, aciklama){
+    const arr = getStokHareketler();
+    arr.push({ tip, malzeme, miktar, depo, aciklama: aciklama||'', tarih: today(), saat: new Date().toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit'}), id: Date.now() });
+    saveStokHareketler(arr);
+  }
+
+  // Kategori etiketleri
+  const STOK_KAT_LABELS = {'et':'🥩 Et','tahil':'🌾 Tahıl','yag':'🫒 Yağ/Salça','sebze':'🥬 Sebze','sut':'🥛 Süt','baharat':'🧂 Baharat','tek_kull':'🥤 Tek Kull.','temizlik':'🧹 Temizlik','diger':'📦 Diğer'};
+
   function refreshStok(){
     const depo = getAktifDepo() || document.getElementById('aktifDepoSel')?.value || '';
     const bilgi = document.getElementById('depoAktifBilgi');
@@ -8862,30 +9113,72 @@ alert('Malzeme ve miktar giriniz.'); return; }
     if(totalEl) totalEl.textContent = entries.length;
 
     let kritikSayisi=0, toplamDeger=0;
-    const kritikler=[];
+    const kritikler=[], fazlalar=[];
     if(entries.length===0){
-      if(tbody) tbody.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px">Bu depoda ürün yok. Ürün ekleyin.</td></tr>';
+      if(tbody) tbody.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:20px">Bu depoda ürün yok. Ürün ekleyin.</td></tr>';
     } else {
-      if(tbody) tbody.innerHTML = entries.map(([malzeme,v])=>{
-        const durum = v.miktar <= v.kritik ? '🔴 Kritik' : '🟢 Tamam';
-        if(v.miktar<=v.kritik){ kritikSayisi++; kritikler.push(malzeme); }
-        toplamDeger += (v.miktar||0)*(v.fiyat||0);
-        return `<tr>
+      // Kategoriye göre sırala
+      const sorted = entries.sort((a,b)=>{
+        const ka=(a[1].kategori||'diger'), kb=(b[1].kategori||'diger');
+        if(ka!==kb) return ka.localeCompare(kb,'tr');
+        return a[0].localeCompare(b[0],'tr');
+      });
+      if(tbody) tbody.innerHTML = sorted.map(([malzeme,v])=>{
+        const birim = v.birim || 'kg';
+        const minSev = v.kritik || 0;
+        const maxSev = v.maxStok || 0;
+        const isKritik = v.miktar <= minSev && minSev > 0;
+        const isFazla = maxSev > 0 && v.miktar > maxSev;
+        const deger = (v.miktar||0)*(v.fiyat||0);
+        toplamDeger += deger;
+
+        let durum = '🟢 Normal';
+        let durumBg = '';
+        if(isKritik){ durum='🔴 Kritik'; durumBg='background:#fef2f2'; kritikSayisi++; kritikler.push(malzeme); }
+        else if(v.miktar <= minSev*1.5 && minSev>0){ durum='🟡 Düşük'; durumBg='background:#fffbeb'; }
+        if(isFazla){ durum='🟠 Fazla'; durumBg='background:#fff7ed'; fazlalar.push(malzeme); }
+
+        // Doluluk bar (only if max>0)
+        let dolulukHtml = '—';
+        if(maxSev>0){
+          const pct = Math.min(100, Math.round((v.miktar/maxSev)*100));
+          const barColor = pct>90?'#dc2626':pct>70?'#f59e0b':'#16a34a';
+          dolulukHtml = `<div style="width:60px;height:8px;background:#e5e7eb;border-radius:4px;display:inline-block;vertical-align:middle">
+            <div style="width:${pct}%;height:100%;background:${barColor};border-radius:4px"></div>
+          </div> <span style="font-size:10px">${pct}%</span>`;
+        }
+
+        const katLabel = STOK_KAT_LABELS[v.kategori||''] || '';
+        return `<tr style="${durumBg}">
           <td><b>${malzeme}</b></td>
-          <td>${fmt(v.miktar,3)} kg</td>
-          <td>${fmt(v.kritik,3)} kg</td>
+          <td style="font-size:11px">${katLabel}</td>
+          <td style="font-weight:700;color:${isKritik?'#dc2626':'#166534'}">${fmt(v.miktar,2)} ${birim}</td>
+          <td style="font-size:11px">${minSev>0?fmt(minSev,1)+' '+birim:'—'}</td>
+          <td style="font-size:11px">${maxSev>0?fmt(maxSev,1)+' '+birim:'—'}</td>
           <td>${fmt(v.fiyat)} ₺</td>
+          <td style="font-size:11px">${fmt(deger)} ₺</td>
+          <td>${dolulukHtml}</td>
           <td>${durum}</td>
+          <td style="white-space:nowrap">
+            <button onclick="stokDuzenle('${malzeme.replace(/'/g,"\\'")}')" style="font-size:10px;padding:2px 6px;border:1px solid var(--border);background:#eff6ff;border-radius:4px;cursor:pointer" title="Düzenle">✏️</button>
+            <button onclick="stokSil('${malzeme.replace(/'/g,"\\'")}')" style="font-size:10px;padding:2px 6px;border:1px solid #dc2626;background:#fef2f2;border-radius:4px;cursor:pointer" title="Sil">🗑️</button>
+          </td>
         </tr>`;
       }).join('');
     }
     if(criticalEl) criticalEl.textContent = kritikSayisi;
     if(valueEl) valueEl.textContent = fmt(toplamDeger)+' ₺';
     if(alertDiv){
-      if(kritikler.length>0){ alertDiv.style.display=''; alertDiv.textContent='⚠️ Kritik seviye: '+kritikler.join(', '); }
+      const msgs = [];
+      if(kritikler.length>0) msgs.push('🔴 Kritik seviye (min altı): '+kritikler.join(', '));
+      if(fazlalar.length>0) msgs.push('🟠 Fazla stok (max üstü): '+fazlalar.join(', '));
+      if(msgs.length>0){ alertDiv.style.display=''; alertDiv.innerHTML=msgs.join('<br>'); }
       else alertDiv.style.display='none';
     }
+    const movEl = document.getElementById('stock-movements');
+    if(movEl) movEl.textContent = getStokHareketler().length;
     renderDepoOzeti(depo);
+    renderStokHareketler();
   }
 
   document.getElementById('stokEkleBtn')?.addEventListener('click',()=>{
@@ -8895,22 +9188,154 @@ alert('Malzeme ve miktar giriniz.'); return; }
     if(!malzeme){ alert('Malzeme adı giriniz.'); return; }
     const miktar = parseFloat(document.getElementById('stok-miktar')?.value)||0;
     const kritik = parseFloat(document.getElementById('stok-kritik')?.value)||0;
+    const maxStok = parseFloat(document.getElementById('stok-max')?.value)||0;
     const fiyat = parseFloat(document.getElementById('stok-fiyat')?.value)||0;
+    const kategori = document.getElementById('stok-kategori')?.value||'';
+    const birim = document.getElementById('stok-birim')?.value||'kg';
     const stok = getStok(depo);
     const isFirst = !stok[malzeme];
+
+    // Max stok kontrolü
+    if(maxStok>0 && !isFirst){
+      const yeniMiktar = (stok[malzeme].miktar||0)+miktar;
+      if(yeniMiktar > maxStok){
+        if(!confirm(`⚠️ Uyarı: ${malzeme} için max seviye ${fmt(maxStok)} ${birim}.\nEkleme sonrası: ${fmt(yeniMiktar)} ${birim} olacak.\nDevam etmek istiyor musunuz?`)) return;
+      }
+    }
+
     if(isFirst){
-      stok[malzeme] = { miktar, kritik, fiyat, baslangicTarih:today(), baslangicMiktar:miktar };
+      stok[malzeme] = { miktar, kritik, maxStok, fiyat, kategori, birim, baslangicTarih:today(), baslangicMiktar:miktar };
     } else {
       stok[malzeme].miktar = (stok[malzeme].miktar||0) + miktar;
       if(kritik>0) stok[malzeme].kritik=kritik;
+      if(maxStok>0) stok[malzeme].maxStok=maxStok;
       if(fiyat>0) stok[malzeme].fiyat=fiyat;
+      if(kategori) stok[malzeme].kategori=kategori;
+      if(birim) stok[malzeme].birim=birim;
     }
     saveStok(depo, stok);
+    if(miktar>0) addStokHareket('giris', malzeme, miktar, depo, isFirst?'İlk giriş':'Stok ekleme');
     refreshStok();
     alert(malzeme+(isFirst?' stoğa eklendi.':', mevcut stoğa eklendi.'));
     document.getElementById('stok-malzeme').value='';
     document.getElementById('stok-miktar').value='';
+    document.getElementById('stok-kritik').value='0';
+    document.getElementById('stok-max').value='0';
   });
+
+  // Stok düzenleme (formu doldur)
+  window.stokDuzenle = function(malzeme){
+    const depo = getAktifDepo()||document.getElementById('aktifDepoSel')?.value||'';
+    if(!depo) return;
+    const stok = getStok(depo);
+    const v = stok[malzeme];
+    if(!v) return;
+    document.getElementById('stok-malzeme').value = malzeme;
+    document.getElementById('stok-miktar').value = '0';
+    document.getElementById('stok-kritik').value = v.kritik||0;
+    document.getElementById('stok-max').value = v.maxStok||0;
+    document.getElementById('stok-fiyat').value = v.fiyat||0;
+    if(v.kategori) document.getElementById('stok-kategori').value = v.kategori;
+    if(v.birim) document.getElementById('stok-birim').value = v.birim;
+    document.getElementById('stok-malzeme').focus();
+  };
+
+  // Stok silme
+  window.stokSil = function(malzeme){
+    const depo = getAktifDepo()||document.getElementById('aktifDepoSel')?.value||'';
+    if(!depo) return;
+    if(!confirm(`"${malzeme}" stoğu ${depo} deposundan silinecek. Emin misiniz?`)) return;
+    const stok = getStok(depo);
+    const miktar = stok[malzeme]?.miktar||0;
+    delete stok[malzeme];
+    saveStok(depo, stok);
+    addStokHareket('cikis', malzeme, miktar, depo, 'Stoktan silindi');
+    refreshStok();
+  };
+
+  // Stok hareket geçmişi render
+  window.renderStokHareketler = function(){
+    const div = document.getElementById('stokHareketDiv');
+    if(!div) return;
+    const all = getStokHareketler();
+    const filtre = document.getElementById('stokHareketFiltre')?.value||'';
+    const ara = (document.getElementById('stokHareketAra')?.value||'').toLowerCase();
+    let filtered = all;
+    if(filtre) filtered = filtered.filter(h=>h.tip===filtre);
+    if(ara) filtered = filtered.filter(h=>(h.malzeme||'').toLowerCase().includes(ara));
+    filtered = filtered.slice(-100).reverse(); // son 100
+
+    if(!filtered.length){ div.innerHTML='<div style="color:var(--muted);padding:20px;text-align:center">Hareket kaydı bulunamadı.</div>'; return; }
+
+    const tipLabel = {'giris':'📥 Giriş','cikis':'📤 Çıkış','transfer':'🔄 Transfer','sayim':'📋 Sayım','uretim':'🏭 Üretim'};
+    const tipBg = {'giris':'#f0fdf4','cikis':'#fef2f2','transfer':'#eff6ff','sayim':'#fffbeb','uretim':'#faf5ff'};
+    div.innerHTML = `<table class="monthTable" style="width:100%"><thead><tr><th>Tarih</th><th>Saat</th><th>Tip</th><th>Malzeme</th><th>Miktar</th><th>Depo</th><th>Açıklama</th></tr></thead>
+    <tbody>${filtered.map(h=>`<tr style="background:${tipBg[h.tip]||''}">
+      <td>${h.tarih||'—'}</td><td>${h.saat||'—'}</td>
+      <td>${tipLabel[h.tip]||h.tip}</td>
+      <td><b>${h.malzeme}</b></td>
+      <td style="font-weight:700">${fmt(h.miktar,2)}</td>
+      <td style="font-size:11px">${h.depo||'—'}</td>
+      <td style="font-size:11px;color:var(--muted)">${h.aciklama||''}</td>
+    </tr>`).join('')}</tbody></table>`;
+  };
+
+  // Stok Sayım Fişi
+  window.stokSayimBaslat = function(){
+    const depo = getAktifDepo()||document.getElementById('aktifDepoSel')?.value||'';
+    if(!depo){ alert('Önce depo seçiniz.'); return; }
+    const stok = getStok(depo);
+    const entries = Object.entries(stok);
+    if(!entries.length){ alert('Bu depoda ürün yok.'); return; }
+    const div = document.getElementById('sayimDiv');
+    if(!div) return;
+    const tarih = document.getElementById('sayimTarih')?.value||today();
+    div.innerHTML = `<div style="margin-bottom:8px;font-weight:700">📋 ${depo} — Sayım Tarihi: ${tarih}</div>
+    <table class="monthTable" style="width:100%"><thead><tr><th>Malzeme</th><th>Sistem Stok</th><th>Sayım Miktarı</th><th>Fark</th></tr></thead>
+    <tbody>${entries.map(([m,v])=>{
+      const birim = v.birim||'kg';
+      return `<tr>
+        <td><b>${m}</b></td>
+        <td>${fmt(v.miktar,2)} ${birim}</td>
+        <td><input type="number" step="0.001" value="${v.miktar}" data-mal="${m}" data-eski="${v.miktar}" class="sayim-input" style="width:100px;padding:4px;border:1px solid var(--border);border-radius:4px" onchange="sayimFarkHesapla(this)"/></td>
+        <td class="sayim-fark" style="font-weight:700">0</td>
+      </tr>`;
+    }).join('')}</tbody></table>
+    <button class="btn success" onclick="sayimKaydet('${depo}','${tarih}')" style="margin-top:8px">✅ Sayımı Kaydet</button>
+    <button class="btn" onclick="document.getElementById('sayimDiv').innerHTML=''" style="margin-top:8px">İptal</button>`;
+  };
+
+  window.sayimFarkHesapla = function(inp){
+    const eski = parseFloat(inp.dataset.eski)||0;
+    const yeni = parseFloat(inp.value)||0;
+    const fark = yeni - eski;
+    const td = inp.closest('tr').querySelector('.sayim-fark');
+    if(td){
+      td.textContent = (fark>=0?'+':'')+fmt(fark,2);
+      td.style.color = fark<0?'#dc2626':fark>0?'#16a34a':'var(--muted)';
+    }
+  };
+
+  window.sayimKaydet = function(depo, tarih){
+    const inputs = document.querySelectorAll('.sayim-input');
+    const stok = getStok(depo);
+    const not = document.getElementById('sayimNot')?.value||'';
+    let degisim = 0;
+    inputs.forEach(inp=>{
+      const mal = inp.dataset.mal;
+      const eski = parseFloat(inp.dataset.eski)||0;
+      const yeni = parseFloat(inp.value)||0;
+      if(eski!==yeni && stok[mal]){
+        const fark = yeni-eski;
+        stok[mal].miktar = yeni;
+        addStokHareket('sayim', mal, fark, depo, 'Sayım düzeltme'+(not?' — '+not:''));
+        degisim++;
+      }
+    });
+    saveStok(depo, stok);
+    refreshStok();
+    document.getElementById('sayimDiv').innerHTML = `<div style="color:#16a34a;padding:10px;text-align:center;font-weight:700">✅ Sayım kaydedildi. ${degisim} kalemde düzeltme yapıldı.</div>`;
+  };
 
   function renderDepoOzeti(depo){
     const div = document.getElementById('depoOzetPanel');
@@ -8920,14 +9345,20 @@ alert('Malzeme ve miktar giriniz.'); return; }
     const malzemeler = Object.keys(stok);
     if(!malzemeler.length){ div.innerHTML='<div style="color:var(--muted)">Stok boş.</div>'; return; }
 
-    div.innerHTML = `<table class="monthTable"><thead><tr><th>Malzeme</th><th>Başlangıç</th><th>Toplam Kullanım</th><th>Mevcut</th></tr></thead>
+    div.innerHTML = `<table class="monthTable"><thead><tr><th>Malzeme</th><th>Başlangıç</th><th>Kullanım</th><th>Mevcut</th><th>Min/Max</th><th>Durum</th></tr></thead>
     <tbody>${malzemeler.map(m=>{
       const v = stok[m];
+      const birim = v.birim||'kg';
       const kullanimKg = ugider.filter(u=>u.malzeme===m).reduce((s,u)=>s+(u.kg||0),0);
+      const isKritik = v.miktar<=(v.kritik||0) && (v.kritik||0)>0;
+      const isFazla = (v.maxStok||0)>0 && v.miktar>(v.maxStok||0);
+      let durum = '🟢'; if(isKritik) durum='🔴'; else if(isFazla) durum='🟠'; else if(v.miktar<=(v.kritik||0)*1.5 && (v.kritik||0)>0) durum='🟡';
       return `<tr><td><b>${m}</b><br><span style="font-size:11px;color:var(--muted)">${v.baslangicTarih||'?'}</span></td>
-        <td>${fmt(v.baslangicMiktar||v.miktar,3)} kg</td>
-        <td style="color:#dc2626">${fmt(kullanimKg,3)} kg</td>
-        <td style="font-weight:800;color:${v.miktar<=v.kritik?'#dc2626':'#166534'}">${fmt(v.miktar,3)} kg</td>
+        <td>${fmt(v.baslangicMiktar||v.miktar,2)} ${birim}</td>
+        <td style="color:#dc2626">${fmt(kullanimKg,2)} ${birim}</td>
+        <td style="font-weight:800;color:${isKritik?'#dc2626':'#166534'}">${fmt(v.miktar,2)} ${birim}</td>
+        <td style="font-size:11px">${(v.kritik||0)>0?fmt(v.kritik,1):'—'} / ${(v.maxStok||0)>0?fmt(v.maxStok,1):'—'}</td>
+        <td>${durum}</td>
       </tr>`;
     }).join('')}</tbody></table>`;
   }
@@ -8971,6 +9402,7 @@ alert('Malzeme ve miktar giriniz.'); return; }
     saveStok(t.to, toStok);
     transferler.push(t);
     ls.set('uysa_transfer', transferler);
+    addStokHareket('transfer', t.malzeme, t.qty, t.from, t.from+' → '+t.to+' transfer');
     renderTransferler();
     refreshStok();
     alert('Transfer kaydedildi ve stoklar güncellendi.');
@@ -9410,6 +9842,19 @@ alert('Malzeme ve miktar giriniz.'); return; }
     fields.style.display = cb.checked ? 'grid' : 'none';
     // Tedarikçi dropdown'ını doldur
     if(cb.checked) crmFillTedarikciDropdown();
+  };
+
+  // Porsiyon tipi değişince katsayıyı otomatik güncelle
+  window.crmPorsiyonTipDegisti = function(){
+    var tip = document.getElementById('crmPorsiyonTip')?.value || 'standart';
+    var katEl = document.getElementById('crmPorsiyonKatsayi');
+    if(!katEl) return;
+    switch(tip){
+      case 'standart': katEl.value='1.00'; break;
+      case 'buyuk': katEl.value='1.25'; break;
+      case 'kucuk': katEl.value='0.75'; break;
+      case 'ozel': break; // kullanıcı kendisi girecek
+    }
   };
 
   window.crmFillTedarikciDropdown = function(){
@@ -15441,6 +15886,10 @@ window.addEventListener('load', function() {
     set('crmVardiya',        d.vardiya   || 'tek');
     set('crmAyran',          d.ayran     || 'menuye_gore');
     set('crmOdemeDurum',     d.odemeDurum || '');
+    // Porsiyon ayarları
+    set('crmPorsiyonTip',    d.porsiyonTip || 'standart');
+    set('crmPorsiyonKatsayi', d.porsiyonKatsayi || '1.00');
+    set('crmPorsiyonNot',    d.porsiyonNot || '');
     // Al/Sat alanları
     var alSatCb = document.getElementById('crmAlSat');
     if(alSatCb) alSatCb.checked = d.alSat || false;
@@ -15491,6 +15940,9 @@ window.addEventListener('load', function() {
       vardiya:        get('crmVardiya')   || 'tek',
       ayran:          get('crmAyran')     || 'menuye_gore',
       odemeDurum:     get('crmOdemeDurum'),
+      porsiyonTip:    get('crmPorsiyonTip') || 'standart',
+      porsiyonKatsayi: parseFloat(get('crmPorsiyonKatsayi')) || 1.0,
+      porsiyonNot:    get('crmPorsiyonNot'),
       _savedAt:       new Date().toLocaleString('tr-TR')
     };
     // localStorage + IndexedDB'ye yaz
@@ -21528,6 +21980,113 @@ function _syncMevcutGiderlerBorc(){
 setTimeout(_syncMevcutGelirlerAlacak, 2000);
 setTimeout(_syncMevcutGiderlerBorc, 2500);
 
+// ── Cari Hesap Extresi ────────────────────────────────────────
+window.renderCariEkstre = function(){
+  var div = document.getElementById('cariEkstreDiv');
+  if(!div) return;
+  var musteri = document.getElementById('cariEkstreMusteri')?.value;
+  if(!musteri){ div.innerHTML='<div style="color:var(--muted);text-align:center;padding:30px">Müşteri seçerek cari hesap extresini görüntüleyin.</div>'; return; }
+
+  var baslangic = document.getElementById('cariEkstreBaslangic')?.value || '2020-01-01';
+  var bitis = document.getElementById('cariEkstreBitis')?.value || '2099-12-31';
+
+  // Alacaklar (borç — müşterinin bize borcu)
+  var alacaklar = lsGet(LS_ALACAK,[]).filter(function(a){
+    return a.musteri===musteri && a.tarih>=baslangic && a.tarih<=bitis;
+  });
+  // Tahsilatlar (alacak — müşteriden gelen ödeme)
+  var tahsilatlar = lsGet(LS_TAHSILAT,[]).filter(function(t){
+    return t.musteri===musteri && t.tarih>=baslangic && t.tarih<=bitis;
+  });
+  // Gelirler
+  var gelirler = [];
+  try{
+    gelirler = JSON.parse(localStorage.getItem('uysa_gelirler')||'[]').filter(function(g){
+      return g.musteri===musteri && g.tarih>=baslangic && g.tarih<=bitis;
+    });
+  }catch(e){}
+
+  // Tüm hareketleri birleştir
+  var hareketler = [];
+  alacaklar.forEach(function(a){
+    hareketler.push({ tarih:a.tarih, tip:'BORÇ', aciklama:a.aciklama||a.fatura||'Alacak', borc:Number(a.tutar)||0, alacak:0, belge:a.fatura||'' });
+  });
+  tahsilatlar.forEach(function(t){
+    hareketler.push({ tarih:t.tarih, tip:'TAHSİLAT', aciklama:t.aciklama||t.yontem||'Tahsilat', borc:0, alacak:Number(t.tutar)||0, belge:t.belge||'' });
+  });
+
+  // Tarih sırala
+  hareketler.sort(function(a,b){ return a.tarih<b.tarih?-1:a.tarih>b.tarih?1:0; });
+
+  if(!hareketler.length){
+    div.innerHTML='<div style="color:var(--muted);text-align:center;padding:20px">Bu müşteri için belirtilen tarih aralığında hareket bulunamadı.</div>';
+    return;
+  }
+
+  // Ekstre oluştur
+  var bakiye = 0;
+  var topBorc = 0, topAlacak = 0;
+  var rows = hareketler.map(function(h){
+    bakiye += h.borc - h.alacak;
+    topBorc += h.borc;
+    topAlacak += h.alacak;
+    return '<tr>'
+      +'<td>'+h.tarih+'</td>'
+      +'<td><span style="padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;background:'+(h.tip==='BORÇ'?'#fef2f2;color:#dc2626':'#f0fdf4;color:#16a34a')+'">'+h.tip+'</span></td>'
+      +'<td>'+h.aciklama+'</td>'
+      +'<td style="font-size:11px;color:var(--muted)">'+h.belge+'</td>'
+      +'<td style="text-align:right;color:#dc2626;font-weight:'+(h.borc>0?'700':'400')+'">'+(h.borc>0?fmt(h.borc):'')+'</td>'
+      +'<td style="text-align:right;color:#16a34a;font-weight:'+(h.alacak>0?'700':'400')+'">'+(h.alacak>0?fmt(h.alacak):'')+'</td>'
+      +'<td style="text-align:right;font-weight:900;color:'+(bakiye>0?'#dc2626':'#16a34a')+'">'+fmt(bakiye)+'</td>'
+      +'</tr>';
+  }).join('');
+
+  div.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px">'
+    +'<div style="text-align:center;padding:10px;background:#fef2f2;border-radius:8px"><div style="font-size:10px;color:#991b1b">TOPLAM BORÇ</div><div style="font-size:18px;font-weight:900;color:#dc2626">'+fmt(topBorc)+' ₺</div></div>'
+    +'<div style="text-align:center;padding:10px;background:#f0fdf4;border-radius:8px"><div style="font-size:10px;color:#166534">TOPLAM TAHSİLAT</div><div style="font-size:18px;font-weight:900;color:#16a34a">'+fmt(topAlacak)+' ₺</div></div>'
+    +'<div style="text-align:center;padding:10px;background:'+(bakiye>0?'#fef2f2':'#f0fdf4')+';border-radius:8px"><div style="font-size:10px;color:#475569">NET BAKİYE</div><div style="font-size:18px;font-weight:900;color:'+(bakiye>0?'#dc2626':'#16a34a')+'">'+fmt(bakiye)+' ₺</div></div>'
+    +'</div>'
+    +'<table class="monthTable" style="width:100%"><thead><tr><th>Tarih</th><th>Tip</th><th>Açıklama</th><th>Belge</th><th style="text-align:right">Borç</th><th style="text-align:right">Alacak</th><th style="text-align:right">Bakiye</th></tr></thead>'
+    +'<tbody>'+rows+'</tbody></table>';
+};
+
+// Cari ekstre müşteri dropdown'ını doldur
+window.fillCariEkstreDropdown = function(){
+  var sel = document.getElementById('cariEkstreMusteri');
+  if(!sel) return;
+  try{
+    var raw = JSON.parse(localStorage.getItem('uysa_customers_v1')||'{}');
+    var custs = (raw.customers||[]).filter(function(c){ return c && c!=='GENEL'; });
+    sel.innerHTML = '<option value="">— Müşteri seçin —</option>' + custs.map(function(c){ return '<option value="'+c+'">'+c+'</option>'; }).join('');
+  }catch(e){}
+};
+
+// Yazdır
+window.cariEkstreYazdir = function(){
+  var musteri = document.getElementById('cariEkstreMusteri')?.value||'';
+  var content = document.getElementById('cariEkstreDiv')?.innerHTML||'';
+  if(!musteri){ alert('Önce müşteri seçin.'); return; }
+  var w = window.open('','_blank','width=900,height=700');
+  w.document.write('<!DOCTYPE html><html><head><title>Cari Ekstre — '+musteri+'</title>'
+    +'<style>body{font-family:Arial,sans-serif;padding:20px;font-size:12px}h2{color:#1e1b4b;border-bottom:2px solid #6366f1;padding-bottom:8px}'
+    +'table{width:100%;border-collapse:collapse}th,td{padding:5px 8px;border:1px solid #e5e7eb;text-align:left}th{background:#f8fafc}</style></head>'
+    +'<body><h2>Cari Hesap Extresi — '+musteri+'</h2><p>Tarih: '+new Date().toLocaleDateString('tr-TR')+'</p>'+content+'</body></html>');
+  w.document.close();
+  setTimeout(function(){ w.print(); },500);
+};
+
+// İlk yüklemede dropdown doldur
+setTimeout(function(){ if(typeof fillCariEkstreDropdown==='function') fillCariEkstreDropdown(); }, 3000);
+
+// renderAlacaklar override — cari ekstre dropdown'ını da güncelle
+var _origRenderAlacaklar = window.renderAlacaklar;
+if(typeof _origRenderAlacaklar === 'function'){
+  window.renderAlacaklar = function(){
+    _origRenderAlacaklar();
+    fillCariEkstreDropdown();
+  };
+}
+
 })();
 
 // ── KPI Kartları (tıklanabilir detay) ────────────────────────
@@ -22885,6 +23444,9 @@ document.addEventListener('DOMContentLoaded', function(){
 <script src="/js/recete-gunluk.js" defer></script>
 <script src="/js/recete-analiz.js" defer></script>
 <script src="/js/rapor-aylik-ozet.js" defer></script>
+<script src="/js/patron-sayfasi.js" defer></script>
+<script src="/js/irsaliye.js" defer></script>
+<script src="/js/mesai-takip.js" defer></script>
 
 <script>
 
