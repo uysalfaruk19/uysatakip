@@ -196,17 +196,9 @@
     var ymPadded = yy+'-'+(mm<10?'0':'')+mm;   // 2026-03
     var ymNoPad  = yy+'-'+mm;                    // 2026-3
 
-    // DEBUG — konsolda key eşleşmesini göster
-    var allKeys = Object.keys(menuGrid);
-    console.log('[GunlukMenu] tarih='+tarih+' dow='+dow+' wIdx='+wIdx+' ymPadded='+ymPadded+' ymNoPad='+ymNoPad);
-    console.log('[GunlukMenu] store keys:', allKeys.filter(function(k){ return k.indexOf('CANTA')>=0 || k.indexOf('canta')>=0; }));
-    console.log('[GunlukMenu] all keys:', allKeys.slice(0,20));
-
     var custList = sel.length > 0 ? sel : ['GENEL'];
     custList.forEach(function(cust){
-      var keyA = ymPadded+'::'+cust, keyB = ymNoPad+'::'+cust;
-      var grid = menuGrid[keyA] || menuGrid[keyB];
-      console.log('[GunlukMenu] trying cust='+cust+' keyA='+keyA+' keyB='+keyB+' found='+(!!grid)+' hasWeeks='+(grid?!!grid.weeks:false)+' hasW='+(grid&&grid.weeks?!!grid.weeks[wIdx]:false));
+      var grid = menuGrid[ymPadded+'::'+cust] || menuGrid[ymNoPad+'::'+cust];
       if(!grid || !grid.weeks || !grid.weeks[wIdx]) return;
       var w = grid.weeks[wIdx];
       ['soups','soups2','mains','mains2','sides','sides2','salads'].forEach(function(cat){
@@ -227,6 +219,25 @@
         if(dishCustomerMap[v].indexOf(cust)<0) dishCustomerMap[v].push(cust);
       });
     });
+    // Hafta sonu ise en yakın Cuma'nın menüsünü öner
+    var isWeekend = (dow === 5 || dow === 6); // 5=Cmt, 6=Paz
+    if(!dishes.length && isWeekend){
+      // Cuma'yı dene (dow=4)
+      custList.forEach(function(cust){
+        var grid = menuGrid[ymPadded+'::'+cust] || menuGrid[ymNoPad+'::'+cust];
+        if(!grid || !grid.weeks || !grid.weeks[wIdx]) return;
+        var w = grid.weeks[wIdx];
+        ['soups','soups2','mains','mains2','sides','sides2','salads','dessertFruitName','ayran'].forEach(function(cat){
+          var arr = w[cat]; if(!arr) return;
+          var v = arr[4]; // Cuma=4
+          if(!v || !v.trim()) return;
+          v = v.trim();
+          if(dishes.indexOf(v)<0) dishes.push(v);
+          if(!dishCustomerMap[v]) dishCustomerMap[v] = [];
+          if(dishCustomerMap[v].indexOf(cust)<0) dishCustomerMap[v].push(cust);
+        });
+      });
+    }
     // Fallback: GENEL
     if(!dishes.length && sel.length > 0){
       var fallback = rc.getDayMenu(tarih);
@@ -242,8 +253,11 @@
     // SOL — Yemek listesi
     html += '<div style="flex:0 0 220px;border-right:1px solid #e2e8f0;padding-right:12px">';
     html += '<h4 style="margin:0 0 8px;font-size:13px;color:#1e40af">'+_formatDate(tarih)+' ('+(dishes.length||0)+' kalem)</h4>';
+    if(isWeekend && dishes.length){
+      html += '<div style="color:#1e40af;font-size:11px;padding:8px;background:#eff6ff;border-radius:6px;margin-bottom:8px">Hafta sonu - Cuma menusu gosteriliyor.</div>';
+    }
     if(!dishes.length){
-      html += '<div style="color:#d97706;font-size:11px;padding:10px;background:#fffbeb;border-radius:6px;margin-bottom:8px">Menu bulunamadi. Manuel yemek ekleyebilirsiniz.</div>';
+      html += '<div style="color:#d97706;font-size:11px;padding:10px;background:#fffbeb;border-radius:6px;margin-bottom:8px">'+(isWeekend?'Hafta sonu menüsü yok. ':'')+'Manuel yemek ekleyebilirsiniz.</div>';
     }
     dishes.forEach(function(d){
       var hasTuk = (st.tuketimData[d] && st.tuketimData[d].length > 0);
