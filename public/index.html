@@ -4142,13 +4142,19 @@
           <!-- Fatura listesi -->
           <div class="panel" style="grid-column:1/-1">
             <h3>📋 Fatura Listesi</h3>
-            <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
-              <input id="fatListeFirmaFil" placeholder="Firma filtrele..." style="flex:1;min-width:120px;padding:6px;border:1px solid var(--border);border-radius:8px;font-size:12px"/>
-              <input id="fatListeUrunFil" placeholder="Ürün filtrele..." style="flex:1;min-width:120px;padding:6px;border:1px solid var(--border);border-radius:8px;font-size:12px"/>
-              <button class="btn" id="fatListeFiltreBtn">Filtrele</button>
-              <button class="btn danger" id="fatSilBtn" style="font-size:11px">Seçiliyi Sil</button>
+            <div style="display:flex;gap:4px;margin-bottom:8px">
+              <button class="btn" id="fatListeTabGelen" onclick="fatListeSwitchTab('gelen')" style="padding:6px 16px;font-size:12px;font-weight:700;background:#1e40af;color:#fff">📥 Gelen</button>
+              <button class="btn" id="fatListeTabGiden" onclick="fatListeSwitchTab('giden')" style="padding:6px 16px;font-size:12px;font-weight:700;background:#f1f5f9">📤 Giden</button>
             </div>
-            <div id="fatListeDiv" style="max-height:280px;overflow:auto;font-size:12px"></div>
+            <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;align-items:center">
+              <input id="fatListeBas" type="date" style="padding:5px;border:1px solid var(--border);border-radius:6px;font-size:11px"/>
+              <span style="font-size:11px">—</span>
+              <input id="fatListeBit" type="date" style="padding:5px;border:1px solid var(--border);border-radius:6px;font-size:11px"/>
+              <input id="fatListeFirmaFil" placeholder="Firma filtrele..." style="flex:1;min-width:100px;padding:5px;border:1px solid var(--border);border-radius:6px;font-size:11px"/>
+              <input id="fatListeUrunFil" placeholder="Ürün ara (tüm faturalarda)..." style="flex:1;min-width:100px;padding:5px;border:1px solid var(--border);border-radius:6px;font-size:11px"/>
+              <button class="btn" id="fatListeFiltreBtn" style="font-size:11px">Filtrele</button>
+            </div>
+            <div id="fatListeDiv" style="max-height:400px;overflow:auto;font-size:12px"></div>
           </div>
 
           <!-- Tedarikçi Listesi -->
@@ -11199,7 +11205,7 @@ window.addEventListener('DOMContentLoaded', function() {
         <option value="0"${s.kdv===0?' selected':''}>%0</option><option value="1"${s.kdv===1?' selected':''}>%1</option>
         <option value="10"${(s.kdv===10||!s.kdv)?' selected':''}>%10</option><option value="20"${s.kdv===20?' selected':''}>%20</option>
       </select>
-      <span style="font-weight:700;font-size:12px;padding:4px;text-align:right">${fmt(toplam)}</span>
+      <span id="fatRowT_${i}" style="font-weight:700;font-size:12px;padding:4px;text-align:right">${fmt(toplam)}</span>
       <button onclick="fatSilSatir(${i})" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:14px">✕</button>
     </div>`;}).join('');
     fatHesaplaToplam();
@@ -11207,10 +11213,11 @@ window.addEventListener('DOMContentLoaded', function() {
 
   window.fatHesaplaToplam = function(){
     let ara=0, kdvTop=0;
-    window._fatSatirlar.forEach(r=>{
+    window._fatSatirlar.forEach((r,i)=>{
       const satir=(r.miktar||0)*(r.birimFiyat||0);
-      ara+=satir;
-      kdvTop+=satir*((r.kdv||0)/100);
+      const rowKdv=satir*((r.kdv||0)/100);
+      ara+=satir; kdvTop+=rowKdv;
+      const rs=document.getElementById('fatRowT_'+i); if(rs) rs.textContent=fmt(satir+rowKdv);
     });
     const el1=document.getElementById('fatAraToplam'); if(el1) el1.textContent=fmt(ara);
     const el2=document.getElementById('fatKdvTutar'); if(el2) el2.textContent=fmt(kdvTop);
@@ -11278,16 +11285,18 @@ window.addEventListener('DOMContentLoaded', function() {
         <option value="0"${s.kdv===0?' selected':''}>%0</option><option value="1"${s.kdv===1?' selected':''}>%1</option>
         <option value="10"${(s.kdv===10||!s.kdv)?' selected':''}>%10</option><option value="20"${s.kdv===20?' selected':''}>%20</option>
       </select>
-      <span style="font-weight:700;font-size:12px;padding:4px;text-align:right">${fmt(toplam)}</span>
+      <span id="gfatRowT_${i}" style="font-weight:700;font-size:12px;padding:4px;text-align:right">${fmt(toplam)}</span>
       <button onclick="gfatSilSatir(${i})" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:14px">✕</button>
     </div>`;}).join('');
     gfatHesaplaToplam();
   }
   window.gfatHesaplaToplam = function(){
     let ara=0, kdvTop=0;
-    window._gfatSatirlar.forEach(r=>{
+    window._gfatSatirlar.forEach((r,i)=>{
       const satir=(r.miktar||0)*(r.birimFiyat||0);
-      ara+=satir; kdvTop+=satir*((r.kdv||0)/100);
+      const rowKdv=satir*((r.kdv||0)/100);
+      ara+=satir; kdvTop+=rowKdv;
+      const rs=document.getElementById('gfatRowT_'+i); if(rs) rs.textContent=fmt(satir+rowKdv);
     });
     const el1=document.getElementById('gfatAraToplam'); if(el1) el1.textContent=fmt(ara);
     const el2=document.getElementById('gfatKdvTutar'); if(el2) el2.textContent=fmt(kdvTop);
@@ -11303,26 +11312,90 @@ window.addEventListener('DOMContentLoaded', function() {
   // İlk render
   setTimeout(()=>{ fatRenderSatirlar(); gfatRenderSatirlar(); },100);
 
-  function renderFaturaList(firmaFil='', urunFil=''){
+  // Aktif liste tab'ı
+  window._fatListeTab='gelen';
+  window.fatListeSwitchTab = function(tab){
+    window._fatListeTab=tab;
+    const bG=document.getElementById('fatListeTabGelen'), bD=document.getElementById('fatListeTabGiden');
+    if(tab==='giden'){ if(bG){bG.style.background='#f1f5f9';bG.style.color='';} if(bD){bD.style.background='#16a34a';bD.style.color='#fff';} }
+    else { if(bG){bG.style.background='#1e40af';bG.style.color='#fff';} if(bD){bD.style.background='#f1f5f9';bD.style.color='';} }
+    renderFaturaList();
+  };
+
+  function renderFaturaList(){
     const div = document.getElementById('fatListeDiv');
     if(!div) return;
-    let arr = getFaturalar();
-    if(firmaFil) arr=arr.filter(f=>f.firma&&f.firma.toLowerCase().includes(firmaFil.toLowerCase()));
-    if(urunFil) arr=arr.filter(f=>f.urun&&f.urun.toLowerCase().includes(urunFil.toLowerCase()));
+    const isGiden=(window._fatListeTab==='giden');
+    const fatKey=isGiden?'uysa_giden_faturalar':'uysa_faturalar';
+    let arr=JSON.parse(localStorage.getItem(fatKey)||'[]');
+    // Filtreler
+    const firmaFil=(document.getElementById('fatListeFirmaFil')?.value||'').toLowerCase();
+    const urunFil=(document.getElementById('fatListeUrunFil')?.value||'').toLowerCase();
+    const bas=document.getElementById('fatListeBas')?.value||'';
+    const bit=document.getElementById('fatListeBit')?.value||'';
+    if(bas) arr=arr.filter(f=>f.tarih>=bas);
+    if(bit) arr=arr.filter(f=>f.tarih<=bit);
+    if(firmaFil) arr=arr.filter(f=>f.firma&&f.firma.toLowerCase().includes(firmaFil));
+    // Ürün filtresi — o ürünü içeren TÜM faturaları göster
+    let matchFatNos=null;
+    if(urunFil){
+      const matched=arr.filter(f=>f.urun&&f.urun.toLowerCase().includes(urunFil));
+      matchFatNos=new Set(matched.map(f=>(f.firma||'')+'|'+(f.tarih||'')+'|'+(f.no||'')));
+      arr=arr.filter(f=>matchFatNos.has((f.firma||'')+'|'+(f.tarih||'')+'|'+(f.no||'')));
+    }
     if(!arr.length){ div.innerHTML='<div style="color:var(--muted);padding:10px">Kayıt yok.</div>'; return; }
-    div.innerHTML = arr.map((f,i)=>`<div style="border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:6px;background:#fff;display:flex;justify-content:space-between;align-items:center">
-      <div><b>${f.urun||'—'}</b> — ${f.firma||'—'} — ${f.tarih||'?'}<br>
-      <span style="color:var(--muted);font-size:11px">${fmt(f.miktar,3)} kg × ${fmt(f.birimFiyat)} ₺/kg = <b>${fmt(f.toplam)} ₺</b> ${f.no?'| Fatura: '+f.no:''}</span></div>
-      <button onclick="silFatura(${i})" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:16px">🗑️</button>
-    </div>`).join('');
+    // Fatura bazlı gruplama: firma+tarih+no
+    const groups={};
+    arr.forEach((f,origIdx)=>{
+      const key=(f.firma||'')+'|'+(f.tarih||'')+'|'+(f.no||'');
+      if(!groups[key]) groups[key]={firma:f.firma||'—',tarih:f.tarih||'?',no:f.no||'',items:[],toplam:0};
+      groups[key].items.push(f);
+      groups[key].toplam+=(f.toplam||0);
+    });
+    // Tarihe göre sırala (yeniden eskiye)
+    const sorted=Object.values(groups).sort((a,b)=>(b.tarih||'').localeCompare(a.tarih||''));
+    const hl=urunFil?` style="background:#fef9c3"`:' style="background:#fff"';
+    div.innerHTML = sorted.map((g,gi)=>{
+      const color=isGiden?'#16a34a':'#1e40af';
+      const header=`<div onclick="fatToggleFaturaDetay('fatGrp_${gi}')" style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:4px;background:#fff;cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+        <div><b style="color:${color}">${g.firma}</b> <span style="color:var(--muted);font-size:11px">| ${g.no||'—'}</span>
+        <br><span style="font-size:11px;color:var(--muted)">${g.tarih} — ${g.items.length} kalem</span></div>
+        <div style="text-align:right"><b style="font-size:14px;color:${color}">${fmt(g.toplam)} ₺</b><br><span style="font-size:10px;color:var(--muted)">tıkla → detay</span></div>
+      </div>`;
+      const detail=`<div id="fatGrp_${gi}" style="display:none;margin:0 0 8px 12px;padding:8px;border-left:3px solid ${color};background:#f8fafc;border-radius:0 8px 8px 0">
+        <table style="width:100%;border-collapse:collapse;font-size:11px">
+        <thead><tr style="background:var(--soft)"><th style="padding:4px;text-align:left">Ürün</th><th style="text-align:right">Miktar</th><th style="text-align:right">Birim ₺</th><th style="text-align:right">KDV</th><th style="text-align:right">Toplam</th><th style="width:28px"></th></tr></thead>
+        <tbody>${g.items.map(f=>{
+          const isMatch=urunFil&&f.urun&&f.urun.toLowerCase().includes(urunFil);
+          return `<tr style="border-top:1px solid var(--border);${isMatch?'background:#fef9c3':''}"><td style="padding:3px"><b>${f.urun||'—'}</b></td><td style="text-align:right">${fmt(f.miktar,3)} kg</td><td style="text-align:right">${fmt(f.birimFiyat)}</td><td style="text-align:right;color:var(--muted)">%${f.kdv||0}</td><td style="text-align:right;font-weight:700">${fmt(f.toplam)}</td>
+          <td><button onclick="silFaturaByKey('${fatKey}','${(f.firma||'').replace(/'/g,"\\'")}','${f.tarih||''}','${(f.no||'').replace(/'/g,"\\'")}','${(f.urun||'').replace(/'/g,"\\'")}',${f.miktar||0})" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:12px" title="Bu satırı sil">✕</button></td></tr>`;
+        }).join('')}</tbody></table>
+        <div style="text-align:right;margin-top:4px"><button onclick="silFaturaGrup('${fatKey}','${(g.firma||'').replace(/'/g,"\\'")}','${g.tarih||''}','${(g.no||'').replace(/'/g,"\\'")}');" class="btn danger" style="font-size:10px;padding:3px 8px">Tüm faturayı sil</button></div>
+      </div>`;
+      return header+detail;
+    }).join('');
   }
-  window.silFatura = function(i){ const arr=getFaturalar(); arr.splice(i,1); saveFaturalar(arr); renderFaturaList(); refreshAnalizFirma(); };
+  window.fatToggleFaturaDetay = function(id){
+    const el=document.getElementById(id); if(!el) return;
+    el.style.display=el.style.display==='none'?'block':'none';
+  };
+  window.silFaturaByKey = function(key,firma,tarih,no,urun,miktar){
+    if(!confirm(urun+' satırını silmek istediğinize emin misiniz?')) return;
+    let arr=JSON.parse(localStorage.getItem(key)||'[]');
+    const idx=arr.findIndex(f=>f.firma===firma&&f.tarih===tarih&&f.no===no&&f.urun===urun&&(f.miktar||0)===miktar);
+    if(idx>=0) arr.splice(idx,1);
+    localStorage.setItem(key,JSON.stringify(arr));
+    renderFaturaList(); refreshAnalizFirma();
+  };
+  window.silFaturaGrup = function(key,firma,tarih,no){
+    if(!confirm(firma+' — '+tarih+' faturasının tüm kalemlerini silmek istediğinize emin misiniz?')) return;
+    let arr=JSON.parse(localStorage.getItem(key)||'[]');
+    arr=arr.filter(f=>!(f.firma===firma&&f.tarih===tarih&&f.no===no));
+    localStorage.setItem(key,JSON.stringify(arr));
+    renderFaturaList(); refreshAnalizFirma();
+  };
 
-  // (Eski tek satır kaydet kaldırıldı — fatKaydetCoklu kullanılıyor)
-
-  document.getElementById('fatListeFiltreBtn')?.addEventListener('click',()=>{
-    renderFaturaList(document.getElementById('fatListeFirmaFil')?.value||'', document.getElementById('fatListeUrunFil')?.value||'');
-  });
+  document.getElementById('fatListeFiltreBtn')?.addEventListener('click',()=>{ renderFaturaList(); });
 
   function refreshAnalizFirma(){
     const sel = document.getElementById('analizFirma');
