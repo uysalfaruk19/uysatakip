@@ -196,16 +196,16 @@
     var st = window._rcGunState;
     st.dishes = dishes;
 
-    if(!dishes.length){
-      div.innerHTML = '<div style="color:#94a3b8;text-align:center;padding:40px">Bu tarih/müşteri için menü bulunamadı.</div>';
-      return;
-    }
+    // Menü bulunamasa bile sol/sağ paneli göster (manuel yemek eklenebilsin)
 
     // Sol-sağ split render
     var html = '<div style="display:flex;gap:12px;min-height:400px">';
     // SOL — Yemek listesi
     html += '<div style="flex:0 0 220px;border-right:1px solid #e2e8f0;padding-right:12px">';
-    html += '<h4 style="margin:0 0 8px;font-size:13px;color:#1e40af">'+_formatDate(tarih)+' ('+dishes.length+' kalem)</h4>';
+    html += '<h4 style="margin:0 0 8px;font-size:13px;color:#1e40af">'+_formatDate(tarih)+' ('+(dishes.length||0)+' kalem)</h4>';
+    if(!dishes.length){
+      html += '<div style="color:#d97706;font-size:11px;padding:10px;background:#fffbeb;border-radius:6px;margin-bottom:8px">Menu bulunamadi. Manuel yemek ekleyebilirsiniz.</div>';
+    }
     dishes.forEach(function(d){
       var hasTuk = (st.tuketimData[d] && st.tuketimData[d].length > 0);
       var sel2 = (st.selectedDish === d);
