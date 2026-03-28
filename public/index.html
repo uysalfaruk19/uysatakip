@@ -4142,9 +4142,15 @@
           <!-- Fatura listesi -->
           <div class="panel" style="grid-column:1/-1">
             <h3>📋 Fatura Listesi</h3>
-            <div style="display:flex;gap:4px;margin-bottom:8px">
-              <button class="btn" id="fatListeTabGelen" onclick="fatListeSwitchTab('gelen')" style="padding:6px 16px;font-size:12px;font-weight:700;background:#1e40af;color:#fff">📥 Gelen</button>
-              <button class="btn" id="fatListeTabGiden" onclick="fatListeSwitchTab('giden')" style="padding:6px 16px;font-size:12px;font-weight:700;background:#f1f5f9">📤 Giden</button>
+            <div style="display:flex;gap:4px;margin-bottom:8px;justify-content:space-between;flex-wrap:wrap">
+              <div style="display:flex;gap:4px">
+                <button class="btn" id="fatListeTabGelen" onclick="fatListeSwitchTab('gelen')" style="padding:6px 16px;font-size:12px;font-weight:700;background:#1e40af;color:#fff">📥 Gelen</button>
+                <button class="btn" id="fatListeTabGiden" onclick="fatListeSwitchTab('giden')" style="padding:6px 16px;font-size:12px;font-weight:700;background:#f1f5f9">📤 Giden</button>
+              </div>
+              <div style="display:flex;gap:4px">
+                <button class="btn" id="fatModeNormal" onclick="fatListeModeDegistir('normal')" style="padding:5px 12px;font-size:11px;font-weight:700;background:#1e40af;color:#fff">Fatura Bazlı</button>
+                <button class="btn" id="fatModeFirma" onclick="fatListeModeDegistir('firma')" style="padding:5px 12px;font-size:11px;font-weight:700;background:#f1f5f9">Firma Bazlı</button>
+              </div>
             </div>
             <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;align-items:center">
               <input id="fatListeBas" type="date" style="padding:5px;border:1px solid var(--border);border-radius:6px;font-size:11px"/>
@@ -11238,13 +11244,16 @@ window.addEventListener('DOMContentLoaded', function() {
     // Toplam hesapla
     let genelToplam=0;
     satirlar.forEach(s=>{ genelToplam+=(s.miktar||0)*(s.birimFiyat||0)*(1+(s.kdv||0)/100); });
+    // Benzersiz fatura ID
+    const faturaId=Date.now()+'_'+Math.random().toString(36).slice(2,6);
+    const icerik=satirlar.map(s=>s.urun).join(', ');
     // Fatura kayıtları
     const fatKey=isGiden?'uysa_giden_faturalar':'uysa_faturalar';
     const arr=JSON.parse(localStorage.getItem(fatKey)||'[]');
     const prices=JSON.parse(localStorage.getItem('uysa_prices_tl_per_kg_v1')||'{}');
     satirlar.forEach(s=>{
       const satir=(s.miktar||0)*(s.birimFiyat||0);
-      arr.push({firma,tarih,no,urun:s.urun,miktar:s.miktar,birimFiyat:s.birimFiyat,kdv:s.kdv||0,toplam:satir*(1+(s.kdv||0)/100),tip:type});
+      arr.push({faturaId,firma,tarih,no,urun:s.urun,miktar:s.miktar,birimFiyat:s.birimFiyat,kdv:s.kdv||0,toplam:satir*(1+(s.kdv||0)/100),tip:type,icerik});
       if(!isGiden && s.birimFiyat>0) prices[s.urun]=s.birimFiyat;
     });
     localStorage.setItem(fatKey,JSON.stringify(arr));
@@ -11312,8 +11321,9 @@ window.addEventListener('DOMContentLoaded', function() {
   // İlk render
   setTimeout(()=>{ fatRenderSatirlar(); gfatRenderSatirlar(); },100);
 
-  // Aktif liste tab'ı
+  // Aktif liste tab'ı ve görünüm modu
   window._fatListeTab='gelen';
+  window._fatListeMode='normal';
   window.fatListeSwitchTab = function(tab){
     window._fatListeTab=tab;
     const bG=document.getElementById('fatListeTabGelen'), bD=document.getElementById('fatListeTabGiden');
@@ -11321,14 +11331,21 @@ window.addEventListener('DOMContentLoaded', function() {
     else { if(bG){bG.style.background='#1e40af';bG.style.color='#fff';} if(bD){bD.style.background='#f1f5f9';bD.style.color='';} }
     renderFaturaList();
   };
+  window.fatListeModeDegistir = function(mode){
+    window._fatListeMode=mode;
+    const bN=document.getElementById('fatModeNormal'), bF=document.getElementById('fatModeFirma');
+    if(mode==='firma'){ if(bN){bN.style.background='#f1f5f9';bN.style.color='';} if(bF){bF.style.background='#1e40af';bF.style.color='#fff';} }
+    else { if(bN){bN.style.background='#1e40af';bN.style.color='#fff';} if(bF){bF.style.background='#f1f5f9';bF.style.color='';} }
+    renderFaturaList();
+  };
 
-  function renderFaturaList(){
-    const div = document.getElementById('fatListeDiv');
-    if(!div) return;
+  // Fatura ID çıkar (eski kayıtlar için fallback)
+  function _fatGrupKey(f,idx){ return f.faturaId || ((f.firma||'')+'|'+(f.tarih||'')+'|'+(f.no||'')+'|'+idx); }
+
+  function _fatFiltrele(){
     const isGiden=(window._fatListeTab==='giden');
     const fatKey=isGiden?'uysa_giden_faturalar':'uysa_faturalar';
     let arr=JSON.parse(localStorage.getItem(fatKey)||'[]');
-    // Filtreler
     const firmaFil=(document.getElementById('fatListeFirmaFil')?.value||'').toLowerCase();
     const urunFil=(document.getElementById('fatListeUrunFil')?.value||'').toLowerCase();
     const bas=document.getElementById('fatListeBas')?.value||'';
@@ -11336,61 +11353,105 @@ window.addEventListener('DOMContentLoaded', function() {
     if(bas) arr=arr.filter(f=>f.tarih>=bas);
     if(bit) arr=arr.filter(f=>f.tarih<=bit);
     if(firmaFil) arr=arr.filter(f=>f.firma&&f.firma.toLowerCase().includes(firmaFil));
-    // Ürün filtresi — o ürünü içeren TÜM faturaları göster
-    let matchFatNos=null;
     if(urunFil){
-      const matched=arr.filter(f=>f.urun&&f.urun.toLowerCase().includes(urunFil));
-      matchFatNos=new Set(matched.map(f=>(f.firma||'')+'|'+(f.tarih||'')+'|'+(f.no||'')));
-      arr=arr.filter(f=>matchFatNos.has((f.firma||'')+'|'+(f.tarih||'')+'|'+(f.no||'')));
+      // faturaId bazlı: o ürünü içeren faturanın tüm kalemlerini göster
+      const matchIds=new Set();
+      arr.forEach((f,i)=>{ if(f.urun&&f.urun.toLowerCase().includes(urunFil)) matchIds.add(f.faturaId||(f.firma+'|'+f.tarih+'|'+f.no)); });
+      arr=arr.filter(f=>matchIds.has(f.faturaId||(f.firma+'|'+f.tarih+'|'+f.no)));
     }
+    return {arr, fatKey, isGiden, urunFil};
+  }
+
+  // Detay tablosu helper
+  function _fatDetayTablo(items, fatKey, urunFil, color){
+    return `<table style="width:100%;border-collapse:collapse;font-size:11px">
+      <thead><tr style="background:var(--soft)"><th style="padding:4px;text-align:left">Ürün</th><th style="text-align:right">Miktar</th><th style="text-align:right">Birim ₺</th><th style="text-align:right">KDV</th><th style="text-align:right">Toplam</th><th style="width:28px"></th></tr></thead>
+      <tbody>${items.map(f=>{
+        const hl=urunFil&&f.urun&&f.urun.toLowerCase().includes(urunFil);
+        return `<tr style="border-top:1px solid var(--border);${hl?'background:#fef9c3':''}"><td style="padding:3px"><b>${f.urun||'—'}</b></td><td style="text-align:right">${fmt(f.miktar,3)} kg</td><td style="text-align:right">${fmt(f.birimFiyat)}</td><td style="text-align:right;color:var(--muted)">%${f.kdv||0}</td><td style="text-align:right;font-weight:700">${fmt(f.toplam)}</td>
+        <td><button onclick="silFaturaByIdx('${fatKey}',${f._idx})" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:12px" title="Sil">✕</button></td></tr>`;
+      }).join('')}</tbody></table>`;
+  }
+
+  function renderFaturaList(){
+    const div = document.getElementById('fatListeDiv');
+    if(!div) return;
+    const {arr, fatKey, isGiden, urunFil} = _fatFiltrele();
     if(!arr.length){ div.innerHTML='<div style="color:var(--muted);padding:10px">Kayıt yok.</div>'; return; }
-    // Fatura bazlı gruplama: firma+tarih+no
-    const groups={};
-    arr.forEach((f,origIdx)=>{
-      const key=(f.firma||'')+'|'+(f.tarih||'')+'|'+(f.no||'');
-      if(!groups[key]) groups[key]={firma:f.firma||'—',tarih:f.tarih||'?',no:f.no||'',items:[],toplam:0};
-      groups[key].items.push(f);
-      groups[key].toplam+=(f.toplam||0);
-    });
-    // Tarihe göre sırala (yeniden eskiye)
-    const sorted=Object.values(groups).sort((a,b)=>(b.tarih||'').localeCompare(a.tarih||''));
-    const hl=urunFil?` style="background:#fef9c3"`:' style="background:#fff"';
-    div.innerHTML = sorted.map((g,gi)=>{
-      const color=isGiden?'#16a34a':'#1e40af';
-      const header=`<div onclick="fatToggleFaturaDetay('fatGrp_${gi}')" style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:4px;background:#fff;cursor:pointer;display:flex;justify-content:space-between;align-items:center">
-        <div><b style="color:${color}">${g.firma}</b> <span style="color:var(--muted);font-size:11px">| ${g.no||'—'}</span>
-        <br><span style="font-size:11px;color:var(--muted)">${g.tarih} — ${g.items.length} kalem</span></div>
-        <div style="text-align:right"><b style="font-size:14px;color:${color}">${fmt(g.toplam)} ₺</b><br><span style="font-size:10px;color:var(--muted)">tıkla → detay</span></div>
-      </div>`;
-      const detail=`<div id="fatGrp_${gi}" style="display:none;margin:0 0 8px 12px;padding:8px;border-left:3px solid ${color};background:#f8fafc;border-radius:0 8px 8px 0">
-        <table style="width:100%;border-collapse:collapse;font-size:11px">
-        <thead><tr style="background:var(--soft)"><th style="padding:4px;text-align:left">Ürün</th><th style="text-align:right">Miktar</th><th style="text-align:right">Birim ₺</th><th style="text-align:right">KDV</th><th style="text-align:right">Toplam</th><th style="width:28px"></th></tr></thead>
-        <tbody>${g.items.map(f=>{
-          const isMatch=urunFil&&f.urun&&f.urun.toLowerCase().includes(urunFil);
-          return `<tr style="border-top:1px solid var(--border);${isMatch?'background:#fef9c3':''}"><td style="padding:3px"><b>${f.urun||'—'}</b></td><td style="text-align:right">${fmt(f.miktar,3)} kg</td><td style="text-align:right">${fmt(f.birimFiyat)}</td><td style="text-align:right;color:var(--muted)">%${f.kdv||0}</td><td style="text-align:right;font-weight:700">${fmt(f.toplam)}</td>
-          <td><button onclick="silFaturaByKey('${fatKey}','${(f.firma||'').replace(/'/g,"\\'")}','${f.tarih||''}','${(f.no||'').replace(/'/g,"\\'")}','${(f.urun||'').replace(/'/g,"\\'")}',${f.miktar||0})" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:12px" title="Bu satırı sil">✕</button></td></tr>`;
-        }).join('')}</tbody></table>
-        <div style="text-align:right;margin-top:4px"><button onclick="silFaturaGrup('${fatKey}','${(g.firma||'').replace(/'/g,"\\'")}','${g.tarih||''}','${(g.no||'').replace(/'/g,"\\'")}');" class="btn danger" style="font-size:10px;padding:3px 8px">Tüm faturayı sil</button></div>
-      </div>`;
-      return header+detail;
-    }).join('');
+    // Orijinal indeksi sakla (silme için) — arr zaten localStorage'dan parse edilmiş
+    // allArr aynı referans olmadığı için JSON.stringify karşılaştırma kullan
+    const allArr=JSON.parse(localStorage.getItem(fatKey)||'[]');
+    arr.forEach(f=>{ f._idx=allArr.findIndex(a=>a.firma===f.firma&&a.tarih===f.tarih&&a.urun===f.urun&&(a.miktar||0)===(f.miktar||0)&&(a.birimFiyat||0)===(f.birimFiyat||0)&&(a.faturaId||'')===(f.faturaId||'')); });
+    const color=isGiden?'#16a34a':'#1e40af';
+
+    if(window._fatListeMode==='firma'){
+      // ── FIRMA BAZLI: 3 kademeli accordion ──
+      const byFirma={};
+      arr.forEach(f=>{ const k=f.firma||'—'; if(!byFirma[k]) byFirma[k]={firma:k,faturalar:{},toplam:0}; const fid=f.faturaId||(f.tarih+'|'+f.no); if(!byFirma[k].faturalar[fid]) byFirma[k].faturalar[fid]={tarih:f.tarih,no:f.no,icerik:f.icerik||'',items:[],toplam:0}; byFirma[k].faturalar[fid].items.push(f); byFirma[k].faturalar[fid].toplam+=(f.toplam||0); byFirma[k].toplam+=(f.toplam||0); });
+      const firmaList=Object.values(byFirma).sort((a,b)=>b.toplam-a.toplam);
+      div.innerHTML=firmaList.map((fg,fi)=>{
+        const fatArr=Object.values(fg.faturalar).sort((a,b)=>(b.tarih||'').localeCompare(a.tarih||''));
+        const fatCount=fatArr.length;
+        return `<div style="border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:#fff">
+          <div onclick="fatToggleFaturaDetay('fatFirma_${fi}')" style="padding:10px;cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+            <div><b style="color:${color};font-size:14px">${fg.firma}</b><br><span style="font-size:11px;color:var(--muted)">${fatCount} fatura</span></div>
+            <div style="text-align:right"><b style="font-size:16px;color:${color}">${fmt(fg.toplam)} ₺</b></div>
+          </div>
+          <div id="fatFirma_${fi}" style="display:none;padding:0 10px 10px">
+            ${fatArr.map((ft,fti)=>{
+              const icerikOzet=ft.icerik || ft.items.map(x=>x.urun).join(', ');
+              return `<div style="margin-bottom:4px">
+                <div onclick="fatToggleFaturaDetay('fatFD_${fi}_${fti}')" style="padding:6px 8px;background:#f8fafc;border:1px solid var(--border);border-radius:6px;cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+                  <div><span style="font-size:11px;color:var(--muted)">${ft.no||'—'} | ${ft.tarih}</span><br><span style="font-size:11px">${icerikOzet.slice(0,60)}${icerikOzet.length>60?'...':''}</span></div>
+                  <b style="color:${color}">${fmt(ft.toplam)} ₺</b>
+                </div>
+                <div id="fatFD_${fi}_${fti}" style="display:none;margin:2px 0 0 12px;padding:6px;border-left:3px solid ${color};background:#f8fafc;border-radius:0 6px 6px 0">
+                  ${_fatDetayTablo(ft.items, fatKey, urunFil, color)}
+                  <div style="text-align:right;margin-top:4px"><button onclick="silFaturaById('${fatKey}','${ft.items[0]?.faturaId||''}')" class="btn danger" style="font-size:10px;padding:3px 8px">Faturayı sil</button></div>
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>`;
+      }).join('');
+    } else {
+      // ── FATURA BAZLI (NORMAL): her fatura ayrı kart ──
+      const byFatura={};
+      arr.forEach(f=>{ const fid=f.faturaId||(f.firma+'|'+f.tarih+'|'+f.no+'|'+f._idx); if(!byFatura[fid]) byFatura[fid]={faturaId:f.faturaId||'',firma:f.firma||'—',tarih:f.tarih||'?',no:f.no||'',icerik:f.icerik||'',items:[],toplam:0}; byFatura[fid].items.push(f); byFatura[fid].toplam+=(f.toplam||0); });
+      const sorted=Object.values(byFatura).sort((a,b)=>(b.tarih||'').localeCompare(a.tarih||''));
+      div.innerHTML=sorted.map((g,gi)=>{
+        const icerikOzet=g.icerik || g.items.map(x=>x.urun).join(', ');
+        return `<div onclick="fatToggleFaturaDetay('fatN_${gi}')" style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:4px;background:#fff;cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+          <div><b style="color:${color}">${g.firma}</b> <span style="color:var(--muted);font-size:11px">| ${g.no||'—'} | ${g.tarih}</span>
+          <br><span style="font-size:11px;color:var(--muted)">${icerikOzet.slice(0,80)}${icerikOzet.length>80?'...':''} — ${g.items.length} kalem</span></div>
+          <div style="text-align:right"><b style="font-size:14px;color:${color}">${fmt(g.toplam)} ₺</b></div>
+        </div>
+        <div id="fatN_${gi}" style="display:none;margin:0 0 8px 12px;padding:8px;border-left:3px solid ${color};background:#f8fafc;border-radius:0 8px 8px 0">
+          ${_fatDetayTablo(g.items, fatKey, urunFil, color)}
+          <div style="text-align:right;margin-top:4px"><button onclick="silFaturaById('${fatKey}','${g.faturaId}')" class="btn danger" style="font-size:10px;padding:3px 8px">Faturayı sil</button></div>
+        </div>`;
+      }).join('');
+    }
   }
   window.fatToggleFaturaDetay = function(id){
     const el=document.getElementById(id); if(!el) return;
     el.style.display=el.style.display==='none'?'block':'none';
   };
-  window.silFaturaByKey = function(key,firma,tarih,no,urun,miktar){
-    if(!confirm(urun+' satırını silmek istediğinize emin misiniz?')) return;
+  window.silFaturaByIdx = function(key,idx){
     let arr=JSON.parse(localStorage.getItem(key)||'[]');
-    const idx=arr.findIndex(f=>f.firma===firma&&f.tarih===tarih&&f.no===no&&f.urun===urun&&(f.miktar||0)===miktar);
-    if(idx>=0) arr.splice(idx,1);
-    localStorage.setItem(key,JSON.stringify(arr));
-    renderFaturaList(); refreshAnalizFirma();
+    if(idx>=0&&idx<arr.length){
+      if(!confirm(arr[idx].urun+' satırını silmek istediğinize emin misiniz?')) return;
+      arr.splice(idx,1);
+      localStorage.setItem(key,JSON.stringify(arr));
+      renderFaturaList(); refreshAnalizFirma();
+    }
   };
-  window.silFaturaGrup = function(key,firma,tarih,no){
-    if(!confirm(firma+' — '+tarih+' faturasının tüm kalemlerini silmek istediğinize emin misiniz?')) return;
+  window.silFaturaById = function(key,faturaId){
+    if(!faturaId){ alert('Bu eski formatta kaydedilmiş fatura. Tek tek silebilirsiniz.'); return; }
     let arr=JSON.parse(localStorage.getItem(key)||'[]');
-    arr=arr.filter(f=>!(f.firma===firma&&f.tarih===tarih&&f.no===no));
+    const count=arr.filter(f=>f.faturaId===faturaId).length;
+    if(!confirm(count+' kalemlik faturayı silmek istediğinize emin misiniz?')) return;
+    arr=arr.filter(f=>f.faturaId!==faturaId);
     localStorage.setItem(key,JSON.stringify(arr));
     renderFaturaList(); refreshAnalizFirma();
   };
