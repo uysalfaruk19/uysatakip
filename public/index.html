@@ -10,23 +10,26 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>UYSA ERP — Üretim & Yönetim Sistemi</title>
+  <!-- v121 cache-bust: 2026-03-28 -->
+  <script>
+    // NÜKLEER CACHE TEMİZLİĞİ — tüm eski service worker ve cache'leri sil
+    (function(){
+      if(!navigator.serviceWorker) return;
+      // Tüm SW'leri kaldır ve yeniden kaydet
+      navigator.serviceWorker.getRegistrations().then(function(regs){
+        regs.forEach(function(r){ r.unregister(); });
+      });
+      // Tüm cache'leri sil
+      if(window.caches){
+        caches.keys().then(function(keys){
+          keys.forEach(function(k){ caches.delete(k); });
+        });
+      }
+    })();
+  </script>
   <!-- PDF.js preloaded for invoice analysis (FIX-V15) -->
   <!-- pdf.js lazy yüklenir -->
   <script>
-    // ── Force SW update & cache clear on load ──
-    if('serviceWorker' in navigator){
-      navigator.serviceWorker.getRegistrations().then(function(regs){
-        regs.forEach(function(r){ r.update(); });
-      });
-      // Eski cache'leri temizle
-      if(window.caches){
-        caches.keys().then(function(keys){
-          keys.forEach(function(k){
-            if(k.indexOf('v121') === -1) caches.delete(k);
-          });
-        });
-      }
-    }
     window.addEventListener('load', function(){
       if(typeof pdfjsLib !== 'undefined'){
         pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -8349,21 +8352,38 @@ ${note}`);
 
   // ========= FİNANS MODULE =========
   window.switchFinTab = function(tab){
+    // DEBUG: Ekranda göster (sorun çözüldüğünde kaldırılacak)
+    console.log('[switchFinTab] tab=' + tab);
+    var dbg = document.getElementById('finDebugBanner');
+    if(!dbg){
+      dbg = document.createElement('div');
+      dbg.id = 'finDebugBanner';
+      dbg.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#dc2626;color:#fff;padding:8px 16px;font-size:13px;font-weight:700;z-index:999999;text-align:center';
+      document.body.appendChild(dbg);
+    }
+
     try {
-      // 1. Tüm pane'leri gizle, seçili olanı göster — CSS class tabanlı (inline display override'ları engellemek için)
+      // 1. Tüm pane'leri gizle, seçili olanı göster
       var allPaneIds = ['dashboard','gelir','gider','uretim','sayi','ozet','butce','alacak','borc','patron'];
+      var foundCount = 0;
       allPaneIds.forEach(function(t){
         var pane = document.getElementById('finPane-'+t);
         if(pane){
+          foundCount++;
           pane.classList.remove('fin-active');
-          pane.style.display = ''; // inline style'ı temizle, CSS kuralı devralır
+          pane.removeAttribute('style'); // TÜM inline style'ları kaldır
         }
       });
       var el = document.getElementById('finPane-'+tab);
       if(el){
         el.classList.add('fin-active');
-        el.style.display = ''; // inline style'ı temizle, CSS .fin-active kuralı devralır
       }
+
+      // DEBUG banner güncelle
+      var activeEl = document.querySelector('.fin-pane.fin-active');
+      var computedDisplay = activeEl ? getComputedStyle(activeEl).display : 'YOK';
+      dbg.textContent = 'v121 | Tab: ' + tab + ' | Pane bulundu: ' + foundCount + '/10 | Aktif: ' + (activeEl ? activeEl.id : 'YOK') + ' | Display: ' + computedDisplay;
+      setTimeout(function(){ if(dbg) dbg.style.background = '#059669'; }, 300);
 
       // 2. Tab butonlarını güncelle
       ['dashboard','gelir','gider','uretim','sayi','ozet','butce','alacak','borc','patron'].forEach(function(t){
