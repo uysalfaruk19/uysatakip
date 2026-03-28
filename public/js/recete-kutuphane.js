@@ -107,9 +107,17 @@
       ? 'background:linear-gradient(135deg,#f8fafc,#f1f5f9);'
       : 'background:linear-gradient(135deg,#f1f5f9,#e2e8f0);';
     var fontSize = indent ? 'font-size:12px;' : 'font-size:13px;';
+    // +/- butonları: anayemek (parent) ve diger hariç
+    var btns = '';
+    if(catKey !== 'anayemek' && catKey !== 'diger'){
+      btns = '<span style="display:inline-flex;gap:4px;margin-left:8px">'
+        +'<span onclick="event.stopPropagation();rcOpenAddModal(\''+catKey+'\')" style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:#059669;color:#fff;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.2)" title="Diğer\'den ekle">+</span>'
+        +'<span onclick="event.stopPropagation();rcOpenRemoveModal(\''+catKey+'\')" style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:#dc2626;color:#fff;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.2)" title="Diğer\'e taşı">−</span>'
+        +'</span>';
+    }
     return '<div onclick="rcToggleCat(\''+catKey+'\')" style="'+pad+pad+'padding:8px 10px;'+bg+'border-radius:8px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-weight:700;'+fontSize+'color:#334155;user-select:none">'
       +'<span>'+(isOpen?'▼':'▶')+'  '+label+'</span>'
-      +'<span style="font-size:10px;color:#64748b;font-weight:500">'+recipeCount+'/'+count+' reçete</span>'
+      +'<span style="display:flex;align-items:center"><span style="font-size:10px;color:#64748b;font-weight:500">'+recipeCount+'/'+count+' reçete</span>'+btns+'</span>'
       +'</div>';
   }
 
@@ -142,8 +150,6 @@
           if(items.length) hasAnyItem = true;
         });
 
-        if(!hasAnyItem) return;
-
         var anayemekOpen = filter ? true : (_openCats.anayemek !== false);
         html += '<div style="margin-bottom:4px">';
         html += _catHeader('anayemek', CAT_LABELS.anayemek, allSubRecipeCount, allSubItems.length, anayemekOpen, false);
@@ -153,8 +159,6 @@
           ANAYEMEK_SUBS.forEach(function(subKey){
             var items = groups[subKey] || [];
             if(filter) items = items.filter(function(n){ return n.toLowerCase().indexOf(filter)>=0; });
-            if(!items.length) return;
-
             var subOpen = filter ? true : (_openCats[subKey] !== false);
             var subLabel = CAT_LABELS[subKey] || subKey;
             var subRecipeCount = items.filter(function(n){ return recipes[n] && recipes[n].length>0; }).length;
@@ -177,8 +181,6 @@
       // === Normal kategoriler ===
       var items = groups[topKey] || [];
       if(filter) items = items.filter(function(n){ return n.toLowerCase().indexOf(filter)>=0; });
-      if(!items.length) return;
-
       var isOpen = filter ? true : (_openCats[topKey] !== false);
       var label = CAT_LABELS[topKey] || topKey;
       var count = items.length;
@@ -602,6 +604,92 @@
   window.rcRenderYemekList = function(){
     _ensureDatalist();
     _origRender();
+  };
+
+  // ── Katalog yardımcıları ───────────────────────────────────
+  function _removeFromCatalog(cat, name){
+    if(cat.soups){ cat.soups = cat.soups.filter(function(n){ return n!==name; }); }
+    if(cat.mainsByType){ Object.keys(cat.mainsByType).forEach(function(k){ cat.mainsByType[k] = cat.mainsByType[k].filter(function(n){ return n!==name; }); }); }
+    if(cat.sidesByGroup){ Object.keys(cat.sidesByGroup).forEach(function(k){ cat.sidesByGroup[k] = cat.sidesByGroup[k].filter(function(n){ return n!==name; }); }); }
+    if(cat.salads){ cat.salads = cat.salads.filter(function(n){ return n!==name; }); }
+  }
+
+  function _addToCatalog(cat, catKey, name){
+    _removeFromCatalog(cat, name); // önce eski yerden sil
+    if(catKey==='soups'){ if(!cat.soups) cat.soups=[]; cat.soups.push(name); }
+    else if(ANAYEMEK_SUBS.indexOf(catKey)>=0){ if(!cat.mainsByType) cat.mainsByType={}; if(!cat.mainsByType[catKey]) cat.mainsByType[catKey]=[]; cat.mainsByType[catKey].push(name); }
+    else if(catKey==='sides'){ if(!cat.sidesByGroup) cat.sidesByGroup={}; if(!cat.sidesByGroup.other) cat.sidesByGroup.other=[]; cat.sidesByGroup.other.push(name); }
+    else if(catKey==='salatabar'){ if(!cat.salads) cat.salads=[]; cat.salads.push(name); }
+  }
+
+  // ── Kategori modal builder ─────────────────────────────────
+  function _buildCatModal(id, title, dishes, btnLabel, btnColor, onAction){
+    var overlay = document.createElement('div');
+    overlay.id = id;
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+
+    var listHtml = '';
+    if(!dishes.length){
+      listHtml = '<div style="padding:16px;color:#94a3b8;text-align:center">Taşınacak yemek yok.</div>';
+    } else {
+      listHtml = '<div style="max-height:50vh;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px">';
+      // Tümünü seç
+      listHtml += '<label style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#f1f5f9;border-bottom:1px solid #e2e8f0;cursor:pointer;font-weight:700;font-size:12px">'
+        +'<input type="checkbox" onchange="this.closest(\'div\').querySelectorAll(\'.cat-modal-cb\').forEach(function(c){c.checked=this.checked}.bind(this))"/> Tümünü Seç</label>';
+      dishes.forEach(function(d){
+        listHtml += '<label style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid #f1f5f9;cursor:pointer;font-size:13px" onmouseover="this.style.background=\'#eff6ff\'" onmouseout="this.style.background=\'\'">'
+          +'<input type="checkbox" class="cat-modal-cb" value="'+d.replace(/"/g,'&quot;')+'"/> '+d+'</label>';
+      });
+      listHtml += '</div>';
+    }
+
+    overlay.innerHTML = '<div style="background:#fff;border-radius:14px;padding:24px;width:420px;max-width:95vw;box-shadow:0 12px 40px rgba(0,0,0,.25)">'
+      +'<h3 style="margin:0 0 14px;color:#0f172a;font-size:15px">'+title+'</h3>'
+      +listHtml
+      +'<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">'
+      +'<button onclick="document.getElementById(\''+id+'\').remove()" style="padding:8px 18px;border:1px solid #d1d5db;border-radius:8px;background:#f8fafc;cursor:pointer;font-size:13px">İptal</button>'
+      +(dishes.length ? '<button id="'+id+'Btn" style="padding:8px 18px;border:none;border-radius:8px;background:'+btnColor+';color:#fff;cursor:pointer;font-size:13px;font-weight:700">'+btnLabel+'</button>' : '')
+      +'</div></div>';
+
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', function(e){ if(e.target===overlay) overlay.remove(); });
+
+    var btn = document.getElementById(id+'Btn');
+    if(btn) btn.addEventListener('click', function(){
+      var checked = [];
+      overlay.querySelectorAll('.cat-modal-cb:checked').forEach(function(cb){ checked.push(cb.value); });
+      if(!checked.length){ alert('Lütfen en az bir yemek seçin.'); return; }
+      onAction(checked);
+      overlay.remove();
+    });
+  }
+
+  // ── + Butonu: Diğer'den seçili kategoriye ekle ─────────────
+  window.rcOpenAddModal = function(catKey){
+    var groups = _categorize();
+    var label = CAT_LABELS[catKey] || catKey;
+    _buildCatModal('rcAddModal', '📥 Diğer → ' + label, groups.diger || [], 'Ekle', '#059669', function(selected){
+      var cat = rc.getCatalog();
+      selected.forEach(function(name){ _addToCatalog(cat, catKey, name); });
+      rc.setCatalog(cat);
+      _openCats[catKey] = true;
+      if(ANAYEMEK_SUBS.indexOf(catKey)>=0) _openCats.anayemek = true;
+      window.rcRenderYemekList();
+      if(typeof window.toast==='function') window.toast(selected.length + ' yemek ' + label + ' kategorisine eklendi');
+    });
+  };
+
+  // ── - Butonu: Seçili kategoriden Diğer'e taşı ──────────────
+  window.rcOpenRemoveModal = function(catKey){
+    var groups = _categorize();
+    var label = CAT_LABELS[catKey] || catKey;
+    _buildCatModal('rcRemoveModal', '📤 ' + label + ' → Diğer', groups[catKey] || [], 'Taşı', '#dc2626', function(selected){
+      var cat = rc.getCatalog();
+      selected.forEach(function(name){ _removeFromCatalog(cat, name); });
+      rc.setCatalog(cat);
+      window.rcRenderYemekList();
+      if(typeof window.toast==='function') window.toast(selected.length + ' yemek Diğer kategorisine taşındı');
+    });
   };
 
 })();
