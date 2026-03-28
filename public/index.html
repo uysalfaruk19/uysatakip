@@ -8382,7 +8382,13 @@ ${note}`);
       // DEBUG banner güncelle
       var activeEl = document.querySelector('.fin-pane.fin-active');
       var computedDisplay = activeEl ? getComputedStyle(activeEl).display : 'YOK';
-      dbg.textContent = 'v121 | Tab: ' + tab + ' | Pane bulundu: ' + foundCount + '/10 | Aktif: ' + (activeEl ? activeEl.id : 'YOK') + ' | Display: ' + computedDisplay;
+      // Dashboard pane durumunu da kontrol et
+      var dashEl = document.getElementById('finPane-dashboard');
+      var dashClass = dashEl ? dashEl.className : 'NOT_FOUND';
+      var dashComputed = dashEl ? getComputedStyle(dashEl).display : 'NOT_FOUND';
+      var dashInline = dashEl ? (dashEl.getAttribute('style') || 'none') : 'NOT_FOUND';
+      dbg.textContent = 'v121 | Tab: ' + tab + ' | Aktif: ' + (activeEl ? activeEl.id : 'YOK') + ' | DashClass: ' + dashClass + ' | DashComputed: ' + dashComputed + ' | DashInline: ' + dashInline;
+      dbg.style.fontSize = '11px';
       setTimeout(function(){ if(dbg) dbg.style.background = '#059669'; }, 300);
 
       // 2. Tab butonlarını güncelle
