@@ -32,6 +32,7 @@
   _rc.getUretimGider = function(){ return _ls.get(URETIM_KEY, []); };
   _rc.setUretimGider = function(d){ _ls.set(URETIM_KEY, d); };
   _rc.getCatalog  = function(){ return _ls.get(CATALOG_KEY, {}); };
+  _rc.setCatalog  = function(d){ _ls.set(CATALOG_KEY, d); };
 
   // ── Format helpers ───────────────────────────────────────────
   _rc.fmt = function(n, dec){
