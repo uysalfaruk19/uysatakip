@@ -8328,34 +8328,47 @@ ${note}`);
 
   // ========= FİNANS MODULE =========
   window.switchFinTab = function(tab){
-    // dashboard açılırsa render et
+    // 1. Dashboard / Butce / Patron init
     if (tab === 'dashboard') { setTimeout(function(){ if (typeof window.renderFinDashboard==='function') window.renderFinDashboard(); }, 100); }
-    if (tab === 'butce') { setTimeout(function(){ renderButceSapma(); initButceYillar(); }, 100); }
+    if (tab === 'butce') { setTimeout(function(){ if(typeof renderButceSapma==='function') renderButceSapma(); if(typeof initButceYillar==='function') initButceYillar(); }, 100); }
+    if (tab === 'patron') { setTimeout(function(){ if(typeof window.renderPatronSayfasi==='function') window.renderPatronSayfasi(); },100); }
+
+    // 2. Tüm pane'leri gizle, seçili olanı göster
     document.querySelectorAll('.fin-pane').forEach(p=>p.style.display='none');
     const el = document.getElementById('finPane-'+tab);
     if(el) el.style.display='';
-    // Highlight active tab button
-    if (tab === 'patron') { setTimeout(function(){ if(typeof window.renderPatronSayfasi==='function') window.renderPatronSayfasi(); },100); }
+
+    // 3. Tab butonlarını güncelle
     ['dashboard','gelir','gider','uretim','sayi','ozet','butce','alacak','borc','patron'].forEach(t=>{
       const b = document.getElementById('finTab'+t.charAt(0).toUpperCase()+t.slice(1));
       if(b){
         b.className = t===tab ? 'btn primary' : 'btn';
-        // Alacak/Borç özel renkleri koru
-        if(t==='alacak' && t!==tab){ b.style.borderColor='#10b981'; b.style.color='#059669'; }
-        else if(t==='borc' && t!==tab){ b.style.borderColor='#ef4444'; b.style.color='#dc2626'; }
-        else if(t==='patron' && t!==tab){ b.style.background='#7c3aed'; b.style.color='#fff'; }
-        else if(t===tab){ b.style.borderColor=''; b.style.color=''; if(t==='patron'){b.style.background='#4c1d95';b.style.color='#fff';} }
+        if(t==='alacak' && t!==tab){ b.style.borderColor='#10b981'; b.style.color='#059669'; b.style.background=''; }
+        else if(t==='borc' && t!==tab){ b.style.borderColor='#ef4444'; b.style.color='#dc2626'; b.style.background=''; }
+        else if(t==='patron' && t!==tab){ b.style.background='#7c3aed'; b.style.color='#fff'; b.style.borderColor=''; }
+        else if(t===tab){ b.style.borderColor=''; b.style.color=''; if(t==='patron'){b.style.background='#4c1d95';b.style.color='#fff';} else { b.style.background=''; } }
+        else { b.style.borderColor=''; b.style.color=''; b.style.background=''; }
       }
     });
-    if(tab==='uretim') syncAllCustomerDropdowns();
-    if(tab==='gelir') syncAllCustomerDropdowns();
+
+    // 4. Tab-specific init callbacks
+    if(tab==='uretim' || tab==='gelir'){ if(typeof syncAllCustomerDropdowns==='function') syncAllCustomerDropdowns(); }
     if(tab==='alacak') { setTimeout(function(){ if(typeof window.renderAlacaklar==='function') window.renderAlacaklar(); if(typeof window.fillTahsilatDropdowns==='function') window.fillTahsilatDropdowns(); },100); }
     if(tab==='borc') { setTimeout(function(){ if(typeof window.renderBorclar==='function') window.renderBorclar(); if(typeof window.fillOdemeDropdowns==='function') window.fillOdemeDropdowns(); },100); }
     if(tab==='sayi'){
-      gsSyncDropdowns();
+      if(typeof gsSyncDropdowns==='function') gsSyncDropdowns();
       const gsTarih = document.getElementById('gs-tarih');
       if(gsTarih && !gsTarih.value) gsTarih.value = today();
-      gsRenderTable();
+      if(typeof gsRenderTable==='function') gsRenderTable();
+      // v75/v76/v77 sayi tab hooks
+      setTimeout(function(){
+        if(typeof window.gsRenderTableV76==='function') window.gsRenderTableV76();
+        if(typeof window.v75RenderAylikRapor==='function') window.v75RenderAylikRapor();
+        var aySecici = document.getElementById('v77AySecici');
+        if(aySecici && !aySecici.value){
+          var d=new Date(); aySecici.value=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+        }
+      }, 200);
     }
   };
   switchFinTab('dashboard'); // default – v62
@@ -17699,16 +17712,7 @@ window.addEventListener('load', function() {
     }
   });
 
-  /* ────────────────────────────────────────────────────────────────────
-     6. switchFinTab OVERRIDE — sayi tab'ında aylık raporu göster
-     ──────────────────────────────────────────────────────────────────── */
-  var _origSwitchFinTab = window.switchFinTab;
-  window.switchFinTab = function(tab){
-    if(typeof _origSwitchFinTab === 'function') _origSwitchFinTab.apply(this, arguments);
-    if(tab === 'sayi'){
-      setTimeout(v75RenderAylikRapor, 300);
-    }
-  };
+  /* switchFinTab sayi hook — artık ana fonksiyonda birleştirildi */
 
   /* ────────────────────────────────────────────────────────────────────
      INIT
@@ -18286,18 +18290,7 @@ window.addEventListener('load', function() {
   };
   window.renderGunlukSayilar = function(){ window.gsRenderTableV76(); };
 
-  /* ── switchFinTab hook — sayi sekmesi açılınca otomatik yükle ──── */
-  var _origSwitchFinTabV76 = window.switchFinTab;
-  window.switchFinTab = function(tab){
-    if(typeof _origSwitchFinTabV76==='function') _origSwitchFinTabV76.apply(this,arguments);
-    if(tab==='sayi'){
-      setTimeout(function(){
-        var tarihEl=document.getElementById('gs-tarih');
-        if(tarihEl&&!tarihEl.value) tarihEl.value=_today();
-        window.gsRenderTableV76();
-      }, 150);
-    }
-  };
+  /* switchFinTab sayi hook — artık ana fonksiyonda birleştirildi */
 
   /* ── Gün sonu otomatik kayıt ──────────────────────────────────── */
   function _autoSaveGunSonu(){
@@ -18982,18 +18975,7 @@ window.addEventListener('load', function() {
     // İlk render
     _renderDokAll('');
 
-    // Finans sayi tab açıldığında ay seçicisi set et
-    var origSwitch = window.switchFinTab;
-    window.switchFinTab = function(tab){
-      if(typeof origSwitch==='function') origSwitch.apply(this,arguments);
-      if(tab==='sayi'){
-        setTimeout(function(){
-          var ay=document.getElementById('v77AySecici');
-          if(ay && !ay.value) ay.value=_thisMonth();
-          if(typeof window.v75RenderAylikRapor==='function') window.v75RenderAylikRapor();
-        },200);
-      }
-    };
+    /* switchFinTab sayi hook — artık ana fonksiyonda birleştirildi */
 
     console.log('✅ UYSA v78 patch loaded.');
   }
