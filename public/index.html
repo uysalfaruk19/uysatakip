@@ -8919,7 +8919,7 @@ alert('Tutar giriniz.'); return; }
   // Get ingredient price from cost store (maliyetlendirme modülü)
   function getMalzemePrice(malzeme){
     try{
-      const prices = JSON.parse(localStorage.getItem('uysa_prices_v1')||'{}');
+      const prices = JSON.parse(localStorage.getItem('uysa_prices_tl_per_kg_v1')||'{}');
       return prices[malzeme] ? parseFloat(prices[malzeme]) : 0;
     }catch(e){ return 0; }
   }
@@ -11752,7 +11752,7 @@ window.addEventListener('DOMContentLoaded', function() {
     const div=document.getElementById('menuMuhendislikSonuc');
     try{
       const recipes=JSON.parse(localStorage.getItem('uysa_recipes_v2')||'{}');
-      const prices=JSON.parse(localStorage.getItem('uysa_prices_v1')||'{}');
+      const prices=JSON.parse(localStorage.getItem('uysa_prices_tl_per_kg_v1')||'{}');
       const catalog=JSON.parse(localStorage.getItem('uysa_catalog_v1')||'{}');
       const allDishes=Object.values(catalog).flat().map(d=>typeof d==='string'?d:d.name).filter(Boolean);
       if(!allDishes.length){ div.innerHTML='<div style="color:var(--muted)">Yemek kataloğu boş.</div>'; return; }
@@ -12691,7 +12691,7 @@ window.addEventListener('DOMContentLoaded', function() {
     const aktifDepo = ls.get('uysa_aktif_depo','');
     const stok = aktifDepo ? ls.get('uysa_stok_'+aktifDepo,{}) : {};
     const tarifler = ls.get('uysa_recipes_v2',[]);
-    const fiyatlar = ls.get('uysa_prices_v1',{});
+    const fiyatlar = ls.get('uysa_prices_tl_per_kg_v1',{});
     const div = document.getElementById('siparisOneriDiv');
     if(!div) return;
 
@@ -21397,7 +21397,7 @@ window.uysaPuantajGenelOzet = function() {
         const div = document.getElementById('menuMuhendislikSonuc');
         if (!div) return;
         const recipes = lsGet('uysa_recipes_v2', {});
-        const prices  = lsGet('uysa_prices_v1', {});
+        const prices  = lsGet('uysa_prices_tl_per_kg_v1', {});
         const catalog = lsGet('uysa_catalog_v1', {});
         const allDishes = Object.values(catalog).flat().map(d => typeof d === 'string' ? d : d.name).filter(Boolean);
         if (!allDishes.length) { div.innerHTML = '<div style="color:#888">Yemek kataloğu boş.</div>'; return; }
