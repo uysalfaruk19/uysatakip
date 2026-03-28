@@ -2783,7 +2783,7 @@
             </div>
           </div>
           <!-- ══ GELİR VERGİSİ ÖZET PANELİ ══ -->
-          <div id="gelirVergisiPanel" style="background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:2px solid #86efac;border-radius:12px;padding:14px;margin-bottom:14px;cursor:pointer" onclick="if(typeof kpiDetayModal==='function')kpiDetayModal('gelir-vergisi')"
+          <div id="gelirVergisiPanel" style="background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:2px solid #86efac;border-radius:12px;padding:14px;margin-bottom:14px;cursor:pointer" onclick="if(typeof kpiDetayModal==='function')kpiDetayModal('gelir-vergisi')">
             <div style="font-size:12px;font-weight:700;color:#166534;margin-bottom:8px">GELİR VERGİSİ HESABI (Faturalı Gelir − Faturalı Gider)</div>
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px">
               <div><div style="font-size:10px;color:#64748b">KDV'li Tüm Gelirler</div><div id="gvGelirler" style="font-weight:800;color:#166534">0 ₺</div></div>
@@ -8352,44 +8352,20 @@ ${note}`);
 
   // ========= FİNANS MODULE =========
   window.switchFinTab = function(tab){
-    // DEBUG: Ekranda göster (sorun çözüldüğünde kaldırılacak)
-    console.log('[switchFinTab] tab=' + tab);
-    var dbg = document.getElementById('finDebugBanner');
-    if(!dbg){
-      dbg = document.createElement('div');
-      dbg.id = 'finDebugBanner';
-      dbg.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#dc2626;color:#fff;padding:8px 16px;font-size:13px;font-weight:700;z-index:999999;text-align:center';
-      document.body.appendChild(dbg);
-    }
-
     try {
-      // 1. Tüm pane'leri gizle, seçili olanı göster
+      // 1. Tüm pane'leri gizle, seçili olanı göster — CSS class tabanlı
       var allPaneIds = ['dashboard','gelir','gider','uretim','sayi','ozet','butce','alacak','borc','patron'];
-      var foundCount = 0;
       allPaneIds.forEach(function(t){
         var pane = document.getElementById('finPane-'+t);
         if(pane){
-          foundCount++;
           pane.classList.remove('fin-active');
-          pane.removeAttribute('style'); // TÜM inline style'ları kaldır
+          pane.removeAttribute('style');
         }
       });
       var el = document.getElementById('finPane-'+tab);
       if(el){
         el.classList.add('fin-active');
       }
-
-      // DEBUG banner güncelle
-      var activeEl = document.querySelector('.fin-pane.fin-active');
-      var computedDisplay = activeEl ? getComputedStyle(activeEl).display : 'YOK';
-      // Dashboard pane durumunu da kontrol et
-      var dashEl = document.getElementById('finPane-dashboard');
-      var dashClass = dashEl ? dashEl.className : 'NOT_FOUND';
-      var dashComputed = dashEl ? getComputedStyle(dashEl).display : 'NOT_FOUND';
-      var dashInline = dashEl ? (dashEl.getAttribute('style') || 'none') : 'NOT_FOUND';
-      dbg.textContent = 'v121 | Tab: ' + tab + ' | Aktif: ' + (activeEl ? activeEl.id : 'YOK') + ' | DashClass: ' + dashClass + ' | DashComputed: ' + dashComputed + ' | DashInline: ' + dashInline;
-      dbg.style.fontSize = '11px';
-      setTimeout(function(){ if(dbg) dbg.style.background = '#059669'; }, 300);
 
       // 2. Tab butonlarını güncelle
       ['dashboard','gelir','gider','uretim','sayi','ozet','butce','alacak','borc','patron'].forEach(function(t){
