@@ -4024,34 +4024,58 @@
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
 
-          <!-- Fatura girişi — Çoklu Ürün -->
+          <!-- Gelen / Giden Fatura Sekmeleri -->
           <div class="panel" style="grid-column:1/-1">
-            <h3>🧾 Gelen Fatura Girişi</h3>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:10px 0">
-              <div><label>Tedarikçi Firma</label>
-                <input id="fat-firma" placeholder="Firma adı" list="tedarikciListesi"/>
-                <datalist id="tedarikciListesi"></datalist>
+            <div style="display:flex;gap:4px;margin-bottom:12px">
+              <button class="btn" id="fatTabGelen" onclick="fatSwitchTab('gelen')" style="padding:8px 20px;font-size:13px;font-weight:700;background:#1e40af;color:#fff">📥 Gelen Fatura</button>
+              <button class="btn" id="fatTabGiden" onclick="fatSwitchTab('giden')" style="padding:8px 20px;font-size:13px;font-weight:700;background:#f1f5f9">📤 Giden Fatura</button>
+            </div>
+            <!-- GELEN FATURA -->
+            <div id="fatPaneGelen">
+              <h3 style="margin:0 0 8px">🧾 Gelen Fatura (Alış)</h3>
+              <div class="hint" style="margin-bottom:8px">Tedarikçiden gelen fatura → otomatik <b>borç</b> kaydı oluşturur.</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
+                <div><label>Tedarikçi Firma</label><input id="fat-firma" placeholder="Firma adı" list="tedarikciListesi"/><datalist id="tedarikciListesi"></datalist></div>
+                <div><label>Fatura Tarihi</label><input id="fat-tarih" type="date"/></div>
+                <div><label>Fatura No</label><input id="fat-no" placeholder="FAT-2026-001"/></div>
               </div>
-              <div><label>Fatura Tarihi</label><input id="fat-tarih" type="date"/></div>
-              <div><label>Fatura No</label><input id="fat-no" placeholder="FAT-2026-001"/></div>
-            </div>
-            <!-- Ürün Satırları -->
-            <div style="font-size:12px;font-weight:700;display:grid;grid-template-columns:2fr 1fr 1fr 1fr 32px;gap:6px;padding:6px 0;border-bottom:2px solid var(--border);color:var(--muted)">
-              <span>Ürün Adı</span><span>Miktar (kg)</span><span>Birim ₺/kg</span><span>Toplam ₺</span><span></span>
-            </div>
-            <div id="fatSatirlarDiv"></div>
-            <button class="btn" onclick="fatEkleSatir()" style="margin-top:6px;font-size:12px">+ Ürün Satırı Ekle</button>
-            <!-- KDV & Toplam -->
-            <div style="display:flex;justify-content:flex-end;gap:16px;margin-top:12px;padding-top:10px;border-top:2px solid var(--border);font-size:13px">
-              <div style="text-align:right">
-                <div>Ara Toplam: <b id="fatAraToplam">0.00</b> ₺</div>
-                <div style="margin:4px 0">KDV <select id="fatKdvOran" onchange="fatHesaplaToplam()" style="padding:2px 4px;border:1px solid var(--border);border-radius:4px;font-size:12px">
-                  <option value="0">%0</option><option value="1">%1</option><option value="10" selected>%10</option><option value="20">%20</option>
-                </select>: <b id="fatKdvTutar">0.00</b> ₺</div>
-                <div style="font-size:16px;font-weight:900;color:#1e40af">GENEL TOPLAM: <b id="fatGenelToplam">0.00</b> ₺</div>
+              <div style="font-size:11px;font-weight:700;display:grid;grid-template-columns:2fr 1fr 1fr 70px 1fr 28px;gap:4px;padding:4px 0;border-bottom:2px solid var(--border);color:var(--muted)">
+                <span>Ürün Adı</span><span>Miktar (kg)</span><span>Birim ₺/kg</span><span>KDV %</span><span>Toplam ₺</span><span></span>
               </div>
+              <div id="fatSatirlarDiv"></div>
+              <button class="btn" onclick="fatEkleSatir()" style="margin-top:4px;font-size:11px">+ Ürün Satırı Ekle</button>
+              <div style="display:flex;justify-content:flex-end;margin-top:10px;padding-top:8px;border-top:2px solid var(--border);font-size:13px">
+                <div style="text-align:right">
+                  <div>Ara Toplam: <b id="fatAraToplam">0.00</b> ₺</div>
+                  <div style="margin:3px 0">KDV Toplam: <b id="fatKdvTutar">0.00</b> ₺</div>
+                  <div style="font-size:16px;font-weight:900;color:#1e40af">GENEL TOPLAM: <b id="fatGenelToplam">0.00</b> ₺</div>
+                </div>
+              </div>
+              <button class="btn success" onclick="fatKaydetCoklu('gelen')" style="margin-top:8px;width:100%;font-size:14px;padding:12px">💾 Gelen Fatura Kaydet</button>
             </div>
-            <button class="btn success" onclick="fatKaydetCoklu()" style="margin-top:10px;width:100%;font-size:14px;padding:12px">💾 Fatura Kaydet</button>
+            <!-- GİDEN FATURA -->
+            <div id="fatPaneGiden" style="display:none">
+              <h3 style="margin:0 0 8px">📤 Giden Fatura (Satış)</h3>
+              <div class="hint" style="margin-bottom:8px">Müşteriye kesilen fatura → otomatik <b>alacak</b> kaydı oluşturur.</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
+                <div><label>Müşteri</label><input id="gfat-musteri" placeholder="Müşteri adı" list="musteriListesiGFat"/><datalist id="musteriListesiGFat"></datalist></div>
+                <div><label>Fatura Tarihi</label><input id="gfat-tarih" type="date"/></div>
+                <div><label>Fatura No</label><input id="gfat-no" placeholder="SF-2026-001"/></div>
+              </div>
+              <div style="font-size:11px;font-weight:700;display:grid;grid-template-columns:2fr 1fr 1fr 70px 1fr 28px;gap:4px;padding:4px 0;border-bottom:2px solid var(--border);color:var(--muted)">
+                <span>Hizmet/Ürün</span><span>Miktar</span><span>Birim ₺</span><span>KDV %</span><span>Toplam ₺</span><span></span>
+              </div>
+              <div id="gfatSatirlarDiv"></div>
+              <button class="btn" onclick="gfatEkleSatir()" style="margin-top:4px;font-size:11px">+ Satır Ekle</button>
+              <div style="display:flex;justify-content:flex-end;margin-top:10px;padding-top:8px;border-top:2px solid var(--border);font-size:13px">
+                <div style="text-align:right">
+                  <div>Ara Toplam: <b id="gfatAraToplam">0.00</b> ₺</div>
+                  <div style="margin:3px 0">KDV Toplam: <b id="gfatKdvTutar">0.00</b> ₺</div>
+                  <div style="font-size:16px;font-weight:900;color:#16a34a">GENEL TOPLAM: <b id="gfatGenelToplam">0.00</b> ₺</div>
+                </div>
+              </div>
+              <button class="btn success" onclick="fatKaydetCoklu('giden')" style="margin-top:8px;width:100%;font-size:14px;padding:12px;background:#16a34a">💾 Giden Fatura Kaydet</button>
+            </div>
           </div>
 
           <!-- Fiyat Değişim Analizi + Chart -->
@@ -11157,55 +11181,127 @@ window.addEventListener('DOMContentLoaded', function() {
   function getFaturalar(){ return ls.get('uysa_faturalar',[]); }
   function saveFaturalar(f){ ls.set('uysa_faturalar',f); }
 
-  // ── Çoklu ürün satır yönetimi ──
-  window._fatSatirlar = [{urun:'',miktar:0,birimFiyat:0}];
-  window.fatEkleSatir = function(){ window._fatSatirlar.push({urun:'',miktar:0,birimFiyat:0}); fatRenderSatirlar(); };
-  window.fatSilSatir = function(i){ window._fatSatirlar.splice(i,1); if(!window._fatSatirlar.length) window._fatSatirlar.push({urun:'',miktar:0,birimFiyat:0}); fatRenderSatirlar(); };
+  // ── Çoklu ürün satır yönetimi (Gelen Fatura) ──
+  window._fatSatirlar = [{urun:'',miktar:0,birimFiyat:0,kdv:10}];
+  window.fatEkleSatir = function(){ window._fatSatirlar.push({urun:'',miktar:0,birimFiyat:0,kdv:10}); fatRenderSatirlar(); };
+  window.fatSilSatir = function(i){ window._fatSatirlar.splice(i,1); if(!window._fatSatirlar.length) window._fatSatirlar.push({urun:'',miktar:0,birimFiyat:0,kdv:10}); fatRenderSatirlar(); };
 
   function fatRenderSatirlar(){
     const div=document.getElementById('fatSatirlarDiv'); if(!div) return;
-    div.innerHTML = window._fatSatirlar.map((s,i)=>`<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 32px;gap:6px;padding:4px 0;border-bottom:1px solid #f1f5f9;align-items:center">
+    div.innerHTML = window._fatSatirlar.map((s,i)=>{
+      const satir=(s.miktar||0)*(s.birimFiyat||0);
+      const toplam=satir*(1+(s.kdv||0)/100);
+      return `<div style="display:grid;grid-template-columns:2fr 1fr 1fr 70px 1fr 28px;gap:4px;padding:4px 0;border-bottom:1px solid #f1f5f9;align-items:center">
       <input value="${s.urun||''}" placeholder="Ürün adı" list="malzemeListesi" oninput="window._fatSatirlar[${i}].urun=this.value" style="padding:6px;border:1px solid var(--border);border-radius:6px;font-size:12px"/>
       <input type="number" value="${s.miktar||''}" placeholder="0" min="0" step="0.001" oninput="window._fatSatirlar[${i}].miktar=parseFloat(this.value)||0;fatHesaplaToplam()" style="padding:6px;border:1px solid var(--border);border-radius:6px;font-size:12px"/>
       <input type="number" value="${s.birimFiyat||''}" placeholder="0.00" min="0" step="0.01" oninput="window._fatSatirlar[${i}].birimFiyat=parseFloat(this.value)||0;fatHesaplaToplam()" style="padding:6px;border:1px solid var(--border);border-radius:6px;font-size:12px"/>
-      <span style="font-weight:700;font-size:12px;padding:6px">${fmt((s.miktar||0)*(s.birimFiyat||0))}</span>
+      <select onchange="window._fatSatirlar[${i}].kdv=parseInt(this.value)||0;fatHesaplaToplam()" style="padding:4px;border:1px solid var(--border);border-radius:6px;font-size:11px">
+        <option value="0"${s.kdv===0?' selected':''}>%0</option><option value="1"${s.kdv===1?' selected':''}>%1</option>
+        <option value="10"${(s.kdv===10||!s.kdv)?' selected':''}>%10</option><option value="20"${s.kdv===20?' selected':''}>%20</option>
+      </select>
+      <span style="font-weight:700;font-size:12px;padding:4px;text-align:right">${fmt(toplam)}</span>
       <button onclick="fatSilSatir(${i})" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:14px">✕</button>
-    </div>`).join('');
+    </div>`;}).join('');
     fatHesaplaToplam();
   }
 
   window.fatHesaplaToplam = function(){
-    const ara = window._fatSatirlar.reduce((s,r)=>s+(r.miktar||0)*(r.birimFiyat||0),0);
-    const kdvPct = parseFloat(document.getElementById('fatKdvOran')?.value)||0;
-    const kdv = ara*kdvPct/100;
+    let ara=0, kdvTop=0;
+    window._fatSatirlar.forEach(r=>{
+      const satir=(r.miktar||0)*(r.birimFiyat||0);
+      ara+=satir;
+      kdvTop+=satir*((r.kdv||0)/100);
+    });
     const el1=document.getElementById('fatAraToplam'); if(el1) el1.textContent=fmt(ara);
-    const el2=document.getElementById('fatKdvTutar'); if(el2) el2.textContent=fmt(kdv);
-    const el3=document.getElementById('fatGenelToplam'); if(el3) el3.textContent=fmt(ara+kdv);
+    const el2=document.getElementById('fatKdvTutar'); if(el2) el2.textContent=fmt(kdvTop);
+    const el3=document.getElementById('fatGenelToplam'); if(el3) el3.textContent=fmt(ara+kdvTop);
   };
 
-  window.fatKaydetCoklu = function(){
-    const firma=document.getElementById('fat-firma')?.value||'';
-    const tarih=document.getElementById('fat-tarih')?.value||today();
-    const no=document.getElementById('fat-no')?.value||'';
-    if(!firma){ alert('Tedarikçi firma girin.'); return; }
-    const satirlar = window._fatSatirlar.filter(s=>s.urun&&s.miktar>0);
+  window.fatKaydetCoklu = function(type){
+    type=type||'gelen';
+    const isGiden=(type==='giden');
+    const prefix=isGiden?'gfat':'fat';
+    const firmaEl=document.getElementById(isGiden?'gfat-musteri':'fat-firma');
+    const firma=firmaEl?.value||'';
+    const tarih=document.getElementById(prefix+'-tarih')?.value||today();
+    const no=document.getElementById(prefix+'-no')?.value||'';
+    if(!firma){ alert(isGiden?'Müşteri seçin.':'Tedarikçi firma girin.'); return; }
+    const satirlar=(isGiden?window._gfatSatirlar:window._fatSatirlar).filter(s=>s.urun&&s.miktar>0);
     if(!satirlar.length){ alert('En az 1 ürün satırı girin.'); return; }
-    const arr=getFaturalar();
+    // Toplam hesapla
+    let genelToplam=0;
+    satirlar.forEach(s=>{ genelToplam+=(s.miktar||0)*(s.birimFiyat||0)*(1+(s.kdv||0)/100); });
+    // Fatura kayıtları
+    const fatKey=isGiden?'uysa_giden_faturalar':'uysa_faturalar';
+    const arr=JSON.parse(localStorage.getItem(fatKey)||'[]');
     const prices=JSON.parse(localStorage.getItem('uysa_prices_tl_per_kg_v1')||'{}');
     satirlar.forEach(s=>{
-      arr.push({firma,tarih,no,urun:s.urun,miktar:s.miktar,birimFiyat:s.birimFiyat,toplam:s.miktar*s.birimFiyat});
-      if(s.birimFiyat>0) prices[s.urun]=s.birimFiyat;
+      const satir=(s.miktar||0)*(s.birimFiyat||0);
+      arr.push({firma,tarih,no,urun:s.urun,miktar:s.miktar,birimFiyat:s.birimFiyat,kdv:s.kdv||0,toplam:satir*(1+(s.kdv||0)/100),tip:type});
+      if(!isGiden && s.birimFiyat>0) prices[s.urun]=s.birimFiyat;
     });
-    saveFaturalar(arr);
-    localStorage.setItem('uysa_prices_tl_per_kg_v1',JSON.stringify(prices));
+    localStorage.setItem(fatKey,JSON.stringify(arr));
+    if(!isGiden) localStorage.setItem('uysa_prices_tl_per_kg_v1',JSON.stringify(prices));
+    // Borç / Alacak kaydı
+    const baKey=isGiden?'uysa_alacaklar':'uysa_borclar';
+    const baArr=JSON.parse(localStorage.getItem(baKey)||'[]');
+    baArr.push({firma,tarih,no,tutar:Math.round(genelToplam*100)/100,tip:isGiden?'giden_fatura':'gelen_fatura',aciklama:satirlar.length+' kalem fatura'});
+    localStorage.setItem(baKey,JSON.stringify(baArr));
     renderFaturaList(); refreshAnalizFirma();
-    alert(satirlar.length+' kalem fatura kaydedildi. Fiyatlar reçetelere aktarıldı.');
-    window._fatSatirlar=[{urun:'',miktar:0,birimFiyat:0}]; fatRenderSatirlar();
-    ['fat-firma','fat-no'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+    alert(satirlar.length+' kalem '+(isGiden?'giden':'gelen')+' fatura kaydedildi.'+(isGiden?'':' Fiyatlar reçetelere aktarıldı.')+'\n'+(isGiden?'Alacak':'Borç')+': '+fmt(genelToplam)+' ₺');
+    if(isGiden){ window._gfatSatirlar=[{urun:'',miktar:0,birimFiyat:0,kdv:10}]; gfatRenderSatirlar(); ['gfat-musteri','gfat-no'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+    } else { window._fatSatirlar=[{urun:'',miktar:0,birimFiyat:0,kdv:10}]; fatRenderSatirlar(); ['fat-firma','fat-no'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; }); }
   };
 
+  // ── Tab geçişi ──
+  window.fatSwitchTab = function(tab){
+    const gelen=document.getElementById('fatPaneGelen'), giden=document.getElementById('fatPaneGiden');
+    const btnG=document.getElementById('fatTabGelen'), btnD=document.getElementById('fatTabGiden');
+    if(tab==='giden'){ if(gelen) gelen.style.display='none'; if(giden) giden.style.display='block'; if(btnG) btnG.style.background='#f1f5f9'; if(btnG) btnG.style.color=''; if(btnD) btnD.style.background='#16a34a'; if(btnD) btnD.style.color='#fff';
+    } else { if(gelen) gelen.style.display='block'; if(giden) giden.style.display='none'; if(btnG) btnG.style.background='#1e40af'; if(btnG) btnG.style.color='#fff'; if(btnD) btnD.style.background='#f1f5f9'; if(btnD) btnD.style.color=''; }
+  };
+
+  // ── Giden fatura satır yönetimi ──
+  window._gfatSatirlar = [{urun:'',miktar:0,birimFiyat:0,kdv:10}];
+  window.gfatEkleSatir = function(){ window._gfatSatirlar.push({urun:'',miktar:0,birimFiyat:0,kdv:10}); gfatRenderSatirlar(); };
+  window.gfatSilSatir = function(i){ window._gfatSatirlar.splice(i,1); if(!window._gfatSatirlar.length) window._gfatSatirlar.push({urun:'',miktar:0,birimFiyat:0,kdv:10}); gfatRenderSatirlar(); };
+  function gfatRenderSatirlar(){
+    const div=document.getElementById('gfatSatirlarDiv'); if(!div) return;
+    div.innerHTML = window._gfatSatirlar.map((s,i)=>{
+      const satir=(s.miktar||0)*(s.birimFiyat||0);
+      const toplam=satir*(1+(s.kdv||0)/100);
+      return `<div style="display:grid;grid-template-columns:2fr 1fr 1fr 70px 1fr 28px;gap:4px;padding:4px 0;border-bottom:1px solid #f1f5f9;align-items:center">
+      <input value="${s.urun||''}" placeholder="Hizmet/Ürün" oninput="window._gfatSatirlar[${i}].urun=this.value" style="padding:6px;border:1px solid var(--border);border-radius:6px;font-size:12px"/>
+      <input type="number" value="${s.miktar||''}" placeholder="0" min="0" step="0.001" oninput="window._gfatSatirlar[${i}].miktar=parseFloat(this.value)||0;gfatHesaplaToplam()" style="padding:6px;border:1px solid var(--border);border-radius:6px;font-size:12px"/>
+      <input type="number" value="${s.birimFiyat||''}" placeholder="0.00" min="0" step="0.01" oninput="window._gfatSatirlar[${i}].birimFiyat=parseFloat(this.value)||0;gfatHesaplaToplam()" style="padding:6px;border:1px solid var(--border);border-radius:6px;font-size:12px"/>
+      <select onchange="window._gfatSatirlar[${i}].kdv=parseInt(this.value)||0;gfatHesaplaToplam()" style="padding:4px;border:1px solid var(--border);border-radius:6px;font-size:11px">
+        <option value="0"${s.kdv===0?' selected':''}>%0</option><option value="1"${s.kdv===1?' selected':''}>%1</option>
+        <option value="10"${(s.kdv===10||!s.kdv)?' selected':''}>%10</option><option value="20"${s.kdv===20?' selected':''}>%20</option>
+      </select>
+      <span style="font-weight:700;font-size:12px;padding:4px;text-align:right">${fmt(toplam)}</span>
+      <button onclick="gfatSilSatir(${i})" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:14px">✕</button>
+    </div>`;}).join('');
+    gfatHesaplaToplam();
+  }
+  window.gfatHesaplaToplam = function(){
+    let ara=0, kdvTop=0;
+    window._gfatSatirlar.forEach(r=>{
+      const satir=(r.miktar||0)*(r.birimFiyat||0);
+      ara+=satir; kdvTop+=satir*((r.kdv||0)/100);
+    });
+    const el1=document.getElementById('gfatAraToplam'); if(el1) el1.textContent=fmt(ara);
+    const el2=document.getElementById('gfatKdvTutar'); if(el2) el2.textContent=fmt(kdvTop);
+    const el3=document.getElementById('gfatGenelToplam'); if(el3) el3.textContent=fmt(ara+kdvTop);
+  };
+
+  // Müşteri datalist doldur (giden fatura)
+  setTimeout(()=>{
+    const dl=document.getElementById('musteriListesiGFat');
+    if(dl){ const custs=JSON.parse(localStorage.getItem('uysa_customers_v1')||'[]'); dl.innerHTML=custs.map(c=>`<option value="${c}">`).join(''); }
+  },200);
+
   // İlk render
-  setTimeout(()=>{ fatRenderSatirlar(); },100);
+  setTimeout(()=>{ fatRenderSatirlar(); gfatRenderSatirlar(); },100);
 
   function renderFaturaList(firmaFil='', urunFil=''){
     const div = document.getElementById('fatListeDiv');
