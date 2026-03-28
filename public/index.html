@@ -641,6 +641,10 @@
   /* ── uretim tab ───────────────────────────────────────────── */
   .uretim-tab { animation: fadeSlideIn .2s; }
 
+  /* ── Finans tab pane visibility (CSS class-based) ────────── */
+  .fin-pane { display: none !important; }
+  .fin-pane.fin-active { display: block !important; }
+
 
   /* ── v27: mod-panel position:fixed — container bağımsız ── */
   .mod-panel { display: none !important; }
@@ -2714,7 +2718,7 @@
         <!-- ══════════════════════════════════════════
              TAB: FİNANS DASHBOARD (v62)
         ══════════════════════════════════════════ -->
-        <div id="finPane-dashboard" class="fin-pane">
+        <div id="finPane-dashboard" class="fin-pane fin-active">
 
           <!-- KPI cards (tıklanabilir detay) -->
           <div class="stats-grid" style="margin-bottom:14px">
@@ -2846,7 +2850,7 @@
         <!-- ══════════════════════════════════════════
              TAB: BÜTÇE YÖNETİMİ (v62)
         ══════════════════════════════════════════ -->
-        <div id="finPane-butce" class="fin-pane" style="display:none">
+        <div id="finPane-butce" class="fin-pane">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
 
             <!-- Bütçe Girişi -->
@@ -2889,7 +2893,7 @@
         </div>
 
         <!-- TAB: PATRON SAYFASI -->
-        <div id="finPane-patron" class="fin-pane" style="display:none">
+        <div id="finPane-patron" class="fin-pane">
           <div style="background:linear-gradient(135deg,#1e1b4b,#312e81);color:#fff;border-radius:16px;padding:24px;margin-bottom:16px">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
               <div>
@@ -3000,7 +3004,7 @@
         </div>
 
         <!-- TAB: ALACAKLAR (Müşteri Cari) -->
-        <div id="finPane-alacak" class="fin-pane" style="display:none">
+        <div id="finPane-alacak" class="fin-pane">
           <!-- Alacak Özet KPI -->
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px">
             <div style="background:#f0fdf4;border:2px solid #bbf7d0;border-radius:12px;padding:14px">
@@ -3085,7 +3089,7 @@
         </div>
 
         <!-- TAB: BORÇLAR (Tedarikçi Cari + Sabit Giderler) -->
-        <div id="finPane-borc" class="fin-pane" style="display:none">
+        <div id="finPane-borc" class="fin-pane">
           <!-- Borç Özet KPI -->
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px">
             <div style="background:#fef2f2;border:2px solid #fecaca;border-radius:12px;padding:14px">
@@ -3160,7 +3164,7 @@
         </div>
 
         <!-- TAB: GİDER EKLE -->
-        <div id="finPane-gider" class="fin-pane" style="display:none">
+        <div id="finPane-gider" class="fin-pane">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
             <div class="panel">
               <h3>📤 Gider Ekle</h3>
@@ -3269,7 +3273,7 @@
         </div>
 
         <!-- TAB: GÜNLÜK ÜRETİM GİDERİ -->
-        <div id="finPane-uretim" class="fin-pane" style="display:none">
+        <div id="finPane-uretim" class="fin-pane">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
             <div class="panel">
               <h3>🍳 Günlük Üretim Gideri Ekle</h3>
@@ -3307,7 +3311,7 @@
         </div>
 
         <!-- TAB: GÜNLÜK ÜRETİM SAYILARI -->
-        <div id="finPane-sayi" class="fin-pane" style="display:none">
+        <div id="finPane-sayi" class="fin-pane">
           <div class="panel">
             <h3>📊 Günlük Üretim Girişi</h3>
             <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
@@ -3379,7 +3383,7 @@
         </div>
 
         <!-- TAB: ÖZET -->
-        <div id="finPane-ozet" class="fin-pane" style="display:none">
+        <div id="finPane-ozet" class="fin-pane">
           <div class="panel">
             <h3>📊 Gelir / Gider Özet Tablosu</h3>
             <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
@@ -8329,10 +8333,20 @@ ${note}`);
   // ========= FİNANS MODULE =========
   window.switchFinTab = function(tab){
     try {
-      // 1. Tüm pane'leri gizle, seçili olanı göster — HER ZAMAN ÖNCELİKLİ
-      document.querySelectorAll('.fin-pane').forEach(function(p){ p.style.display='none'; });
+      // 1. Tüm pane'leri gizle, seçili olanı göster — CSS class tabanlı (inline display override'ları engellemek için)
+      var allPaneIds = ['dashboard','gelir','gider','uretim','sayi','ozet','butce','alacak','borc','patron'];
+      allPaneIds.forEach(function(t){
+        var pane = document.getElementById('finPane-'+t);
+        if(pane){
+          pane.classList.remove('fin-active');
+          pane.style.display = ''; // inline style'ı temizle, CSS kuralı devralır
+        }
+      });
       var el = document.getElementById('finPane-'+tab);
-      if(el) el.style.display='block';
+      if(el){
+        el.classList.add('fin-active');
+        el.style.display = ''; // inline style'ı temizle, CSS .fin-active kuralı devralır
+      }
 
       // 2. Tab butonlarını güncelle
       ['dashboard','gelir','gider','uretim','sayi','ozet','butce','alacak','borc','patron'].forEach(function(t){
@@ -15616,7 +15630,7 @@ document.addEventListener('DOMContentLoaded', function() {
       setTimeout(function() {
         initYilDropdowns();
         const dashPane = document.getElementById('finPane-dashboard');
-        if (dashPane && (dashPane.style.display === '' || dashPane.style.display === 'block')) {
+        if (dashPane && dashPane.classList.contains('fin-active')) {
           renderFinDashboard();
         }
       }, 200);
@@ -15630,7 +15644,7 @@ window.addEventListener('load', function() {
   // Eğer aktif tab dashboard ise render et
   setTimeout(function() {
     const dp = document.getElementById('finPane-dashboard');
-    if (dp && dp.style.display !== 'none' && getComputedStyle(dp).display !== 'none') {
+    if (dp && dp.classList.contains('fin-active')) {
       renderFinDashboard();
     }
   }, 800);
