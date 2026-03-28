@@ -3,6 +3,9 @@
 <head>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23005fcc'/><text x='16' y='23' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='18' fill='white'>U</text></svg>">
   <meta charset="utf-8"/>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+  <meta http-equiv="Pragma" content="no-cache"/>
+  <meta http-equiv="Expires" content="0"/>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -10,6 +13,20 @@
   <!-- PDF.js preloaded for invoice analysis (FIX-V15) -->
   <!-- pdf.js lazy yüklenir -->
   <script>
+    // ── Force SW update & cache clear on load ──
+    if('serviceWorker' in navigator){
+      navigator.serviceWorker.getRegistrations().then(function(regs){
+        regs.forEach(function(r){ r.update(); });
+      });
+      // Eski cache'leri temizle
+      if(window.caches){
+        caches.keys().then(function(keys){
+          keys.forEach(function(k){
+            if(k.indexOf('v121') === -1) caches.delete(k);
+          });
+        });
+      }
+    }
     window.addEventListener('load', function(){
       if(typeof pdfjsLib !== 'undefined'){
         pdfjsLib.GlobalWorkerOptions.workerSrc =
