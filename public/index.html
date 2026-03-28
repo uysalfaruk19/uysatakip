@@ -11258,11 +11258,18 @@ window.addEventListener('DOMContentLoaded', function() {
     });
     localStorage.setItem(fatKey,JSON.stringify(arr));
     if(!isGiden) localStorage.setItem('uysa_prices_tl_per_kg_v1',JSON.stringify(prices));
-    // Borç / Alacak kaydı
-    const baKey=isGiden?'uysa_alacaklar':'uysa_borclar';
-    const baArr=JSON.parse(localStorage.getItem(baKey)||'[]');
-    baArr.push({firma,tarih,no,tutar:Math.round(genelToplam*100)/100,tip:isGiden?'giden_fatura':'gelen_fatura',aciklama:satirlar.length+' kalem fatura'});
-    localStorage.setItem(baKey,JSON.stringify(baArr));
+    // Borç / Alacak kaydı — Cari Hesap sistemiyle entegre
+    if(isGiden && typeof window._addAlacak==='function'){
+      window._addAlacak({musteri:firma, tarih, tutar:Math.round(genelToplam*100)/100, fatura:no||faturaId, aciklama:icerik, faturaId});
+    } else if(!isGiden && typeof window._addBorc==='function'){
+      window._addBorc({tedarikci:firma, tarih, tutar:Math.round(genelToplam*100)/100, belge:no||faturaId, aciklama:icerik, faturaId});
+    } else {
+      // Fallback: doğrudan kaydet (fonksiyonlar henüz yüklenmemişse)
+      const baKey=isGiden?'uysa_alacaklar':'uysa_borclar';
+      const baArr=JSON.parse(localStorage.getItem(baKey)||'[]');
+      baArr.push({id:faturaId,faturaId,musteri:isGiden?firma:undefined,tedarikci:isGiden?undefined:firma,firma,tarih,tutar:Math.round(genelToplam*100)/100,kalan:Math.round(genelToplam*100)/100,durum:'acik',tip:isGiden?'giden_fatura':'gelen_fatura',fatura:no,belge:no,aciklama:icerik});
+      localStorage.setItem(baKey,JSON.stringify(baArr));
+    }
     renderFaturaList(); refreshAnalizFirma();
     alert(satirlar.length+' kalem '+(isGiden?'giden':'gelen')+' fatura kaydedildi.'+(isGiden?'':' Fiyatlar reçetelere aktarıldı.')+'\n'+(isGiden?'Alacak':'Borç')+': '+fmt(genelToplam)+' ₺');
     if(isGiden){ window._gfatSatirlar=[{urun:'',miktar:0,birimFiyat:0,kdv:10}]; gfatRenderSatirlar(); ['gfat-musteri','gfat-no'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
@@ -11315,7 +11322,11 @@ window.addEventListener('DOMContentLoaded', function() {
   // Müşteri datalist doldur (giden fatura)
   setTimeout(()=>{
     const dl=document.getElementById('musteriListesiGFat');
-    if(dl){ const custs=JSON.parse(localStorage.getItem('uysa_customers_v1')||'[]'); dl.innerHTML=custs.map(c=>`<option value="${c}">`).join(''); }
+    if(dl){
+      const raw=JSON.parse(localStorage.getItem('uysa_customers_v1')||'{}');
+      const custs=Array.isArray(raw)?raw:(raw.customers||[]);
+      dl.innerHTML=custs.map(c=>`<option value="${c}">`).join('');
+    }
   },200);
 
   // İlk render
@@ -11446,6 +11457,17 @@ window.addEventListener('DOMContentLoaded', function() {
       renderFaturaList(); refreshAnalizFirma();
     }
   };
+  // Borç/alacak cascade delete helper
+  function _fatCascadeDeleteBA(faturaId){
+    if(!faturaId) return;
+    ['uysa_borclar','uysa_alacaklar'].forEach(baKey=>{
+      let ba=JSON.parse(localStorage.getItem(baKey)||'[]');
+      const before=ba.length;
+      ba=ba.filter(b=>(b.faturaId||'')!==faturaId);
+      if(ba.length!==before) localStorage.setItem(baKey,JSON.stringify(ba));
+    });
+  }
+
   window.silFaturaById = function(key,faturaId){
     if(!faturaId){ alert('Bu eski formatta kaydedilmiş fatura. Tek tek silebilirsiniz.'); return; }
     let arr=JSON.parse(localStorage.getItem(key)||'[]');
@@ -11453,6 +11475,7 @@ window.addEventListener('DOMContentLoaded', function() {
     if(!confirm(count+' kalemlik faturayı silmek istediğinize emin misiniz?')) return;
     arr=arr.filter(f=>f.faturaId!==faturaId);
     localStorage.setItem(key,JSON.stringify(arr));
+    _fatCascadeDeleteBA(faturaId);
     renderFaturaList(); refreshAnalizFirma();
   };
 
@@ -21987,6 +22010,7 @@ window._addAlacak = function(kayit){
   var arr = lsGet(LS_ALACAK, []);
   arr.push({
     id: Date.now()+'_'+Math.random().toString(36).slice(2,6),
+    faturaId: kayit.faturaId||'',
     musteri: kayit.musteri,
     tarih: kayit.tarih||bugun(),
     tutar: Number(kayit.tutar)||0,
@@ -22131,6 +22155,7 @@ window._addBorc = function(kayit){
   var arr = lsGet(LS_BORC, []);
   arr.push({
     id: Date.now()+'_'+Math.random().toString(36).slice(2,6),
+    faturaId: kayit.faturaId||'',
     tedarikci: kayit.tedarikci,
     tarih: kayit.tarih||bugun(),
     tutar: Number(kayit.tutar)||0,
