@@ -11418,7 +11418,10 @@ window.addEventListener('DOMContentLoaded', function() {
                 </div>
                 <div id="fatFD_${fi}_${fti}" style="display:none;margin:2px 0 0 12px;padding:6px;border-left:3px solid ${color};background:#f8fafc;border-radius:0 6px 6px 0">
                   ${_fatDetayTablo(ft.items, fatKey, urunFil, color)}
-                  <div style="text-align:right;margin-top:4px"><button onclick="silFaturaById('${fatKey}','${ft.items[0]?.faturaId||''}')" class="btn danger" style="font-size:10px;padding:3px 8px">Faturayı sil</button></div>
+                  <div style="text-align:right;margin-top:4px">${ft.items[0]?.faturaId
+                    ? `<button onclick="event.stopPropagation();silFaturaById('${fatKey}','${ft.items[0].faturaId}')" class="btn danger" style="font-size:10px;padding:3px 8px">Faturayı sil</button>`
+                    : ft.items.map(it=>`<button onclick="event.stopPropagation();silFaturaByIdx('${fatKey}',${it._idx})" class="btn danger" style="font-size:10px;padding:3px 6px;margin:2px">✕ ${it.urun||'?'}</button>`).join('')
+                  }</div>
                 </div>
               </div>`;
             }).join('')}
@@ -11432,14 +11435,20 @@ window.addEventListener('DOMContentLoaded', function() {
       const sorted=Object.values(byFatura).sort((a,b)=>(b.tarih||'').localeCompare(a.tarih||''));
       div.innerHTML=sorted.map((g,gi)=>{
         const icerikOzet=g.icerik || g.items.map(x=>x.urun).join(', ');
-        return `<div onclick="fatToggleFaturaDetay('fatN_${gi}')" style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:4px;background:#fff;cursor:pointer;display:flex;justify-content:space-between;align-items:center">
-          <div><b style="color:${color}">${g.firma}</b> <span style="color:var(--muted);font-size:11px">| ${g.no||'—'} | ${g.tarih}</span>
-          <br><span style="font-size:11px;color:var(--muted)">${icerikOzet.slice(0,80)}${icerikOzet.length>80?'...':''} — ${g.items.length} kalem</span></div>
-          <div style="text-align:right"><b style="font-size:14px;color:${color}">${fmt(g.toplam)} ₺</b></div>
-        </div>
-        <div id="fatN_${gi}" style="display:none;margin:0 0 8px 12px;padding:8px;border-left:3px solid ${color};background:#f8fafc;border-radius:0 8px 8px 0">
-          ${_fatDetayTablo(g.items, fatKey, urunFil, color)}
-          <div style="text-align:right;margin-top:4px"><button onclick="silFaturaById('${fatKey}','${g.faturaId}')" class="btn danger" style="font-size:10px;padding:3px 8px">Faturayı sil</button></div>
+        const hasFaturaId=!!g.faturaId;
+        const silBtn=hasFaturaId
+          ? `<button onclick="event.stopPropagation();silFaturaById('${fatKey}','${g.faturaId}')" class="btn danger" style="font-size:10px;padding:3px 8px">Faturayı sil</button>`
+          : g.items.map(it=>`<button onclick="event.stopPropagation();silFaturaByIdx('${fatKey}',${it._idx})" class="btn danger" style="font-size:10px;padding:3px 6px;margin:2px">✕ ${it.urun||'?'}</button>`).join('');
+        return `<div style="border:1px solid var(--border);border-radius:8px;margin-bottom:4px;background:#fff">
+          <div onclick="fatToggleFaturaDetay('fatN_${gi}')" style="padding:10px;cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+            <div><b style="color:${color}">${g.firma}</b> <span style="color:var(--muted);font-size:11px">| ${g.no||'—'} | ${g.tarih}</span>
+            <br><span style="font-size:11px;color:var(--muted)">${icerikOzet.slice(0,80)}${icerikOzet.length>80?'...':''} — ${g.items.length} kalem</span></div>
+            <div style="text-align:right"><b style="font-size:14px;color:${color}">${fmt(g.toplam)} ₺</b></div>
+          </div>
+          <div id="fatN_${gi}" style="display:none;margin:0 0 8px 12px;padding:8px;border-left:3px solid ${color};background:#f8fafc;border-radius:0 8px 8px 0">
+            ${_fatDetayTablo(g.items, fatKey, urunFil, color)}
+            <div style="text-align:right;margin-top:4px">${silBtn}</div>
+          </div>
         </div>`;
       }).join('');
     }
@@ -11469,7 +11478,7 @@ window.addEventListener('DOMContentLoaded', function() {
   }
 
   window.silFaturaById = function(key,faturaId){
-    if(!faturaId){ alert('Bu eski formatta kaydedilmiş fatura. Tek tek silebilirsiniz.'); return; }
+    if(!faturaId){ alert('Bu eski formatta kaydedilmiş fatura. Detayı açıp tek tek silebilirsiniz.'); return; }
     let arr=JSON.parse(localStorage.getItem(key)||'[]');
     const count=arr.filter(f=>f.faturaId===faturaId).length;
     if(!confirm(count+' kalemlik faturayı silmek istediğinize emin misiniz?')) return;
