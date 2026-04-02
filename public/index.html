@@ -19040,40 +19040,56 @@ window.addEventListener('load', function() {
       // Ertesi gün için tekrar kur
       setInterval(_autoSaveGunSonu, 24*60*60*1000);
     }, ms);
-    // Ayrıca sayfa açıldığında dünün kaydı yoksa onu da yap
+
+    // Sayfa açıldığında: bugünün ve dünün kaydı yoksa otomatik oluştur
+    var _autoFillDay = function(targetDate){
+      var tarih = targetDate.toISOString().slice(0,10);
+      var dow = targetDate.getDay();
+      if(dow===0 || dow===6) return; // Hafta sonu atla
+      var gunlukArr = _getGunluk();
+      if(gunlukArr.some(function(u){ return u.tarih===tarih && u.kisi>0; })) return; // Zaten var
+      var custs = _getCusts();
+      var yeniKayitlar = [];
+      custs.forEach(function(cust){
+        var crmData = _ls.get('uysa_crm_'+cust, {});
+        var oncekiArr = gunlukArr.filter(function(u){
+          var _d=new Date(u.tarih), _g=_d.getDay();
+          return u.musteri===cust && _g!==0 && _g!==6 && u.kisi>0 && u.tarih<tarih;
+        }).sort(function(a,b){ return b.tarih.localeCompare(a.tarih); });
+        var kisi = (oncekiArr.length>0) ? oncekiArr[0].kisi : (parseInt(crmData.kisi)||0);
+        var fiyat = (oncekiArr.length>0) ? oncekiArr[0].fiyat : (parseFloat(crmData.fiyat)||0);
+        if(kisi<=0) return;
+        yeniKayitlar.push({musteri:cust, tarih:tarih, kisi:kisi, fiyat:fiyat, tutar:kisi*fiyat, not:'otomatik'});
+      });
+      if(!yeniKayitlar.length) return;
+      var full = _getGunluk().filter(function(u){ return u.tarih!==tarih; }).concat(yeniKayitlar);
+      _saveGunluk(full);
+      var gel = _getGelirler().filter(function(g){ return !(g.tarih===tarih && g.aciklama && g.aciklama.startsWith('Günlük üretim')); });
+      yeniKayitlar.forEach(function(r){ gel.push({musteri:r.musteri,tarih:r.tarih,tutar:r.tutar,kisi:r.kisi,fatura:'',aciklama:'Günlük üretim — '+r.kisi+' kişi × '+r.fiyat+' ₺ (otomatik)'}); });
+      _saveGelirler(gel);
+      // Al/Sat gider sync
+      var giderArr=[]; try{ giderArr=JSON.parse(localStorage.getItem('uysa_giderler')||'[]'); }catch(e){}
+      giderArr=giderArr.filter(function(g){ return !(g.tarih===tarih && g.aciklama && g.aciklama.startsWith('Al/Sat alış —')); });
+      var alSatCount=0;
+      yeniKayitlar.forEach(function(r){
+        var cd=_ls.get('uysa_crm_'+r.musteri,{});
+        if(cd.alSat && cd.alisFiyat>0){ giderArr.push({kat:'uretim-diger-gida',tarih:tarih,tutar:r.kisi*cd.alisFiyat,aciklama:'Al/Sat alış — '+r.musteri+' — '+r.kisi+' kişi × '+cd.alisFiyat+' ₺',belge:'',tedarikci:cd.tedarikci||'',aitlik:'musteri',musteriler:[r.musteri]}); alSatCount++; }
+      });
+      if(alSatCount>0) localStorage.setItem('uysa_giderler',JSON.stringify(giderArr));
+      console.log('✅ Otomatik kayıt ('+tarih+'): '+yeniKayitlar.length+' müşteri, '+alSatCount+' Al/Sat');
+    };
+
+    // Dün
     var dun = new Date(); dun.setDate(dun.getDate()-1);
-    var dunStr = dun.toISOString().slice(0,10);
-    var dunKayit = _getGunluk().some(function(u){ return u.tarih===dunStr && u.kisi>0; });
-    if(!dunKayit && dun.getDay()!==0 && dun.getDay()!==6){
-      // Hafta içi ise dünü de otomatik kaydet
-      var origToday = _today;
-      window._autoSaveTarihOverride = dunStr;
-      (function(){
-        var tarih = dunStr;
-        var custs = _getCusts();
-        var gunlukArr = _getGunluk();
-        var yeniKayitlar = [];
-        custs.forEach(function(cust){
-          var crmData = _ls.get('uysa_crm_'+cust, {});
-          var oncekiArr = gunlukArr.filter(function(u){
-            var _d=new Date(u.tarih), _g=_d.getDay();
-            return u.musteri===cust && _g!==0 && _g!==6 && u.kisi>0 && u.tarih<tarih;
-          }).sort(function(a,b){ return b.tarih.localeCompare(a.tarih); });
-          var kisi = (oncekiArr.length>0) ? oncekiArr[0].kisi : (parseInt(crmData.kisi)||0);
-          var fiyat = (oncekiArr.length>0) ? oncekiArr[0].fiyat : (parseFloat(crmData.fiyat)||0);
-          if(kisi<=0) return;
-          yeniKayitlar.push({musteri:cust, tarih:tarih, kisi:kisi, fiyat:fiyat, tutar:kisi*fiyat, not:'otomatik'});
-        });
-        if(yeniKayitlar.length){
-          var full = _getGunluk().filter(function(u){ return u.tarih!==tarih; }).concat(yeniKayitlar);
-          _saveGunluk(full);
-          var gel = _getGelirler().filter(function(g){ return !(g.tarih===tarih && g.aciklama && g.aciklama.startsWith('Günlük üretim')); });
-          yeniKayitlar.forEach(function(r){ gel.push({musteri:r.musteri,tarih:r.tarih,tutar:r.tutar,kisi:r.kisi,fatura:'',aciklama:'Günlük üretim — '+r.kisi+' kişi × '+r.fiyat+' ₺ (otomatik)'}); });
-          _saveGelirler(gel);
-          console.log('✅ Dün otomatik kayıt: '+yeniKayitlar.length+' müşteri, tarih: '+tarih);
-        }
-      })();
-    }
+    _autoFillDay(dun);
+    // Bugün
+    _autoFillDay(new Date());
+
+    // Dashboard yenile
+    setTimeout(function(){
+      if(typeof window.renderAnasayfa==='function') try{ window.renderAnasayfa(); }catch(e){}
+      if(typeof window.renderGelirler==='function') try{ window.renderGelirler(); }catch(e){}
+    }, 500);
   }
 
   /* ── Excel Export ─────────────────────────────────────────────── */
