@@ -246,6 +246,11 @@
     var st = window._rcGunState;
     st.dishes = dishes;
 
+    // Tüketim verisinde olup menüde olmayan yemekleri de listeye ekle
+    Object.keys(st.tuketimData).forEach(function(d){
+      if(st.dishes.indexOf(d) < 0) st.dishes.push(d);
+    });
+
     // Menü bulunamasa bile sol/sağ paneli göster (manuel yemek eklenebilsin)
 
     // Sol-sağ split render
@@ -418,21 +423,37 @@
   // ── Mevcut kayıtları yükle ──────────────────────────────────
   function _loadExistingTuketim(tarih){
     var st = window._rcGunState;
+    // Her tarih değişiminde tuketimData'yı sıfırla ve yeniden yükle
     if(st._loadedTarih === tarih) return; // zaten yüklü
     st._loadedTarih = tarih;
+    st.tuketimData = {}; // ÖNCEKİ VERİYİ TEMİZLE
+    st.selectedDish = null; // Tarih değişince seçimi sıfırla
+
     var gunlukArr = _ls2.get('uysa_gunluk_uretim',[]);
-    var found = false;
-    gunlukArr.forEach(function(g){
-      if(g.tarih === tarih && g.tuketim){
-        // tuketim: {yemek1:[{name,kg}], yemek2:[...]}
-        if(typeof g.tuketim === 'object' && !Array.isArray(g.tuketim)){
-          Object.keys(g.tuketim).forEach(function(k){
-            st.tuketimData[k] = g.tuketim[k];
-          });
-          found = true;
-        }
+    // Aynı tarihli kayıtları tarihe göre filtrele, en son kaydedileni kullan
+    var matchingRecords = [];
+    for(var i=0; i<gunlukArr.length; i++){
+      var g = gunlukArr[i];
+      if(g.tarih === tarih && g.tuketim && typeof g.tuketim === 'object' && !Array.isArray(g.tuketim)){
+        matchingRecords.push(g);
+      }
+    }
+    if(!matchingRecords.length) return;
+    // En son kaydedileni kullan (kaydedilme timestamp'ına göre veya dizideki son)
+    var latest = matchingRecords[matchingRecords.length - 1];
+    Object.keys(latest.tuketim).forEach(function(k){
+      var arr = latest.tuketim[k];
+      if(Array.isArray(arr) && arr.length > 0){
+        st.tuketimData[k] = arr.map(function(item){
+          return {name: item.name||'', kg: parseFloat(item.kg)||0};
+        });
       }
     });
+    // Kişi sayısını da yükle (kayıttaki değeri input'a yaz)
+    if(latest.kisi > 0){
+      var inp = document.getElementById('rcGunKisi');
+      if(inp) inp.value = latest.kisi;
+    }
   }
 
   // ── Kaydet — uysa_gunluk_uretim + depo stok düş ────────────
