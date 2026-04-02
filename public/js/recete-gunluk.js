@@ -12,6 +12,24 @@
     set: function(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
   };
 
+  // ── Yemek adı normalleştirme (trim + Turkish-aware lookup) ──
+  function _findTuketimKey(dishName){
+    var st = window._rcGunState;
+    if(!dishName) return null;
+    // Direkt eşleşme
+    if(st.tuketimData[dishName] && st.tuketimData[dishName].length > 0) return dishName;
+    // Trim dene
+    var trimmed = dishName.trim();
+    if(st.tuketimData[trimmed] && st.tuketimData[trimmed].length > 0) return trimmed;
+    // Case-insensitive + Turkish locale
+    var lower = trimmed.toLocaleLowerCase('tr');
+    var keys = Object.keys(st.tuketimData);
+    for(var i=0; i<keys.length; i++){
+      if(keys[i].toLocaleLowerCase('tr') === lower && st.tuketimData[keys[i]].length > 0) return keys[i];
+    }
+    return null;
+  }
+
   // ── Modül State ─────────────────────────────────────────────
   window._rcGunState = {
     selectedDish: null,
@@ -247,8 +265,14 @@
     st.dishes = dishes;
 
     // Tüketim verisinde olup menüde olmayan yemekleri de listeye ekle
+    // Normalized comparison ile duplicate önle (casing/trim farkları)
     Object.keys(st.tuketimData).forEach(function(d){
-      if(st.dishes.indexOf(d) < 0) st.dishes.push(d);
+      if(!st.tuketimData[d] || !st.tuketimData[d].length) return;
+      var dLower = d.toLocaleLowerCase('tr');
+      var found = st.dishes.some(function(existing){
+        return existing.toLocaleLowerCase('tr') === dLower;
+      });
+      if(!found) st.dishes.push(d);
     });
 
     // Menü bulunamasa bile sol/sağ paneli göster (manuel yemek eklenebilsin)
@@ -265,7 +289,7 @@
       html += '<div style="color:#d97706;font-size:11px;padding:10px;background:#fffbeb;border-radius:6px;margin-bottom:8px">'+(isWeekend?'Hafta sonu menüsü yok. ':'')+'Manuel yemek ekleyebilirsiniz.</div>';
     }
     dishes.forEach(function(d){
-      var hasTuk = (st.tuketimData[d] && st.tuketimData[d].length > 0);
+      var hasTuk = !!_findTuketimKey(d);
       var sel2 = (st.selectedDish === d);
       var custInfo = dishCustomerMap[d] ? dishCustomerMap[d].join(', ') : '';
       html += '<div onclick="rcSelectDish(\''+d.replace(/'/g,"\\'")+'\')" style="padding:8px 10px;margin-bottom:4px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;'
@@ -310,7 +334,9 @@
     var st = window._rcGunState;
     var tab = st.activeTab || 'tuketim';
     var kisi = parseInt(document.getElementById('rcGunKisi')?.value)||100;
-    var rows = st.tuketimData[dishName] || [];
+    // Normalized key lookup — handles trim/casing/Turkish char differences
+    var tukKey = _findTuketimKey(dishName);
+    var rows = tukKey ? st.tuketimData[tukKey] : [];
 
     var h = '<div style="margin-bottom:10px;display:flex;gap:4px">';
     h += '<button class="btn" onclick="rcSwitchDishTab(\'tuketim\')" style="font-size:12px;padding:6px 14px;'+(tab==='tuketim'?'background:#1e40af;color:#fff':'background:#f1f5f9')+'">Tuketim</button>';
@@ -385,15 +411,18 @@
     if(!name){ alert('Malzeme adi girin.'); return; }
     if(kg <= 0){ alert('KG girin.'); return; }
     var st = window._rcGunState;
-    if(!st.tuketimData[dishName]) st.tuketimData[dishName] = [];
-    st.tuketimData[dishName].push({name:name, kg:kg});
+    // Mevcut key'i bul (casing/trim farkı olabilir)
+    var tukKey = _findTuketimKey(dishName) || dishName;
+    if(!st.tuketimData[tukKey]) st.tuketimData[tukKey] = [];
+    st.tuketimData[tukKey].push({name:name, kg:kg});
     mEl.value = ''; kEl.value = '';
     _loadMenuImpl();
   };
 
   window.rcDelTuketimRow = function(dishName, idx){
     var st = window._rcGunState;
-    if(st.tuketimData[dishName]) st.tuketimData[dishName].splice(idx,1);
+    var tukKey = _findTuketimKey(dishName) || dishName;
+    if(st.tuketimData[tukKey]) st.tuketimData[tukKey].splice(idx,1);
     _loadMenuImpl();
   };
 
@@ -438,7 +467,10 @@
         matchingRecords.push(g);
       }
     }
-    if(!matchingRecords.length) return;
+    if(!matchingRecords.length){
+      console.log('[Günlük] '+tarih+': tuketim kaydı bulunamadı (toplam '+gunlukArr.length+' kayıt, '+gunlukArr.filter(function(x){return x.tarih===tarih}).length+' aynı tarih)');
+      return;
+    }
     // En son kaydedileni kullan (kaydedilme timestamp'ına göre veya dizideki son)
     var latest = matchingRecords[matchingRecords.length - 1];
     Object.keys(latest.tuketim).forEach(function(k){
@@ -449,6 +481,7 @@
         });
       }
     });
+    console.log('[Günlük] '+tarih+': tuketim yüklendi — '+Object.keys(st.tuketimData).length+' yemek:', Object.keys(st.tuketimData));
     // Kişi sayısını da yükle (kayıttaki değeri input'a yaz)
     if(latest.kisi > 0){
       var inp = document.getElementById('rcGunKisi');
