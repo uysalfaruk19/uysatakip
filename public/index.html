@@ -24897,15 +24897,32 @@ document.addEventListener('DOMContentLoaded', function(){
     /* ── Firma filtresi ─────────────────────────────────────────────── */
     var firmaFilter = window._v94FirmaFilter;
     var showTotal   = window._v94ShowTotal;
+    var gunFilter   = window._v94GunFilter || null; // 'YYYY-MM-DD' veya null
 
     var displayCusts = firmaFilter
       ? allCusts.filter(function(c){ return c===firmaFilter; })
       : allCusts;
 
-    /* ── Firma dropdown ─────────────────────────────────────────────── */
+    /* Gün filtresi uygulandıysa ayKayitlar'ı daralt */
+    var filteredKayitlar = gunFilter
+      ? ayKayitlar.filter(function(u){ return u.tarih === gunFilter; })
+      : ayKayitlar;
+
+    /* ── Mevcut günler listesi (dropdown için) ───────────────────────── */
+    var mevcutGunler = [];
+    var gunlerSet = {};
+    ayKayitlar.forEach(function(u){
+      if(!gunlerSet[u.tarih]){
+        gunlerSet[u.tarih] = true;
+        mevcutGunler.push(u.tarih);
+      }
+    });
+    mevcutGunler.sort();
+
+    /* ── Firma dropdown + Gün filtresi ───────────────────────────────── */
     var controlHtml =
       '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;padding:10px 14px;background:#eff6ff;border-radius:10px;border:1.5px solid #c7d2fe">'
-      +'<span style="font-size:12px;font-weight:700;color:#2563eb">🏢 Firma Filtrele:</span>'
+      +'<span style="font-size:12px;font-weight:700;color:#2563eb">🏢 Firma:</span>'
       +'<select id="v94FirmaSelect" onchange="window.v94OnFirmaChange(this.value)" '
       +'style="padding:6px 12px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:13px;font-weight:600;color:#1e40af;background:#fff;cursor:pointer">'
       +'<option value="">— Tüm Firmalar —</option>';
@@ -24915,6 +24932,29 @@ document.addEventListener('DOMContentLoaded', function(){
         +m+(kayitVar?' ✓':' (kayıt yok)')+'</option>';
     });
     controlHtml += '</select>';
+
+    /* Gün filtresi dropdown */
+    controlHtml += '<span style="font-size:12px;font-weight:700;color:#2563eb;margin-left:8px">📅 Gün:</span>'
+      +'<select id="v94GunSelect" onchange="window.v94OnGunChange(this.value)" '
+      +'style="padding:6px 12px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:13px;font-weight:600;color:#1e40af;background:#fff;cursor:pointer">'
+      +'<option value="">— Tüm Günler —</option>';
+    var gunAdlari = ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt'];
+    mevcutGunler.forEach(function(t){
+      var dt = new Date(t+'T00:00:00');
+      var gunAdi = gunAdlari[dt.getDay()];
+      var parts = t.split('-');
+      var label = parts[2]+'.'+parts[1]+' '+gunAdi;
+      /* O gün kaç kişi var */
+      var gunKisi = ayKayitlar.filter(function(u){ return u.tarih===t; }).reduce(function(s,u){ return s+(u.kisi||0); },0);
+      controlHtml += '<option value="'+t+'"'+(gunFilter===t?' selected':'')+'>'
+        +label+' ('+gunKisi+' kişi)</option>';
+    });
+    controlHtml += '</select>';
+
+    if(gunFilter){
+      controlHtml += '<button onclick="window.v94OnGunChange(\'\')" style="padding:4px 10px;border:1px solid #dc2626;border-radius:6px;font-size:11px;background:#fef2f2;color:#dc2626;cursor:pointer;font-weight:600">✕ Temizle</button>';
+    }
+
     if(firmaFilter){
       controlHtml +=
         '<button onclick="window.v94ToggleTotal()" style="padding:6px 14px;'
@@ -24925,10 +24965,10 @@ document.addEventListener('DOMContentLoaded', function(){
     }
     controlHtml += '</div>';
 
-    /* ── Genel istatistikler (seçili firmaya göre) ─────────────────── */
+    /* ── Genel istatistikler (seçili firma + güne göre) ────────────── */
     var secilenKayitlar = firmaFilter
-      ? ayKayitlar.filter(function(u){ return u.musteri===firmaFilter; })
-      : ayKayitlar;
+      ? filteredKayitlar.filter(function(u){ return u.musteri===firmaFilter; })
+      : filteredKayitlar;
 
     var toplamKisi   = secilenKayitlar.reduce(function(s,u){ return s+(u.kisi||0); },0);
     var toplamTutar  = secilenKayitlar.reduce(function(s,u){ return s+(u.tutar||0); },0);
@@ -24949,7 +24989,7 @@ document.addEventListener('DOMContentLoaded', function(){
       +'<div style="font-size:11px;color:#64748b">Toplam Kişi</div></div>'
       +'<div style="background:#fdf4ff;border-radius:10px;padding:12px;text-align:center">'
       +'<div style="font-size:22px">💰</div><div style="font-weight:800;font-size:16px;color:#7c3aed">'+_fmt(toplamTutar)+' ₺</div>'
-      +'<div style="font-size:11px;color:#64748b">Aylık Toplam</div></div>'
+      +'<div style="font-size:11px;color:#64748b">'+(gunFilter?'Günlük Toplam':'Aylık Toplam')+'</div></div>'
       +'</div>';
 
     /* ── Toplam Göster kartı ────────────────────────────────────────── */
@@ -24973,9 +25013,9 @@ document.addEventListener('DOMContentLoaded', function(){
     }
 
     /* ── TABLO SATIRLARI ────────────────────────────────────────────── */
-    /* musteriMap: kayıtlı firmalar */
+    /* musteriMap: kayıtlı firmalar (filtrelenmiş) */
     var musteriMap = {};
-    ayKayitlar.forEach(function(u){
+    filteredKayitlar.forEach(function(u){
       if(!musteriMap[u.musteri]) musteriMap[u.musteri]=[];
       musteriMap[u.musteri].push(u);
     });
@@ -25046,7 +25086,7 @@ document.addEventListener('DOMContentLoaded', function(){
     /* Genel toplam */
     tableRows +=
       '<tr style="background:#1e293b">'
-      +'<td colspan="2" style="padding:10px;font-weight:900;color:#fff;font-size:13px">🏆 '+ayAdi+' — '+(firmaFilter||'GENEL')+' TOPLAM</td>'
+      +'<td colspan="2" style="padding:10px;font-weight:900;color:#fff;font-size:13px">🏆 '+(gunFilter?gunFilter.split('-').reverse().join('.')+' — ':ayAdi+' — ')+(firmaFilter||'GENEL')+' TOPLAM</td>'
       +'<td style="padding:10px;text-align:center;font-weight:900;color:#fbbf24;font-size:13px">'+genelTopKisi.toLocaleString('tr-TR')+' kişi</td>'
       +'<td style="padding:10px"></td>'
       +'<td style="padding:10px;text-align:right;font-weight:900;color:#34d399;font-size:14px">'+_fmt(genelTopTutar)+' ₺</td>'
@@ -25075,6 +25115,12 @@ document.addEventListener('DOMContentLoaded', function(){
   window.v94OnFirmaChange = function(val){
     window._v94FirmaFilter = val||null;
     window._v94ShowTotal   = false;
+    window.v94RenderAylikRapor();
+  };
+
+  /* ── Gün filter change ───────────────────────────────────────────────── */
+  window.v94OnGunChange = function(val){
+    window._v94GunFilter = val||null;
     window.v94RenderAylikRapor();
   };
 
