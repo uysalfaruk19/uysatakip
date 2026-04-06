@@ -3341,7 +3341,7 @@
               </div>
               <div style="align-self:flex-end">
                 <button class="btn primary" onclick="gsRenderTableV76()">Tabloyu Yükle</button>
-                <button class="btn" onclick="gsHaftalikKopyaAc()" style="background:#7c3aed;color:#fff;margin-left:4px">Haftalik Kopyala</button>
+                <button class="btn" onclick="window._gsHKaynak=null;window._gsHHedef=null;gsHaftalikKopyaAc()" style="background:#7c3aed;color:#fff;margin-left:4px">Haftalik Kopyala</button>
               </div>
               <div id="gs-tarih-durum" style="align-self:flex-end;font-size:12px;color:#64748b;padding:4px 0"></div>
             </div>
@@ -19195,18 +19195,30 @@ window.addEventListener('load', function() {
     return p[2]+'/'+p[1]+'/'+p[0];
   }
 
+  // Hafta state'ini window'da tut (DOM'a bağımlı olma)
+  window._gsHKaynak = null; // kaynak Pzt tarihi string: "2026-04-06"
+  window._gsHHedef = null;  // hedef Pzt tarihi string
+
   window.gsHaftalikKopyaAc = function(){
     var tableDiv = document.getElementById('gsTableDiv');
     if(!tableDiv) return;
 
-    // Kaynak hafta: şu anki tarihten bu haftanın Pzt-Paz'ı
-    var tarihEl = document.getElementById('gs-tarih');
-    var bugun = tarihEl && tarihEl.value ? new Date(tarihEl.value) : new Date();
-    var kaynakPzt = _getMonday(bugun);
-    var kaynakPaz = new Date(kaynakPzt); kaynakPaz.setDate(kaynakPzt.getDate()+6);
+    // İlk açılışta veya state yoksa: bugünkü haftayı kullan
+    if(!window._gsHKaynak){
+      var tarihEl = document.getElementById('gs-tarih');
+      var bugun = tarihEl && tarihEl.value ? tarihEl.value : _fmtD(new Date());
+      var pzt = _getMonday(bugun);
+      window._gsHKaynak = _fmtD(pzt);
+    }
+    if(!window._gsHHedef){
+      var kPzt = _getMonday(window._gsHKaynak);
+      var hPzt = new Date(kPzt); hPzt.setDate(kPzt.getDate()+7);
+      window._gsHHedef = _fmtD(hPzt);
+    }
 
-    // Hedef hafta: bir sonraki hafta
-    var hedefPzt = new Date(kaynakPzt); hedefPzt.setDate(kaynakPzt.getDate()+7);
+    var kaynakPzt = _getMonday(window._gsHKaynak);
+    var kaynakPaz = new Date(kaynakPzt); kaynakPaz.setDate(kaynakPzt.getDate()+6);
+    var hedefPzt = _getMonday(window._gsHHedef);
     var hedefPaz = new Date(hedefPzt); hedefPaz.setDate(hedefPzt.getDate()+6);
 
     var custs = _getCusts();
@@ -19399,24 +19411,17 @@ window.addEventListener('load', function() {
   };
 
   // Hafta navigasyonu: < > ok butonlarıyla hafta ileri/geri
-  window.gsHaftalikNav = function(tip, yön){
-    var basId = tip==='kaynak' ? 'gsKaynakBas' : 'gsHedefBas';
-    var basEl = document.getElementById(basId);
-    if(!basEl) return;
-    var pzt = _getMonday(basEl.value);
-    pzt.setDate(pzt.getDate() + (yön * 7)); // +7 veya -7 gün
-    basEl.value = _fmtD(pzt);
-    var bitId = tip==='kaynak' ? 'gsKaynakBit' : 'gsHedefBit';
-    var bitEl = document.getElementById(bitId);
-    if(bitEl){
-      var paz = new Date(pzt); paz.setDate(pzt.getDate()+6);
-      bitEl.value = _fmtD(paz);
+  window.gsHaftalikNav = function(tip, yon){
+    if(tip==='kaynak'){
+      var pzt = _getMonday(window._gsHKaynak);
+      pzt.setDate(pzt.getDate() + (yon * 7));
+      window._gsHKaynak = _fmtD(pzt);
+    } else {
+      var pzt = _getMonday(window._gsHHedef);
+      pzt.setDate(pzt.getDate() + (yon * 7));
+      window._gsHHedef = _fmtD(pzt);
     }
-    // Kaynak değişince tabloyu yeniden yükle (veriler değişir)
-    if(tip==='kaynak') gsHaftalikKopyaAc();
-    // Hedef değişince sadece hedef label güncelle (tablo aynı kalır)
-    // — gsHaftalikKopyaAc zaten her seferinde hidden input'tan okur
-    if(tip==='hedef') gsHaftalikKopyaAc();
+    gsHaftalikKopyaAc();
   };
 
   // Haftalık toplam hesapla (tek satır + öğünlü)
@@ -19440,9 +19445,8 @@ window.addEventListener('load', function() {
 
   // Uygula: hedef haftaya kaynak değerlerini yaz (öğün destekli)
   window.gsHaftalikKopyaUygula = function(){
-    var hedefBasEl = document.getElementById('gsHedefBas');
-    if(!hedefBasEl) return;
-    var hedefPzt = _getMonday(new Date(hedefBasEl.value));
+    if(!window._gsHHedef) return;
+    var hedefPzt = _getMonday(window._gsHHedef);
 
     var custs = _getCusts();
     var gunlukArr = _getGunluk();
