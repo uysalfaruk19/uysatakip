@@ -19103,6 +19103,15 @@ window.addEventListener('load', function() {
         return !(g.tarih===tarih && g.aciklama && g.aciklama.startsWith('Al/Sat alış —'));
       });
 
+      // Al/Sat borçlarını bu tarih için temizle (tekrar oluşturulacak)
+      if(typeof window._addBorc==='function'){
+        try{
+          var borcArr = JSON.parse(localStorage.getItem('uysa_borclar')||'[]');
+          borcArr = borcArr.filter(function(b){ return !(b.tarih===tarih && b.aciklama && b.aciklama.startsWith('Al/Sat alış —')); });
+          localStorage.setItem('uysa_borclar', JSON.stringify(borcArr));
+        }catch(e){}
+      }
+
       var count=0, totalTutar=0, alSatCount=0;
       custs.forEach(function(cust,i){
         // 3 öğünden kişi/fiyat oku
@@ -19127,20 +19136,25 @@ window.addEventListener('load', function() {
         count++;
         totalTutar+=topTutar;
 
-        // Al/Sat müşterisi ise otomatik gider oluştur
+        // Al/Sat müşterisi ise otomatik gider + borç oluştur
         var crmData = _ls.get('uysa_crm_'+cust, {});
         if(crmData.alSat && crmData.alisFiyat>0){
           var alisTutar = topKisi * crmData.alisFiyat;
+          var alisAciklama = 'Al/Sat alış — '+cust+' — '+topKisi+' kişi × '+crmData.alisFiyat+' ₺';
           giderArr.push({
             kat:'uretim-diger-gida',
             tarih:tarih,
             tutar:alisTutar,
-            aciklama:'Al/Sat alış — '+cust+' — '+topKisi+' kişi × '+crmData.alisFiyat+' ₺',
+            aciklama:alisAciklama,
             belge:'',
             tedarikci: crmData.tedarikci||'',
             aitlik:'musteri',
             musteriler:[cust]
           });
+          // Borçlara da ekle
+          if(typeof window._addBorc==='function'){
+            window._addBorc({tedarikci:crmData.tedarikci||cust, tarih:tarih, tutar:alisTutar, belge:'', aciklama:alisAciklama});
+          }
           alSatCount++;
         }
       });
@@ -19161,6 +19175,7 @@ window.addEventListener('load', function() {
       if(typeof window.renderGelirler==='function') try{ window.renderGelirler(); }catch(e){}
       if(typeof window.renderGiderler==='function') try{ window.renderGiderler(); }catch(e){}
       if(typeof window.refreshFinStats==='function') try{ window.refreshFinStats(); }catch(e){}
+      if(typeof window.renderBorclar==='function') try{ window.renderBorclar(); }catch(e){}
 
       // Tabloyu yenile (kayıtlı işaretleri göster)
       window.gsRenderTableV76();
@@ -19789,17 +19804,30 @@ window.addEventListener('load', function() {
     });
     var alSatCount = 0;
 
+    // Al/Sat borçlarını bu tarih için temizle
+    if(typeof window._addBorc==='function'){
+      try{
+        var borcArr = JSON.parse(localStorage.getItem('uysa_borclar')||'[]');
+        borcArr = borcArr.filter(function(b){ return !(b.tarih===tarih && b.aciklama && b.aciklama.startsWith('Al/Sat alış —')); });
+        localStorage.setItem('uysa_borclar', JSON.stringify(borcArr));
+      }catch(e){}
+    }
+
     yeniKayitlar.forEach(function(r){
       gelirArr.push({musteri:r.musteri, tarih:r.tarih, tutar:r.tutar, kisi:r.kisi, fatura:'',
         aciklama:'Günlük üretim — '+r.kisi+' kişi × '+r.fiyat+' ₺ (otomatik)'});
-      // Al/Sat otomatik gider
+      // Al/Sat otomatik gider + borç
       var crmData = _ls.get('uysa_crm_'+r.musteri, {});
       if(crmData.alSat && crmData.alisFiyat>0){
+        var alisAciklama = 'Al/Sat alış — '+r.musteri+' — '+r.kisi+' kişi × '+crmData.alisFiyat+' ₺';
         giderArr.push({
           kat:'uretim-diger-gida', tarih:tarih, tutar:r.kisi*crmData.alisFiyat,
-          aciklama:'Al/Sat alış — '+r.musteri+' — '+r.kisi+' kişi × '+crmData.alisFiyat+' ₺',
+          aciklama:alisAciklama,
           belge:'', tedarikci:crmData.tedarikci||'', aitlik:'musteri', musteriler:[r.musteri]
         });
+        if(typeof window._addBorc==='function'){
+          window._addBorc({tedarikci:crmData.tedarikci||r.musteri, tarih:tarih, tutar:r.kisi*crmData.alisFiyat, belge:'', aciklama:alisAciklama});
+        }
         alSatCount++;
       }
     });
@@ -19850,13 +19878,28 @@ window.addEventListener('load', function() {
       var gel = _getGelirler().filter(function(g){ return !(g.tarih===tarih && g.aciklama && g.aciklama.startsWith('Günlük üretim')); });
       yeniKayitlar.forEach(function(r){ gel.push({musteri:r.musteri,tarih:r.tarih,tutar:r.tutar,kisi:r.kisi,fatura:'',aciklama:'Günlük üretim — '+r.kisi+' kişi × '+r.fiyat+' ₺ (otomatik)'}); });
       _saveGelirler(gel);
-      // Al/Sat gider sync
+      // Al/Sat gider + borç sync
       var giderArr=[]; try{ giderArr=JSON.parse(localStorage.getItem('uysa_giderler')||'[]'); }catch(e){}
       giderArr=giderArr.filter(function(g){ return !(g.tarih===tarih && g.aciklama && g.aciklama.startsWith('Al/Sat alış —')); });
+      // Al/Sat borçlarını bu tarih için temizle
+      if(typeof window._addBorc==='function'){
+        try{
+          var borcArr=JSON.parse(localStorage.getItem('uysa_borclar')||'[]');
+          borcArr=borcArr.filter(function(b){ return !(b.tarih===tarih && b.aciklama && b.aciklama.startsWith('Al/Sat alış —')); });
+          localStorage.setItem('uysa_borclar', JSON.stringify(borcArr));
+        }catch(e){}
+      }
       var alSatCount=0;
       yeniKayitlar.forEach(function(r){
         var cd=_ls.get('uysa_crm_'+r.musteri,{});
-        if(cd.alSat && cd.alisFiyat>0){ giderArr.push({kat:'uretim-diger-gida',tarih:tarih,tutar:r.kisi*cd.alisFiyat,aciklama:'Al/Sat alış — '+r.musteri+' — '+r.kisi+' kişi × '+cd.alisFiyat+' ₺',belge:'',tedarikci:cd.tedarikci||'',aitlik:'musteri',musteriler:[r.musteri]}); alSatCount++; }
+        if(cd.alSat && cd.alisFiyat>0){
+          var alisAciklama='Al/Sat alış — '+r.musteri+' — '+r.kisi+' kişi × '+cd.alisFiyat+' ₺';
+          giderArr.push({kat:'uretim-diger-gida',tarih:tarih,tutar:r.kisi*cd.alisFiyat,aciklama:alisAciklama,belge:'',tedarikci:cd.tedarikci||'',aitlik:'musteri',musteriler:[r.musteri]});
+          if(typeof window._addBorc==='function'){
+            window._addBorc({tedarikci:cd.tedarikci||r.musteri, tarih:tarih, tutar:r.kisi*cd.alisFiyat, belge:'', aciklama:alisAciklama});
+          }
+          alSatCount++;
+        }
       });
       if(alSatCount>0) localStorage.setItem('uysa_giderler',JSON.stringify(giderArr));
       console.log('✅ Otomatik kayıt ('+tarih+'): '+yeniKayitlar.length+' müşteri, '+alSatCount+' Al/Sat');
@@ -22845,15 +22888,28 @@ window._syncAlSatGiderler = function(musteriAdi, alisFiyat, tedarikci){
     return !(g.aciklama && g.aciklama.startsWith('Al/Sat alış — '+musteriAdi+' —'));
   });
 
-  // Her gün için gider oluştur
+  // Bu müşterinin Al/Sat borçlarını da temizle
+  if(typeof window._addBorc==='function'){
+    try{
+      var borcArr = JSON.parse(localStorage.getItem('uysa_borclar')||'[]');
+      borcArr = borcArr.filter(function(b){ return !(b.aciklama && b.aciklama.startsWith('Al/Sat alış — '+musteriAdi+' —')); });
+      localStorage.setItem('uysa_borclar', JSON.stringify(borcArr));
+    }catch(e){}
+  }
+
+  // Her gün için gider + borç oluştur
   var eklenen = 0;
   musteriKayitlar.forEach(function(r){
     var alisTutar = r.kisi * alisFiyat;
+    var alisAciklama = 'Al/Sat alış — '+musteriAdi+' — '+r.kisi+' kişi × '+alisFiyat+' ₺';
     giderArr.push({
       kat:'uretim-diger-gida', tarih:r.tarih, tutar:alisTutar,
-      aciklama:'Al/Sat alış — '+musteriAdi+' — '+r.kisi+' kişi × '+alisFiyat+' ₺',
+      aciklama:alisAciklama,
       belge:'', tedarikci:tedarikci, aitlik:'musteri', musteriler:[musteriAdi]
     });
+    if(typeof window._addBorc==='function'){
+      window._addBorc({tedarikci:tedarikci||musteriAdi, tarih:r.tarih, tutar:alisTutar, belge:'', aciklama:alisAciklama});
+    }
     eklenen++;
   });
 
@@ -23391,7 +23447,6 @@ function _syncMevcutGelirlerAlacak(){
 // ── Mevcut Giderleri Borca Senkronize Et (Geriye Dönük) ──
 function _syncMevcutGiderlerBorc(){
   var borclar = lsGet(LS_BORC, []);
-  if(borclar.length>0) return; // Zaten borç var, senkronizasyon yapılmış
   var katLabels = {
     'uretim-kirmizi':'Kırmızı Et','uretim-tavuk':'Tavuk','uretim-kiyma':'Kıyma',
     'uretim-sebze':'Sebze','uretim-bakliyat':'Bakliyat','uretim-ayran':'Ayran/Yoğurt',
@@ -23401,24 +23456,38 @@ function _syncMevcutGiderlerBorc(){
   };
   try{
     var giderler = JSON.parse(localStorage.getItem('uysa_giderler')||'[]');
+    // Mevcut borçların açıklama+tarih+tutar setini oluştur (tekrar eklemeyi önlemek için)
+    var mevcutSet = {};
+    borclar.forEach(function(b){
+      mevcutSet[b.tarih+'|'+b.tutar+'|'+b.aciklama] = true;
+    });
+    var yeniSayisi = 0;
     giderler.forEach(function(g){
       if(g.tutar>0){
         var tedAdi = g.tedarikci || katLabels[g.kat] || g.kat || 'Genel Gider';
+        var aciklama = g.aciklama||katLabels[g.kat]||g.kat||'Mevcut gider';
+        var tarih = g.tarih||bugun();
+        var key = tarih+'|'+Number(g.tutar)+'|'+aciklama;
+        if(mevcutSet[key]) return; // Zaten borçlarda var
         borclar.push({
           id: 'sync_'+Math.random().toString(36).slice(2,8),
           tedarikci: tedAdi,
-          tarih: g.tarih||bugun(),
+          tarih: tarih,
           tutar: Number(g.tutar),
           belge: g.belge||'',
-          aciklama: g.aciklama||katLabels[g.kat]||g.kat||'Mevcut gider',
+          aciklama: aciklama,
           kalan: Number(g.tutar),
           durum: 'acik',
           tip: 'fatura'
         });
+        mevcutSet[key] = true;
+        yeniSayisi++;
       }
     });
-    if(borclar.length) lsSet(LS_BORC, borclar);
-    console.log('✅ Mevcut giderler borca senkronize edildi: '+borclar.length+' kayıt');
+    if(yeniSayisi>0){
+      lsSet(LS_BORC, borclar);
+      console.log('✅ Mevcut giderler borca senkronize edildi: '+yeniSayisi+' yeni kayıt');
+    }
   }catch(e){}
 }
 
