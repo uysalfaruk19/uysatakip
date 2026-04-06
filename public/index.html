@@ -6046,10 +6046,6 @@ function escapeHtml(s){
     buildEditor(day,rowKey);
   }
 
-  function inferTypeFromDish(dish){
-    return dishType[dish] || '';
-  }
-
   function validate(){
     errorsEl.innerHTML = '';
     statusLine.textContent = 'Kontrol ediliyor...';
@@ -22792,20 +22788,10 @@ function todayStr(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMo
 // ── Veri Okuyucular ───────────────────────────────────────────
 
 function getGelirler(){
-  // KPI FIX: v2 boşsa v1'e bak — gerçek veriler uysa_gelirler'de
-  try{
-    const v2 = JSON.parse(localStorage.getItem('uysa_gelirler_v2')||'[]');
-    if(v2.length>0) return v2;
-    return JSON.parse(localStorage.getItem('uysa_gelirler')||'[]');
-  }catch(e){ return []; }
+  try{ return JSON.parse(localStorage.getItem('uysa_gelirler')||'[]'); }catch(e){ return []; }
 }
 function getGiderler(){
-  // KPI FIX: v2 boşsa v1'e bak — gerçek veriler uysa_giderler'de
-  try{
-    const v2 = JSON.parse(localStorage.getItem('uysa_giderler_v2')||'[]');
-    if(v2.length>0) return v2;
-    return JSON.parse(localStorage.getItem('uysa_giderler')||'[]');
-  }catch(e){ return []; }
+  try{ return JSON.parse(localStorage.getItem('uysa_giderler')||'[]'); }catch(e){ return []; }
 }
 function getUretimGiderleri(){
   try{ return JSON.parse(localStorage.getItem('uysa_uretim_gider')||'[]'); }catch(e){ return []; }
@@ -24956,7 +24942,6 @@ document.addEventListener('DOMContentLoaded', function(){
 </script>
 
 <script src="/uysa-ux-manager.js" defer></script>
-<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js" defer></script>
 <script src="/js/recete-core.js" defer></script>
 <script src="/js/recete-kutuphane.js" defer></script>
 <script src="/js/recete-gunluk.js" defer></script>
