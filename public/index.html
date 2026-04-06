@@ -19274,7 +19274,7 @@ window.addEventListener('load', function() {
     for(var d=0; d<7; d++){
       var gunTarih = new Date(kaynakPzt); gunTarih.setDate(kaynakPzt.getDate()+d);
       var isWknd = (d>=5);
-      html += '<th style="padding:8px;text-align:center;border-bottom:2px solid #e9e5ff;min-width:55px;'+(isWknd?'background:#fef3c7':''')+'">';
+      html += '<th style="padding:8px;text-align:center;border-bottom:2px solid #e9e5ff;min-width:55px;'+(isWknd?'background:#fef3c7':'')+'">';
       html += '<div style="font-size:11px;color:'+(isWknd?'#d97706':'#7c3aed')+'">'+gunAdlari[d]+'</div>';
       html += '<div style="font-size:10px;color:#94a3b8">'+gunTarih.getDate()+'/'+(gunTarih.getMonth()+1)+'</div>';
       html += '</th>';
