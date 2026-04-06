@@ -19206,8 +19206,9 @@ window.addEventListener('load', function() {
     var gunlukArr = _getGunluk();
     var gunAdlari = ['Pzt','Sal','Çar','Per','Cum'];
 
-    // Kaynak haftadaki verileri topla
-    var kaynakData = {}; // {musteri: {0:{kisi,fiyat}, 1:{kisi,fiyat}, ...}}
+    // Kaynak haftadaki verileri topla — öğün bazlı
+    // kaynakData[cust][d] = {kisi, fiyat, ogle:{kisi,fiyat}, aksam:{kisi,fiyat}, kumanya:{kisi,fiyat}}
+    var kaynakData = {};
     custs.forEach(function(cust){
       kaynakData[cust] = {};
       for(var d=0; d<5; d++){
@@ -19218,7 +19219,17 @@ window.addEventListener('load', function() {
         gunlukArr.forEach(function(u){
           if(u.musteri===cust && u.tarih===tarihStr) kayit = u;
         });
-        kaynakData[cust][d] = kayit ? {kisi:kayit.kisi||0, fiyat:kayit.fiyat||0} : {kisi:0, fiyat:0};
+        if(kayit){
+          kaynakData[cust][d] = {
+            kisi:kayit.kisi||0, fiyat:kayit.fiyat||0,
+            ogle: kayit.ogle || {kisi:kayit.kisi||0, fiyat:kayit.fiyat||0},
+            aksam: kayit.aksam || {kisi:0, fiyat:kayit.fiyat||0},
+            kumanya: kayit.kumanya || {kisi:0, fiyat:kayit.fiyat||0}
+          };
+        } else {
+          var cf = _ls.get('uysa_crm_'+cust,{}).fiyat||0;
+          kaynakData[cust][d] = {kisi:0, fiyat:cf, ogle:{kisi:0,fiyat:cf}, aksam:{kisi:0,fiyat:cf}, kumanya:{kisi:0,fiyat:cf}};
+        }
       }
     });
 
@@ -19250,11 +19261,15 @@ window.addEventListener('load', function() {
     html += '</div>';
     html += '</div>';
 
-    // Tablo: Müşteri / Kişi / Fiyat / Pzt-Cum
+    var ogunColors = {ogle:'#1e40af', aksam:'#7c3aed', kumanya:'#b45309'};
+    var ogunBgs = {ogle:'#eff6ff', aksam:'#f5f3ff', kumanya:'#fffbeb'};
+
+    // Tablo: Müşteri / Öğün / Fiyat / Pzt-Cum / Hafta Top.
     html += '<div style="overflow-x:auto">';
     html += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
     html += '<thead><tr style="background:#f5f3ff">';
     html += '<th style="padding:8px;text-align:left;border-bottom:2px solid #e9e5ff;min-width:120px">Musteri</th>';
+    html += '<th style="padding:8px;text-align:center;border-bottom:2px solid #e9e5ff;min-width:60px">Öğün</th>';
     html += '<th style="padding:8px;text-align:center;border-bottom:2px solid #e9e5ff;width:70px">Fiyat</th>';
     for(var d=0; d<5; d++){
       var gunTarih = new Date(kaynakPzt); gunTarih.setDate(kaynakPzt.getDate()+d);
@@ -19268,19 +19283,92 @@ window.addEventListener('load', function() {
 
     custs.forEach(function(cust, ci){
       var crm = _ls.get('uysa_crm_'+cust, {});
-      var haftalikTop = 0;
-      html += '<tr style="border-bottom:1px solid #f1f5f9;'+(ci%2===0?'background:#fff':'background:#faf9ff')+'">';
-      html += '<td style="padding:6px 8px;font-weight:600;color:#1e293b">'+cust;
-      if(crm.alSat) html += ' <span style="background:#dc2626;color:#fff;font-size:9px;padding:1px 4px;border-radius:3px">Al/Sat</span>';
-      html += '</td>';
-      html += '<td style="padding:4px;text-align:center"><input type="number" step="0.01" class="gsHK-fiyat" data-cust="'+ci+'" value="'+(kaynakData[cust][0].fiyat||crm.fiyat||0)+'" style="width:60px;padding:4px;border:1px solid #e2e8f0;border-radius:5px;text-align:center;font-size:11px"/></td>';
-      for(var d=0; d<5; d++){
-        var val = kaynakData[cust][d].kisi || 0;
-        haftalikTop += val;
-        html += '<td style="padding:4px;text-align:center"><input type="number" min="0" class="gsHK-kisi" data-cust="'+ci+'" data-day="'+d+'" value="'+val+'" style="width:55px;padding:4px;border:1px solid #e2e8f0;border-radius:5px;text-align:center;font-size:12px;font-weight:700" oninput="gsHKCalcTop('+ci+')"/></td>';
+      var isOpen = !!window._gsOgunAcik[cust];
+      var rowBg = ci%2===0?'#fff':'#faf9ff';
+
+      if(isOpen){
+        // ═══ 3 ÖĞÜN AÇIK: her öğün için ayrı satır ═══
+        _ogunler.forEach(function(og, oi){
+          var isFirst = (oi===0);
+          var isLast = (oi===2);
+          var haftalikOgunTop = 0;
+
+          html += '<tr style="border-bottom:1px solid '+(isLast?'#c7d2fe':'#f1f5f9')+';background:'+rowBg+'">';
+
+          // Müşteri kolonu — ilk satırda rowspan=3
+          if(isFirst){
+            html += '<td rowspan="3" style="padding:6px 8px;font-weight:600;color:#1e293b;border-bottom:2px solid #c7d2fe;border-right:1px solid #e9e5ff;vertical-align:top">'
+              +cust;
+            if(crm.alSat) html += ' <span style="background:#dc2626;color:#fff;font-size:9px;padding:1px 4px;border-radius:3px">Al/Sat</span>';
+            html += '<br><button onclick="gsOgunToggle(\''+cust.replace(/'/g,"\\'")+'\','+ci+');gsHaftalikKopyaAc()" style="margin-top:3px;padding:2px 6px;font-size:9px;background:#e0e7ff;color:#4338ca;border:1px solid #c7d2fe;border-radius:5px;cursor:pointer;font-weight:600">▲ Tek Satır</button>';
+            html += '</td>';
+          }
+
+          // Öğün etiketi
+          html += '<td style="padding:4px 6px;text-align:center;border-right:1px solid #e9e5ff">'
+            +'<span style="font-size:10px;font-weight:700;color:'+ogunColors[og]+';background:'+ogunBgs[og]+';padding:2px 6px;border-radius:8px">'+_ogunLabels[og]+'</span>'
+            +'</td>';
+
+          // Fiyat
+          var ogunFiyat = kaynakData[cust][0][og]?.fiyat || crm.fiyat || 0;
+          html += '<td style="padding:4px;text-align:center;border-right:1px solid #e9e5ff">'
+            +'<input type="number" step="0.01" class="gsHK-fiyat-'+og+'" data-cust="'+ci+'" data-ogun="'+og+'" value="'+ogunFiyat+'" style="width:55px;padding:3px;border:1px solid #e2e8f0;border-radius:5px;text-align:center;font-size:11px"/>'
+            +'</td>';
+
+          // Pzt-Cum kişi inputları
+          for(var dd=0; dd<5; dd++){
+            var ogunKisi = kaynakData[cust][dd][og]?.kisi || 0;
+            haftalikOgunTop += ogunKisi;
+            html += '<td style="padding:3px;text-align:center">'
+              +'<input type="number" min="0" class="gsHK-kisi-'+og+'" data-cust="'+ci+'" data-day="'+dd+'" data-ogun="'+og+'" value="'+(ogunKisi||'')+'" placeholder="0" style="width:48px;padding:3px;border:1px solid #e2e8f0;border-radius:5px;text-align:center;font-size:11px;font-weight:700" oninput="gsHKCalcTop('+ci+')"/>'
+              +'</td>';
+          }
+
+          // Öğün haftalık toplam
+          html += '<td class="gsHK-ogun-top-'+og+'" data-cust="'+ci+'" style="padding:4px;text-align:center;font-weight:700;color:'+ogunColors[og]+';font-size:11px">'+(haftalikOgunTop||'—')+'</td>';
+          html += '</tr>';
+        });
+
+        // Toplam satırı (müşteri toplam)
+        var custHaftalikTop = 0;
+        for(var dd=0; dd<5; dd++){
+          _ogunler.forEach(function(og){
+            custHaftalikTop += kaynakData[cust][dd][og]?.kisi || 0;
+          });
+        }
+        html += '<tr style="background:#eef3ff;border-bottom:2px solid #c7d2fe">';
+        html += '<td colspan="3" style="padding:4px 8px;text-align:right;font-weight:700;font-size:11px;color:#374151">'+cust+' Toplam</td>';
+        for(var dd=0; dd<5; dd++){
+          var gunTop = 0;
+          _ogunler.forEach(function(og){ gunTop += kaynakData[cust][dd][og]?.kisi || 0; });
+          html += '<td style="padding:4px;text-align:center;font-weight:800;color:#166534;font-size:11px">'+(gunTop||'—')+'</td>';
+        }
+        html += '<td class="gsHK-top" data-cust="'+ci+'" style="padding:4px;text-align:center;font-weight:800;color:#166534;font-size:13px">'+custHaftalikTop+'</td>';
+        html += '</tr>';
+
+      } else {
+        // ═══ TEK SATIR: eski davranış ═══
+        var haftalikTop = 0;
+        html += '<tr style="border-bottom:1px solid #f1f5f9;background:'+rowBg+'">';
+        html += '<td style="padding:6px 8px;font-weight:600;color:#1e293b;border-right:1px solid #e9e5ff">'+cust;
+        if(crm.alSat) html += ' <span style="background:#dc2626;color:#fff;font-size:9px;padding:1px 4px;border-radius:3px">Al/Sat</span>';
+        html += '<br><button onclick="gsOgunToggle(\''+cust.replace(/'/g,"\\'")+'\','+ci+');gsHaftalikKopyaAc()" style="margin-top:3px;padding:2px 6px;font-size:9px;background:#f5f3ff;color:#7c3aed;border:1px solid #ddd6fe;border-radius:5px;cursor:pointer;font-weight:600">▼ 3 Öğün</button>';
+        html += '</td>';
+
+        // Öğün: Genel
+        html += '<td style="padding:4px 6px;text-align:center;border-right:1px solid #e9e5ff"><span style="font-size:10px;font-weight:600;color:#64748b">Genel</span></td>';
+
+        // Fiyat
+        html += '<td style="padding:4px;text-align:center;border-right:1px solid #e9e5ff"><input type="number" step="0.01" class="gsHK-fiyat" data-cust="'+ci+'" value="'+(kaynakData[cust][0].fiyat||crm.fiyat||0)+'" style="width:55px;padding:3px;border:1px solid #e2e8f0;border-radius:5px;text-align:center;font-size:11px"/></td>';
+
+        for(var dd=0; dd<5; dd++){
+          var val = kaynakData[cust][dd].kisi || 0;
+          haftalikTop += val;
+          html += '<td style="padding:3px;text-align:center"><input type="number" min="0" class="gsHK-kisi" data-cust="'+ci+'" data-day="'+dd+'" value="'+(val||'')+'" placeholder="0" style="width:48px;padding:3px;border:1px solid #e2e8f0;border-radius:5px;text-align:center;font-size:12px;font-weight:700" oninput="gsHKCalcTop('+ci+')"/></td>';
+        }
+        html += '<td class="gsHK-top" data-cust="'+ci+'" style="padding:6px;text-align:center;font-weight:800;color:#166534;font-size:13px">'+(haftalikTop||'—')+'</td>';
+        html += '</tr>';
       }
-      html += '<td class="gsHK-top" data-cust="'+ci+'" style="padding:6px;text-align:center;font-weight:800;color:#166534;font-size:13px">'+haftalikTop+'</td>';
-      html += '</tr>';
     });
 
     html += '</tbody></table></div>';
@@ -19313,16 +19401,26 @@ window.addEventListener('load', function() {
     bitEl.value = _fmtD(cum);
   };
 
-  // Haftalık toplam hesapla
+  // Haftalık toplam hesapla (tek satır + öğünlü)
   window.gsHKCalcTop = function(ci){
-    var inputs = document.querySelectorAll('.gsHK-kisi[data-cust="'+ci+'"]');
     var top = 0;
+    // Tek satır inputları
+    var inputs = document.querySelectorAll('.gsHK-kisi[data-cust="'+ci+'"]');
     inputs.forEach(function(inp){ top += parseInt(inp.value)||0; });
+    // Öğün inputları
+    _ogunler.forEach(function(og){
+      var ogunInputs = document.querySelectorAll('.gsHK-kisi-'+og+'[data-cust="'+ci+'"]');
+      var ogunTop = 0;
+      ogunInputs.forEach(function(inp){ ogunTop += parseInt(inp.value)||0; top += parseInt(inp.value)||0; });
+      // Öğün toplam hücresini güncelle
+      var ogunTopEl = document.querySelector('.gsHK-ogun-top-'+og+'[data-cust="'+ci+'"]');
+      if(ogunTopEl) ogunTopEl.textContent = ogunTop||'—';
+    });
     var td = document.querySelector('.gsHK-top[data-cust="'+ci+'"]');
-    if(td) td.textContent = top;
+    if(td) td.textContent = top||'—';
   };
 
-  // Uygula: hedef haftaya kaynak değerlerini yaz
+  // Uygula: hedef haftaya kaynak değerlerini yaz (öğün destekli)
   window.gsHaftalikKopyaUygula = function(){
     var hedefBasEl = document.getElementById('gsHedefBas');
     if(!hedefBasEl) return;
@@ -19334,18 +19432,43 @@ window.addEventListener('load', function() {
     var kayitSayisi = 0;
 
     custs.forEach(function(cust, ci){
-      var fiyatEl = document.querySelector('.gsHK-fiyat[data-cust="'+ci+'"]');
-      var fiyat = parseFloat(fiyatEl?.value)||0;
+      var isOpen = !!window._gsOgunAcik[cust];
 
       for(var d=0; d<5; d++){
-        var kisiEl = document.querySelector('.gsHK-kisi[data-cust="'+ci+'"][data-day="'+d+'"]');
-        var kisi = parseInt(kisiEl?.value)||0;
-        if(kisi <= 0) continue;
-
         var dt = new Date(hedefPzt);
         dt.setDate(hedefPzt.getDate()+d);
         var tarih = _fmtD(dt);
-        var tutar = kisi * fiyat;
+
+        var topKisi = 0, topTutar = 0;
+        var ogunData = {};
+
+        if(isOpen){
+          // Öğün bazlı inputlardan oku
+          _ogunler.forEach(function(og){
+            var kEl = document.querySelector('.gsHK-kisi-'+og+'[data-cust="'+ci+'"][data-day="'+d+'"]');
+            var fEl = document.querySelector('.gsHK-fiyat-'+og+'[data-cust="'+ci+'"]');
+            var k = parseInt(kEl?.value)||0;
+            var f = parseFloat(fEl?.value)||0;
+            ogunData[og] = {kisi:k, fiyat:f};
+            topKisi += k;
+            topTutar += k * f;
+          });
+        } else {
+          // Tek satır inputlardan oku
+          var kisiEl = document.querySelector('.gsHK-kisi[data-cust="'+ci+'"][data-day="'+d+'"]');
+          var fiyatEl = document.querySelector('.gsHK-fiyat[data-cust="'+ci+'"]');
+          var kisi = parseInt(kisiEl?.value)||0;
+          var fiyat = parseFloat(fiyatEl?.value)||0;
+          topKisi = kisi;
+          topTutar = kisi * fiyat;
+          ogunData.ogle = {kisi:kisi, fiyat:fiyat};
+          ogunData.aksam = {kisi:0, fiyat:fiyat};
+          ogunData.kumanya = {kisi:0, fiyat:fiyat};
+        }
+
+        if(topKisi <= 0) continue;
+
+        var anaFiyat = ogunData.ogle.fiyat || ogunData.aksam.fiyat || ogunData.kumanya.fiyat || 0;
 
         // Mevcut kaydı sil
         gunlukArr = gunlukArr.filter(function(u){
@@ -19355,25 +19478,15 @@ window.addEventListener('load', function() {
           return !(g.tarih===tarih && g.musteri===cust && g.aciklama && g.aciklama.startsWith('Günlük üretim'));
         });
 
-        // Kaynak günün öğün verisini bul
-        var kaynakBasEl = document.getElementById('gsKaynakBas');
-        var kaynakPztD = _getMonday(new Date(kaynakBasEl?.value||''));
-        var kaynakDt = new Date(kaynakPztD); kaynakDt.setDate(kaynakPztD.getDate()+d);
-        var kaynakTarih = _fmtD(kaynakDt);
-        var kaynakKayit = null;
-        gunlukArr.forEach(function(u){ if(u.musteri===cust && u.tarih===kaynakTarih) kaynakKayit=u; });
-
         // Yeni kayıt ekle (öğün verisiyle birlikte)
-        var rec = {musteri:cust, tarih:tarih, kisi:kisi, fiyat:fiyat, tutar:tutar, not:'haftalik-kopya'};
-        if(kaynakKayit && kaynakKayit.ogle) rec.ogle = JSON.parse(JSON.stringify(kaynakKayit.ogle));
-        if(kaynakKayit && kaynakKayit.aksam) rec.aksam = JSON.parse(JSON.stringify(kaynakKayit.aksam));
-        if(kaynakKayit && kaynakKayit.kumanya) rec.kumanya = JSON.parse(JSON.stringify(kaynakKayit.kumanya));
-        if(!rec.ogle) rec.ogle = {kisi:kisi, fiyat:fiyat};
-        if(!rec.aksam) rec.aksam = {kisi:0, fiyat:fiyat};
-        if(!rec.kumanya) rec.kumanya = {kisi:0, fiyat:fiyat};
+        var rec = {musteri:cust, tarih:tarih, kisi:topKisi, fiyat:anaFiyat, tutar:topTutar, not:'haftalik-kopya',
+          ogle:ogunData.ogle, aksam:ogunData.aksam, kumanya:ogunData.kumanya};
         gunlukArr.push(rec);
-        gelirArr.push({musteri:cust, tarih:tarih, tutar:tutar, kisi:kisi, fatura:'',
-          aciklama:'Günlük üretim — '+kisi+' kişi × '+fiyat+' ₺'});
+
+        var aciklama = isOpen
+          ? 'Günlük üretim — '+topKisi+' kişi (öğle:'+ogunData.ogle.kisi+' akşam:'+ogunData.aksam.kisi+' kumanya:'+ogunData.kumanya.kisi+')'
+          : 'Günlük üretim — '+topKisi+' kişi × '+anaFiyat+' ₺';
+        gelirArr.push({musteri:cust, tarih:tarih, tutar:topTutar, kisi:topKisi, fatura:'', aciklama:aciklama});
         kayitSayisi++;
       }
     });
