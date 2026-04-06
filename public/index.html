@@ -26323,6 +26323,27 @@ window.uysaAI = {
 };
 
 })();
+
+// ══ STUB FONKSİYONLAR — Henüz implemente edilmemiş modüller ══
+// Bu fonksiyonlar HTML onclick'te çağrılıyor ancak JS implementasyonu henüz eklenmemiş.
+// ReferenceError yerine kullanıcıya bilgi mesajı gösterir.
+(function(){
+  var stubMsg = 'Bu özellik henüz aktif değil. Yakında eklenecektir.';
+  var stubs = [
+    'patronSayfasiYazdir','renderAylikOzetRapor','aylikOzetPdf',
+    'irsaliyeListGoster','irsaliyeOlustur','irsaliyeMenudenCek',
+    'mesaiKaydet',
+    'rcYeniYemek','rcAddIngredientRow','rcSaveRecipe','rcSilRecipe',
+    'rcGunToggleAllCust','rcLoadGunlukMenu','rcUretimFisiOlustur',
+    'rcGecmisGunlerDashboard','rcSaveGunlukUretim','rcRenderAnaliz','rcOrtalamaAl',
+    'rcFilterYemekList','rcRecalc','rcImportExcel','rcToggleAralik','rcRecalcGunluk'
+  ];
+  stubs.forEach(function(name){
+    if(typeof window[name]==='undefined'){
+      window[name] = function(){ alert('⚠️ '+stubMsg); };
+    }
+  });
+})();
 </script>
 </body>
 </html>
