@@ -18464,32 +18464,53 @@ window.addEventListener('load', function() {
   function _getGelirler(){ return _ls.get('uysa_gelirler',[]); }
   function _saveGelirler(arr){ _ls.set('uysa_gelirler',arr); }
 
-  /* ── Anlık güncelleme: satır idx'i için günlük toplamı hesapla ──── */
+  /* ── Öğün sabitleri ──────────────────────────────────────────────── */
+  var _ogunler = ['ogle','aksam','kumanya'];
+  var _ogunLabels = {ogle:'Öğle', aksam:'Akşam', kumanya:'Kumanya'};
+
+  /* ── Anlık güncelleme: müşteri idx'i için tüm öğünleri hesapla ──── */
   window.gsCalcRow = function(idx){
-    var kEl = document.querySelector('.gsv76-kisi[data-idx="'+idx+'"]');
-    var fEl = document.querySelector('.gsv76-fiyat[data-idx="'+idx+'"]');
+    var topNet = 0;
+    _ogunler.forEach(function(og){
+      var kEl = document.querySelector('.gsv76-kisi-'+og+'[data-idx="'+idx+'"]');
+      var fEl = document.querySelector('.gsv76-fiyat-'+og+'[data-idx="'+idx+'"]');
+      var tEl = document.querySelector('.gsv76-ogun-top-'+og+'[data-idx="'+idx+'"]');
+      if(!kEl||!fEl||!tEl) return;
+      var k = parseFloat(kEl.value)||0;
+      var f = parseFloat(fEl.value)||0;
+      var net = k>0&&f>0 ? k*f : 0;
+      topNet += net;
+      tEl.textContent = net>0 ? _fmt(net)+' ₺' : '—';
+      tEl.style.color = net>0 ? '#166534' : '#94a3b8';
+    });
+    // Müşteri toplam
     var tEl = document.querySelector('.gsv76-gunluk[data-idx="'+idx+'"]');
-    if(!kEl||!fEl||!tEl) return;
-    var k = parseFloat(kEl.value)||0;
-    var f = parseFloat(fEl.value)||0;
-    var net = k>0&&f>0 ? k*f : 0;
-    var kdvPct = window._gsKdvPct || 0;
-    if(net>0){
-      if(kdvPct>0){
-        var kdvTutar = net * kdvPct / 100;
-        var kdvDahil = net + kdvTutar;
-        tEl.innerHTML = '<span style="color:#166534;font-weight:700">'+_fmt(net)+' ₺</span>'
-          +'<br><span style="color:#7c3aed;font-size:10px">+%'+kdvPct+' KDV: '+_fmt(kdvTutar)+' ₺</span>'
-          +'<br><span style="color:#4a148c;font-size:10px;font-weight:800">Toplam: '+_fmt(kdvDahil)+' ₺</span>';
-        tEl.style.color = '';
+    if(tEl){
+      var kdvPct = window._gsKdvPct || 0;
+      if(topNet>0){
+        if(kdvPct>0){
+          var kdvTutar = topNet * kdvPct / 100;
+          var kdvDahil = topNet + kdvTutar;
+          tEl.innerHTML = '<span style="color:#166534;font-weight:700">'+_fmt(topNet)+' ₺</span>'
+            +'<br><span style="color:#7c3aed;font-size:10px">+%'+kdvPct+' KDV: '+_fmt(kdvTutar)+' ₺</span>'
+            +'<br><span style="color:#4a148c;font-size:10px;font-weight:800">Toplam: '+_fmt(kdvDahil)+' ₺</span>';
+        } else {
+          tEl.textContent = _fmt(topNet)+' ₺';
+          tEl.style.color = '#166534';
+        }
       } else {
-        tEl.textContent = _fmt(net)+' ₺';
-        tEl.style.color = '#166534';
+        tEl.textContent = '—';
+        tEl.style.color = '#94a3b8';
       }
-    } else {
-      tEl.textContent = '—';
-      tEl.style.color = '#94a3b8';
     }
+    // Toplam kişi
+    var topKisi = 0;
+    _ogunler.forEach(function(og){
+      var kEl = document.querySelector('.gsv76-kisi-'+og+'[data-idx="'+idx+'"]');
+      topKisi += parseFloat(kEl?.value)||0;
+    });
+    var topKisiEl = document.querySelector('.gsv76-topkisi[data-idx="'+idx+'"]');
+    if(topKisiEl) topKisiEl.textContent = topKisi>0 ? topKisi : '—';
     _updateGunlukOzet();
   };
 
@@ -18506,14 +18527,17 @@ window.addEventListener('load', function() {
 
     var totalKisi=0, totalTutar=0;
     var satirlar = custs.map(function(cust,i){
-      var k=parseFloat(document.querySelector('.gsv76-kisi[data-idx="'+i+'"]')?.value)||0;
-      var f=parseFloat(document.querySelector('.gsv76-fiyat[data-idx="'+i+'"]')?.value)||0;
-      var t=k*f;
-      totalKisi+=k; totalTutar+=t;
-      return k>0
+      var custTutar=0, custKisi=0;
+      _ogunler.forEach(function(og){
+        var k=parseFloat(document.querySelector('.gsv76-kisi-'+og+'[data-idx="'+i+'"]')?.value)||0;
+        var f=parseFloat(document.querySelector('.gsv76-fiyat-'+og+'[data-idx="'+i+'"]')?.value)||0;
+        custKisi+=k; custTutar+=k*f;
+      });
+      totalKisi+=custKisi; totalTutar+=custTutar;
+      return custKisi>0
         ? '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #d1fae5">'
-          +'<span><b>'+cust+'</b> — '+k+' kişi × '+_fmt(f)+' ₺</span>'
-          +'<span style="font-weight:800;color:#166534">'+_fmt(t)+' ₺</span></div>'
+          +'<span><b>'+cust+'</b> — '+custKisi+' kişi</span>'
+          +'<span style="font-weight:800;color:#166534">'+_fmt(custTutar)+' ₺</span></div>'
         : '';
     }).filter(Boolean).join('');
 
@@ -18541,9 +18565,7 @@ window.addEventListener('load', function() {
     }
 
     var buAy = tarih.slice(0,7);
-
-    // O gün kayıtlı veriler
-    var gunlukArr   = _getGunluk();
+    var gunlukArr = _getGunluk();
     var bugunKayitlar = {};
     gunlukArr.filter(function(u){ return u.tarih===tarih; }).forEach(function(u){
       bugunKayitlar[u.musteri] = u;
@@ -18557,122 +18579,173 @@ window.addEventListener('load', function() {
         durum.innerHTML='<span style="color:#94a3b8">Yeni kayıt</span>';
     }
 
-    // Tablo HTML
-    var rows = custs.map(function(cust, i){
-      var crm         = _ls.get('uysa_crm_'+cust, {});
-      var crmKisi     = crm.kisi || 0;
-      var crmFiyat    = crm.fiyat || 0;
-      var bugun       = bugunKayitlar[cust];
+    var _tarihObj = new Date(tarih);
+    var _haftaGun = _tarihObj.getDay();
+    var _isWeekend = (_haftaGun===0||_haftaGun===6);
 
-      // Öncelik: o güne kayıtlı → bir önceki iş günü → CRM varsayılanı
-      var _tarihObj = new Date(tarih);
-      var _haftaGun = _tarihObj.getDay(); // 0=Paz,6=Cmt
-      var _isWeekend = (_haftaGun===0||_haftaGun===6);
-      var oncekiGunKisi = 0;
-      var oncekiGunFiyat = 0;
+    // Tablo HTML - 3 öğünlü
+    var rows = '';
+    custs.forEach(function(cust, i){
+      var crm      = _ls.get('uysa_crm_'+cust, {});
+      var crmKisi  = crm.kisi || 0;
+      var crmFiyat = crm.fiyat || 0;
+      var bugun    = bugunKayitlar[cust];
+
+      // Önceki gün verisi (öğünlü yapıda)
+      var onceki = null;
       if(!bugun) {
-        if(_isWeekend) {
-          // Hafta sonu: önceki hafta sonundan kopyala (son 14 gün)
-          var _sortedWe = gunlukArr.filter(function(u){
-            if(u.musteri!==cust||!u.tarih||u.tarih>=tarih) return false;
-            var _d=new Date(u.tarih), _g=_d.getDay();
-            return (_g===0||_g===6)&&u.kisi>0;
-          }).sort(function(a,b){return b.tarih.localeCompare(a.tarih);});
-          if(_sortedWe.length>0){ oncekiGunKisi=_sortedWe[0].kisi; oncekiGunFiyat=_sortedWe[0].fiyat||0; }
-        } else {
-          // Hafta içi: önceki hafta içi gününden kopyala
-          var _sorted = gunlukArr.filter(function(u){
-            if(u.musteri!==cust||!u.tarih||u.tarih>=tarih) return false;
-            var _d=new Date(u.tarih), _g=_d.getDay();
-            return _g!==0&&_g!==6&&u.kisi>0;
-          }).sort(function(a,b){return b.tarih.localeCompare(a.tarih);});
-          if(_sorted.length>0){ oncekiGunKisi=_sorted[0].kisi; oncekiGunFiyat=_sorted[0].fiyat||0; }
-        }
+        var filterFn = _isWeekend
+          ? function(u){
+              if(u.musteri!==cust||!u.tarih||u.tarih>=tarih) return false;
+              var _d=new Date(u.tarih), _g=_d.getDay();
+              return (_g===0||_g===6)&&u.kisi>0;
+            }
+          : function(u){
+              if(u.musteri!==cust||!u.tarih||u.tarih>=tarih) return false;
+              var _d=new Date(u.tarih), _g=_d.getDay();
+              return _g!==0&&_g!==6&&u.kisi>0;
+            };
+        var _sorted = gunlukArr.filter(filterFn).sort(function(a,b){return b.tarih.localeCompare(a.tarih);});
+        if(_sorted.length>0) onceki = _sorted[0];
       }
-      var kisiVal  = bugun ? bugun.kisi  : (oncekiGunKisi || crmKisi);
-      var fiyatVal = bugun ? bugun.fiyat : (oncekiGunFiyat || crmFiyat);
-      var kaydedildi = !!bugun;
-      var otoDoldu = !bugun && oncekiGunKisi > 0; // otomatik dolduruldu mu
 
-      // Ay başından toplam (bu güne kadar, bu gün HARİÇ)
+      // Her öğün için değerleri hesapla
+      var ogunVals = {};
+      var topKisi = 0, topTutar = 0;
+      _ogunler.forEach(function(og){
+        var kisi = 0, fiyat = crmFiyat;
+        if(bugun && bugun[og]){
+          kisi = bugun[og].kisi||0;
+          fiyat = bugun[og].fiyat||crmFiyat;
+        } else if(bugun){
+          // Eski format: sadece ogle satırına yaz
+          if(og==='ogle'){ kisi = bugun.kisi||0; fiyat = bugun.fiyat||crmFiyat; }
+        } else if(onceki){
+          if(onceki[og]){
+            kisi = onceki[og].kisi||0;
+            fiyat = onceki[og].fiyat||crmFiyat;
+          } else if(og==='ogle'){
+            kisi = onceki.kisi||0;
+            fiyat = onceki.fiyat||crmFiyat;
+          }
+        } else {
+          if(og==='ogle'){ kisi = crmKisi; fiyat = crmFiyat; }
+        }
+        ogunVals[og] = {kisi:kisi, fiyat:fiyat};
+        topKisi += kisi;
+        topTutar += kisi * fiyat;
+      });
+
+      var kaydedildi = !!bugun;
+      var otoDoldu = !bugun && !!onceki;
+
+      // Ay başından toplam
       var ayOnceki = gunlukArr.filter(function(u){
         return u.musteri===cust && (u.tarih||'').startsWith(buAy) && u.tarih!==tarih;
       });
       var ayTopKisi  = ayOnceki.reduce(function(s,u){ return s+(u.kisi||0); }, 0);
       var ayTopTutar = ayOnceki.reduce(function(s,u){ return s+(u.tutar||0); }, 0);
 
-      // Bugünkü anlık tutar
-      var gunlukToplam = kisiVal&&fiyatVal ? kisiVal*fiyatVal : 0;
-
       var rowBg = kaydedildi ? '#f0fdf4' : (otoDoldu ? '#fffbeb' : (i%2===0?'#fff':'#f8fafc'));
-      var borderStyle = i<custs.length-1 ? '1px solid #e2e8f0' : 'none';
-      var statusLabel = kaydedildi ? '<br><span style="color:#16a34a;font-size:10px">✓ kaydedildi</span>'
-        : (otoDoldu ? '<br><span style="color:#d97706;font-size:10px">↻ '+(_isWeekend?'önceki h.sonu':'önceki gün')+'</span>' : '');
-      // Al/Sat göstergesi
-      var alSatTag = crm.alSat ? '<span style="background:#fbbf24;color:#78350f;padding:1px 5px;border-radius:8px;font-size:9px;font-weight:700;margin-left:4px">🔄 Al/Sat</span>' : '';
+      var statusLabel = kaydedildi ? '<span style="color:#16a34a;font-size:10px">✓ kaydedildi</span>'
+        : (otoDoldu ? '<span style="color:#d97706;font-size:10px">↻ '+(_isWeekend?'önceki h.sonu':'önceki gün')+'</span>' : '');
+      var alSatTag = crm.alSat ? ' <span style="background:#fbbf24;color:#78350f;padding:1px 5px;border-radius:8px;font-size:9px;font-weight:700">🔄 Al/Sat</span>' : '';
       var alSatInfo = crm.alSat && crm.alisFiyat ? '<br><span style="color:#d97706;font-size:10px">Alış: '+_fmt(crm.alisFiyat)+' ₺'+(crm.tedarikci?' · '+crm.tedarikci:'')+'</span>' : '';
 
-      return '<tr style="background:'+rowBg+'">'
-        // Müşteri adı (tıklanabilir — detay görüntüsü açar)
-        +'<td style="padding:9px 12px;font-weight:700;color:#1e293b;border-bottom:'+borderStyle+';border-right:1px solid #e2e8f0;min-width:150px;cursor:pointer" onclick="gsMusteriDetay(\''+cust.replace(/'/g,"\\'")+'\')">'
-        +'<span style="color:#2563eb;text-decoration:underline;text-decoration-style:dotted">'+cust+'</span>'+alSatTag
-        +statusLabel+alSatInfo
-        +'<br><span style="color:#94a3b8;font-size:10px">CRM: '+(crmKisi||'—')+' kişi / '+(crmFiyat?_fmt(crmFiyat)+' ₺':'—')+'</span>'
-        +'</td>'
-        // Kişi sayısı input (editable)
-        +'<td style="padding:6px 8px;border-bottom:'+borderStyle+';border-right:1px solid #e2e8f0;min-width:100px">'
-        +'<input type="number" min="0" step="1"'
-        +' class="gsv76-kisi"'
-        +' data-idx="'+i+'"'
-        +' data-musteri="'+cust+'"'
-        +' value="'+(kisiVal||'')+'"'
-        +' placeholder="Kişi sayısı"'
-        +' oninput="gsCalcRow('+i+')"'
-        +' style="width:100%;padding:7px;border:1.5px solid '+(kaydedildi?'#86efac':'#cbd5e1')+';border-radius:8px;text-align:center;font-size:14px;font-weight:700;background:'+(kaydedildi?'#f0fdf4':'#fff')+'"/>'
-        +'</td>'
-        // Fiyat input (editable)
-        +'<td style="padding:6px 8px;border-bottom:'+borderStyle+';border-right:1px solid #e2e8f0;min-width:110px">'
-        +'<input type="number" min="0" step="0.01"'
-        +' class="gsv76-fiyat"'
-        +' data-idx="'+i+'"'
-        +' data-musteri="'+cust+'"'
-        +' value="'+(fiyatVal||'')+'"'
-        +' placeholder="₺/kişi"'
-        +' oninput="gsCalcRow('+i+')"'
-        +' style="width:100%;padding:7px;border:1.5px solid '+(kaydedildi?'#86efac':'#cbd5e1')+';border-radius:8px;text-align:center;font-size:13px;background:'+(kaydedildi?'#f0fdf4':'#fff')+'"/>'
-        +'</td>'
-        // Günlük toplam (hesaplanmış, otomatik)
-        +'<td style="padding:9px 12px;text-align:right;font-weight:800;border-bottom:'+borderStyle+';border-right:1px solid #e2e8f0;min-width:110px">'
-        +(function(){
-          var _kp = window._gsKdvPct||0;
-          if(gunlukToplam>0 && _kp>0){
-            var _kdvT=gunlukToplam*_kp/100, _kdvD=gunlukToplam+_kdvT;
-            return '<span class="gsv76-gunluk" data-idx="'+i+'" style="display:block">'
-              +'<span style="color:#166534;font-weight:700">'+_fmt(gunlukToplam)+' ₺</span>'
-              +'<br><span style="color:#7c3aed;font-size:10px">+%'+_kp+' KDV: '+_fmt(_kdvT)+' ₺</span>'
-              +'<br><span style="color:#4a148c;font-size:10px;font-weight:800">Toplam: '+_fmt(_kdvD)+' ₺</span>'
+      var ogunColors = {ogle:'#1e40af', aksam:'#7c3aed', kumanya:'#b45309'};
+      var ogunBgs = {ogle:'#eff6ff', aksam:'#f5f3ff', kumanya:'#fffbeb'};
+
+      // 3 öğün satırı
+      _ogunler.forEach(function(og, oi){
+        var isFirst = (oi===0);
+        var isLast = (oi===2);
+        var v = ogunVals[og];
+        var ogunTutar = v.kisi * v.fiyat;
+
+        rows += '<tr style="background:'+rowBg+'">';
+
+        // Müşteri kolonu - sadece ilk satırda (rowspan=3)
+        if(isFirst){
+          rows += '<td rowspan="3" style="padding:8px 10px;font-weight:700;color:#1e293b;border-bottom:2px solid #c7d2fe;border-right:1px solid #e2e8f0;min-width:140px;cursor:pointer;vertical-align:top" onclick="gsMusteriDetay(\''+cust.replace(/'/g,"\\'")+'\')">'
+            +'<span style="color:#2563eb;text-decoration:underline;text-decoration-style:dotted">'+cust+'</span>'+alSatTag
+            +(statusLabel?'<br>'+statusLabel:'')
+            +alSatInfo
+            +'<br><span style="color:#94a3b8;font-size:10px">CRM: '+(crmKisi||'—')+' kişi / '+(crmFiyat?_fmt(crmFiyat)+' ₺':'—')+'</span>'
+            +'</td>';
+        }
+
+        // Öğün etiketi
+        rows += '<td style="padding:4px 6px;border-bottom:1px solid '+(isLast?'#c7d2fe':'#f1f5f9')+';border-right:1px solid #e2e8f0;min-width:70px;text-align:center">'
+          +'<span style="font-size:10px;font-weight:700;color:'+ogunColors[og]+';background:'+ogunBgs[og]+';padding:2px 8px;border-radius:10px">'+_ogunLabels[og]+'</span>'
+          +'</td>';
+
+        // Kişi input
+        rows += '<td style="padding:3px 4px;border-bottom:1px solid '+(isLast?'#c7d2fe':'#f1f5f9')+';border-right:1px solid #e2e8f0;min-width:80px">'
+          +'<input type="number" min="0" step="1"'
+          +' class="gsv76-kisi-'+og+'"'
+          +' data-idx="'+i+'" data-musteri="'+cust+'" data-ogun="'+og+'"'
+          +' value="'+(v.kisi||'')+'"'
+          +' placeholder="0"'
+          +' oninput="gsCalcRow('+i+')"'
+          +' style="width:100%;padding:5px;border:1px solid '+(kaydedildi?'#86efac':'#e2e8f0')+';border-radius:6px;text-align:center;font-size:13px;font-weight:700;background:'+(kaydedildi?'#f0fdf4':'#fff')+'"/>'
+          +'</td>';
+
+        // Fiyat input
+        rows += '<td style="padding:3px 4px;border-bottom:1px solid '+(isLast?'#c7d2fe':'#f1f5f9')+';border-right:1px solid #e2e8f0;min-width:80px">'
+          +'<input type="number" min="0" step="0.01"'
+          +' class="gsv76-fiyat-'+og+'"'
+          +' data-idx="'+i+'" data-musteri="'+cust+'" data-ogun="'+og+'"'
+          +' value="'+(v.fiyat||'')+'"'
+          +' placeholder="₺"'
+          +' oninput="gsCalcRow('+i+')"'
+          +' style="width:100%;padding:5px;border:1px solid '+(kaydedildi?'#86efac':'#e2e8f0')+';border-radius:6px;text-align:center;font-size:12px;background:'+(kaydedildi?'#f0fdf4':'#fff')+'"/>'
+          +'</td>';
+
+        // Öğün toplam
+        rows += '<td style="padding:4px 8px;text-align:right;border-bottom:1px solid '+(isLast?'#c7d2fe':'#f1f5f9')+';border-right:1px solid #e2e8f0;font-size:12px">'
+          +'<span class="gsv76-ogun-top-'+og+'" data-idx="'+i+'" style="color:'+(ogunTutar>0?'#166534':'#94a3b8')+'">'+(ogunTutar>0?_fmt(ogunTutar)+' ₺':'—')+'</span>'
+          +'</td>';
+
+        // Günlük toplam + Ay başından: sadece ilk satırda (rowspan=3)
+        if(isFirst){
+          var kdvPct = window._gsKdvPct||0;
+          var topHtml = '';
+          if(topTutar>0 && kdvPct>0){
+            var _kdvT=topTutar*kdvPct/100;
+            topHtml = '<span class="gsv76-gunluk" data-idx="'+i+'" style="display:block">'
+              +'<span style="color:#166534;font-weight:700">'+_fmt(topTutar)+' ₺</span>'
+              +'<br><span style="color:#7c3aed;font-size:10px">+%'+kdvPct+' KDV: '+_fmt(_kdvT)+' ₺</span>'
+              +'<br><span style="color:#4a148c;font-size:10px;font-weight:800">Toplam: '+_fmt(topTutar+_kdvT)+' ₺</span>'
               +'</span>';
+          } else {
+            topHtml = '<span class="gsv76-gunluk" data-idx="'+i+'" style="color:'+(topTutar?'#166534':'#94a3b8')+';font-weight:800">'+(topTutar?_fmt(topTutar)+' ₺':'—')+'</span>';
           }
-          return '<span class="gsv76-gunluk" data-idx="'+i+'" style="color:'+(gunlukToplam?'#166534':'#94a3b8')+'">'+(gunlukToplam?_fmt(gunlukToplam)+' ₺':'—')+'</span>';
-        })()
-        +'</td>'
-        // Ay toplam kişi
-        +'<td style="padding:9px 12px;text-align:center;border-bottom:'+borderStyle+';border-right:1px solid #e2e8f0;min-width:90px">'
-        +'<span style="font-weight:700;color:'+(ayTopKisi?'#2563eb':'#94a3b8')+'">'+(ayTopKisi||'—')+'</span>'
-        +(ayTopKisi?'<br><span style="font-size:10px;color:#64748b">'+_fmt(ayTopTutar)+' ₺</span>':'')
-        +'</td>'
-        +'</tr>';
-    }).join('');
+          topHtml += '<br><span class="gsv76-topkisi" data-idx="'+i+'" style="font-size:11px;color:#2563eb;font-weight:700">'+(topKisi||'—')+'</span><span style="font-size:10px;color:#94a3b8"> kişi</span>';
+
+          rows += '<td rowspan="3" style="padding:6px 10px;text-align:right;border-bottom:2px solid #c7d2fe;border-right:1px solid #e2e8f0;min-width:100px;vertical-align:middle">'
+            +topHtml+'</td>';
+
+          rows += '<td rowspan="3" style="padding:6px 10px;text-align:center;border-bottom:2px solid #c7d2fe;min-width:80px;vertical-align:middle">'
+            +'<span style="font-weight:700;color:'+(ayTopKisi?'#2563eb':'#94a3b8')+'">'+(ayTopKisi||'—')+'</span>'
+            +(ayTopKisi?'<br><span style="font-size:10px;color:#64748b">'+_fmt(ayTopTutar)+' ₺</span>':'')
+            +'</td>';
+        }
+
+        rows += '</tr>';
+      });
+    });
 
     var html = '<div style="overflow-x:auto">'
       +'<table style="width:100%;font-size:13px;border-collapse:collapse;border-radius:12px;overflow:hidden;box-shadow:0 1px 8px rgba(0,0,0,.08)">'
       +'<thead>'
       +'<tr style="background:#eef3ff">'
-      +'<th style="padding:10px 12px;text-align:left;border-bottom:2px solid #c7d2fe;border-right:1px solid #c7d2fe">Müşteri<br><span style="font-weight:400;font-size:10px;color:#64748b">(CRM varsayılanı)</span></th>'
-      +'<th style="padding:10px 12px;text-align:center;border-bottom:2px solid #c7d2fe;border-right:1px solid #c7d2fe">Kişi Sayısı<br><span style="font-weight:400;font-size:10px;color:#64748b">(değiştirilebilir)</span></th>'
-      +'<th style="padding:10px 12px;text-align:center;border-bottom:2px solid #c7d2fe;border-right:1px solid #c7d2fe">Fiyat (₺/kişi)<br><span style="font-weight:400;font-size:10px;color:#64748b">(değiştirilebilir)</span></th>'
-      +'<th style="padding:10px 12px;text-align:right;border-bottom:2px solid #c7d2fe;border-right:1px solid #c7d2fe">Günlük Toplam<br><span style="font-weight:400;font-size:10px;color:#64748b">(kişi × fiyat)</span></th>'
-      +'<th style="padding:10px 12px;text-align:center;border-bottom:2px solid #c7d2fe">Ay Başından<br><span style="font-weight:400;font-size:10px;color:#64748b">(bu gün hariç)</span></th>'
+      +'<th style="padding:10px 12px;text-align:left;border-bottom:2px solid #c7d2fe;border-right:1px solid #c7d2fe">Müşteri</th>'
+      +'<th style="padding:10px 12px;text-align:center;border-bottom:2px solid #c7d2fe;border-right:1px solid #c7d2fe">Öğün</th>'
+      +'<th style="padding:10px 12px;text-align:center;border-bottom:2px solid #c7d2fe;border-right:1px solid #c7d2fe">Kişi Sayısı</th>'
+      +'<th style="padding:10px 12px;text-align:center;border-bottom:2px solid #c7d2fe;border-right:1px solid #c7d2fe">Fiyat (₺/kişi)</th>'
+      +'<th style="padding:10px 12px;text-align:right;border-bottom:2px solid #c7d2fe;border-right:1px solid #c7d2fe">Öğün Toplam</th>'
+      +'<th style="padding:10px 12px;text-align:right;border-bottom:2px solid #c7d2fe;border-right:1px solid #c7d2fe">Günlük Toplam</th>'
+      +'<th style="padding:10px 12px;text-align:center;border-bottom:2px solid #c7d2fe">Ay Başından</th>'
       +'</tr>'
       +'</thead>'
       +'<tbody>'+rows+'</tbody>'
@@ -18879,27 +18952,37 @@ window.addEventListener('load', function() {
 
       var count=0, totalTutar=0, alSatCount=0;
       custs.forEach(function(cust,i){
-        var kEl = document.querySelector('.gsv76-kisi[data-idx="'+i+'"]');
-        var fEl = document.querySelector('.gsv76-fiyat[data-idx="'+i+'"]');
-        var k   = parseInt(kEl?.value)||0;
-        var f   = parseFloat(fEl?.value)||0;
-        if(k<=0) return;
-        var t = k*f;
-        gunlukArr.push({musteri:cust, tarih:tarih, kisi:k, fiyat:f, tutar:t, not:''});
-        gelirArr.push({musteri:cust, tarih:tarih, tutar:t, kisi:k, fatura:'',
-          aciklama:'Günlük üretim — '+k+' kişi × '+f+' ₺'});
+        // 3 öğünden kişi/fiyat oku
+        var topKisi=0, topTutar=0;
+        var ogunData = {};
+        ['ogle','aksam','kumanya'].forEach(function(og){
+          var kEl = document.querySelector('.gsv76-kisi-'+og+'[data-idx="'+i+'"]');
+          var fEl = document.querySelector('.gsv76-fiyat-'+og+'[data-idx="'+i+'"]');
+          var k = parseInt(kEl?.value)||0;
+          var f = parseFloat(fEl?.value)||0;
+          ogunData[og] = {kisi:k, fiyat:f};
+          topKisi += k;
+          topTutar += k*f;
+        });
+        if(topKisi<=0) return;
+        // Ana fiyat = öğle fiyatı (geriye uyumluluk)
+        var anaFiyat = ogunData.ogle.fiyat || ogunData.aksam.fiyat || ogunData.kumanya.fiyat || 0;
+        gunlukArr.push({musteri:cust, tarih:tarih, kisi:topKisi, fiyat:anaFiyat, tutar:topTutar, not:'',
+          ogle:ogunData.ogle, aksam:ogunData.aksam, kumanya:ogunData.kumanya});
+        gelirArr.push({musteri:cust, tarih:tarih, tutar:topTutar, kisi:topKisi, fatura:'',
+          aciklama:'Günlük üretim — '+topKisi+' kişi (öğle:'+ogunData.ogle.kisi+' akşam:'+ogunData.aksam.kisi+' kumanya:'+ogunData.kumanya.kisi+')'});
         count++;
-        totalTutar+=t;
+        totalTutar+=topTutar;
 
         // Al/Sat müşterisi ise otomatik gider oluştur
         var crmData = _ls.get('uysa_crm_'+cust, {});
         if(crmData.alSat && crmData.alisFiyat>0){
-          var alisTutar = k * crmData.alisFiyat;
+          var alisTutar = topKisi * crmData.alisFiyat;
           giderArr.push({
             kat:'uretim-diger-gida',
             tarih:tarih,
             tutar:alisTutar,
-            aciklama:'Al/Sat alış — '+cust+' — '+k+' kişi × '+crmData.alisFiyat+' ₺',
+            aciklama:'Al/Sat alış — '+cust+' — '+topKisi+' kişi × '+crmData.alisFiyat+' ₺',
             belge:'',
             tedarikci: crmData.tedarikci||'',
             aitlik:'musteri',
@@ -19122,8 +19205,23 @@ window.addEventListener('load', function() {
           return !(g.tarih===tarih && g.musteri===cust && g.aciklama && g.aciklama.startsWith('Günlük üretim'));
         });
 
-        // Yeni kayıt ekle
-        gunlukArr.push({musteri:cust, tarih:tarih, kisi:kisi, fiyat:fiyat, tutar:tutar, not:'haftalik-kopya'});
+        // Kaynak günün öğün verisini bul
+        var kaynakBasEl = document.getElementById('gsKaynakBas');
+        var kaynakPztD = _getMonday(new Date(kaynakBasEl?.value||''));
+        var kaynakDt = new Date(kaynakPztD); kaynakDt.setDate(kaynakPztD.getDate()+d);
+        var kaynakTarih = _fmtD(kaynakDt);
+        var kaynakKayit = null;
+        gunlukArr.forEach(function(u){ if(u.musteri===cust && u.tarih===kaynakTarih) kaynakKayit=u; });
+
+        // Yeni kayıt ekle (öğün verisiyle birlikte)
+        var rec = {musteri:cust, tarih:tarih, kisi:kisi, fiyat:fiyat, tutar:tutar, not:'haftalik-kopya'};
+        if(kaynakKayit && kaynakKayit.ogle) rec.ogle = JSON.parse(JSON.stringify(kaynakKayit.ogle));
+        if(kaynakKayit && kaynakKayit.aksam) rec.aksam = JSON.parse(JSON.stringify(kaynakKayit.aksam));
+        if(kaynakKayit && kaynakKayit.kumanya) rec.kumanya = JSON.parse(JSON.stringify(kaynakKayit.kumanya));
+        if(!rec.ogle) rec.ogle = {kisi:kisi, fiyat:fiyat};
+        if(!rec.aksam) rec.aksam = {kisi:0, fiyat:fiyat};
+        if(!rec.kumanya) rec.kumanya = {kisi:0, fiyat:fiyat};
+        gunlukArr.push(rec);
         gelirArr.push({musteri:cust, tarih:tarih, tutar:tutar, kisi:kisi, fatura:'',
           aciklama:'Günlük üretim — '+kisi+' kişi × '+fiyat+' ₺'});
         kayitSayisi++;
@@ -19184,12 +19282,23 @@ window.addEventListener('load', function() {
         }).sort(function(a,b){ return b.tarih.localeCompare(a.tarih); });
       }
 
-      var kisi = (oncekiArr.length>0) ? oncekiArr[0].kisi : crmKisi;
-      var fiyat = (oncekiArr.length>0) ? oncekiArr[0].fiyat : crmFiyat;
+      var prev = (oncekiArr.length>0) ? oncekiArr[0] : null;
+      var kisi = prev ? prev.kisi : crmKisi;
+      var fiyat = prev ? (prev.fiyat||crmFiyat) : crmFiyat;
       if(kisi<=0) return;
 
-      var tutar = kisi * fiyat;
-      yeniKayitlar.push({musteri:cust, tarih:tarih, kisi:kisi, fiyat:fiyat, tutar:tutar, not:'otomatik'});
+      // Öğün verilerini önceki kayıttan kopyala
+      var rec = {musteri:cust, tarih:tarih, kisi:kisi, fiyat:fiyat, tutar:kisi*fiyat, not:'otomatik'};
+      if(prev && prev.ogle) rec.ogle = {kisi:prev.ogle.kisi||0, fiyat:prev.ogle.fiyat||fiyat};
+      if(prev && prev.aksam) rec.aksam = {kisi:prev.aksam.kisi||0, fiyat:prev.aksam.fiyat||fiyat};
+      if(prev && prev.kumanya) rec.kumanya = {kisi:prev.kumanya.kisi||0, fiyat:prev.kumanya.fiyat||fiyat};
+      // Öğün yoksa eski formatı koru (sadece öğle)
+      if(!rec.ogle && !rec.aksam && !rec.kumanya){
+        rec.ogle = {kisi:kisi, fiyat:fiyat};
+        rec.aksam = {kisi:0, fiyat:fiyat};
+        rec.kumanya = {kisi:0, fiyat:fiyat};
+      }
+      yeniKayitlar.push(rec);
     });
 
     if(!yeniKayitlar.length) return;
