@@ -2226,6 +2226,7 @@
             <label style="display:flex;gap:8px;align-items:center;font-weight:600">
               <input type="checkbox" id="applyGeneralToAll" />
               Genel menüyü tüm müşterilere uygula
+            </label>
             <button class="btn" id="applyGeneralNowBtn" type="button">Şimdi Uygula</button>
           </div>
           <div class="hint" style="margin-top:6px">Genel (GENEL) seçiliyken işaretleyip kaydederseniz, aynı ay/hafta menüsü tüm müşterilere kopyalanır.</div>
@@ -4585,7 +4586,7 @@
               <div id="v79AktarBant" style="display:flex;align-items:center;gap:10px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:10px 14px;margin-bottom:10px;flex-wrap:wrap">
                 <span style="font-size:13px;color:#166534;flex:1">💼 Bu ayın maaş ödemelerini Finans → Giderler'e otomatik aktar</span>
                 <button onclick="v79FinansaAktar()" style="background:#16a34a;color:#fff;border:none;border-radius:8px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer">📤 Finansa Aktar</button>
-                <button onclick="document.querySelector('.mod-nav-item[data-mod=finans]')?.click()" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer">💸 Giderlere Git</button>
+                <button onclick="document.querySelector('.mod-nav-item[data-module=finans]')?.click()" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer">💸 Giderlere Git</button>
               </div>
               <div id="v79AktarDurum" style="display:none;margin-bottom:8px"></div>
               <input type="month" id="topluBordro-ay" style="padding:7px;border:1px solid var(--border);border-radius:8px;font-size:13px" onchange="renderTopluBordro()"/>
