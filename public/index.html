@@ -8542,6 +8542,7 @@ ${note}`);
     if(toplamDiv) toplamDiv.textContent = 'Toplam: ' + fmt(toplam) + ' ₺';
     refreshFinStats();
   }
+  window.renderGelirler = renderGelirler; // V76+ IIFE'lerin erişebilmesi için
   window.silGelir = function(i){ const arr=getGelirler(); arr.splice(i,1); saveGelirler(arr); renderGelirler();
   };
 
@@ -8606,6 +8607,7 @@ alert('Tutar giriniz.'); return; }
     if(toplamDiv) toplamDiv.textContent = 'Toplam: ' + fmt(toplam) + ' ₺';
     refreshFinStats();
   }
+  window.renderGiderler = renderGiderler; // V76+ IIFE'lerin erişebilmesi için
   window.silGider = function(i){ const arr=getGiderler(); arr.splice(i,1); saveGiderler(arr); renderGiderler(); };
 
   // FIX-E: Edit functions for gelir/gider
