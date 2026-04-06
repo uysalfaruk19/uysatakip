@@ -8447,7 +8447,7 @@ ${note}`);
       // Gelirlerden
       try { JSON.parse(localStorage.getItem('uysa_gelirler')||'[]').forEach(g=>{ if(g.musteri && !existing.has(g.musteri.toUpperCase())){ store.customers.push(g.musteri); existing.add(g.musteri.toUpperCase()); added++; }}); } catch(e){}
       // Günlük üretimden
-      try { JSON.parse(localStorage.getItem('uysa_gunluk_sayilar')||'[]').forEach(u=>{ if(u.musteri && !existing.has(u.musteri.toUpperCase())){ store.customers.push(u.musteri); existing.add(u.musteri.toUpperCase()); added++; }}); } catch(e){}
+      try { JSON.parse(localStorage.getItem('uysa_gunluk_uretim')||'[]').forEach(u=>{ if(u.musteri && !existing.has(u.musteri.toUpperCase())){ store.customers.push(u.musteri); existing.add(u.musteri.toUpperCase()); added++; }}); } catch(e){}
       // CRM config key'lerinden
       for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(k&&k.startsWith('uysa_crm_')){ const c=k.replace('uysa_crm_',''); if(c&&c!=='GENEL'&&!existing.has(c.toUpperCase())){ store.customers.push(c); existing.add(c.toUpperCase()); added++; }}}
       // Alacaklardan
@@ -13557,7 +13557,7 @@ window.addEventListener('DOMContentLoaded', function() {
   function getMaliyetForDish(dishName){
     if(!dishName) return 0;
     try{
-      const rec=ls.get('uysa_recipes',{});
+      const rec=ls.get('uysa_recipes_v2',{});
       const key=Object.keys(rec).find(k=>k.toLowerCase()===dishName.toLowerCase());
       if(!key) return 0;
       const items=rec[key]||[];
@@ -16371,7 +16371,7 @@ window.addEventListener('load', function() {
 
       // 2. Günlük üretim kayıtlarından
       try {
-        const uretim = JSON.parse(localStorage.getItem('uysa_gunluk_sayilar')||'[]');
+        const uretim = JSON.parse(localStorage.getItem('uysa_gunluk_uretim')||'[]');
         uretim.forEach(u => { if(u.musteri && !existing.has(u.musteri.toUpperCase())){ store.customers.push(u.musteri); existing.add(u.musteri.toUpperCase()); added++; }});
       } catch(e){}
 
@@ -21121,8 +21121,9 @@ window.addEventListener('load', function() {
       if (projeEl) {
         const musteriler = (()=>{
           try {
-            const raw = JSON.parse(localStorage.getItem('uysa_musteriler')||'[]');
-            return raw.filter(m=>m&&m.ad&&m.durum!=='pasif').map(m=>m.ad);
+            const obj = JSON.parse(localStorage.getItem('uysa_customers_v1')||'{}');
+            const pasifler = JSON.parse(localStorage.getItem('uysa_pasif_musteriler')||'[]');
+            return (obj.customers||[]).filter(c=>c&&c!=='GENEL'&&!pasifler.includes(c));
           } catch(e){ return []; }
         })();
         const prev = projeEl.value;
@@ -21138,8 +21139,9 @@ window.addEventListener('load', function() {
       if (malEl) {
         const musteriler = (()=>{
           try {
-            const raw = JSON.parse(localStorage.getItem('uysa_musteriler')||'[]');
-            return raw.filter(m=>m&&m.ad&&m.durum!=='pasif').map(m=>m.ad);
+            const obj = JSON.parse(localStorage.getItem('uysa_customers_v1')||'{}');
+            const pasifler = JSON.parse(localStorage.getItem('uysa_pasif_musteriler')||'[]');
+            return (obj.customers||[]).filter(c=>c&&c!=='GENEL'&&!pasifler.includes(c));
           } catch(e){ return []; }
         })();
         const prev = malEl.value;
@@ -22226,8 +22228,9 @@ window.refreshIkSelectors = function() {
   try {
     const projeEl = document.getElementById('per-proje');
     if (projeEl) {
-      const raw = lsGet('uysa_musteriler', []);
-      const musteriler = raw.filter(m => m && m.ad && m.durum !== 'pasif').map(m => m.ad);
+      const obj = JSON.parse(localStorage.getItem('uysa_customers_v1')||'{}');
+      const pasifler = JSON.parse(localStorage.getItem('uysa_pasif_musteriler')||'[]');
+      const musteriler = (obj.customers||[]).filter(c=>c&&c!=='GENEL'&&!pasifler.includes(c));
       const prev = projeEl.value;
       projeEl.innerHTML = '<option value="MERKEZ">MERKEZ</option>' +
         musteriler.map(m => `<option value="${m}">${m}</option>`).join('');
@@ -22239,8 +22242,9 @@ window.refreshIkSelectors = function() {
   try {
     const malEl = document.getElementById('perMalMusteriSel');
     if (malEl) {
-      const raw = lsGet('uysa_musteriler', []);
-      const musteriler = raw.filter(m => m && m.ad && m.durum !== 'pasif').map(m => m.ad);
+      const obj = JSON.parse(localStorage.getItem('uysa_customers_v1')||'{}');
+      const pasifler = JSON.parse(localStorage.getItem('uysa_pasif_musteriler')||'[]');
+      const musteriler = (obj.customers||[]).filter(c=>c&&c!=='GENEL'&&!pasifler.includes(c));
       const prev = malEl.value;
       malEl.innerHTML = '<option value="TUMU">Tüm Müşteriler</option>' +
         musteriler.map(m => `<option value="${m}">${m}</option>`).join('');
@@ -22301,14 +22305,7 @@ window.uysaGetMusteriler = function() {
     }
   } catch(e) {}
 
-  // 2. uysa_musteriler (CRM'den eklenen müşteriler)
-  try {
-    const list = lsGet('uysa_musteriler', []);
-    const aktif = list.filter(m => m && m.ad && m.durum !== 'pasif').map(m => m.ad);
-    if (aktif.length) return aktif;
-  } catch(e) {}
-
-  // 3. window.__uysaCustomerMem
+  // 2. window.__uysaCustomerMem
   try {
     if (window.__uysaCustomerMem && Array.isArray(window.__uysaCustomerMem.customers)) {
       const pasifler = lsGet('uysa_pasif_musteriler', []);
@@ -22811,7 +22808,7 @@ function getGiderler(){
   }catch(e){ return []; }
 }
 function getUretimGiderleri(){
-  try{ return JSON.parse(localStorage.getItem('uysa_uretim_giderleri')||'[]'); }catch(e){ return []; }
+  try{ return JSON.parse(localStorage.getItem('uysa_uretim_gider')||'[]'); }catch(e){ return []; }
 }
 function getUretimSayilari(){
   try{ return JSON.parse(localStorage.getItem('uysa_uretim_sayilari')||'[]'); }catch(e){ return []; }
@@ -22823,7 +22820,15 @@ function getSozlesmeler(){
   try{ return JSON.parse(localStorage.getItem('uysa_sozlesmeler')||'[]'); }catch(e){ return []; }
 }
 function getButce(){
-  try{ return JSON.parse(localStorage.getItem('uysa_butce_v1')||'{}'); }catch(e){ return {}; }
+  try{
+    var v1 = JSON.parse(localStorage.getItem('uysa_butceler')||'[]');
+    if(Array.isArray(v1) && v1.length>0){
+      var kat = {};
+      v1.forEach(function(b){ if(b.kategori && b.tutar) kat[b.kategori] = Number(b.tutar)||0; });
+      return {kategoriler: kat};
+    }
+    return typeof v1==='object' && !Array.isArray(v1) ? v1 : {};
+  }catch(e){ return {}; }
 }
 
 // ── Hesaplamalar ──────────────────────────────────────────────
@@ -24256,15 +24261,12 @@ function renderSozlesmeUyarilari(){
       return;
     }
 
-    // Müşteri listesi
-    var musteriler = (function(){try{return JSON.parse(localStorage.getItem('uysa_musteriler')||'[]');}catch(e){return[];}})();
-
     // Gelirler
     var gelirler = (function(){try{return JSON.parse(localStorage.getItem('uysa_gelirler')||'[]');}catch(e){return[];}})();
     var ayGelirler = gelirler.filter(function(g){return (g.tarih||'').startsWith(secilenAy);});
 
     // Üretim giderleri
-    var uretimGider = (function(){try{return JSON.parse(localStorage.getItem('uysa_uretim_giderleri')||'[]');}catch(e){return[];}})();
+    var uretimGider = (function(){try{return JSON.parse(localStorage.getItem('uysa_uretim_gider')||'[]');}catch(e){return[];}})();
     var ayUretimGider = uretimGider.filter(function(g){return (g.tarih||'').startsWith(secilenAy);});
     var toplamUretimGider = ayUretimGider.reduce(function(s,g){return s+(g.tutar||0);},0);
     var birYemekUretimGider = toplamYemek>0 ? toplamUretimGider/toplamYemek : 0;
