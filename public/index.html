@@ -18468,21 +18468,78 @@ window.addEventListener('load', function() {
   var _ogunler = ['ogle','aksam','kumanya'];
   var _ogunLabels = {ogle:'Öğle', aksam:'Akşam', kumanya:'Kumanya'};
 
+  /* ── Müşteri bazlı öğün aç/kapa durumu ─────────────────────────── */
+  if(!window._gsOgunAcik) window._gsOgunAcik = {};
+
+  /* ── Öğün toggle: müşteri satırını aç/kapa ─────────────────────── */
+  window.gsOgunToggle = function(cust, idx){
+    window._gsOgunAcik[cust] = !window._gsOgunAcik[cust];
+    // Mevcut inputlardan değerleri kaydet, tabloyu yeniden render et
+    _gsPreserveAndRerender();
+  };
+
+  /* ── Mevcut input değerlerini topla, tabloyu yeniden render et ── */
+  function _gsPreserveAndRerender(){
+    var tableDiv = document.getElementById('gsTableDiv');
+    if(!tableDiv || !tableDiv.dataset.custs) { gsRenderTableV76(); return; }
+    var custs = [];
+    try{ custs=JSON.parse(tableDiv.dataset.custs||'[]'); }catch(e){}
+    // Mevcut input değerlerini topla
+    var preserved = {};
+    custs.forEach(function(cust, i){
+      preserved[cust] = {};
+      _ogunler.forEach(function(og){
+        var kEl = document.querySelector('.gsv76-kisi-'+og+'[data-idx="'+i+'"]');
+        var fEl = document.querySelector('.gsv76-fiyat-'+og+'[data-idx="'+i+'"]');
+        if(kEl || fEl){
+          preserved[cust][og] = {
+            kisi: kEl ? (parseInt(kEl.value)||0) : 0,
+            fiyat: fEl ? (parseFloat(fEl.value)||0) : 0
+          };
+        }
+      });
+    });
+    window._gsPreserved = preserved;
+    gsRenderTableV76();
+    window._gsPreserved = null;
+  }
+
   /* ── Anlık güncelleme: müşteri idx'i için tüm öğünleri hesapla ──── */
   window.gsCalcRow = function(idx){
+    var tableDiv = document.getElementById('gsTableDiv');
+    var custs = [];
+    try{ custs=JSON.parse(tableDiv?.dataset.custs||'[]'); }catch(e){}
+    var cust = custs[idx]||'';
+    var isOpen = window._gsOgunAcik[cust];
+
     var topNet = 0;
-    _ogunler.forEach(function(og){
-      var kEl = document.querySelector('.gsv76-kisi-'+og+'[data-idx="'+idx+'"]');
-      var fEl = document.querySelector('.gsv76-fiyat-'+og+'[data-idx="'+idx+'"]');
-      var tEl = document.querySelector('.gsv76-ogun-top-'+og+'[data-idx="'+idx+'"]');
-      if(!kEl||!fEl||!tEl) return;
-      var k = parseFloat(kEl.value)||0;
-      var f = parseFloat(fEl.value)||0;
-      var net = k>0&&f>0 ? k*f : 0;
-      topNet += net;
-      tEl.textContent = net>0 ? _fmt(net)+' ₺' : '—';
-      tEl.style.color = net>0 ? '#166534' : '#94a3b8';
-    });
+    if(isOpen){
+      // 3 öğün modu: her öğünü ayrı hesapla
+      _ogunler.forEach(function(og){
+        var kEl = document.querySelector('.gsv76-kisi-'+og+'[data-idx="'+idx+'"]');
+        var fEl = document.querySelector('.gsv76-fiyat-'+og+'[data-idx="'+idx+'"]');
+        var tEl = document.querySelector('.gsv76-ogun-top-'+og+'[data-idx="'+idx+'"]');
+        if(!kEl||!fEl) return;
+        var k = parseFloat(kEl.value)||0;
+        var f = parseFloat(fEl.value)||0;
+        var net = k>0&&f>0 ? k*f : 0;
+        topNet += net;
+        if(tEl){
+          tEl.textContent = net>0 ? _fmt(net)+' ₺' : '—';
+          tEl.style.color = net>0 ? '#166534' : '#94a3b8';
+        }
+      });
+    } else {
+      // Tek satır modu: öğle inputları = ana kişi/fiyat
+      var kEl = document.querySelector('.gsv76-kisi-ogle[data-idx="'+idx+'"]');
+      var fEl = document.querySelector('.gsv76-fiyat-ogle[data-idx="'+idx+'"]');
+      if(kEl&&fEl){
+        var k = parseFloat(kEl.value)||0;
+        var f = parseFloat(fEl.value)||0;
+        topNet = k>0&&f>0 ? k*f : 0;
+      }
+    }
+
     // Müşteri toplam
     var tEl = document.querySelector('.gsv76-gunluk[data-idx="'+idx+'"]');
     if(tEl){
@@ -18505,10 +18562,15 @@ window.addEventListener('load', function() {
     }
     // Toplam kişi
     var topKisi = 0;
-    _ogunler.forEach(function(og){
-      var kEl = document.querySelector('.gsv76-kisi-'+og+'[data-idx="'+idx+'"]');
-      topKisi += parseFloat(kEl?.value)||0;
-    });
+    if(isOpen){
+      _ogunler.forEach(function(og){
+        var kEl = document.querySelector('.gsv76-kisi-'+og+'[data-idx="'+idx+'"]');
+        topKisi += parseFloat(kEl?.value)||0;
+      });
+    } else {
+      var kEl = document.querySelector('.gsv76-kisi-ogle[data-idx="'+idx+'"]');
+      topKisi = parseFloat(kEl?.value)||0;
+    }
     var topKisiEl = document.querySelector('.gsv76-topkisi[data-idx="'+idx+'"]');
     if(topKisiEl) topKisiEl.textContent = topKisi>0 ? topKisi : '—';
     _updateGunlukOzet();
@@ -18583,15 +18645,18 @@ window.addEventListener('load', function() {
     var _haftaGun = _tarihObj.getDay();
     var _isWeekend = (_haftaGun===0||_haftaGun===6);
 
-    // Tablo HTML - 3 öğünlü
+    // Preserved data from toggle
+    var preserved = window._gsPreserved || null;
+
     var rows = '';
     custs.forEach(function(cust, i){
       var crm      = _ls.get('uysa_crm_'+cust, {});
       var crmKisi  = crm.kisi || 0;
       var crmFiyat = crm.fiyat || 0;
       var bugun    = bugunKayitlar[cust];
+      var isOpen   = !!window._gsOgunAcik[cust];
 
-      // Önceki gün verisi (öğünlü yapıda)
+      // Önceki gün verisi
       var onceki = null;
       if(!bugun) {
         var filterFn = _isWeekend
@@ -18614,11 +18679,14 @@ window.addEventListener('load', function() {
       var topKisi = 0, topTutar = 0;
       _ogunler.forEach(function(og){
         var kisi = 0, fiyat = crmFiyat;
-        if(bugun && bugun[og]){
+        // Önce preserved data'dan bak (toggle sırasında input değerlerini koru)
+        if(preserved && preserved[cust] && preserved[cust][og]){
+          kisi = preserved[cust][og].kisi||0;
+          fiyat = preserved[cust][og].fiyat||crmFiyat;
+        } else if(bugun && bugun[og]){
           kisi = bugun[og].kisi||0;
           fiyat = bugun[og].fiyat||crmFiyat;
         } else if(bugun){
-          // Eski format: sadece ogle satırına yaz
           if(og==='ogle'){ kisi = bugun.kisi||0; fiyat = bugun.fiyat||crmFiyat; }
         } else if(onceki){
           if(onceki[og]){
@@ -18649,41 +18717,128 @@ window.addEventListener('load', function() {
       var rowBg = kaydedildi ? '#f0fdf4' : (otoDoldu ? '#fffbeb' : (i%2===0?'#fff':'#f8fafc'));
       var statusLabel = kaydedildi ? '<span style="color:#16a34a;font-size:10px">✓ kaydedildi</span>'
         : (otoDoldu ? '<span style="color:#d97706;font-size:10px">↻ '+(_isWeekend?'önceki h.sonu':'önceki gün')+'</span>' : '');
-      var alSatTag = crm.alSat ? ' <span style="background:#fbbf24;color:#78350f;padding:1px 5px;border-radius:8px;font-size:9px;font-weight:700">🔄 Al/Sat</span>' : '';
+      var alSatTag = crm.alSat ? ' <span style="background:#fbbf24;color:#78350f;padding:1px 5px;border-radius:8px;font-size:9px;font-weight:700">Al/Sat</span>' : '';
       var alSatInfo = crm.alSat && crm.alisFiyat ? '<br><span style="color:#d97706;font-size:10px">Alış: '+_fmt(crm.alisFiyat)+' ₺'+(crm.tedarikci?' · '+crm.tedarikci:'')+'</span>' : '';
+
+      // Öğün durumunu göster: aksam veya kumanya'da kişi varsa otomatik aç
+      var hasMultiOgun = (ogunVals.aksam.kisi > 0 || ogunVals.kumanya.kisi > 0);
+      if(hasMultiOgun && !isOpen) {
+        window._gsOgunAcik[cust] = true;
+        isOpen = true;
+      }
 
       var ogunColors = {ogle:'#1e40af', aksam:'#7c3aed', kumanya:'#b45309'};
       var ogunBgs = {ogle:'#eff6ff', aksam:'#f5f3ff', kumanya:'#fffbeb'};
 
-      // 3 öğün satırı
-      _ogunler.forEach(function(og, oi){
-        var isFirst = (oi===0);
-        var isLast = (oi===2);
-        var v = ogunVals[og];
-        var ogunTutar = v.kisi * v.fiyat;
+      if(isOpen){
+        // ═══ AÇIK MOD: 3 öğün sub-satırları ═══
+        var rowCount = 3;
+        _ogunler.forEach(function(og, oi){
+          var isFirst = (oi===0);
+          var isLast = (oi===2);
+          var v = ogunVals[og];
+          var ogunTutar = v.kisi * v.fiyat;
+
+          rows += '<tr style="background:'+rowBg+'">';
+
+          if(isFirst){
+            rows += '<td rowspan="'+rowCount+'" style="padding:8px 10px;font-weight:700;color:#1e293b;border-bottom:2px solid #c7d2fe;border-right:1px solid #e2e8f0;min-width:140px;vertical-align:top">'
+              +'<div style="cursor:pointer" onclick="gsMusteriDetay(\''+cust.replace(/'/g,"\\'")+'\')">'
+              +'<span style="color:#2563eb;text-decoration:underline;text-decoration-style:dotted">'+cust+'</span>'+alSatTag
+              +(statusLabel?'<br>'+statusLabel:'')
+              +alSatInfo
+              +'<br><span style="color:#94a3b8;font-size:10px">CRM: '+(crmKisi||'—')+' kişi / '+(crmFiyat?_fmt(crmFiyat)+' ₺':'—')+'</span>'
+              +'</div>'
+              +'<button onclick="gsOgunToggle(\''+cust.replace(/'/g,"\\'")+'\','+i+')" style="margin-top:4px;padding:2px 8px;font-size:10px;background:#e0e7ff;color:#4338ca;border:1px solid #c7d2fe;border-radius:6px;cursor:pointer;font-weight:600" title="Tek satıra daralt">▲ Tek Satır</button>'
+              +'</td>';
+          }
+
+          // Öğün etiketi
+          rows += '<td style="padding:4px 6px;border-bottom:1px solid '+(isLast?'#c7d2fe':'#f1f5f9')+';border-right:1px solid #e2e8f0;min-width:70px;text-align:center">'
+            +'<span style="font-size:10px;font-weight:700;color:'+ogunColors[og]+';background:'+ogunBgs[og]+';padding:2px 8px;border-radius:10px">'+_ogunLabels[og]+'</span>'
+            +'</td>';
+
+          // Kişi input
+          rows += '<td style="padding:3px 4px;border-bottom:1px solid '+(isLast?'#c7d2fe':'#f1f5f9')+';border-right:1px solid #e2e8f0;min-width:80px">'
+            +'<input type="number" min="0" step="1"'
+            +' class="gsv76-kisi-'+og+'"'
+            +' data-idx="'+i+'" data-musteri="'+cust+'" data-ogun="'+og+'"'
+            +' value="'+(v.kisi||'')+'"'
+            +' placeholder="0"'
+            +' oninput="gsCalcRow('+i+')"'
+            +' style="width:100%;padding:5px;border:1px solid '+(kaydedildi?'#86efac':'#e2e8f0')+';border-radius:6px;text-align:center;font-size:13px;font-weight:700;background:'+(kaydedildi?'#f0fdf4':'#fff')+'"/>'
+            +'</td>';
+
+          // Fiyat input
+          rows += '<td style="padding:3px 4px;border-bottom:1px solid '+(isLast?'#c7d2fe':'#f1f5f9')+';border-right:1px solid #e2e8f0;min-width:80px">'
+            +'<input type="number" min="0" step="0.01"'
+            +' class="gsv76-fiyat-'+og+'"'
+            +' data-idx="'+i+'" data-musteri="'+cust+'" data-ogun="'+og+'"'
+            +' value="'+(v.fiyat||'')+'"'
+            +' placeholder="₺"'
+            +' oninput="gsCalcRow('+i+')"'
+            +' style="width:100%;padding:5px;border:1px solid '+(kaydedildi?'#86efac':'#e2e8f0')+';border-radius:6px;text-align:center;font-size:12px;background:'+(kaydedildi?'#f0fdf4':'#fff')+'"/>'
+            +'</td>';
+
+          // Öğün toplam
+          rows += '<td style="padding:4px 8px;text-align:right;border-bottom:1px solid '+(isLast?'#c7d2fe':'#f1f5f9')+';border-right:1px solid #e2e8f0;font-size:12px">'
+            +'<span class="gsv76-ogun-top-'+og+'" data-idx="'+i+'" style="color:'+(ogunTutar>0?'#166534':'#94a3b8')+'">'+(ogunTutar>0?_fmt(ogunTutar)+' ₺':'—')+'</span>'
+            +'</td>';
+
+          // Günlük toplam + Ay başından: sadece ilk satırda (rowspan)
+          if(isFirst){
+            var kdvPct = window._gsKdvPct||0;
+            var topHtml = '';
+            if(topTutar>0 && kdvPct>0){
+              var _kdvT=topTutar*kdvPct/100;
+              topHtml = '<span class="gsv76-gunluk" data-idx="'+i+'" style="display:block">'
+                +'<span style="color:#166534;font-weight:700">'+_fmt(topTutar)+' ₺</span>'
+                +'<br><span style="color:#7c3aed;font-size:10px">+%'+kdvPct+' KDV: '+_fmt(_kdvT)+' ₺</span>'
+                +'<br><span style="color:#4a148c;font-size:10px;font-weight:800">Toplam: '+_fmt(topTutar+_kdvT)+' ₺</span>'
+                +'</span>';
+            } else {
+              topHtml = '<span class="gsv76-gunluk" data-idx="'+i+'" style="color:'+(topTutar?'#166534':'#94a3b8')+';font-weight:800">'+(topTutar?_fmt(topTutar)+' ₺':'—')+'</span>';
+            }
+            topHtml += '<br><span class="gsv76-topkisi" data-idx="'+i+'" style="font-size:11px;color:#2563eb;font-weight:700">'+(topKisi||'—')+'</span><span style="font-size:10px;color:#94a3b8"> kişi</span>';
+
+            rows += '<td rowspan="'+rowCount+'" style="padding:6px 10px;text-align:right;border-bottom:2px solid #c7d2fe;border-right:1px solid #e2e8f0;min-width:100px;vertical-align:middle">'
+              +topHtml+'</td>';
+
+            rows += '<td rowspan="'+rowCount+'" style="padding:6px 10px;text-align:center;border-bottom:2px solid #c7d2fe;min-width:80px;vertical-align:middle">'
+              +'<span style="font-weight:700;color:'+(ayTopKisi?'#2563eb':'#94a3b8')+'">'+(ayTopKisi||'—')+'</span>'
+              +(ayTopKisi?'<br><span style="font-size:10px;color:#64748b">'+_fmt(ayTopTutar)+' ₺</span>':'')
+              +'</td>';
+          }
+          rows += '</tr>';
+        });
+      } else {
+        // ═══ KAPALI MOD: Tek satır (kişi + fiyat → öğle olarak kaydedilir) ═══
+        var v = ogunVals.ogle;
+        var satTutar = topTutar; // topTutar zaten tüm öğünlerin toplamı
 
         rows += '<tr style="background:'+rowBg+'">';
 
-        // Müşteri kolonu - sadece ilk satırda (rowspan=3)
-        if(isFirst){
-          rows += '<td rowspan="3" style="padding:8px 10px;font-weight:700;color:#1e293b;border-bottom:2px solid #c7d2fe;border-right:1px solid #e2e8f0;min-width:140px;cursor:pointer;vertical-align:top" onclick="gsMusteriDetay(\''+cust.replace(/'/g,"\\'")+'\')">'
-            +'<span style="color:#2563eb;text-decoration:underline;text-decoration-style:dotted">'+cust+'</span>'+alSatTag
-            +(statusLabel?'<br>'+statusLabel:'')
-            +alSatInfo
-            +'<br><span style="color:#94a3b8;font-size:10px">CRM: '+(crmKisi||'—')+' kişi / '+(crmFiyat?_fmt(crmFiyat)+' ₺':'—')+'</span>'
-            +'</td>';
-        }
-
-        // Öğün etiketi
-        rows += '<td style="padding:4px 6px;border-bottom:1px solid '+(isLast?'#c7d2fe':'#f1f5f9')+';border-right:1px solid #e2e8f0;min-width:70px;text-align:center">'
-          +'<span style="font-size:10px;font-weight:700;color:'+ogunColors[og]+';background:'+ogunBgs[og]+';padding:2px 8px;border-radius:10px">'+_ogunLabels[og]+'</span>'
+        // Müşteri kolonu
+        rows += '<td style="padding:8px 10px;font-weight:700;color:#1e293b;border-bottom:2px solid #c7d2fe;border-right:1px solid #e2e8f0;min-width:140px;vertical-align:top">'
+          +'<div style="cursor:pointer" onclick="gsMusteriDetay(\''+cust.replace(/'/g,"\\'")+'\')">'
+          +'<span style="color:#2563eb;text-decoration:underline;text-decoration-style:dotted">'+cust+'</span>'+alSatTag
+          +(statusLabel?'<br>'+statusLabel:'')
+          +alSatInfo
+          +'<br><span style="color:#94a3b8;font-size:10px">CRM: '+(crmKisi||'—')+' kişi / '+(crmFiyat?_fmt(crmFiyat)+' ₺':'—')+'</span>'
+          +'</div>'
+          +'<button onclick="gsOgunToggle(\''+cust.replace(/'/g,"\\'")+'\','+i+')" style="margin-top:4px;padding:2px 8px;font-size:10px;background:#f5f3ff;color:#7c3aed;border:1px solid #ddd6fe;border-radius:6px;cursor:pointer;font-weight:600" title="3 öğün (öğle/akşam/kumanya) gir">▼ 3 Öğün</button>'
           +'</td>';
 
-        // Kişi input
-        rows += '<td style="padding:3px 4px;border-bottom:1px solid '+(isLast?'#c7d2fe':'#f1f5f9')+';border-right:1px solid #e2e8f0;min-width:80px">'
+        // Öğün etiketi — boş (tek satır, öğün ayrımı yok)
+        rows += '<td style="padding:4px 6px;border-bottom:2px solid #c7d2fe;border-right:1px solid #e2e8f0;min-width:70px;text-align:center">'
+          +'<span style="font-size:10px;font-weight:600;color:#64748b">Genel</span>'
+          +'</td>';
+
+        // Kişi input (class: gsv76-kisi-ogle — tek satırda öğle inputu kullanılır)
+        rows += '<td style="padding:3px 4px;border-bottom:2px solid #c7d2fe;border-right:1px solid #e2e8f0;min-width:80px">'
           +'<input type="number" min="0" step="1"'
-          +' class="gsv76-kisi-'+og+'"'
-          +' data-idx="'+i+'" data-musteri="'+cust+'" data-ogun="'+og+'"'
+          +' class="gsv76-kisi-ogle"'
+          +' data-idx="'+i+'" data-musteri="'+cust+'" data-ogun="ogle"'
           +' value="'+(v.kisi||'')+'"'
           +' placeholder="0"'
           +' oninput="gsCalcRow('+i+')"'
@@ -18691,48 +18846,43 @@ window.addEventListener('load', function() {
           +'</td>';
 
         // Fiyat input
-        rows += '<td style="padding:3px 4px;border-bottom:1px solid '+(isLast?'#c7d2fe':'#f1f5f9')+';border-right:1px solid #e2e8f0;min-width:80px">'
+        rows += '<td style="padding:3px 4px;border-bottom:2px solid #c7d2fe;border-right:1px solid #e2e8f0;min-width:80px">'
           +'<input type="number" min="0" step="0.01"'
-          +' class="gsv76-fiyat-'+og+'"'
-          +' data-idx="'+i+'" data-musteri="'+cust+'" data-ogun="'+og+'"'
+          +' class="gsv76-fiyat-ogle"'
+          +' data-idx="'+i+'" data-musteri="'+cust+'" data-ogun="ogle"'
           +' value="'+(v.fiyat||'')+'"'
           +' placeholder="₺"'
           +' oninput="gsCalcRow('+i+')"'
           +' style="width:100%;padding:5px;border:1px solid '+(kaydedildi?'#86efac':'#e2e8f0')+';border-radius:6px;text-align:center;font-size:12px;background:'+(kaydedildi?'#f0fdf4':'#fff')+'"/>'
           +'</td>';
 
-        // Öğün toplam
-        rows += '<td style="padding:4px 8px;text-align:right;border-bottom:1px solid '+(isLast?'#c7d2fe':'#f1f5f9')+';border-right:1px solid #e2e8f0;font-size:12px">'
-          +'<span class="gsv76-ogun-top-'+og+'" data-idx="'+i+'" style="color:'+(ogunTutar>0?'#166534':'#94a3b8')+'">'+(ogunTutar>0?_fmt(ogunTutar)+' ₺':'—')+'</span>'
+        // Tutar (günlük toplam yerine öğün toplam hücresinde göster)
+        var kdvPct = window._gsKdvPct||0;
+        var tutarHtml = '';
+        if(satTutar>0 && kdvPct>0){
+          var _kdvT=satTutar*kdvPct/100;
+          tutarHtml = '<span style="color:#166534;font-weight:700">'+_fmt(satTutar)+' ₺</span>'
+            +'<br><span style="color:#7c3aed;font-size:10px">+%'+kdvPct+': '+_fmt(_kdvT)+' ₺</span>';
+        } else {
+          tutarHtml = '<span style="color:'+(satTutar>0?'#166534':'#94a3b8')+';font-weight:700">'+(satTutar>0?_fmt(satTutar)+' ₺':'—')+'</span>';
+        }
+        rows += '<td style="padding:4px 8px;text-align:right;border-bottom:2px solid #c7d2fe;border-right:1px solid #e2e8f0;font-size:12px">'
+          +tutarHtml+'</td>';
+
+        // Günlük toplam
+        rows += '<td style="padding:6px 10px;text-align:right;border-bottom:2px solid #c7d2fe;border-right:1px solid #e2e8f0;min-width:100px;vertical-align:middle">'
+          +'<span class="gsv76-gunluk" data-idx="'+i+'" style="color:'+(satTutar?'#166534':'#94a3b8')+';font-weight:800">'+(satTutar?_fmt(satTutar)+' ₺':'—')+'</span>'
+          +'<br><span class="gsv76-topkisi" data-idx="'+i+'" style="font-size:11px;color:#2563eb;font-weight:700">'+(v.kisi||'—')+'</span><span style="font-size:10px;color:#94a3b8"> kişi</span>'
           +'</td>';
 
-        // Günlük toplam + Ay başından: sadece ilk satırda (rowspan=3)
-        if(isFirst){
-          var kdvPct = window._gsKdvPct||0;
-          var topHtml = '';
-          if(topTutar>0 && kdvPct>0){
-            var _kdvT=topTutar*kdvPct/100;
-            topHtml = '<span class="gsv76-gunluk" data-idx="'+i+'" style="display:block">'
-              +'<span style="color:#166534;font-weight:700">'+_fmt(topTutar)+' ₺</span>'
-              +'<br><span style="color:#7c3aed;font-size:10px">+%'+kdvPct+' KDV: '+_fmt(_kdvT)+' ₺</span>'
-              +'<br><span style="color:#4a148c;font-size:10px;font-weight:800">Toplam: '+_fmt(topTutar+_kdvT)+' ₺</span>'
-              +'</span>';
-          } else {
-            topHtml = '<span class="gsv76-gunluk" data-idx="'+i+'" style="color:'+(topTutar?'#166534':'#94a3b8')+';font-weight:800">'+(topTutar?_fmt(topTutar)+' ₺':'—')+'</span>';
-          }
-          topHtml += '<br><span class="gsv76-topkisi" data-idx="'+i+'" style="font-size:11px;color:#2563eb;font-weight:700">'+(topKisi||'—')+'</span><span style="font-size:10px;color:#94a3b8"> kişi</span>';
-
-          rows += '<td rowspan="3" style="padding:6px 10px;text-align:right;border-bottom:2px solid #c7d2fe;border-right:1px solid #e2e8f0;min-width:100px;vertical-align:middle">'
-            +topHtml+'</td>';
-
-          rows += '<td rowspan="3" style="padding:6px 10px;text-align:center;border-bottom:2px solid #c7d2fe;min-width:80px;vertical-align:middle">'
-            +'<span style="font-weight:700;color:'+(ayTopKisi?'#2563eb':'#94a3b8')+'">'+(ayTopKisi||'—')+'</span>'
-            +(ayTopKisi?'<br><span style="font-size:10px;color:#64748b">'+_fmt(ayTopTutar)+' ₺</span>':'')
-            +'</td>';
-        }
+        // Ay başından
+        rows += '<td style="padding:6px 10px;text-align:center;border-bottom:2px solid #c7d2fe;min-width:80px;vertical-align:middle">'
+          +'<span style="font-weight:700;color:'+(ayTopKisi?'#2563eb':'#94a3b8')+'">'+(ayTopKisi||'—')+'</span>'
+          +(ayTopKisi?'<br><span style="font-size:10px;color:#64748b">'+_fmt(ayTopTutar)+' ₺</span>':'')
+          +'</td>';
 
         rows += '</tr>';
-      });
+      }
     });
 
     var html = '<div style="overflow-x:auto">'
@@ -18743,7 +18893,7 @@ window.addEventListener('load', function() {
       +'<th style="padding:10px 12px;text-align:center;border-bottom:2px solid #c7d2fe;border-right:1px solid #c7d2fe">Öğün</th>'
       +'<th style="padding:10px 12px;text-align:center;border-bottom:2px solid #c7d2fe;border-right:1px solid #c7d2fe">Kişi Sayısı</th>'
       +'<th style="padding:10px 12px;text-align:center;border-bottom:2px solid #c7d2fe;border-right:1px solid #c7d2fe">Fiyat (₺/kişi)</th>'
-      +'<th style="padding:10px 12px;text-align:right;border-bottom:2px solid #c7d2fe;border-right:1px solid #c7d2fe">Öğün Toplam</th>'
+      +'<th style="padding:10px 12px;text-align:right;border-bottom:2px solid #c7d2fe;border-right:1px solid #c7d2fe">Tutar</th>'
       +'<th style="padding:10px 12px;text-align:right;border-bottom:2px solid #c7d2fe;border-right:1px solid #c7d2fe">Günlük Toplam</th>'
       +'<th style="padding:10px 12px;text-align:center;border-bottom:2px solid #c7d2fe">Ay Başından</th>'
       +'</tr>'
