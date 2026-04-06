@@ -8393,7 +8393,7 @@ ${note}`);
   };
   const fmt = (n,d=2) => (Number(n)||0).toLocaleString('tr-TR',{minimumFractionDigits:d,maximumFractionDigits:d});
   const fmt0 = n => fmt(n,0);
-  const today = () => new Date().toISOString().slice(0,10);
+  const today = () => { var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
   // Toast alias — v60 IIFE dışından erişim için
   const toast = function(msg, ms){ if(typeof window._uysaToast==='function') window._uysaToast(msg, ms||3000); else console.log('[TOAST]', msg); };
 
@@ -10550,7 +10550,7 @@ function uysaDoLogin() {
                 id: su.id, username: su.username, phone: su.phone || '',
                 passwordHash: newHash, role: su.role,
                 displayName: su.display_name || su.username,
-                active: true, createdAt: new Date().toISOString().slice(0,10),
+                active: true, createdAt: (function(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')})(),
                 createdBy: 'server', permissions: su.permissions || ['read','write']
               });
               _saveUsers(users);
@@ -10802,7 +10802,7 @@ function addNewUser() {
     role: role,
     displayName: display || name,
     active: true,
-    createdAt: new Date().toISOString().slice(0,10),
+    createdAt: (function(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')})(),
     createdBy: sess?.username || 'admin',
     permissions: role === 'superadmin' ? ['all'] : ['read','write']
   };
@@ -13946,7 +13946,7 @@ Saygılarımızla,
 
       const adi      = document.getElementById('dok-adi')?.value?.trim() || file.name;
       const kategori = document.getElementById('dok-kategori')?.value || 'diger';
-      const tarih    = document.getElementById('dok-tarih')?.value || new Date().toISOString().slice(0,10);
+      const tarih    = document.getElementById('dok-tarih')?.value || (function(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')})();
       const not_     = document.getElementById('dok-not')?.value?.trim() || '';
       const sess     = typeof _getSession === 'function' ? _getSession() : {};
 
@@ -14674,7 +14674,7 @@ window.alerjenKaydet = function() {
   const checks = document.querySelectorAll('#alerjenCheckboxlar input:checked');
   const alerjenler = Array.from(checks).map(c => c.value);
   const arr = getAlerjenler();
-  arr.push({ id: Date.now(), ad, kat, alerjenler, tarih: new Date().toISOString().slice(0,10) });
+  arr.push({ id: Date.now(), ad, kat, alerjenler, tarih: (function(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')})() });
   saveAlerjenler(arr);
   document.getElementById('alerjenForm').style.display = 'none';
   document.getElementById('alerjenYemekAdi').value = '';
@@ -15242,7 +15242,7 @@ window.npsGonder = function(musteri) {
   if (_npsSecimDeger === null) return alert('Lütfen bir puan seçin.');
   const yorum = document.getElementById('npsYorum')?.value || '';
   const npsData = JSON.parse(localStorage.getItem('uysa_nps') || '[]');
-  npsData.push({ musteri, puan: _npsSecimDeger, yorum, tarih: new Date().toISOString().slice(0,10) });
+  npsData.push({ musteri, puan: _npsSecimDeger, yorum, tarih: (function(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')})() });
   localStorage.setItem('uysa_nps', JSON.stringify(npsData));
   window.autoSaveToFolder();
   alert(`✅ Anket gönderildi! Puan: ${_npsSecimDeger}/10. Teşekkürler!`);
@@ -16771,7 +16771,7 @@ window.addEventListener('load', function() {
       return (s || mv || si) ? {s, s2, m: mv, m2, si, de} : null;
     }
 
-    const today_str = new Date().toISOString().slice(0,10);
+    const _td = new Date(); const today_str = _td.getFullYear()+'-'+String(_td.getMonth()+1).padStart(2,'0')+'-'+String(_td.getDate()).padStart(2,'0');
     const firstD = new Date(y, m-1, 1);
     const lastD  = new Date(y, m, 0);
     const startDow = firstD.getDay() === 0 ? 6 : firstD.getDay() - 1;
@@ -17143,7 +17143,7 @@ window.addEventListener('load', function() {
     if(!container) return;
 
     const store    =_getStore();
-    const todayStr =new Date().toISOString().slice(0,10);
+    const _td2=new Date(); const todayStr =_td2.getFullYear()+'-'+String(_td2.getMonth()+1).padStart(2,'0')+'-'+String(_td2.getDate()).padStart(2,'0');
     const firstD   =new Date(year,mo1-1,1);
     const lastD    =new Date(year,mo1,0);
     const startDow =_dow(firstD);
@@ -19854,7 +19854,7 @@ window.addEventListener('load', function() {
 
     // Sayfa açıldığında: bugünün ve dünün kaydı yoksa otomatik oluştur
     var _autoFillDay = function(targetDate){
-      var tarih = targetDate.toISOString().slice(0,10);
+      var tarih = targetDate.getFullYear()+'-'+String(targetDate.getMonth()+1).padStart(2,'0')+'-'+String(targetDate.getDate()).padStart(2,'0');
       var dow = targetDate.getDay();
       if(dow===0 || dow===6) return; // Hafta sonu atla
       var gunlukArr = _getGunluk();
@@ -20891,7 +20891,7 @@ window.addEventListener('load', function() {
         d.setDate(d.getDate() + g);
         var ay = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); // FIX-A: hyphen separator to match _puantajKey
         var key = 'uysa_puantaj_' + ay + '_' + ad;
-        var tarihStr = d.toISOString().slice(0,10);
+        var tarihStr = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
         var kayit = {};
         try { kayit = JSON.parse(localStorage.getItem(key)||'{}'); } catch(e){}
         kayit[tarihStr] = durum;
@@ -21078,7 +21078,7 @@ window.addEventListener('load', function() {
         var dBit=new Date(bit);
         var turPuantaj = tur==='raporlu'?'raporlu':tur==='ucretsiz'?'ucretsiz':tur==='resmitatil'?'tatil':'ucretli';
         while(d<=dBit){
-          var tarihStr=d.toISOString().slice(0,10);
+          var tarihStr=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
           var ay=tarihStr.slice(0,7);
           var kayit=_getPuantaj(per,ay);
           kayit[tarihStr]=turPuantaj;
@@ -21985,7 +21985,7 @@ window.uysaTogglePasif = function(idx){
     var cikis = prompt(p.ad+' '+p.soyad+' pasife alınacak.\nİşten ayrılış tarihi (YYYY-AA-GG) — boş bırakabilirsiniz:','');
     if(cikis===null)return; // iptal
     p.pasif=true;
-    p.cikis=cikis||new Date().toISOString().slice(0,10);
+    p.cikis=cikis||(function(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')})();
     _toast('⛔ '+p.ad+' '+p.soyad+' pasife alındı','#854d0e');
   }else{
     if(!confirm(p.ad+' '+p.soyad+' tekrar aktife alınsın mı?'))return;
@@ -22789,7 +22789,7 @@ let _homeCharts = {};
 
 function fmt(n,d=0){ return (Number(n)||0).toLocaleString('tr-TR',{minimumFractionDigits:d,maximumFractionDigits:d}); }
 function fmtTL(n){ return fmt(n,2)+' ₺'; }
-function todayStr(){ return new Date().toISOString().slice(0,10); }
+function todayStr(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 
 // ── Veri Okuyucular ───────────────────────────────────────────
 
@@ -22934,7 +22934,7 @@ var LS_SABIT  = 'uysa_sabit_giderler';
 function lsGet(k,d){ try{ return JSON.parse(localStorage.getItem(k)||JSON.stringify(d)); }catch(e){ return d; } }
 function lsSet(k,v){ localStorage.setItem(k,JSON.stringify(v)); }
 function fmt(n){ return Number(n||0).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
-function bugun(){ return new Date().toISOString().slice(0,10); }
+function bugun(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function buAy(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
 
 // ── Müşteri Listesi (customers_v1 uyumlu) ──
@@ -25045,7 +25045,7 @@ document.addEventListener('DOMContentLoaded', function(){
       origGelirBtn.parentNode.replaceChild(newGelirBtn, origGelirBtn);
       newGelirBtn.addEventListener('click', function(){
         var musteri = document.getElementById('gelir-musteri')?.value||'';
-        var tarih   = document.getElementById('gelir-tarih')?.value||new Date().toISOString().slice(0,10);
+        var tarih   = document.getElementById('gelir-tarih')?.value||(function(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')})();
         var tutar   = parseFloat(document.getElementById('gelir-tutar')?.value)||0;
         var kisi    = parseInt(document.getElementById('gelir-kisi')?.value)||0;
         var fatura  = document.getElementById('gelir-fatura')?.value||'';
@@ -25077,7 +25077,7 @@ document.addEventListener('DOMContentLoaded', function(){
       origGiderBtn.parentNode.replaceChild(newGiderBtn, origGiderBtn);
       newGiderBtn.addEventListener('click', function(){
         var kat      = document.getElementById('gider-kat')?.value||'diger';
-        var tarih    = document.getElementById('gider-tarih')?.value||new Date().toISOString().slice(0,10);
+        var tarih    = document.getElementById('gider-tarih')?.value||(function(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')})();
         var tutar    = parseFloat(document.getElementById('gider-tutar')?.value)||0;
         var aciklama = document.getElementById('gider-aciklama')?.value||'';
         var belge    = document.getElementById('gider-belge')?.value||'';
