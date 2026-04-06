@@ -19192,26 +19192,26 @@ window.addEventListener('load', function() {
     var tableDiv = document.getElementById('gsTableDiv');
     if(!tableDiv) return;
 
-    // Kaynak hafta: şu anki tarihten bu haftanın Pzt-Cum'ası
+    // Kaynak hafta: şu anki tarihten bu haftanın Pzt-Paz'ı
     var tarihEl = document.getElementById('gs-tarih');
     var bugun = tarihEl && tarihEl.value ? new Date(tarihEl.value) : new Date();
     var kaynakPzt = _getMonday(bugun);
-    var kaynakCum = new Date(kaynakPzt); kaynakCum.setDate(kaynakPzt.getDate()+4);
+    var kaynakPaz = new Date(kaynakPzt); kaynakPaz.setDate(kaynakPzt.getDate()+6);
 
     // Hedef hafta: bir sonraki hafta
     var hedefPzt = new Date(kaynakPzt); hedefPzt.setDate(kaynakPzt.getDate()+7);
-    var hedefCum = new Date(hedefPzt); hedefCum.setDate(hedefPzt.getDate()+4);
+    var hedefPaz = new Date(hedefPzt); hedefPaz.setDate(hedefPzt.getDate()+6);
 
     var custs = _getCusts();
     var gunlukArr = _getGunluk();
-    var gunAdlari = ['Pzt','Sal','Çar','Per','Cum'];
+    var gunAdlari = ['Pzt','Sal','Çar','Per','Cum','Cmt','Paz'];
 
     // Kaynak haftadaki verileri topla — öğün bazlı
     // kaynakData[cust][d] = {kisi, fiyat, ogle:{kisi,fiyat}, aksam:{kisi,fiyat}, kumanya:{kisi,fiyat}}
     var kaynakData = {};
     custs.forEach(function(cust){
       kaynakData[cust] = {};
-      for(var d=0; d<5; d++){
+      for(var d=0; d<7; d++){
         var dt = new Date(kaynakPzt);
         dt.setDate(kaynakPzt.getDate()+d);
         var tarihStr = _fmtD(dt);
@@ -19248,7 +19248,7 @@ window.addEventListener('load', function() {
     html += '<span style="font-weight:700;font-size:13px;color:#374151">Kaynak Hafta</span>';
     html += '<input type="date" id="gsKaynakBas" value="'+_fmtD(kaynakPzt)+'" onchange="gsHaftalikKaynakDegisti()" style="padding:6px 10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:12px;font-weight:600"/>';
     html += '<span style="color:#94a3b8"> - </span>';
-    html += '<input type="date" id="gsKaynakBit" value="'+_fmtD(kaynakCum)+'" style="padding:6px 10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:12px;font-weight:600" disabled/>';
+    html += '<input type="date" id="gsKaynakBit" value="'+_fmtD(kaynakPaz)+'" style="padding:6px 10px;border:1.5px solid #c7d2fe;border-radius:8px;font-size:12px;font-weight:600" disabled/>';
     html += '</div>';
 
     html += '<div style="font-size:16px;color:#7c3aed;font-weight:900">&rarr;</div>';
@@ -19257,24 +19257,25 @@ window.addEventListener('load', function() {
     html += '<span style="font-weight:700;font-size:13px;color:#374151">Hedef Hafta</span>';
     html += '<input type="date" id="gsHedefBas" value="'+_fmtD(hedefPzt)+'" onchange="gsHaftalikHedefDegisti()" style="padding:6px 10px;border:1.5px solid #7c3aed;border-radius:8px;font-size:12px;font-weight:600;border-width:2px"/>';
     html += '<span style="color:#94a3b8"> - </span>';
-    html += '<input type="date" id="gsHedefBit" value="'+_fmtD(hedefCum)+'" style="padding:6px 10px;border:1.5px solid #7c3aed;border-radius:8px;font-size:12px;font-weight:600;border-width:2px" disabled/>';
+    html += '<input type="date" id="gsHedefBit" value="'+_fmtD(hedefPaz)+'" style="padding:6px 10px;border:1.5px solid #7c3aed;border-radius:8px;font-size:12px;font-weight:600;border-width:2px" disabled/>';
     html += '</div>';
     html += '</div>';
 
     var ogunColors = {ogle:'#1e40af', aksam:'#7c3aed', kumanya:'#b45309'};
     var ogunBgs = {ogle:'#eff6ff', aksam:'#f5f3ff', kumanya:'#fffbeb'};
 
-    // Tablo: Müşteri / Öğün / Fiyat / Pzt-Cum / Hafta Top.
+    // Tablo: Müşteri / Öğün / Fiyat / Pzt-Paz / Hafta Top.
     html += '<div style="overflow-x:auto">';
     html += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
     html += '<thead><tr style="background:#f5f3ff">';
     html += '<th style="padding:8px;text-align:left;border-bottom:2px solid #e9e5ff;min-width:120px">Musteri</th>';
     html += '<th style="padding:8px;text-align:center;border-bottom:2px solid #e9e5ff;min-width:60px">Öğün</th>';
     html += '<th style="padding:8px;text-align:center;border-bottom:2px solid #e9e5ff;width:70px">Fiyat</th>';
-    for(var d=0; d<5; d++){
+    for(var d=0; d<7; d++){
       var gunTarih = new Date(kaynakPzt); gunTarih.setDate(kaynakPzt.getDate()+d);
-      html += '<th style="padding:8px;text-align:center;border-bottom:2px solid #e9e5ff;min-width:60px">';
-      html += '<div style="font-size:11px;color:#7c3aed">'+gunAdlari[d]+'</div>';
+      var isWknd = (d>=5);
+      html += '<th style="padding:8px;text-align:center;border-bottom:2px solid #e9e5ff;min-width:55px;'+(isWknd?'background:#fef3c7':''')+'">';
+      html += '<div style="font-size:11px;color:'+(isWknd?'#d97706':'#7c3aed')+'">'+gunAdlari[d]+'</div>';
       html += '<div style="font-size:10px;color:#94a3b8">'+gunTarih.getDate()+'/'+(gunTarih.getMonth()+1)+'</div>';
       html += '</th>';
     }
@@ -19315,11 +19316,12 @@ window.addEventListener('load', function() {
             +'<input type="number" step="0.01" class="gsHK-fiyat-'+og+'" data-cust="'+ci+'" data-ogun="'+og+'" value="'+ogunFiyat+'" style="width:55px;padding:3px;border:1px solid #e2e8f0;border-radius:5px;text-align:center;font-size:11px"/>'
             +'</td>';
 
-          // Pzt-Cum kişi inputları
-          for(var dd=0; dd<5; dd++){
+          // Pzt-Paz kişi inputları
+          for(var dd=0; dd<7; dd++){
             var ogunKisi = kaynakData[cust][dd][og]?.kisi || 0;
             haftalikOgunTop += ogunKisi;
-            html += '<td style="padding:3px;text-align:center">'
+            var wkBg = dd>=5 ? 'background:#fffbeb;' : '';
+            html += '<td style="padding:3px;text-align:center;'+wkBg+'">'
               +'<input type="number" min="0" class="gsHK-kisi-'+og+'" data-cust="'+ci+'" data-day="'+dd+'" data-ogun="'+og+'" value="'+(ogunKisi||'')+'" placeholder="0" style="width:48px;padding:3px;border:1px solid #e2e8f0;border-radius:5px;text-align:center;font-size:11px;font-weight:700" oninput="gsHKCalcTop('+ci+')"/>'
               +'</td>';
           }
@@ -19331,14 +19333,14 @@ window.addEventListener('load', function() {
 
         // Toplam satırı (müşteri toplam)
         var custHaftalikTop = 0;
-        for(var dd=0; dd<5; dd++){
+        for(var dd=0; dd<7; dd++){
           _ogunler.forEach(function(og){
             custHaftalikTop += kaynakData[cust][dd][og]?.kisi || 0;
           });
         }
         html += '<tr style="background:#eef3ff;border-bottom:2px solid #c7d2fe">';
         html += '<td colspan="3" style="padding:4px 8px;text-align:right;font-weight:700;font-size:11px;color:#374151">'+cust+' Toplam</td>';
-        for(var dd=0; dd<5; dd++){
+        for(var dd=0; dd<7; dd++){
           var gunTop = 0;
           _ogunler.forEach(function(og){ gunTop += kaynakData[cust][dd][og]?.kisi || 0; });
           html += '<td style="padding:4px;text-align:center;font-weight:800;color:#166534;font-size:11px">'+(gunTop||'—')+'</td>';
@@ -19361,10 +19363,11 @@ window.addEventListener('load', function() {
         // Fiyat
         html += '<td style="padding:4px;text-align:center;border-right:1px solid #e9e5ff"><input type="number" step="0.01" class="gsHK-fiyat" data-cust="'+ci+'" value="'+(kaynakData[cust][0].fiyat||crm.fiyat||0)+'" style="width:55px;padding:3px;border:1px solid #e2e8f0;border-radius:5px;text-align:center;font-size:11px"/></td>';
 
-        for(var dd=0; dd<5; dd++){
+        for(var dd=0; dd<7; dd++){
           var val = kaynakData[cust][dd].kisi || 0;
           haftalikTop += val;
-          html += '<td style="padding:3px;text-align:center"><input type="number" min="0" class="gsHK-kisi" data-cust="'+ci+'" data-day="'+dd+'" value="'+(val||'')+'" placeholder="0" style="width:48px;padding:3px;border:1px solid #e2e8f0;border-radius:5px;text-align:center;font-size:12px;font-weight:700" oninput="gsHKCalcTop('+ci+')"/></td>';
+          var wkBg = dd>=5 ? 'background:#fffbeb;' : '';
+          html += '<td style="padding:3px;text-align:center;'+wkBg+'"><input type="number" min="0" class="gsHK-kisi" data-cust="'+ci+'" data-day="'+dd+'" value="'+(val||'')+'" placeholder="0" style="width:48px;padding:3px;border:1px solid #e2e8f0;border-radius:5px;text-align:center;font-size:12px;font-weight:700" oninput="gsHKCalcTop('+ci+')"/></td>';
         }
         html += '<td class="gsHK-top" data-cust="'+ci+'" style="padding:6px;text-align:center;font-weight:800;color:#166534;font-size:13px">'+(haftalikTop||'—')+'</td>';
         html += '</tr>';
@@ -19384,8 +19387,8 @@ window.addEventListener('load', function() {
     if(!basEl || !bitEl) return;
     var pzt = _getMonday(new Date(basEl.value));
     basEl.value = _fmtD(pzt);
-    var cum = new Date(pzt); cum.setDate(pzt.getDate()+4);
-    bitEl.value = _fmtD(cum);
+    var paz = new Date(pzt); paz.setDate(pzt.getDate()+6);
+    bitEl.value = _fmtD(paz);
     // Tabloyu güncelle
     gsHaftalikKopyaAc();
   };
@@ -19397,8 +19400,8 @@ window.addEventListener('load', function() {
     if(!basEl || !bitEl) return;
     var pzt = _getMonday(new Date(basEl.value));
     basEl.value = _fmtD(pzt);
-    var cum = new Date(pzt); cum.setDate(pzt.getDate()+4);
-    bitEl.value = _fmtD(cum);
+    var paz = new Date(pzt); paz.setDate(pzt.getDate()+6);
+    bitEl.value = _fmtD(paz);
   };
 
   // Haftalık toplam hesapla (tek satır + öğünlü)
@@ -19434,7 +19437,7 @@ window.addEventListener('load', function() {
     custs.forEach(function(cust, ci){
       var isOpen = !!window._gsOgunAcik[cust];
 
-      for(var d=0; d<5; d++){
+      for(var d=0; d<7; d++){
         var dt = new Date(hedefPzt);
         dt.setDate(hedefPzt.getDate()+d);
         var tarih = _fmtD(dt);
