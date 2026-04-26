@@ -748,6 +748,178 @@ CREATE TABLE IF NOT EXISTS `uysa_telegram_users` (
 
 
 -- ══════════════════════════════════════════════════════════════
+-- COZBIMESKİ DOMAIN TABLOLARI (Catering ERP)
+-- ══════════════════════════════════════════════════════════════
+
+-- Yemek Kataloğu
+CREATE TABLE IF NOT EXISTS `uysa_dishes` (
+  `id`            INT UNSIGNED     NOT NULL AUTO_INCREMENT,
+  `code`          VARCHAR(20)      NOT NULL,
+  `name`          VARCHAR(150)     NOT NULL,
+  `category`      ENUM('ana_yemek','corba','salata','tatli','meyve','icecek','ara_sicak','kahvalti','diger') NOT NULL DEFAULT 'ana_yemek',
+  `sub_category`  VARCHAR(50)               DEFAULT NULL COMMENT 'et, tavuk, sebze, bakliyat vb.',
+  `unit`          VARCHAR(20)      NOT NULL DEFAULT 'porsiyon',
+  `portion_gram`  DECIMAL(10,2)             DEFAULT NULL,
+  `calorie`       INT UNSIGNED              DEFAULT NULL,
+  `allergens`     VARCHAR(500)              DEFAULT NULL COMMENT 'JSON array: ["gluten","süt",...]',
+  `dish_price`    DECIMAL(10,2)    NOT NULL DEFAULT 0.00,
+  `cost_price`    DECIMAL(10,2)             DEFAULT NULL,
+  `is_active`     TINYINT(1)       NOT NULL DEFAULT 1,
+  `notes`         TEXT                      DEFAULT NULL,
+  `created_at`    DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`    DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_dish_code` (`code`),
+  KEY `idx_dish_category` (`category`),
+  KEY `idx_dish_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Reçete Satırları (yemek malzemeleri)
+CREATE TABLE IF NOT EXISTS `uysa_recipe_lines` (
+  `id`            BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  `dish_id`       INT UNSIGNED     NOT NULL,
+  `ingredient`    VARCHAR(150)     NOT NULL,
+  `quantity`      DECIMAL(10,3)    NOT NULL DEFAULT 0.000 COMMENT 'gram/kişi veya kg/kişi',
+  `unit`          VARCHAR(20)      NOT NULL DEFAULT 'gram',
+  `unit_price`    DECIMAL(10,4)             DEFAULT NULL COMMENT '₺/kg',
+  `sort_order`    SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  `notes`         VARCHAR(255)              DEFAULT NULL,
+  `created_at`    DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_rl_dish` (`dish_id`),
+  KEY `idx_rl_ingredient` (`ingredient`),
+  CONSTRAINT `fk_rl_dish` FOREIGN KEY (`dish_id`) REFERENCES `uysa_dishes` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Menü Planları (haftalık/günlük)
+CREATE TABLE IF NOT EXISTS `uysa_menu_plans` (
+  `id`            INT UNSIGNED     NOT NULL AUTO_INCREMENT,
+  `plan_date`     DATE             NOT NULL,
+  `meal_type`     ENUM('ogle','aksam','sabah','gece','kumanya') NOT NULL DEFAULT 'ogle',
+  `customer_id`   BIGINT UNSIGNED            DEFAULT NULL COMMENT 'NULL=genel menü',
+  `week_no`       TINYINT UNSIGNED          DEFAULT NULL,
+  `status`        ENUM('draft','approved','served') NOT NULL DEFAULT 'draft',
+  `created_by`    VARCHAR(100)              DEFAULT NULL,
+  `notes`         TEXT                      DEFAULT NULL,
+  `created_at`    DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`    DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_menu_date_meal_cust` (`plan_date`, `meal_type`, `customer_id`),
+  KEY `idx_mp_date` (`plan_date`),
+  KEY `idx_mp_customer` (`customer_id`),
+  KEY `idx_mp_week` (`week_no`),
+  CONSTRAINT `fk_mp_customer` FOREIGN KEY (`customer_id`) REFERENCES `uysa_customers` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Menü Plan Kalemleri
+CREATE TABLE IF NOT EXISTS `uysa_menu_plan_items` (
+  `id`            BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  `plan_id`       INT UNSIGNED     NOT NULL,
+  `dish_id`       INT UNSIGNED     NOT NULL,
+  `slot`          ENUM('corba','ana','yan','salata','tatli','meyve','icecek','diger') NOT NULL DEFAULT 'ana',
+  `portion_count` INT UNSIGNED              DEFAULT NULL,
+  `sort_order`    SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `idx_mpi_plan` (`plan_id`),
+  KEY `idx_mpi_dish` (`dish_id`),
+  CONSTRAINT `fk_mpi_plan` FOREIGN KEY (`plan_id`) REFERENCES `uysa_menu_plans` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_mpi_dish` FOREIGN KEY (`dish_id`) REFERENCES `uysa_dishes` (`id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Cari Hesaplar (COZBIMESKİ parti/cari)
+CREATE TABLE IF NOT EXISTS `uysa_parties` (
+  `id`            INT UNSIGNED     NOT NULL AUTO_INCREMENT,
+  `code`          VARCHAR(20)      NOT NULL,
+  `name`          VARCHAR(200)     NOT NULL,
+  `type`          ENUM('musteri','tedarikci','personel','diger') NOT NULL DEFAULT 'musteri',
+  `tax_no`        VARCHAR(11)               DEFAULT NULL,
+  `tax_office`    VARCHAR(100)              DEFAULT NULL,
+  `address`       TEXT                      DEFAULT NULL,
+  `city`          VARCHAR(50)               DEFAULT NULL,
+  `phone`         VARCHAR(30)               DEFAULT NULL,
+  `email`         VARCHAR(255)              DEFAULT NULL,
+  `iban`          VARCHAR(34)               DEFAULT NULL,
+  `balance`       DECIMAL(15,2)    NOT NULL DEFAULT 0.00,
+  `credit_limit`  DECIMAL(15,2)             DEFAULT NULL,
+  `is_active`     TINYINT(1)       NOT NULL DEFAULT 1,
+  `notes`         TEXT                      DEFAULT NULL,
+  `created_at`    DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`    DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_party_code` (`code`),
+  KEY `idx_party_type` (`type`),
+  KEY `idx_party_active` (`is_active`),
+  KEY `idx_party_tax` (`tax_no`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Yemek Eşleşme Matrisi (hangi yemekler birlikte iyi gider)
+CREATE TABLE IF NOT EXISTS `uysa_dish_pairings` (
+  `id`            INT UNSIGNED     NOT NULL AUTO_INCREMENT,
+  `dish_a_id`     INT UNSIGNED     NOT NULL,
+  `dish_b_id`     INT UNSIGNED     NOT NULL,
+  `score`         TINYINT UNSIGNED NOT NULL DEFAULT 5 COMMENT '1-10 uyumluluk skoru',
+  `reason`        VARCHAR(255)              DEFAULT NULL,
+  `created_at`    DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_pair` (`dish_a_id`, `dish_b_id`),
+  KEY `idx_dp_b` (`dish_b_id`),
+  CONSTRAINT `fk_dp_a` FOREIGN KEY (`dish_a_id`) REFERENCES `uysa_dishes` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_dp_b` FOREIGN KEY (`dish_b_id`) REFERENCES `uysa_dishes` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Teslimat/Sefer Takibi
+CREATE TABLE IF NOT EXISTS `uysa_deliveries` (
+  `id`            INT UNSIGNED     NOT NULL AUTO_INCREMENT,
+  `delivery_no`   VARCHAR(30)      NOT NULL,
+  `delivery_date` DATE             NOT NULL,
+  `customer_id`   BIGINT UNSIGNED            DEFAULT NULL,
+  `meal_type`     ENUM('ogle','aksam','sabah','gece','kumanya') NOT NULL DEFAULT 'ogle',
+  `vehicle`       VARCHAR(50)               DEFAULT NULL,
+  `driver`        VARCHAR(100)              DEFAULT NULL,
+  `portion_count` INT UNSIGNED     NOT NULL DEFAULT 0,
+  `departure_time` TIME                     DEFAULT NULL,
+  `arrival_time`  TIME                      DEFAULT NULL,
+  `temperature`   DECIMAL(4,1)              DEFAULT NULL COMMENT 'Teslim sıcaklığı °C',
+  `status`        ENUM('planned','in_transit','delivered','cancelled') NOT NULL DEFAULT 'planned',
+  `recipient`     VARCHAR(100)              DEFAULT NULL COMMENT 'Teslim alan kişi',
+  `signature`     TINYINT(1)       NOT NULL DEFAULT 0,
+  `notes`         TEXT                      DEFAULT NULL,
+  `created_at`    DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`    DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_delivery_no` (`delivery_no`),
+  KEY `idx_del_date` (`delivery_date`),
+  KEY `idx_del_customer` (`customer_id`),
+  KEY `idx_del_status` (`status`),
+  CONSTRAINT `fk_del_customer` FOREIGN KEY (`customer_id`) REFERENCES `uysa_customers` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- HACCP Sıcaklık & Kontrol Kayıtları
+CREATE TABLE IF NOT EXISTS `uysa_haccp_logs` (
+  `id`            BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  `log_date`      DATE             NOT NULL,
+  `log_time`      TIME                      DEFAULT NULL,
+  `check_point`   VARCHAR(100)     NOT NULL COMMENT 'depo, uretim, servis, arac vb.',
+  `check_type`    ENUM('temperature','cleaning','pest','quality','other') NOT NULL DEFAULT 'temperature',
+  `value`         DECIMAL(6,2)              DEFAULT NULL COMMENT 'Sıcaklık değeri °C',
+  `min_limit`     DECIMAL(6,2)              DEFAULT NULL,
+  `max_limit`     DECIMAL(6,2)              DEFAULT NULL,
+  `is_ok`         TINYINT(1)       NOT NULL DEFAULT 1,
+  `corrective_action` TEXT                  DEFAULT NULL,
+  `checked_by`    VARCHAR(100)              DEFAULT NULL,
+  `equipment`     VARCHAR(100)              DEFAULT NULL COMMENT 'Buzdolabı no, cihaz adı',
+  `photo`         VARCHAR(255)              DEFAULT NULL COMMENT 'Fotoğraf dosya yolu',
+  `notes`         TEXT                      DEFAULT NULL,
+  `created_at`    DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_haccp_date` (`log_date`),
+  KEY `idx_haccp_point` (`check_point`),
+  KEY `idx_haccp_type` (`check_type`),
+  KEY `idx_haccp_ok` (`is_ok`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- ══════════════════════════════════════════════════════════════
 -- VIEWS
 -- ══════════════════════════════════════════════════════════════
 
