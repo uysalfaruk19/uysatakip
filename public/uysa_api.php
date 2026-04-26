@@ -1736,6 +1736,7 @@ default:
         'inv.'    => ['file' => 'modules/InventoryModule.php', 'handler' => 'handleInventoryAction'],
         'hr.'     => ['file' => 'modules/HRModule.php',        'handler' => 'handleHRAction'],
         'portal.' => ['file' => 'modules/PortalModule.php',    'handler' => 'handlePortalAction'],
+        'cat.'    => ['file' => 'modules/CateringModule.php',  'handler' => 'handleCateringAction'],
     ];
 
     $handled = false;
