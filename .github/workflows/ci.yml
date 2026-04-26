@@ -45,6 +45,7 @@ jobs:
             "public/src/modules/HRModule.php"
             "public/src/modules/PortalModule.php"
             "public/src/modules/TelegramBot.php"
+            "public/src/modules/CateringModule.php"
           )
           for m in "${MODULES[@]}"; do
             if [ ! -f "$m" ]; then
@@ -61,7 +62,7 @@ jobs:
             echo "❌ Missing sql/schema_v5.sql"
             exit 1
           fi
-          for table in uysa_accounts uysa_invoices uysa_products uysa_employees uysa_customers uysa_webhooks uysa_2fa; do
+          for table in uysa_accounts uysa_invoices uysa_products uysa_employees uysa_customers uysa_webhooks uysa_2fa uysa_dishes uysa_recipe_lines uysa_menu_plans uysa_menu_plan_items uysa_parties uysa_deliveries uysa_haccp_logs uysa_dish_pairings; do
             if ! grep -q "$table" sql/schema_v5.sql; then
               echo "❌ Missing table $table in schema_v5.sql"
               exit 1
@@ -177,6 +178,13 @@ jobs:
             --testdox --colors=always \
             2>&1 | tee test-results-module.txt
           echo "✅ Module tests complete"
+
+      - name: Run Catering Module Tests (COZBIM)
+        run: |
+          ./vendor/bin/phpunit tests/CateringModuleTest.php \
+            --testdox --colors=always \
+            2>&1 | tee test-results-catering.txt
+          echo "✅ Catering module tests complete"
 
       - name: Run Integration Tests (Mock/SQLite)
         run: |
