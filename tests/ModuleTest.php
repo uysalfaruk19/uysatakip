@@ -50,6 +50,14 @@ class ModuleTest extends TestCase
         $this->assertEquals(0, $result, 'TelegramBot.php syntax error: ' . implode("\n", $output));
     }
 
+    public function testCateringModuleSyntax(): void
+    {
+        $output = [];
+        $result = 0;
+        exec('php -l ' . escapeshellarg(__DIR__ . '/../public/src/modules/CateringModule.php') . ' 2>&1', $output, $result);
+        $this->assertEquals(0, $result, 'CateringModule.php syntax error: ' . implode("\n", $output));
+    }
+
     public function testMainApiSyntax(): void
     {
         $output = [];
@@ -81,6 +89,12 @@ class ModuleTest extends TestCase
     {
         require_once __DIR__ . '/../public/src/modules/PortalModule.php';
         $this->assertTrue(function_exists('handlePortalAction'), 'handlePortalAction fonksiyonu tanımlı olmalı');
+    }
+
+    public function testCateringModuleHasHandler(): void
+    {
+        require_once __DIR__ . '/../public/src/modules/CateringModule.php';
+        $this->assertTrue(function_exists('handleCateringAction'), 'handleCateringAction fonksiyonu tanımlı olmalı');
     }
 
     // ── 2FA TOTP Doğrulaması ────────────────────────────────
@@ -119,6 +133,9 @@ class ModuleTest extends TestCase
             'uysa_attendance', 'uysa_shifts', 'uysa_payroll',
             'uysa_customers', 'uysa_customer_orders', 'uysa_webhooks',
             'uysa_2fa', 'uysa_ai_chats', 'uysa_telegram_users',
+            'uysa_dishes', 'uysa_recipe_lines', 'uysa_menu_plans',
+            'uysa_menu_plan_items', 'uysa_parties', 'uysa_deliveries',
+            'uysa_haccp_logs', 'uysa_dish_pairings',
         ];
         foreach ($requiredTables as $table) {
             $this->assertStringContainsString($table, $schema, "Schema v5 '{$table}' tablosunu içermeli");
@@ -182,6 +199,7 @@ class ModuleTest extends TestCase
             'HRModule.php',
             'PortalModule.php',
             'TelegramBot.php',
+            'CateringModule.php',
         ];
         foreach ($files as $file) {
             $this->assertFileExists(

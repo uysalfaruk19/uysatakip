@@ -68,7 +68,7 @@ function handleCateringAction(string $action, PDO $pdo, array $body, ?array $aut
         $notes    = sanitizeInput($body['notes'] ?? '', 2000);
 
         if (!$code || !$name) jsonResponse(['ok' => false, 'error' => 'code ve name gerekli'], 400);
-        if (!preg_match('/^[A-Za-z0-9Ğğİıçşüö_-]{1,20}$/u', $code)) {
+        if (!preg_match('/^[A-Za-z0-9ĞğİıÇçŞşÜüÖö_-]{1,20}$/u', $code)) {
             jsonResponse(['ok' => false, 'error' => 'code formatı geçersiz (1-20 alfanumerik karakter)'], 400);
         }
 

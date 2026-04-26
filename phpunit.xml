@@ -10,6 +10,12 @@
         <testsuite name="Unit">
             <file>tests/UnitTest.php</file>
         </testsuite>
+        <testsuite name="Module">
+            <file>tests/ModuleTest.php</file>
+        </testsuite>
+        <testsuite name="Catering">
+            <file>tests/CateringModuleTest.php</file>
+        </testsuite>
         <testsuite name="Integration">
             <file>tests/IntegrationTest.php</file>
         </testsuite>
