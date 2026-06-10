@@ -144,6 +144,13 @@ Sistem iki günlük işlem etrafında çalışır — her şey anasayfadan yapı
 - **Veri kaynağı izleme**: Herhangi bir KPI kartına veya grafikteki 🔍 Kaynak
   butonuna tıkla → o rakamı oluşturan kayıtlar (hangi anahtar, hangi girişten
   geldiği, otomatik/elle dağılımı) listelenir.
+- **Müşteri bazlı ekstre & mutabakat**: Çizelgede müşteri seç → aylık ekstre
+  görünümü (haftalık ara toplamlar); 📥 Excel (CSV) müşteriye özel iner,
+  🖨️ Yazdır imzalı mutabakat formu üretir.
+- **Cari takip**: Finans → 💳 Cari. Müşteri bakiyesi = tahakkuk − tahsilat,
+  tedarikçi bakiyesi = fatura/gider − ödeme. Tahsilat/ödeme girişleri
+  `uysa_odemeler` anahtarında tutulur, gelir/gideri değiştirmez. Her cari
+  için yürüyen bakiyeli ekstre; anasayfada açık bakiye özeti.
 
 > ⚠️ Fatura işledikten sonra aynı tutarı Finans'a elle gider olarak girmeyin —
 > sistem zaten oluşturur.
