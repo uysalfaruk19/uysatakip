@@ -151,6 +151,13 @@ Sistem iki günlük işlem etrafında çalışır — her şey anasayfadan yapı
   tedarikçi bakiyesi = fatura/gider − ödeme. Tahsilat/ödeme girişleri
   `uysa_odemeler` anahtarında tutulur, gelir/gideri değiştirmez. Her cari
   için yürüyen bakiyeli ekstre; anasayfada açık bakiye özeti.
+- **Öğün bazlı sayılar**: Öğle / Akşam / Kahvaltı / İftar ayrı kolonlarda
+  izlenir (`uysa_gunluk_uretim.ogun`; eski öğünsüz kayıtlar Öğle sayılır).
+  Müşteriye ➕ ile öğün açılır, öğün fiyatları CRM'de ayrı hatırlanır
+  (`crm.ogunler`), gelir kayıtları ve mutabakat çıktıları öğün etiketlidir.
+- **Raporlama sadeleştirildi**: Mükerrer BI kartları kaldırıldı; Raporlama
+  artık Anasayfa ile aynı dönem durumunu paylaşan analiz dönemi bandı
+  kullanır. Müşteri Karlılık Skoru varsayılanı içinde bulunulan aydır.
 
 > ⚠️ Fatura işledikten sonra aynı tutarı Finans'a elle gider olarak girmeyin —
 > sistem zaten oluşturur.

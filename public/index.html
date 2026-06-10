@@ -2091,7 +2091,7 @@
               <button class="btn ghost" onclick="hagYazdir()" style="padding:4px 10px !important;font-size:11px !important">🖨️ Yazdır / Mutabakat</button>
             </span>
           </h3>
-          <div class="hint">Hücreye kişi sayısını yaz, çık — kayıt ve gelir otomatik güncellenir. Boşaltırsan o günün kaydı silinir. Hafta sonları sarı zeminlidir. <b>Müşteri seçersen</b> çizelge o müşterinin aylık ekstresine dönüşür; Excel/Yazdır çıktıları da sadece o müşteriyi içerir.</div>
+          <div class="hint">Hücreye kişi sayısını yaz, çık — kayıt ve gelir otomatik güncellenir. Boşaltırsan o günün kaydı silinir. Hafta sonları sarı zeminlidir. <b>Müşteri seçersen</b> çizelge o müşterinin aylık ekstresine dönüşür (öğün kolonları + ➕ öğün ekleme); Excel/Yazdır çıktıları da sadece o müşteriyi içerir. Öğle/Akşam/Kahvaltı/İftar ayrı kolonlarda izlenir.</div>
           <div id="hag-table" style="overflow-x:auto;max-height:480px;overflow-y:auto"></div>
         </div>
 
@@ -4114,28 +4114,16 @@
           </div>
         </div>
 
-        <!-- 6.3 Yönetici Dashboard -->
-        <div class="stats-grid" style="margin-bottom:18px">
-          <div class="stat-card">
-            <div class="sc-label">GÜNLÜK MALİYET</div>
-            <div class="sc-value" id="bi-gunluk">—</div>
-            <div class="sc-sub">TL / kişi (bugün)</div>
-          </div>
-          <div class="stat-card">
-            <div class="sc-label">HAFTALIK ÜRETİM</div>
-            <div class="sc-value" id="bi-haftalik">—</div>
-            <div class="sc-sub">kişi/gün ortalaması</div>
-          </div>
-          <div class="stat-card">
-            <div class="sc-label">KARLILIK ORANI</div>
-            <div class="sc-value" id="bi-karlilik">—</div>
-            <div class="sc-sub">% bu ay</div>
-          </div>
-          <div class="stat-card">
-            <div class="sc-label">STOK RİSKİ</div>
-            <div class="sc-value" style="color:#dc2626" id="bi-stok">—</div>
-            <div class="sc-sub">Kritik kalem sayısı</div>
-          </div>
+        <!-- Dönem bandı — Anasayfa ile AYNI dönem durumunu paylaşır.
+             (Eski BI kart satırı kaldırıldı: KPI'lar anasayfada, yanlış
+              etiketli günlük/haftalık kartlar ve stok riski mükerrerdi.) -->
+        <div id="rapor-donem-bandi" class="panel" style="padding:10px 14px !important;display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:18px">
+          <span style="font-weight:800;font-size:12px;color:#14254a">📅 Analiz Dönemi:</span>
+          <button class="btn" data-rdr="bu-ay" onclick="uysaRaporRangeSec('bu-ay')">Bu Ay</button>
+          <button class="btn" data-rdr="gecen-ay" onclick="uysaRaporRangeSec('gecen-ay')">Geçen Ay</button>
+          <button class="btn" data-rdr="yil" onclick="uysaRaporRangeSec('yil')">Bu Yıl</button>
+          <button class="btn" data-rdr="tum" onclick="uysaRaporRangeSec('tum')">Tümü</button>
+          <span id="rapor-donem-ozet" style="margin-left:auto;display:flex;gap:10px;flex-wrap:wrap;font-size:12px;font-weight:800"></span>
         </div>
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
@@ -8010,9 +7998,6 @@ alert('Malzeme ve miktar giriniz.'); return; }
     el('fin-expense', fmt(topGider)+' ₺');
     el('fin-net', fmt(net)+' ₺');
     el('fin-margin', '%'+fmt(margin,1));
-    const todayUg = ugiderler.filter(u=>u.tarih===today()).reduce((s,u)=>s+(u.toplam||0),0);
-    el('bi-gunluk', fmt(todayUg)+' ₺');
-    el('bi-karlilik', '%'+fmt(margin,1));
   }
   refreshFinStats();
   // Ana sayfa render çağrısını erteleyerek yap (DOM hazır olunca)
@@ -10011,30 +9996,10 @@ window.addEventListener('DOMContentLoaded', function() {
   });
 
   // ========= RAPORLAMA =========
+  // Eski BI kartları (bi-gunluk/haftalik/karlilik/stok) kaldırıldı —
+  // anasayfa KPI'ları ve dönem bandı aynı bilgiyi tek kaynaktan veriyor.
   function refreshRaporlama(){
     refreshFinStats();
-    const ugiderler=getUretimGider();
-    const todayStr=today();
-    const gunlukUg=ugiderler.filter(u=>u.tarih===todayStr).reduce((s,u)=>s+(u.toplam||0),0);
-    // Haftalık (son 7 gün)
-    const w7=new Date(); w7.setDate(w7.getDate()-7);
-    const haftalikUg=ugiderler.filter(u=>u.tarih>=w7.toISOString().slice(0,10)).reduce((s,u)=>s+(u.toplam||0),0);
-    const el=(id,v)=>{ const e=document.getElementById(id); if(e) e.textContent=v; };
-    el('bi-gunluk', fmt(gunlukUg)+' ₺');
-    el('bi-haftalik', fmt(haftalikUg)+' ₺');
-    const gelirler=getGelirler();
-    const giderler2=getGiderler();
-    const topGelir=gelirler.reduce((s,g)=>s+(g.tutar||0),0);
-    const topGider=giderler2.reduce((s,g)=>s+(g.tutar||0),0);
-    const net=topGelir-topGider;
-    el('bi-karlilik', topGelir>0 ? '%'+fmt(net/topGelir*100,1) : '—');
-    // Stok riski
-    const aktifDepo=getAktifDepo();
-    if(aktifDepo){
-      const stok=getStok(aktifDepo);
-      const kritik=Object.values(stok).filter(v=>v.miktar<=v.kritik).length;
-      el('bi-stok', kritik>0 ? kritik+' ⚠️' : '0 ✅');
-    }
   }
 
   // Menü mühendisliği
@@ -21700,8 +21665,29 @@ function _focusIcinde(id){
   return !!(el && el.contains(document.activeElement) && document.activeElement.tagName==='INPUT');
 }
 
+/* ════════════ ÖĞÜN TANIMLARI (tüm modüller window üzerinden paylaşır) ════ */
+window.UYSA_OGUN = {
+  sira: ['ogle','aksam','kahvalti','iftar'],
+  ad:   {ogle:'Öğle', aksam:'Akşam', kahvalti:'Kahvaltı', iftar:'İftar'},
+  ikon: {ogle:'🍽️', aksam:'🌙', kahvalti:'🌅', iftar:'🥣'}
+};
+window.__uysaOgunEk = window.__uysaOgunEk || {}; // oturum içi "öğün ekle" seçimleri
+window.uysaOgunNorm = function(o){ return o||'ogle'; };
+/* Müşterinin aktif öğünleri: kayıtlardan öğrenilir + CRM tanımı + oturumda eklenenler */
+window.uysaAktifOgunler = function(musteri, gunlukArr){
+  var s={ogle:true};
+  (gunlukArr||[]).forEach(function(u){ if(u.musteri===musteri) s[window.uysaOgunNorm(u.ogun)]=true; });
+  (window.__uysaOgunEk[musteri]||[]).forEach(function(o){ s[o]=true; });
+  try{
+    var crm=JSON.parse(localStorage.getItem('uysa_crm_'+musteri)||'{}');
+    if(crm.ogunler) Object.keys(crm.ogunler).forEach(function(o){ s[o]=true; });
+  }catch(e){}
+  return window.UYSA_OGUN.sira.filter(function(o){ return s[o]; });
+};
+
 /* ════════════ A) GÜNLÜK SAYI → GELİR ════════════ */
 var _hgsEdit = {}; // kullanıcının o an yazdığı değerler (re-render kaybetmesin)
+var OGUN = window.UYSA_OGUN;
 
 window.renderHomeGunlukWidget = function(){
   var div=document.getElementById('hgs-table');
@@ -21722,9 +21708,11 @@ window.renderHomeGunlukWidget = function(){
 
   var gunluk=_ls.get('uysa_gunluk_uretim',[]);
   var bugunKayit={};
-  gunluk.forEach(function(u){ if(u.tarih===tarih) bugunKayit[u.musteri]=u; });
+  gunluk.forEach(function(u){ if(u.tarih===tarih) bugunKayit[u.musteri+'||'+window.uysaOgunNorm(u.ogun)]=u; });
 
-  var girilen=Object.keys(bugunKayit).filter(function(m){ return bugunKayit[m].kisi>0; }).length;
+  var girilenMusteri={};
+  Object.keys(bugunKayit).forEach(function(k){ if(bugunKayit[k].kisi>0) girilenMusteri[bugunKayit[k].musteri]=1; });
+  var girilen=Object.keys(girilenMusteri).length;
   if(durumEl){
     durumEl.innerHTML = girilen>0
       ? '<span style="background:#dcfce7;color:#166534;padding:3px 10px;border-radius:12px">✓ '+girilen+'/'+custs.length+' müşteri girildi</span>'
@@ -21733,52 +21721,79 @@ window.renderHomeGunlukWidget = function(){
 
   var hg=tarih?new Date(tarih).getDay():0, haftasonu=(hg===0||hg===6);
 
-  var rows=custs.map(function(cust,i){
+  var rows=custs.map(function(cust){
     var crm=_ls.get('uysa_crm_'+cust,{});
-    var kayit=bugunKayit[cust];
-    var edit=_hgsEdit[cust]||{};
+    var ogunler=window.uysaAktifOgunler(cust, gunluk);
+    return ogunler.map(function(ogun, oi){
+      var kayit=bugunKayit[cust+'||'+ogun];
+      var edit=_hgsEdit[cust+'||'+ogun]||{};
+      var crmOgunFiyat=(crm.ogunler&&crm.ogunler[ogun]&&crm.ogunler[ogun].fiyat)||0;
 
-    // Kişi: yazılan → bugünkü kayıt → (hafta içiyse) son 14 günün en yakın hafta içi kaydı → CRM
-    var kisiVal;
-    if(edit.kisi!==undefined) kisiVal=edit.kisi;
-    else if(kayit) kisiVal=kayit.kisi;
-    else if(haftasonu) kisiVal='';
-    else {
-      var onceki=gunluk.filter(function(u){
-        if(u.musteri!==cust||!u.tarih||u.tarih>=tarih||!(u.kisi>0)) return false;
-        var g=new Date(u.tarih).getDay();
-        return g!==0&&g!==6;
-      }).sort(function(a,b){ return b.tarih.localeCompare(a.tarih); });
-      kisiVal=onceki.length?onceki[0].kisi:(crm.kisi||'');
-    }
+      // Kişi: yazılan → bugünkü kayıt → (hafta içiyse) son 14 günün en yakın hafta içi kaydı → CRM (öğle)
+      var kisiVal;
+      if(edit.kisi!==undefined) kisiVal=edit.kisi;
+      else if(kayit) kisiVal=kayit.kisi;
+      else if(haftasonu) kisiVal='';
+      else {
+        var onceki=gunluk.filter(function(u){
+          if(u.musteri!==cust||window.uysaOgunNorm(u.ogun)!==ogun||!u.tarih||u.tarih>=tarih||!(u.kisi>0)) return false;
+          var g=new Date(u.tarih).getDay();
+          return g!==0&&g!==6;
+        }).sort(function(a,b){ return b.tarih.localeCompare(a.tarih); });
+        kisiVal=onceki.length?onceki[0].kisi:(ogun==='ogle'?(crm.kisi||''):'');
+      }
 
-    // Fiyat: yazılan → bugünkü kayıt → CRM → son kayıt
-    var fiyatVal;
-    if(edit.fiyat!==undefined) fiyatVal=edit.fiyat;
-    else if(kayit) fiyatVal=kayit.fiyat;
-    else if(crm.fiyat) fiyatVal=crm.fiyat;
-    else {
-      var son=gunluk.filter(function(u){ return u.musteri===cust&&u.fiyat>0; })
-                    .sort(function(a,b){ return (b.tarih||'').localeCompare(a.tarih||''); });
-      fiyatVal=son.length?son[0].fiyat:'';
-    }
+      // Fiyat: yazılan → bugünkü kayıt → CRM öğün fiyatı → (öğle ise genel CRM) → son kayıt
+      var fiyatVal;
+      if(edit.fiyat!==undefined) fiyatVal=edit.fiyat;
+      else if(kayit) fiyatVal=kayit.fiyat;
+      else if(crmOgunFiyat) fiyatVal=crmOgunFiyat;
+      else if(ogun==='ogle'&&crm.fiyat) fiyatVal=crm.fiyat;
+      else {
+        var son=gunluk.filter(function(u){ return u.musteri===cust&&window.uysaOgunNorm(u.ogun)===ogun&&u.fiyat>0; })
+                      .sort(function(a,b){ return (b.tarih||'').localeCompare(a.tarih||''); });
+        fiyatVal=son.length?son[0].fiyat:'';
+      }
 
-    var tutar=(parseFloat(kisiVal)||0)*(parseFloat(fiyatVal)||0);
-    return '<div style="display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;gap:6px;align-items:center;padding:5px 2px;border-bottom:1px solid #e2e8f0;background:'+(kayit?'#f0fdf4':'transparent')+'">'
-      +'<div style="font-weight:700;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+cust+'">'+cust+(kayit?' <span style="color:#16a34a;font-size:10px">✓</span>':'')+'</div>'
-      +'<input type="number" min="0" step="1" class="hgs-kisi" data-musteri="'+cust+'" value="'+(kisiVal||'')+'" placeholder="kişi" oninput="hgsInput(this,\'kisi\')" style="padding:6px;border:1.5px solid '+(kayit?'#86efac':'#cbd5e1')+';border-radius:7px;text-align:center;font-size:13px;font-weight:700;width:100%"/>'
-      +'<input type="number" min="0" step="0.01" class="hgs-fiyat" data-musteri="'+cust+'" value="'+(fiyatVal||'')+'" placeholder="₺/kişi" oninput="hgsInput(this,\'fiyat\')" style="padding:6px;border:1.5px solid '+(kayit?'#86efac':'#cbd5e1')+';border-radius:7px;text-align:center;font-size:12px;width:100%"/>'
-      +'<div class="hgs-tutar" data-musteri="'+cust+'" style="text-align:right;font-weight:800;font-size:12px;color:'+(tutar?'#166534':'#94a3b8')+'">'+(tutar?_fmt(tutar)+' ₺':'—')+'</div>'
-      +'</div>';
+      var tutar=(parseFloat(kisiVal)||0)*(parseFloat(fiyatVal)||0);
+      var sonOgun=oi===ogunler.length-1;
+      var kalanOgun=OGUN.sira.filter(function(o){ return ogunler.indexOf(o)===-1; });
+      // Etiket hücresi: ilk öğün satırında müşteri adı; diğerlerinde öğün rozeti; son satırda ➕ öğün ekle
+      var etiket='<div style="font-weight:700;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:4px" title="'+cust+' — '+OGUN.ad[ogun]+'">'
+        +(oi===0?'<span style="overflow:hidden;text-overflow:ellipsis">'+cust+'</span>':'<span style="color:#cbd5e1">↳</span>')
+        +(ogunler.length>1||ogun!=='ogle'?'<span style="background:#e0e7ff;color:#3730a3;font-size:9px;font-weight:800;padding:1px 6px;border-radius:8px;flex-shrink:0">'+OGUN.ikon[ogun]+' '+OGUN.ad[ogun].toUpperCase()+'</span>':'')
+        +(kayit?' <span style="color:#16a34a;font-size:10px;flex-shrink:0">✓</span>':'')
+        +(sonOgun&&kalanOgun.length?'<select class="hgs-ogun-ekle" data-musteri="'+cust.replace(/"/g,'&quot;')+'" onchange="hgsOgunEkle(this)" title="Bu müşteriye öğün ekle" style="width:30px;min-width:30px;padding:2px;font-size:10px;border:1px dashed #cbd5e1;border-radius:6px;background:#fff;color:#64748b;flex-shrink:0;margin-left:auto"><option value="">➕</option>'
+          +kalanOgun.map(function(o){ return '<option value="'+o+'">'+OGUN.ikon[o]+' '+OGUN.ad[o]+'</option>'; }).join('')+'</select>':'')
+        +'</div>';
+      return '<div style="display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;gap:6px;align-items:center;padding:5px 2px;border-bottom:1px solid #e2e8f0;background:'+(kayit?'#f0fdf4':'transparent')+'">'
+        +etiket
+        +'<input type="number" min="0" step="1" class="hgs-kisi" data-musteri="'+cust.replace(/"/g,'&quot;')+'" data-ogun="'+ogun+'" value="'+(kisiVal||'')+'" placeholder="kişi" oninput="hgsInput(this,\'kisi\')" style="padding:6px;border:1.5px solid '+(kayit?'#86efac':'#cbd5e1')+';border-radius:7px;text-align:center;font-size:13px;font-weight:700;width:100%"/>'
+        +'<input type="number" min="0" step="0.01" class="hgs-fiyat" data-musteri="'+cust.replace(/"/g,'&quot;')+'" data-ogun="'+ogun+'" value="'+(fiyatVal||'')+'" placeholder="₺/kişi" oninput="hgsInput(this,\'fiyat\')" style="padding:6px;border:1.5px solid '+(kayit?'#86efac':'#cbd5e1')+';border-radius:7px;text-align:center;font-size:12px;width:100%"/>'
+        +'<div class="hgs-tutar" style="text-align:right;font-weight:800;font-size:12px;color:'+(tutar?'#166534':'#94a3b8')+'">'+(tutar?_fmt(tutar)+' ₺':'—')+'</div>'
+        +'</div>';
+    }).join('');
   }).join('');
 
   div.innerHTML='<div style="display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;gap:6px;font-size:10px;font-weight:700;color:#1e40af;padding:0 2px 4px">'
-    +'<span>MÜŞTERİ</span><span style="text-align:center">KİŞİ</span><span style="text-align:center">FİYAT ₺</span><span style="text-align:right">TUTAR</span></div>'+rows;
+    +'<span>MÜŞTERİ / ÖĞÜN</span><span style="text-align:center">KİŞİ</span><span style="text-align:center">FİYAT ₺</span><span style="text-align:right">TUTAR</span></div>'+rows;
   hgsOzet();
 };
 
+/* Müşteriye yeni öğün satırı aç (oturum içi; kayıt girilince kalıcılaşır) */
+window.hgsOgunEkle = function(sel){
+  var cust=sel.dataset.musteri, ogun=sel.value;
+  if(!ogun) return;
+  if(!window.__uysaOgunEk[cust]) window.__uysaOgunEk[cust]=[];
+  if(window.__uysaOgunEk[cust].indexOf(ogun)===-1) window.__uysaOgunEk[cust].push(ogun);
+  sel.value='';
+  window.renderHomeGunlukWidget();
+  if(typeof window.renderHomeAylikGrid==='function') try{ window.renderHomeAylikGrid(); }catch(e){}
+  _toast('➕ '+cust+' için '+OGUN.ad[ogun]+' öğünü açıldı — kişi sayısını girip kaydedin.');
+};
+
 window.hgsInput = function(inp, alan){
-  var cust=inp.dataset.musteri;
+  var cust=inp.dataset.musteri+'||'+(inp.dataset.ogun||'ogle');
   if(!_hgsEdit[cust]) _hgsEdit[cust]={};
   _hgsEdit[cust][alan]=inp.value;
   // Satır tutarını anlık güncelle
@@ -21810,29 +21825,42 @@ window.hgsKaydet = function(){
   var tarih=document.getElementById('hgs-tarih')?.value||_today();
   if(!div||!div.querySelector('.hgs-kisi')){ alert('Önce müşteri ekleyin.'); return; }
 
-  // Aynı günün eski kayıtlarını temizle (üzerine yaz) — Finans sekmesiyle birebir aynı kural
-  var gunluk=_ls.get('uysa_gunluk_uretim',[]).filter(function(u){ return u.tarih!==tarih; });
+  // Yalnızca widget'taki müşterilerin o günkü kayıtlarını üzerine yaz —
+  // listede olmayan (ör. pasif) müşterilerin kayıtlarına dokunma
+  var widgetCusts={};
+  div.querySelectorAll('.hgs-kisi').forEach(function(inp){ widgetCusts[inp.dataset.musteri]=1; });
+  var gunluk=_ls.get('uysa_gunluk_uretim',[]).filter(function(u){
+    return u.tarih!==tarih || !widgetCusts[u.musteri];
+  });
   var gelir=_ls.get('uysa_gelirler',[]).filter(function(g){
-    return !(g.tarih===tarih && g.aciklama && g.aciklama.startsWith('Günlük üretim'));
+    return !(g.tarih===tarih && g.aciklama && g.aciklama.startsWith('Günlük üretim') && widgetCusts[g.musteri]);
   });
 
-  var count=0, topT=0;
+  var count=0, topT=0, kayitMusteri={};
   div.querySelectorAll('.hgs-kisi').forEach(function(inp){
     var cust=inp.dataset.musteri;
+    var ogun=inp.dataset.ogun||'ogle';
     var k=parseInt(inp.value)||0;
     var f=parseFloat(inp.parentElement.querySelector('.hgs-fiyat')?.value)||0;
     if(k<=0) return;
     var t=k*f;
-    gunluk.push({musteri:cust, tarih:tarih, kisi:k, fiyat:f, tutar:t, not:''});
+    gunluk.push({musteri:cust, tarih:tarih, ogun:ogun, kisi:k, fiyat:f, tutar:t, not:''});
     gelir.push({musteri:cust, tarih:tarih, tutar:t, kisi:k, fatura:'', kaynak:'gunluk',
-      aciklama:'Günlük üretim — '+k+' kişi × '+f+' ₺'});
-    count++; topT+=t;
-    // Fiyat hafızası: CRM varsayılanını son kullanılan fiyatla güncelle
+      aciklama:'Günlük üretim — '+k+' kişi × '+f+' ₺ ('+OGUN.ad[ogun]+')'});
+    kayitMusteri[cust]=1; count++; topT+=t;
+    // Fiyat hafızası: öğün bazında CRM'e yaz (öğle ayrıca genel fiyat alanını günceller)
     if(f>0){
       var crm=_ls.get('uysa_crm_'+cust,{});
-      if(crm.fiyat!==f){ crm.fiyat=f; _ls.set('uysa_crm_'+cust,crm); }
+      crm.ogunler=crm.ogunler||{};
+      crm.ogunler[ogun]=crm.ogunler[ogun]||{};
+      if(crm.ogunler[ogun].fiyat!==f || (ogun==='ogle'&&crm.fiyat!==f)){
+        crm.ogunler[ogun].fiyat=f;
+        if(ogun==='ogle') crm.fiyat=f;
+        _ls.set('uysa_crm_'+cust,crm);
+      }
     }
   });
+  count=Object.keys(kayitMusteri).length;
 
   if(count===0){ alert('Kayıt için en az bir müşteriye kişi sayısı girin.'); return; }
 
@@ -22146,15 +22174,22 @@ window.uysaKaynakGoster = function(tip, basOv, bitOv, labelOv){
   }
   else if(tip==='kisi'){
     var gunluk=_ls.get('uysa_gunluk_uretim',[]).filter(function(u){ return inR(u.tarih); });
+    var ogunAd=(window.UYSA_OGUN&&window.UYSA_OGUN.ad)||{ogle:'Öğle'};
     var grup={};
     gunluk.forEach(function(u){
-      if(!grup[u.musteri]) grup[u.musteri]={kisi:0,tutar:0,gun:0};
+      if(!grup[u.musteri]) grup[u.musteri]={kisi:0,tutar:0,gun:0,ogun:{}};
       grup[u.musteri].kisi+=u.kisi||0; grup[u.musteri].tutar+=u.tutar||0; grup[u.musteri].gun++;
+      var o=u.ogun||'ogle';
+      grup[u.musteri].ogun[o]=(grup[u.musteri].ogun[o]||0)+(u.kisi||0);
     });
     var topK=0;
     var satirlar=Object.entries(grup).sort(function(a,b){ return b[1].kisi-a[1].kisi; }).map(function(e){
       topK+=e[1].kisi;
-      return _kmSatir(e[1].gun+' gün', '<b>'+e[0]+'</b> — '+e[1].kisi+' kişi', '<span class="km-rozet oto">📊 GÜNLÜK SAYIDAN</span>', e[1].tutar, '#166534');
+      var ogunlar=Object.keys(e[1].ogun);
+      var kirilim=ogunlar.length>1
+        ? ' <span style="color:#64748b;font-size:11px">('+ogunlar.map(function(o){ return (ogunAd[o]||o)+' '+e[1].ogun[o]; }).join(' · ')+')</span>'
+        : '';
+      return _kmSatir(e[1].gun+' kayıt', '<b>'+e[0]+'</b> — '+e[1].kisi+' kişi'+kirilim, '<span class="km-rozet oto">📊 GÜNLÜK SAYIDAN</span>', e[1].tutar, '#166534');
     }).join('')||'<div class="home-empty">Bu dönemde sayı girişi yok.</div>';
     baslik='👤 Kişi Sayıları — veri kaynağı';
     meta=[_ozetChip('Anahtar: uysa_gunluk_uretim'), _ozetChip(gunluk.length+' günlük kayıt'), _ozetChip('Toplam '+topK+' kişi')];
@@ -22203,8 +22238,10 @@ window.uysaKaynakTrend = function(){
   window.uysaKaynakGoster('net', bas, _today(), 'Son 6 Ay');
 };
 
-/* ════════════ 3) AYLIK SAYI ÇİZELGESİ (gün × müşteri) ════════════ */
+/* ════════════ 3) AYLIK SAYI ÇİZELGESİ (gün × müşteri × öğün) ════════════ */
 var GUN_AD=['Paz','Pzt','Sal','Çar','Per','Cum','Cmt'];
+var OGUN3=window.UYSA_OGUN||{sira:['ogle'],ad:{ogle:'Öğle'},ikon:{ogle:'🍽️'}};
+function _ogN(o){ return o||'ogle'; }
 
 /* Takvim haftası parçaları (Excel alışkanlığı: 1-7, 8-14, 15-21, 22-28, 29-31) */
 function _hagHaftalar(gunSay){
@@ -22213,31 +22250,47 @@ function _hagHaftalar(gunSay){
     .filter(function(a){ return a[0]<=gunSay; });
 }
 
-/* Tek müşterinin aylık ekstresi — render, CSV ve yazdırma aynı veriyi kullanır */
+/* Tek müşterinin aylık ekstresi — render, CSV ve yazdırma aynı veriyi kullanır.
+   Öğün bazlı: rows[i].kisi/{ogun}, fiyat/{ogun}; dayK/dayT gün toplamları. */
 function _hagSingleData(musteri, ym){
   var gunluk=_ls.get('uysa_gunluk_uretim',[]);
   var p=ym.split('-'), Y=+p[0], M=+p[1];
   var gunSay=new Date(Y,M,0).getDate();
-  var crmFiyat=(_ls.get('uysa_crm_'+musteri,{}).fiyat)||0;
+  var crm=_ls.get('uysa_crm_'+musteri,{});
+  var ogunler=window.uysaAktifOgunler(musteri, gunluk);
+  function varsayilanFiyat(o){
+    if(crm.ogunler&&crm.ogunler[o]&&crm.ogunler[o].fiyat) return crm.ogunler[o].fiyat;
+    if(o==='ogle'&&crm.fiyat) return crm.fiyat;
+    var son=gunluk.filter(function(u){ return u.musteri===musteri&&_ogN(u.ogun)===o&&u.fiyat>0; })
+                  .sort(function(a,b){ return (b.tarih||'').localeCompare(a.tarih||''); });
+    return son.length?son[0].fiyat:0;
+  }
   var map={};
-  gunluk.forEach(function(u){ if(u.musteri===musteri && (u.tarih||'').startsWith(ym)) map[u.tarih]=u; });
+  gunluk.forEach(function(u){ if(u.musteri===musteri && (u.tarih||'').startsWith(ym)) map[u.tarih+'||'+_ogN(u.ogun)]=u; });
   var rows=[], topK=0, topT=0, bugun=_today();
+  var ogunFiyat={};
+  ogunler.forEach(function(o){ ogunFiyat[o]=varsayilanFiyat(o); });
   for(var d=1; d<=gunSay; d++){
     var tarih=ym+'-'+_pad(d);
     var gd=new Date(Y, M-1, d).getDay();
-    var rec=map[tarih];
-    var kisi=rec?(rec.kisi||0):0;
-    var fiyat=rec?(rec.fiyat||0):crmFiyat;
-    var tutar=rec?(rec.tutar||0):0;
-    topK+=kisi; topT+=tutar;
-    rows.push({d:d, tarih:tarih, gunAd:GUN_AD[gd], hs:(gd===0||gd===6), bugun:tarih===bugun, kisi:kisi, fiyat:fiyat, tutar:tutar});
+    var kisi={}, fiyat={}, dayK=0, dayT=0;
+    ogunler.forEach(function(o){
+      var rec=map[tarih+'||'+o];
+      kisi[o]=rec?(rec.kisi||0):0;
+      fiyat[o]=rec?(rec.fiyat||0):ogunFiyat[o];
+      dayK+=kisi[o];
+      dayT+=rec?(rec.tutar||0):0;
+    });
+    topK+=dayK; topT+=dayT;
+    rows.push({d:d, tarih:tarih, gunAd:GUN_AD[gd], hs:(gd===0||gd===6), bugun:tarih===bugun,
+               kisi:kisi, fiyat:fiyat, dayK:dayK, dayT:dayT});
   }
   var haftalar=_hagHaftalar(gunSay).map(function(ar){
     var hk=0, ht=0;
-    rows.forEach(function(r){ if(r.d>=ar[0]&&r.d<=ar[1]){ hk+=r.kisi; ht+=r.tutar; } });
+    rows.forEach(function(r){ if(r.d>=ar[0]&&r.d<=ar[1]){ hk+=r.dayK; ht+=r.dayT; } });
     return {bas:ar[0], bit:ar[1], etiket:_pad(ar[0])+'–'+_pad(ar[1]), kisi:hk, tutar:ht};
   });
-  return {rows:rows, haftalar:haftalar, topK:topK, topT:topT, gunSay:gunSay};
+  return {rows:rows, haftalar:haftalar, topK:topK, topT:topT, gunSay:gunSay, ogunler:ogunler, ogunFiyat:ogunFiyat};
 }
 
 function _hagSeciliMusteri(){
@@ -22279,14 +22332,25 @@ window.renderHomeAylikGrid = function(){
 
   var gunluk=_ls.get('uysa_gunluk_uretim',[]);
   var map={};
-  gunluk.forEach(function(u){ if((u.tarih||'').startsWith(ym)) map[u.tarih+'||'+u.musteri]=u; });
+  gunluk.forEach(function(u){ if((u.tarih||'').startsWith(ym)) map[u.tarih+'||'+u.musteri+'||'+_ogN(u.ogun)]=u; });
+
+  // Kolonlar: müşteri × aktif öğün (çoğu müşteri tek öğünlüdür → tek kolon)
+  var cols=[];
+  custs.forEach(function(c){
+    var ogunler=window.uysaAktifOgunler(c, gunluk);
+    ogunler.forEach(function(o){ cols.push({m:c, o:o, coklu:ogunler.length>1}); });
+  });
 
   var p=ym.split('-'), Y=+p[0], M=+p[1];
   var gunSay=new Date(Y,M,0).getDate();
   var bugun=_today();
 
   var thead='<tr><th class="hag-gun" style="z-index:4">TARİH</th>'
-    +custs.map(function(c){ return '<th style="text-align:center" title="'+c+'">'+c+'</th>'; }).join('')
+    +cols.map(function(c){
+      return '<th style="text-align:center" title="'+c.m+' — '+OGUN3.ad[c.o]+'">'+c.m
+        +(c.coklu?'<br><span style="font-size:9px;font-weight:700;color:#6d28d9">'+OGUN3.ikon[c.o]+' '+OGUN3.ad[c.o].toUpperCase()+'</span>':'')
+        +'</th>';
+    }).join('')
     +'<th style="text-align:center">Σ GÜN</th></tr>';
 
   var rows='';
@@ -22296,102 +22360,138 @@ window.renderHomeAylikGrid = function(){
     var hs=(gd===0||gd===6);
     var cls=tarih===bugun?'hag-bugun':(hs?'hag-hs':'');
     var rowTop=0;
-    var cells=custs.map(function(c){
-      var rec=map[tarih+'||'+c];
+    var cells=cols.map(function(c){
+      var rec=map[tarih+'||'+c.m+'||'+c.o];
       var v=rec?(rec.kisi||0):0;
       rowTop+=v;
       return '<td style="text-align:center"><input type="number" min="0" step="1" class="hag-cell'+(v?' dolu':'')+'"'
-        +' data-m="'+c.replace(/"/g,'&quot;')+'" data-t="'+tarih+'" value="'+(v||'')+'"'
+        +' data-m="'+c.m.replace(/"/g,'&quot;')+'" data-o="'+c.o+'" data-t="'+tarih+'" value="'+(v||'')+'"'
         +' placeholder="'+(hs?'H.S.':'·')+'" onchange="hagCellChange(this)"/></td>';
     }).join('');
     rows+='<tr class="'+cls+'"><td class="hag-gun">'+_pad(d)+' '+GUN_AD[gd]+'</td>'+cells
       +'<td class="hag-rowtop" data-rt="'+tarih+'">'+(rowTop||'—')+'</td></tr>';
   }
 
-  wrap.innerHTML='<table><thead>'+thead+'</thead><tbody>'+rows+'</tbody><tfoot>'+_hagFootHtml(custs,ym,gunluk)+'</tfoot></table>';
+  wrap.innerHTML='<table><thead>'+thead+'</thead><tbody>'+rows+'</tbody><tfoot>'+_hagFootHtml(cols,ym,gunluk)+'</tfoot></table>';
   wrap.dataset.custs=JSON.stringify(custs);
+  wrap.dataset.cols=JSON.stringify(cols);
   wrap.dataset.ym=ym;
 };
 
-/* Tek müşteri: aylık ekstre görünümü (kişi düzenlenebilir, haftalık ara toplamlar) */
+/* Tek müşteri: aylık ekstre görünümü (kişi düzenlenebilir, haftalık ara toplamlar, öğün kolonları) */
 function _hagRenderSingle(wrap, musteri, ym){
   var data=_hagSingleData(musteri, ym);
+  var ogunler=data.ogunler;
+  var coklu=ogunler.length>1;
+  var kalanOgun=OGUN3.sira.filter(function(o){ return ogunler.indexOf(o)===-1; });
+
   var rows='';
   data.rows.forEach(function(r){
     var cls=r.bugun?'hag-bugun':(r.hs?'hag-hs':'');
+    var ogunHucreler=ogunler.map(function(o){
+      return '<td style="text-align:center"><input type="number" min="0" step="1" class="hag-cell'+(r.kisi[o]?' dolu':'')+'"'
+        +' data-m="'+musteri.replace(/"/g,'&quot;')+'" data-o="'+o+'" data-t="'+r.tarih+'" value="'+(r.kisi[o]||'')+'"'
+        +' placeholder="'+(r.hs?'H.S.':'·')+'" onchange="hagCellChange(this)"/></td>';
+    }).join('');
     rows+='<tr class="'+cls+'">'
       +'<td class="hag-gun">'+_pad(r.d)+' '+r.gunAd+'</td>'
-      +'<td style="text-align:center"><input type="number" min="0" step="1" class="hag-cell'+(r.kisi?' dolu':'')+'"'
-        +' data-m="'+musteri.replace(/"/g,'&quot;')+'" data-t="'+r.tarih+'" value="'+(r.kisi||'')+'"'
-        +' placeholder="'+(r.hs?'H.S.':'·')+'" onchange="hagCellChange(this)"/></td>'
-      +'<td style="text-align:right;color:#64748b" data-hf="'+r.tarih+'">'+(r.fiyat?_fmt(r.fiyat):'—')+'</td>'
-      +'<td style="text-align:right;font-weight:700;color:'+(r.tutar?'#166534':'#94a3b8')+'" data-ht="'+r.tarih+'">'+(r.tutar?_fmt(r.tutar)+' ₺':'—')+'</td>'
+      +ogunHucreler
+      +(coklu?'<td style="text-align:center;font-weight:700;color:'+(r.dayK?'#1d4ed8':'#94a3b8')+'" data-hk="'+r.tarih+'">'+(r.dayK||'—')+'</td>':
+        '<td style="text-align:right;color:#64748b" data-hf="'+r.tarih+'">'+(r.fiyat[ogunler[0]]?_fmt(r.fiyat[ogunler[0]]):'—')+'</td>')
+      +'<td style="text-align:right;font-weight:700;color:'+(r.dayT?'#166534':'#94a3b8')+'" data-ht="'+r.tarih+'">'+(r.dayT?_fmt(r.dayT)+' ₺':'—')+'</td>'
       +'</tr>';
     // Hafta sonu ara toplamı (Excel alışkanlığı: 1-7, 8-14, …)
     var hafta=data.haftalar.find(function(h){ return h.bit===r.d; });
     if(hafta){
       rows+='<tr style="background:#eef3ff;font-weight:800">'
         +'<td class="hag-gun" style="background:#dbeafe !important;color:#1d4ed8">'+hafta.etiket+' Toplamı</td>'
-        +'<td style="text-align:center;color:#1d4ed8" data-hwk="'+hafta.bas+'">'+(hafta.kisi||'—')+'</td>'
-        +'<td></td>'
+        +'<td colspan="'+ogunler.length+'" style="text-align:center;color:#1d4ed8" data-hwk="'+hafta.bas+'">'+(hafta.kisi||'—')+' kişi</td>'
+        +(coklu?'<td></td>':'<td></td>')
         +'<td style="text-align:right;color:#1d4ed8" data-hwt="'+hafta.bas+'">'+(hafta.tutar?_fmt(hafta.tutar)+' ₺':'—')+'</td>'
         +'</tr>';
     }
   });
   var thead='<tr><th class="hag-gun" style="z-index:4">TARİH</th>'
-    +'<th style="text-align:center">KİŞİ</th>'
-    +'<th style="text-align:right">FİYAT (₺/kişi)</th>'
+    +ogunler.map(function(o){
+      return '<th style="text-align:center">'+(coklu?OGUN3.ikon[o]+' '+OGUN3.ad[o].toUpperCase():'KİŞİ')
+        +(data.ogunFiyat[o]?'<br><span style="font-size:9px;font-weight:600;color:#64748b">'+_fmt(data.ogunFiyat[o])+' ₺/kişi</span>':'')+'</th>';
+    }).join('')
+    +(coklu?'<th style="text-align:center">Σ KİŞİ</th>':'<th style="text-align:right">FİYAT (₺/kişi)</th>')
     +'<th style="text-align:right">TUTAR (₺)</th></tr>';
   var tfoot='<tr><td class="hag-gun">AY TOPLAMI</td>'
-    +'<td style="text-align:center" data-gt="k">'+data.topK+'</td>'
+    +'<td colspan="'+ogunler.length+'" style="text-align:center" data-gt="k">'+data.topK+' kişi</td>'
     +'<td></td>'
     +'<td style="text-align:right;color:#166534" data-gt="t">'+_fmt(data.topT)+' ₺</td></tr>';
-  wrap.innerHTML='<table style="max-width:560px"><thead>'+thead+'</thead><tbody>'+rows+'</tbody><tfoot>'+tfoot+'</tfoot></table>';
+
+  // Öğün ekleme kontrolü (oturum içi; sayı girilince kalıcılaşır)
+  var ogunBar='<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:4px 2px 8px;font-size:11px">'
+    +'<span style="font-weight:700;color:#475569">Öğünler:</span>'
+    +ogunler.map(function(o){ return '<span style="background:#e0e7ff;color:#3730a3;font-weight:700;padding:2px 8px;border-radius:9px">'+OGUN3.ikon[o]+' '+OGUN3.ad[o]+'</span>'; }).join('')
+    +(kalanOgun.length?'<select onchange="hagOgunEkle(this,\''+musteri.replace(/'/g,"\\'")+'\')" style="width:auto;padding:3px 6px;font-size:11px;border:1px dashed #cbd5e1;border-radius:8px;color:#64748b"><option value="">➕ Öğün ekle</option>'
+      +kalanOgun.map(function(o){ return '<option value="'+o+'">'+OGUN3.ikon[o]+' '+OGUN3.ad[o]+'</option>'; }).join('')+'</select>':'')
+    +'</div>';
+
+  wrap.innerHTML=ogunBar+'<table style="max-width:'+(coklu?(420+ogunler.length*90):560)+'px"><thead>'+thead+'</thead><tbody>'+rows+'</tbody><tfoot>'+tfoot+'</tfoot></table>';
   wrap.dataset.custs=JSON.stringify([musteri]);
   wrap.dataset.ym=ym;
   wrap.dataset.tek=musteri;
 }
 
-function _hagFootHtml(custs, ym, gunluk){
-  var kisiTop=custs.map(function(){ return 0; }), tutarTop=custs.map(function(){ return 0; });
+window.hagOgunEkle = function(sel, musteri){
+  var ogun=sel.value;
+  if(!ogun) return;
+  window.__uysaOgunEk[musteri]=window.__uysaOgunEk[musteri]||[];
+  if(window.__uysaOgunEk[musteri].indexOf(ogun)===-1) window.__uysaOgunEk[musteri].push(ogun);
+  window.renderHomeAylikGrid();
+  if(typeof window.renderHomeGunlukWidget==='function') try{ window.renderHomeGunlukWidget(); }catch(e){}
+  _toast('➕ '+musteri+' için '+OGUN3.ad[ogun]+' kolonu açıldı.');
+};
+
+function _hagFootHtml(cols, ym, gunluk){
+  var kisiTop=cols.map(function(){ return 0; }), tutarTop=cols.map(function(){ return 0; });
   var gKisi=0, gTutar=0;
   gunluk.forEach(function(u){
     if(!(u.tarih||'').startsWith(ym)) return;
-    var i=custs.indexOf(u.musteri);
+    var uo=_ogN(u.ogun);
+    var i=cols.findIndex(function(c){ return c.m===u.musteri && c.o===uo; });
     if(i<0) return;
     kisiTop[i]+=u.kisi||0; tutarTop[i]+=u.tutar||0;
     gKisi+=u.kisi||0; gTutar+=u.tutar||0;
   });
   return '<tr><td class="hag-gun">TOPLAM KİŞİ</td>'
-    +custs.map(function(c,i){ return '<td style="text-align:center" data-ct="'+i+'">'+(kisiTop[i]||'—')+'</td>'; }).join('')
+    +cols.map(function(c,i){ return '<td style="text-align:center" data-ct="'+i+'">'+(kisiTop[i]||'—')+'</td>'; }).join('')
     +'<td style="text-align:center" data-gt="k">'+gKisi+'</td></tr>'
     +'<tr><td class="hag-gun">TUTAR (₺)</td>'
-    +custs.map(function(c,i){ return '<td style="text-align:center;font-size:10.5px" data-tt="'+i+'">'+(tutarTop[i]?_fmt(tutarTop[i]):'—')+'</td>'; }).join('')
+    +cols.map(function(c,i){ return '<td style="text-align:center;font-size:10.5px" data-tt="'+i+'">'+(tutarTop[i]?_fmt(tutarTop[i]):'—')+'</td>'; }).join('')
     +'<td style="text-align:center;font-size:10.5px;color:#166534" data-gt="t">'+_fmt(gTutar)+'</td></tr>';
 }
 
 window.hagCellChange = function(inp){
-  var musteri=inp.dataset.m, tarih=inp.dataset.t;
+  var musteri=inp.dataset.m, tarih=inp.dataset.t, ogun=inp.dataset.o||'ogle';
   var k=parseInt(inp.value)||0;
 
   var gunluk=_ls.get('uysa_gunluk_uretim',[]);
-  var idx=gunluk.findIndex(function(u){ return u.musteri===musteri && u.tarih===tarih; });
+  var idx=gunluk.findIndex(function(u){ return u.musteri===musteri && u.tarih===tarih && _ogN(u.ogun)===ogun; });
 
-  // Fiyat: mevcut kayıt → CRM varsayılanı → son bilinen fiyat
+  // Fiyat: mevcut kayıt → CRM öğün fiyatı → (öğle ise genel CRM) → son bilinen öğün fiyatı
   var fiyat=idx>=0?(gunluk[idx].fiyat||0):0;
-  if(!fiyat){ fiyat=(_ls.get('uysa_crm_'+musteri,{}).fiyat)||0; }
   if(!fiyat){
-    var son=gunluk.filter(function(u){ return u.musteri===musteri && u.fiyat>0; })
+    var crm=_ls.get('uysa_crm_'+musteri,{});
+    fiyat=(crm.ogunler&&crm.ogunler[ogun]&&crm.ogunler[ogun].fiyat)||0;
+    if(!fiyat && ogun==='ogle') fiyat=crm.fiyat||0;
+  }
+  if(!fiyat){
+    var son=gunluk.filter(function(u){ return u.musteri===musteri && _ogN(u.ogun)===ogun && u.fiyat>0; })
       .sort(function(a,b){ return (b.tarih||'').localeCompare(a.tarih||''); });
     if(son.length) fiyat=son[0].fiyat;
   }
 
   if(k>0){
-    var rec={musteri:musteri, tarih:tarih, kisi:k, fiyat:fiyat, tutar:k*fiyat, not:''};
+    var rec={musteri:musteri, tarih:tarih, ogun:ogun, kisi:k, fiyat:fiyat, tutar:k*fiyat, not:''};
     if(idx>=0) gunluk[idx]=rec; else gunluk.push(rec);
     if(!fiyat && !window.__hagFiyatUyari){
       window.__hagFiyatUyari=true;
-      _toast('⚠️ '+musteri+' için fiyat tanımlı değil — tutar 0₺ yazıldı. CRM\'den veya günlük girişten fiyat belirleyin.');
+      _toast('⚠️ '+musteri+' ('+OGUN3.ad[ogun]+') için fiyat tanımlı değil — tutar 0₺ yazıldı. Günlük girişten fiyat belirleyin.');
     }
   } else if(idx>=0){
     gunluk.splice(idx,1);
@@ -22405,7 +22505,7 @@ window.hagCellChange = function(inp){
   gunluk.forEach(function(u){
     if(u.tarih!==tarih || !(u.kisi>0)) return;
     gelir.push({musteri:u.musteri, tarih:tarih, tutar:u.tutar, kisi:u.kisi, fatura:'', kaynak:'gunluk',
-      aciklama:'Günlük üretim — '+u.kisi+' kişi × '+u.fiyat+' ₺'});
+      aciklama:'Günlük üretim — '+u.kisi+' kişi × '+u.fiyat+' ₺ ('+OGUN3.ad[_ogN(u.ogun)]+')'});
   });
   _ls.set('uysa_gelirler',gelir);
 
@@ -22427,20 +22527,22 @@ function _hagTotalsRefresh(){
   var custs=[]; try{ custs=JSON.parse(wrap.dataset.custs); }catch(e){}
   var ym=wrap.dataset.ym||_thisMonth();
 
-  // Tek müşteri ekstre modu: fiyat/tutar hücreleri + hafta ve ay toplamları
+  // Tek müşteri ekstre modu: fiyat/tutar/Σ hücreleri + hafta ve ay toplamları
   if(wrap.dataset.tek){
     var data=_hagSingleData(wrap.dataset.tek, ym);
     data.rows.forEach(function(r){
       var f=wrap.querySelector('[data-hf="'+r.tarih+'"]');
-      if(f) f.textContent=r.fiyat?_fmt(r.fiyat):'—';
+      if(f){ var f0=r.fiyat[data.ogunler[0]]; f.textContent=f0?_fmt(f0):'—'; }
+      var hk=wrap.querySelector('[data-hk="'+r.tarih+'"]');
+      if(hk){ hk.textContent=r.dayK||'—'; hk.style.color=r.dayK?'#1d4ed8':'#94a3b8'; }
       var t=wrap.querySelector('[data-ht="'+r.tarih+'"]');
-      if(t){ t.textContent=r.tutar?_fmt(r.tutar)+' ₺':'—'; t.style.color=r.tutar?'#166534':'#94a3b8'; }
+      if(t){ t.textContent=r.dayT?_fmt(r.dayT)+' ₺':'—'; t.style.color=r.dayT?'#166534':'#94a3b8'; }
     });
     data.haftalar.forEach(function(h){
-      var k=wrap.querySelector('[data-hwk="'+h.bas+'"]'); if(k) k.textContent=h.kisi||'—';
+      var k=wrap.querySelector('[data-hwk="'+h.bas+'"]'); if(k) k.textContent=(h.kisi||'—')+(h.kisi?' kişi':'');
       var t2=wrap.querySelector('[data-hwt="'+h.bas+'"]'); if(t2) t2.textContent=h.tutar?_fmt(h.tutar)+' ₺':'—';
     });
-    var gk=wrap.querySelector('[data-gt="k"]'); if(gk) gk.textContent=data.topK;
+    var gk=wrap.querySelector('[data-gt="k"]'); if(gk) gk.textContent=data.topK+' kişi';
     var gt=wrap.querySelector('[data-gt="t"]'); if(gt) gt.textContent=_fmt(data.topT)+' ₺';
     return;
   }
@@ -22454,7 +22556,10 @@ function _hagTotalsRefresh(){
     td.textContent=top||'—';
   });
   // Kolon + genel toplamlar (kayıtlardan — tutar fiyat bilgisi ister)
-  var foot=_hagFootHtml(custs, ym, gunluk);
+  var cols=[];
+  try{ cols=JSON.parse(wrap.dataset.cols||'[]'); }catch(e){}
+  if(!cols.length) cols=custs.map(function(c){ return {m:c,o:'ogle'}; });
+  var foot=_hagFootHtml(cols, ym, gunluk);
   var tfoot=wrap.querySelector('tfoot');
   if(tfoot) tfoot.innerHTML=foot;
 }
@@ -22479,35 +22584,50 @@ window.hagExcel = function(){
   if(tek){
     var p0=ym.split('-');
     var data=_hagSingleData(tek, ym);
-    var satirlar=['MÜŞTERİ;'+tek, 'DÖNEM;'+(AYLAR[+p0[1]-1]||p0[1])+' '+p0[0], '',
-      'TARİH;GÜN;KİŞİ;FİYAT (TL);TUTAR (TL)'];
+    var og=data.ogunler, coklu=og.length>1;
+    var bas=['TARİH','GÜN'].concat(og.map(function(o){ return coklu?OGUN3.ad[o].toUpperCase()+' KİŞİ':'KİŞİ'; }));
+    if(!coklu) bas.push('FİYAT (TL)');
+    else bas.push('TOPLAM KİŞİ');
+    bas.push('TUTAR (TL)');
+    var satirlar=['MÜŞTERİ;'+tek, 'DÖNEM;'+(AYLAR[+p0[1]-1]||p0[1])+' '+p0[0],
+      'ÖĞÜN FİYATLARI;'+og.map(function(o){ return OGUN3.ad[o]+': '+_tlCsv(data.ogunFiyat[o])+' TL'; }).join(' · '), '',
+      bas.join(';')];
     data.rows.forEach(function(r){
-      satirlar.push(_pad(r.d)+'.'+p0[1]+'.'+p0[0]+';'+r.gunAd+';'+(r.kisi||(r.hs?'H.S.':''))+';'+(r.kisi?_tlCsv(r.fiyat):'')+';'+_tlCsv(r.tutar));
+      var hucre=[_pad(r.d)+'.'+p0[1]+'.'+p0[0], r.gunAd]
+        .concat(og.map(function(o){ return r.kisi[o]||(r.hs?'H.S.':''); }));
+      if(!coklu) hucre.push(r.kisi[og[0]]?_tlCsv(r.fiyat[og[0]]):'');
+      else hucre.push(r.dayK||'');
+      hucre.push(_tlCsv(r.dayT));
+      satirlar.push(hucre.join(';'));
       var hafta=data.haftalar.find(function(h){ return h.bit===r.d; });
-      if(hafta) satirlar.push(hafta.etiket+' TOPLAMI;;'+(hafta.kisi||0)+';;'+_tlCsv(hafta.tutar));
+      if(hafta) satirlar.push([hafta.etiket+' TOPLAMI',''].concat(og.map(function(){ return ''; })).concat([hafta.kisi||0, _tlCsv(hafta.tutar)]).join(';'));
     });
-    satirlar.push('AY TOPLAMI;;'+data.topK+';;'+_tlCsv(data.topT));
+    satirlar.push(['AY TOPLAMI',''].concat(og.map(function(){ return ''; })).concat([data.topK, _tlCsv(data.topT)]).join(';'));
     _csvIndir(satirlar, 'uysa-'+_dosyaGuvenli(tek)+'-'+ym+'.csv');
     _toast('📥 '+tek+' — '+ym+' ekstresi indirildi.');
     return;
   }
-  var wrap=document.getElementById('hag-table');
   var custs=_custs();
   if(!custs.length){ alert('Müşteri yok.'); return; }
   var gunluk=_ls.get('uysa_gunluk_uretim',[]);
   var map={};
-  gunluk.forEach(function(u){ if((u.tarih||'').startsWith(ym)) map[u.tarih+'||'+u.musteri]=u; });
+  gunluk.forEach(function(u){ if((u.tarih||'').startsWith(ym)) map[u.tarih+'||'+u.musteri+'||'+_ogN(u.ogun)]=u; });
+  var cols=[];
+  custs.forEach(function(c){
+    var ogunler=window.uysaAktifOgunler(c, gunluk);
+    ogunler.forEach(function(o){ cols.push({m:c, o:o, coklu:ogunler.length>1}); });
+  });
   var p=ym.split('-'), Y=+p[0], M=+p[1];
   var gunSay=new Date(Y,M,0).getDate();
 
-  var satirlar=[['TARİH'].concat(custs).concat(['TOPLAM']).join(';')];
-  var kolTop=custs.map(function(){ return 0; });
+  var satirlar=[['TARİH'].concat(cols.map(function(c){ return c.m+(c.coklu?' ('+OGUN3.ad[c.o].toUpperCase()+')':''); })).concat(['TOPLAM']).join(';')];
+  var kolTop=cols.map(function(){ return 0; });
   for(var d=1; d<=gunSay; d++){
     var tarih=ym+'-'+_pad(d);
     var gd=new Date(Y,M-1,d).getDay();
     var rowTop=0;
-    var hücreler=custs.map(function(c,i){
-      var rec=map[tarih+'||'+c];
+    var hücreler=cols.map(function(c,i){
+      var rec=map[tarih+'||'+c.m+'||'+c.o];
       var v=rec?(rec.kisi||0):0;
       rowTop+=v; kolTop[i]+=v;
       return v|| (gd===0||gd===6 ? 'H.S.' : '');
@@ -22515,8 +22635,8 @@ window.hagExcel = function(){
     satirlar.push([_pad(d)+'.'+_pad(M)+'.'+Y+' '+GUN_AD[gd]].concat(hücreler).concat([rowTop||'']).join(';'));
   }
   satirlar.push(['TOPLAM'].concat(kolTop).concat([kolTop.reduce(function(a,b){ return a+b; },0)]).join(';'));
-  var tutarlar=custs.map(function(c){
-    return gunluk.filter(function(u){ return u.musteri===c&&(u.tarih||'').startsWith(ym); })
+  var tutarlar=cols.map(function(c){
+    return gunluk.filter(function(u){ return u.musteri===c.m&&_ogN(u.ogun)===c.o&&(u.tarih||'').startsWith(ym); })
       .reduce(function(s,u){ return s+(u.tutar||0); },0);
   });
   satirlar.push(['TUTAR (TL)'].concat(tutarlar.map(function(t){ return _tlCsv(t); }))
@@ -22549,24 +22669,32 @@ function _hagPrintSingleHtml(musteri, ym){
   var p=ym.split('-');
   var donem=(AYLAR[+p[1]-1]||p[1])+' '+p[0];
   var data=_hagSingleData(musteri, ym);
+  var og=data.ogunler, coklu=og.length>1;
   var rows='';
   data.rows.forEach(function(r){
     rows+='<tr'+(r.hs?' class="hs"':'')+'><td>'+_pad(r.d)+'.'+p[1]+'.'+p[0]+'</td><td>'+r.gunAd+'</td>'
-      +'<td style="text-align:center;font-weight:700">'+(r.kisi||(r.hs?'H.S.':'—'))+'</td>'
-      +'<td style="text-align:right">'+(r.kisi&&r.fiyat?_fmt(r.fiyat):'—')+'</td>'
-      +'<td style="text-align:right;font-weight:600">'+(r.tutar?_fmt(r.tutar):'—')+'</td></tr>';
+      +og.map(function(o){ return '<td style="text-align:center;font-weight:700">'+(r.kisi[o]||(r.hs?'H.S.':'—'))+'</td>'; }).join('')
+      +(coklu
+        ?'<td style="text-align:center;font-weight:700">'+(r.dayK||'—')+'</td>'
+        :'<td style="text-align:right">'+(r.kisi[og[0]]&&r.fiyat[og[0]]?_fmt(r.fiyat[og[0]]):'—')+'</td>')
+      +'<td style="text-align:right;font-weight:600">'+(r.dayT?_fmt(r.dayT):'—')+'</td></tr>';
     var hafta=data.haftalar.find(function(h){ return h.bit===r.d; });
     if(hafta) rows+='<tr class="hafta"><td colspan="2">'+hafta.etiket+' Toplamı</td>'
-      +'<td style="text-align:center">'+(hafta.kisi||'—')+'</td><td></td>'
+      +'<td colspan="'+og.length+'" style="text-align:center">'+(hafta.kisi||'—')+' kişi</td><td></td>'
       +'<td style="text-align:right">'+(hafta.tutar?_fmt(hafta.tutar):'—')+'</td></tr>';
   });
-  rows+='<tr class="toplam"><td colspan="2">AY TOPLAMI</td><td style="text-align:center">'+data.topK+' kişi</td><td></td>'
+  rows+='<tr class="toplam"><td colspan="2">AY TOPLAMI</td><td colspan="'+og.length+'" style="text-align:center">'+data.topK+' kişi</td><td></td>'
     +'<td style="text-align:right">'+_fmt(data.topT)+' ₺</td></tr>';
+  var fiyatNot=og.map(function(o){ return OGUN3.ad[o]+': '+(data.ogunFiyat[o]?_fmt(data.ogunFiyat[o])+' ₺/kişi':'—'); }).join(' · ');
   return '<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>'+musteri+' — '+donem+' Mutabakat</title>'+_printStil()+'</head><body>'
     +'<h1>UYSA YEMEK</h1><h2>Aylık Yemek Sayısı Mutabakat Formu</h2>'
     +'<div class="bilgi"><span>Müşteri: <b>'+musteri+'</b></span><span>Dönem: <b>'+donem+'</b></span><span>Düzenleme: <b>'+_today()+'</b></span></div>'
-    +'<table><thead><tr><th>TARİH</th><th>GÜN</th><th style="text-align:center">KİŞİ</th><th style="text-align:right">FİYAT (₺)</th><th style="text-align:right">TUTAR (₺)</th></tr></thead>'
+    +'<table><thead><tr><th>TARİH</th><th>GÜN</th>'
+    +og.map(function(o){ return '<th style="text-align:center">'+(coklu?OGUN3.ad[o].toUpperCase():'KİŞİ')+'</th>'; }).join('')
+    +(coklu?'<th style="text-align:center">Σ KİŞİ</th>':'<th style="text-align:right">FİYAT (₺)</th>')
+    +'<th style="text-align:right">TUTAR (₺)</th></tr></thead>'
     +'<tbody>'+rows+'</tbody></table>'
+    +'<div class="not" style="margin-top:8px"><b>Birim fiyatlar:</b> '+fiyatNot+'</div>'
     +'<div class="imza"><div>UYSA YEMEK<br>Düzenleyen — Kaşe / İmza</div><div>'+musteri+'<br>Onaylayan — Kaşe / İmza</div></div>'
     +'<div class="not">Bu form '+donem+' dönemine ait günlük yemek sayılarının karşılıklı mutabakatı için düzenlenmiştir. Tutarlar KDV hariçtir.</div>'
     +'</body></html>';
@@ -22577,31 +22705,36 @@ function _hagPrintGridHtml(ym){
   var custs=_custs();
   var gunluk=_ls.get('uysa_gunluk_uretim',[]);
   var map={};
-  gunluk.forEach(function(u){ if((u.tarih||'').startsWith(ym)) map[u.tarih+'||'+u.musteri]=u; });
+  gunluk.forEach(function(u){ if((u.tarih||'').startsWith(ym)) map[u.tarih+'||'+u.musteri+'||'+_ogN(u.ogun)]=u; });
+  var cols=[];
+  custs.forEach(function(c){
+    var ogunler=window.uysaAktifOgunler(c, gunluk);
+    ogunler.forEach(function(o){ cols.push({m:c, o:o, coklu:ogunler.length>1}); });
+  });
   var gunSay=new Date(+p[0],+p[1],0).getDate();
-  var rows='', kolTop=custs.map(function(){ return 0; }), gToplam=0;
+  var rows='', kolTop=cols.map(function(){ return 0; }), gToplam=0;
   for(var d=1; d<=gunSay; d++){
     var tarih=ym+'-'+_pad(d);
     var gd=new Date(+p[0],+p[1]-1,d).getDay();
     var hs=(gd===0||gd===6), rowTop=0;
     rows+='<tr'+(hs?' class="hs"':'')+'><td>'+_pad(d)+' '+GUN_AD[gd]+'</td>'
-      +custs.map(function(c,i){
-        var rec=map[tarih+'||'+c]; var v=rec?(rec.kisi||0):0;
+      +cols.map(function(c,i){
+        var rec=map[tarih+'||'+c.m+'||'+c.o]; var v=rec?(rec.kisi||0):0;
         rowTop+=v; kolTop[i]+=v;
         return '<td style="text-align:center">'+(v||(hs?'H.S.':'—'))+'</td>';
       }).join('')
       +'<td style="text-align:center;font-weight:700">'+(rowTop||'—')+'</td></tr>';
     gToplam+=rowTop;
   }
-  var tutarlar=custs.map(function(c){
-    return gunluk.filter(function(u){ return u.musteri===c&&(u.tarih||'').startsWith(ym); })
+  var tutarlar=cols.map(function(c){
+    return gunluk.filter(function(u){ return u.musteri===c.m&&_ogN(u.ogun)===c.o&&(u.tarih||'').startsWith(ym); })
       .reduce(function(s,u){ return s+(u.tutar||0); },0);
   });
   rows+='<tr class="toplam"><td>TOPLAM KİŞİ</td>'+kolTop.map(function(k){ return '<td style="text-align:center">'+(k||'—')+'</td>'; }).join('')+'<td style="text-align:center">'+gToplam+'</td></tr>';
   rows+='<tr class="toplam"><td>TUTAR (₺)</td>'+tutarlar.map(function(t){ return '<td style="text-align:center">'+(t?_fmt(t):'—')+'</td>'; }).join('')+'<td style="text-align:center">'+_fmt(tutarlar.reduce(function(a,b){ return a+b; },0))+'</td></tr>';
   return '<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>Aylık Sayı Çizelgesi — '+donem+'</title>'+_printStil()+'</head><body>'
     +'<h1>UYSA YEMEK</h1><h2>Aylık Yemek Sayısı Çizelgesi — '+donem+'</h2>'
-    +'<table><thead><tr><th>TARİH</th>'+custs.map(function(c){ return '<th style="text-align:center">'+c+'</th>'; }).join('')+'<th style="text-align:center">Σ</th></tr></thead>'
+    +'<table><thead><tr><th>TARİH</th>'+cols.map(function(c){ return '<th style="text-align:center">'+c.m+(c.coklu?'<br><span style="font-size:9px">'+OGUN3.ad[c.o].toUpperCase()+'</span>':'')+'</th>'; }).join('')+'<th style="text-align:center">Σ</th></tr></thead>'
     +'<tbody>'+rows+'</tbody></table>'
     +'</body></html>';
 }
@@ -22825,7 +22958,47 @@ window.renderHomeCari = function(){
   });
 };
 
-/* ════════════ 5) MÜKERRER SEKME YÖNLENDİRMESİ ════════════ */
+/* ════════════ 5) RAPORLAMA — ortak dönem bandı ════════════
+   Raporlama, Anasayfa ile AYNI dönem durumunu kullanır; modüller
+   arasında dönem seçimi senkron kalır. Eski BI kartları kaldırıldı. */
+window.uysaRaporRangeSec = function(tip){
+  if(typeof window.uysaHomeRangeSec==='function') window.uysaHomeRangeSec(tip);
+  window.renderRaporDonemBandi();
+};
+window.renderRaporDonemBandi = function(){
+  var ozet=document.getElementById('rapor-donem-ozet');
+  if(!ozet) return;
+  var r=typeof window._uysaHomeRangeGet==='function'?window._uysaHomeRangeGet():null;
+  if(!r) return;
+  function inR(t){ return !!t&&(!r.bas||t>=r.bas)&&(!r.bit||t<=r.bit); }
+  var gel=_ls.get('uysa_gelirler',[]).filter(function(g){ return inR(g.tarih); }).reduce(function(s,g){ return s+Number(g.tutar||0); },0);
+  var gid=_ls.get('uysa_giderler',[]).filter(function(g){ return inR(g.tarih); }).reduce(function(s,g){ return s+Number(g.tutar||0); },0);
+  var net=gel-gid;
+  document.querySelectorAll('#rapor-donem-bandi [data-rdr]').forEach(function(b){
+    b.classList.toggle('active', b.dataset.rdr===r.tip);
+  });
+  ozet.innerHTML='<span class="badge" style="background:#eff6ff !important;color:#1d4ed8 !important;border-color:#bfdbfe !important">📊 '+r.label+'</span>'
+    +'<span style="color:#166534">Gelir '+_fmt(gel)+' ₺</span>'
+    +'<span style="color:#dc2626">Gider '+_fmt(gid)+' ₺</span>'
+    +'<span style="color:'+(net>=0?'#166534':'#dc2626')+'">Net '+_fmt(net)+' ₺</span>';
+};
+function _karlSkorVarsayilanAy(){
+  var sel=document.getElementById('karlSkorAy');
+  if(!sel || sel.dataset.defSet) return;
+  var ay=_thisMonth();
+  var mevcut=Array.prototype.some.call(sel.options, function(o){ return o.value===ay; });
+  if(!mevcut){ var o=document.createElement('option'); o.value=ay; o.textContent=ay+' (bu ay)'; sel.appendChild(o); }
+  sel.value=ay; // varsayılan: tüm zamanlar yerine içinde bulunulan ay
+  sel.dataset.defSet='1';
+}
+var _rrOnceki=window.refreshRaporlama;
+window.refreshRaporlama=function(){
+  if(typeof _rrOnceki==='function') try{ _rrOnceki.apply(this,arguments); }catch(e){}
+  try{ window.renderRaporDonemBandi(); }catch(e){}
+  try{ _karlSkorVarsayilanAy(); }catch(e){}
+};
+
+/* ════════════ 6) MÜKERRER SEKME YÖNLENDİRMESİ ════════════ */
 /* Finans → "Günlük Üretim Sayıları" anasayfadaki kokpitle birebir
    aynı işi yapıyordu; sekme gizlendi, eski çağrılar anasayfaya gider. */
 var _origSwitchFinTab = window.switchFinTab;
@@ -22850,6 +23023,7 @@ function _init(){
     try{ _rangeUiSync(); }catch(e){}
     try{ window.renderHomeAylikGrid(); }catch(e){}
     try{ window.renderHomeCari(); }catch(e){}
+    try{ window.renderRaporDonemBandi(); }catch(e){}
   };
 
   _rangeUiSync();
