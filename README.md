@@ -116,9 +116,33 @@ Mount Path: /app/public/uploads
 - **Upload Güvenliği**: İzin verilen tipler: pdf, doc, docx, xls, xlsx, jpg, png, txt, csv, zip
 - **Upload Klasörü**: .htaccess ile direkt erişim engellenir
 
+## 🔄 Otomatik Veri Akışı (Günlük İşlem Merkezi)
+
+Sistem iki günlük işlem etrafında çalışır — her şey anasayfadan yapılır:
+
+```
+📊 Günlük yemek sayısı gir  ──→  GELİR otomatik oluşur (müşteri × kişi × fiyat)
+🧾 Gelen faturayı işle      ──→  GİDER otomatik oluşur (kategori akıllı eşlenir)
+```
+
+- **Sayı girişi**: Anasayfa açılır açılmaz bugünün tablosu hazır; kişi sayıları
+  bir önceki iş gününden, fiyatlar CRM'den otomatik dolu gelir. Tek tıkla
+  kaydet → gelir kaydı oluşur. Aynı güne tekrar kayıt üzerine yazar (mükerrer olmaz).
+  Kullanılan fiyat CRM varsayılanına geri yazılır (fiyat hafızası).
+- **Fatura girişi**: Anasayfadan çok kalemli hızlı giriş veya Satın Alma
+  modülünden kalem kalem. Her kalem otomatik gider yazılır; kategori ürün
+  adından (tavuk → 🍗, domates → 🥦 …) veya tedarikçi kategorisinden tahmin
+  edilir. Fatura kalemi silinirse bağlı gider de silinir. Birim fiyatlar
+  maliyet kataloğuna otomatik aktarılır.
+- **Rozetler**: Otomatik oluşan kayıtlar listelerde 📊 OTO / 🧾 FATURADAN
+  rozetiyle görünür — elle girilenlerden ayırt edilir.
+
+> ⚠️ Fatura işledikten sonra aynı tutarı Finans'a elle gider olarak girmeyin —
+> sistem zaten oluşturur.
+
 ## 📊 Modüller
 
-1. 🏠 **Anasayfa** — Maliyet Merkezi Dashboard
+1. 🏠 **Anasayfa** — Günlük İşlem Merkezi (sayı→gelir, fatura→gider) + Dashboard
 2. 📋 **Menü & Üretim** — Haftalık menü planlama
 3. 💰 **Finans** — Gelir/Gider/Bütçe
 4. 🏭 **Depo & Stok** — Stok takibi

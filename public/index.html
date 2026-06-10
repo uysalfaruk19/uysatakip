@@ -1797,8 +1797,49 @@
 
         <!-- Refresh button -->
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-          <h2 style="margin:0;font-size:17px;color:#0b3aa6;font-weight:900">🏠 Maliyet Merkezi — Anasayfa</h2>
+          <h2 style="margin:0;font-size:17px;color:#0b3aa6;font-weight:900">🏠 Günlük İşlem Merkezi</h2>
           <button id="homeRefreshBtn" onclick="window.renderAnasayfa && window.renderAnasayfa()" style="background:rgba(26,86,219,.1);border:1px solid rgba(26,86,219,.2);color:#1a56db;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer">🔄 Yenile</button>
+        </div>
+
+        <!-- ═══ GÜNLÜK İŞLEM MERKEZİ: sayı → gelir, fatura → gider ═══ -->
+        <div id="home-daily-actions" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:14px;margin-bottom:18px">
+
+          <!-- A: Günlük yemek sayıları → Gelir -->
+          <div class="panel" style="border:2px solid #93c5fd;background:linear-gradient(180deg,#eff6ff 0%,#fff 70px)">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+              <h3 style="margin:0">📊 Bugünün Yemek Sayıları</h3>
+              <span id="hgs-durum" style="font-size:11px;font-weight:700"></span>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;margin:10px 0;flex-wrap:wrap">
+              <label style="font-size:12px;font-weight:700;color:#1e40af">📅 Tarih:</label>
+              <input type="date" id="hgs-tarih" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px" onchange="renderHomeGunlukWidget()"/>
+              <span style="font-size:11px;color:#64748b">Kişi sayısını gir, kaydet — gelir otomatik oluşur.</span>
+            </div>
+            <div id="hgs-table" style="max-height:320px;overflow:auto"></div>
+            <div id="hgs-ozet" style="margin-top:8px;font-size:13px;font-weight:800;display:flex;justify-content:space-between"></div>
+            <button class="btn success" id="hgsKaydetBtn" onclick="hgsKaydet()" style="width:100%;margin-top:10px;padding:12px;font-size:14px;font-weight:800">💾 Kaydet → Gelire İşle</button>
+          </div>
+
+          <!-- B: Hızlı fatura girişi → Gider -->
+          <div class="panel" style="border:2px solid #fca5a5;background:linear-gradient(180deg,#fef2f2 0%,#fff 70px)">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+              <h3 style="margin:0">🧾 Hızlı Fatura Girişi</h3>
+              <span style="font-size:11px;color:#64748b">Her kalem otomatik gider yazılır</span>
+            </div>
+            <div style="display:grid;grid-template-columns:2fr 1.2fr 1.2fr;gap:8px;margin:10px 0">
+              <div><label style="font-size:11px">Tedarikçi Firma</label><input id="hf-firma" list="hfFirmaListesi" placeholder="Firma adı"/><datalist id="hfFirmaListesi"></datalist></div>
+              <div><label style="font-size:11px">Tarih</label><input id="hf-tarih" type="date"/></div>
+              <div><label style="font-size:11px">Fatura No</label><input id="hf-no" placeholder="FAT-001"/></div>
+            </div>
+            <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 30px;gap:6px;font-size:10px;font-weight:700;color:#7f1d1d;padding:0 2px">
+              <span>ÜRÜN</span><span>MİKTAR (kg)</span><span>₺/kg</span><span style="text-align:right">TUTAR</span><span></span>
+            </div>
+            <div id="hf-kalemler"></div>
+            <datalist id="hfUrunListesi"></datalist>
+            <button class="btn" onclick="hfKalemEkle()" style="margin-top:6px;font-size:12px">➕ Kalem Ekle</button>
+            <div id="hf-toplam" style="margin-top:8px;font-size:13px;font-weight:800;text-align:right;color:#b91c1c"></div>
+            <button class="btn danger" id="hfKaydetBtn" onclick="hfKaydet()" style="width:100%;margin-top:10px;padding:12px;font-size:14px;font-weight:800">💾 Faturayı Kaydet → Gidere İşle</button>
+          </div>
         </div>
 
         <!-- ═══ HERO KPI ROW ═══ -->
@@ -3325,7 +3366,7 @@
           <!-- Fatura girişi -->
           <div class="panel">
             <h3>🧾 Gelen Fatura Girişi</h3>
-            <div class="hint">Her faturadaki ürünleri ürün bazında girin. Sistem aynı firmadan aynı ürünün fiyat değişimini otomatik izler.</div>
+            <div class="hint">Her faturadaki ürünleri ürün bazında girin. <b>Her kalem otomatik olarak gider yazılır</b> — Finans'a ayrıca elle girmeyin. Fiyat değişimi de otomatik izlenir.</div>
             <div style="display:grid;grid-template-columns:1fr;gap:8px;margin-top:10px">
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
                 <div><label>Tedarikçi Firma</label>
@@ -3343,8 +3384,8 @@
                 <div><label>Birim Fiyat (₺/kg)</label><input id="fat-birim-fiyat" type="number" min="0" step="0.01" placeholder="0.00"/></div>
                 <div><label>Toplam (₺)</label><input id="fat-toplam" type="number" readonly style="background:var(--soft);font-weight:800"/></div>
               </div>
-              <button class="btn success" id="fatKaydetBtn">Fatura Kalemi Kaydet</button>
-              <div class="hint" style="margin-top:4px">💡 Aynı faturada birden fazla ürün varsa her ürün için ayrı kaydedin.</div>
+              <button class="btn success" id="fatKaydetBtn">Fatura Kalemi Kaydet → Gidere İşle</button>
+              <div class="hint" style="margin-top:4px">💡 Aynı faturada birden fazla ürün varsa her ürün için ayrı kaydedin — fatura no ve firma sabit kalır, kalem silindiğinde gideri de silinir.</div>
             </div>
           </div>
 
@@ -3371,7 +3412,6 @@
               <input id="fatListeFirmaFil" placeholder="Firma filtrele..." style="flex:1;min-width:120px;padding:6px;border:1px solid var(--border);border-radius:8px;font-size:12px"/>
               <input id="fatListeUrunFil" placeholder="Ürün filtrele..." style="flex:1;min-width:120px;padding:6px;border:1px solid var(--border);border-radius:8px;font-size:12px"/>
               <button class="btn" id="fatListeFiltreBtn">Filtrele</button>
-              <button class="btn danger" id="fatSilBtn" style="font-size:11px">Seçiliyi Sil</button>
             </div>
             <div id="fatListeDiv" style="max-height:280px;overflow:auto;font-size:12px"></div>
           </div>
@@ -7065,8 +7105,9 @@ ${note}`);
     let toplam=0;
     div.innerHTML = arr.map((g,i)=>{
       toplam += g.tutar||0;
+      const otoGelir = g.kaynak==='gunluk' || (g.aciklama&&g.aciklama.startsWith('Günlük üretim'));
       return `<div style="border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:6px;background:#fff;display:flex;justify-content:space-between;align-items:center">
-        <div><b>${g.musteri||'—'}</b> — ${g.tarih||'?'} — <span style="color:#166534;font-weight:800">${fmt(g.tutar)} ₺</span><br>
+        <div><b>${g.musteri||'—'}</b> — ${g.tarih||'?'} — <span style="color:#166534;font-weight:800">${fmt(g.tutar)} ₺</span>${otoGelir?' <span style="background:#ede9fe;color:#6d28d9;font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px" title="Günlük sayı girişinden otomatik oluştu">📊 OTO</span>':''}<br>
         <span style="color:var(--muted);font-size:11px">${g.aciklama||''} ${g.fatura?'Fatura: '+g.fatura:''} ${g.kisi?g.kisi+' kişi':''}</span></div>
         <div style="display:flex;gap:4px">
           <button onclick="duzenleGelir(${i})" style="border:none;background:none;color:#2563eb;cursor:pointer;font-size:15px" title="Düzenle">✏️</button>
@@ -7111,6 +7152,7 @@ alert('Tutar giriniz.'); return; }
     'uretim':'🍲 Üretim', // legacy
     'personel':'👷 Personel','enerji':'⚡ Enerji','diger':'📌 Diğer','personel-maas':'💰 Maaş Ödemesi'
   };
+  window.giderKatLabel = giderKatLabel; // anasayfa dashboard grafikleri de kullanıyor
 
   function renderGiderler(filtreKat=''){
     const div = document.getElementById('giderListDiv');
@@ -7123,7 +7165,7 @@ alert('Tutar giriniz.'); return; }
     div.innerHTML = arr.map((g,i)=>{
       toplam += g.tutar||0;
       return `<div style="border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:6px;background:#fff;display:flex;justify-content:space-between;align-items:center">
-        <div><b>${giderKatLabel[g.kat]||g.kat}</b> — ${g.tarih||'?'} — <span style="color:#dc2626;font-weight:800">${fmt(g.tutar)} ₺</span><br>
+        <div><b>${giderKatLabel[g.kat]||g.kat}</b> — ${g.tarih||'?'} — <span style="color:#dc2626;font-weight:800">${fmt(g.tutar)} ₺</span>${g.kaynak==='fatura'?' <span style="background:#fef3c7;color:#92400e;font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px" title="Fatura girişinden otomatik oluştu">🧾 FATURADAN</span>':''}<br>
         <span style="color:var(--muted);font-size:11px">${g.tedarikci?'🏪'+g.tedarikci+' · ':''} ${g.aciklama||''} ${g.belge?'Belge:'+g.belge:''}</span></div>
         <div style="display:flex;gap:4px">
           <button onclick="duzenleGider(${i})" style="border:none;background:none;color:#2563eb;cursor:pointer;font-size:15px" title="Düzenle">✏️</button>
@@ -9266,6 +9308,48 @@ window.addEventListener('DOMContentLoaded', function() {
   function getFaturalar(){ return ls.get('uysa_faturalar',[]); }
   function saveFaturalar(f){ ls.set('uysa_faturalar',f); }
 
+  // Gider kategorisini ürün adından ve tedarikçi kategorisinden tahmin et
+  window.uysaFaturaGiderKat = function(urun, firma){
+    const u = (urun||'').toLocaleLowerCase('tr-TR');
+    const kelime = [
+      [/tavuk|pilic|piliç|kanat|but\b/, 'uretim-tavuk'],
+      [/kıyma|kiyma/, 'uretim-kiyma'],
+      [/dana|kuzu|sığır|sigir|biftek|antrikot|kusbasi|kuşbaşı|\bet\b/, 'uretim-kirmizi'],
+      [/ayran|yoğurt|yogurt|süt|sut\b|peynir|tereyağ|tereyag/, 'uretim-ayran'],
+      [/ekmek|lavaş|lavas|pide|un\b/, 'uretim-ekmek'],
+      [/pirinç|pirinc|bulgur|mercimek|nohut|fasulye|makarna|bakliyat/, 'uretim-bakliyat'],
+      [/domates|biber|patlıcan|patlican|kabak|soğan|sogan|patates|sebze|meyve|salata|marul|maydanoz|limon/, 'uretim-sebze'],
+      [/deterjan|temizlik|çamaşır|camasir|bulaşık|bulasik|hijyen/, 'diger'],
+      [/elektrik|doğalgaz|dogalgaz|su faturası|enerji/, 'enerji'],
+    ];
+    for(const [re,kat] of kelime){ if(re.test(u)) return kat; }
+    // Tedarikçi kategorisinden eşle
+    try{
+      const ted = JSON.parse(localStorage.getItem('uysa_tedarikci')||'[]').find(t=>(t.firma||'')===firma);
+      const map = {et:'uretim-kirmizi', sebze:'uretim-sebze', bakliyat:'uretim-bakliyat', sut:'uretim-ayran', ekmek:'uretim-ekmek', temizlik:'diger', ambalaj:'diger'};
+      if(ted && map[ted.kat]) return map[ted.kat];
+    }catch(e){}
+    return 'uretim-diger-gida';
+  };
+
+  // Fatura kalemini gidere işle (tek doğruluk noktası — ana sayfa hızlı girişi de bunu kullanır)
+  window.uysaFaturadanGider = function(kalem){
+    const giderler = getGiderler();
+    giderler.push({
+      kat: window.uysaFaturaGiderKat(kalem.urun, kalem.firma),
+      tarih: kalem.tarih,
+      tutar: kalem.toplam||0,
+      aciklama: `${kalem.urun} (${kalem.miktar} kg)`,
+      belge: kalem.no||'',
+      tedarikci: kalem.firma||'',
+      kaynak: 'fatura',
+      faturaRef: kalem.fid
+    });
+    saveGiderler(giderler);
+    renderGiderler();
+    refreshFinStats();
+  };
+
   // auto-calc toplam
   ['fat-miktar','fat-birim-fiyat'].forEach(id=>{
     document.getElementById(id)?.addEventListener('input',()=>{
@@ -9288,7 +9372,18 @@ window.addEventListener('DOMContentLoaded', function() {
       <button onclick="silFatura(${i})" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:16px">🗑️</button>
     </div>`).join('');
   }
-  window.silFatura = function(i){ const arr=getFaturalar(); arr.splice(i,1); saveFaturalar(arr); renderFaturaList(); refreshAnalizFirma(); };
+  window.silFatura = function(i){
+    const arr=getFaturalar();
+    const f=arr[i];
+    arr.splice(i,1); saveFaturalar(arr);
+    // Bağlı otomatik gider kaydını da kaldır
+    if(f && f.fid){
+      const giderler=getGiderler();
+      const gi=giderler.findIndex(g=>g.faturaRef===f.fid);
+      if(gi>=0){ giderler.splice(gi,1); saveGiderler(giderler); renderGiderler(); refreshFinStats(); }
+    }
+    renderFaturaList(); refreshAnalizFirma();
+  };
 
   document.getElementById('fatKaydetBtn')?.addEventListener('click',()=>{
     const firma=document.getElementById('fat-firma')?.value||'';
@@ -9299,8 +9394,10 @@ window.addEventListener('DOMContentLoaded', function() {
     const birimFiyat=parseFloat(document.getElementById('fat-birim-fiyat')?.value)||0;
     const toplam=parseFloat(document.getElementById('fat-toplam')?.value)||0;
     if(!firma||!urun||!miktar){ alert('Firma, ürün ve miktar zorunludur.'); return; }
+    const fid='f'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+    const kalem={firma,tarih,no,urun,miktar,birimFiyat,toplam,fid};
     const arr=getFaturalar();
-    arr.push({firma,tarih,no,urun,miktar,birimFiyat,toplam});
+    arr.push(kalem);
     saveFaturalar(arr);
     // Fiyatları maliyet modülüne de aktar
     try{
@@ -9308,15 +9405,19 @@ window.addEventListener('DOMContentLoaded', function() {
       prices[urun]=birimFiyat;
       localStorage.setItem('uysa_prices_v1',JSON.stringify(prices));
     }catch(e){}
+    // Gideri otomatik oluştur — elle tekrar girmeye gerek yok
+    window.uysaFaturadanGider(kalem);
     renderFaturaList();
     refreshAnalizFirma();
-    alert('Fatura kalemi kaydedildi.');
-    ['fat-no','fat-urun','fat-miktar','fat-birim-fiyat','fat-toplam'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+    toast(`✅ Fatura kalemi kaydedildi — ${fmt(toplam)} ₺ gider olarak işlendi (${giderKatLabel[window.uysaFaturaGiderKat(urun,firma)]||'Diğer'}).`);
+    ['fat-urun','fat-miktar','fat-birim-fiyat','fat-toplam'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   });
 
   document.getElementById('fatListeFiltreBtn')?.addEventListener('click',()=>{
     renderFaturaList(document.getElementById('fatListeFirmaFil')?.value||'', document.getElementById('fatListeUrunFil')?.value||'');
   });
+  // Ana sayfa hızlı fatura girişi kaydedince satın alma listesini tazeleyebilsin
+  window.uysaSatinalmaRefresh = function(){ renderFaturaList(); refreshAnalizFirma(); };
 
   function refreshAnalizFirma(){
     const sel = document.getElementById('analizFirma');
@@ -18790,19 +18891,36 @@ function getGiderler(){
   }catch(e){ return []; }
 }
 function getUretimGiderleri(){
-  try{ return JSON.parse(localStorage.getItem('uysa_uretim_giderleri')||'[]'); }catch(e){ return []; }
+  // Finans modülü 'uysa_uretim_gider' anahtarına yazar; alan adı toplam → tutar normalize edilir
+  try{
+    return JSON.parse(localStorage.getItem('uysa_uretim_gider')||'[]')
+      .map(u=>({...u, tutar:Number(u.toplam||u.tutar||0)}));
+  }catch(e){ return []; }
 }
 function getUretimSayilari(){
-  try{ return JSON.parse(localStorage.getItem('uysa_uretim_sayilari')||'[]'); }catch(e){ return []; }
+  // Günlük sayı girişleri 'uysa_gunluk_uretim' anahtarında tutulur
+  try{ return JSON.parse(localStorage.getItem('uysa_gunluk_uretim')||'[]'); }catch(e){ return []; }
 }
 function getStoklar(){
-  try{ return JSON.parse(localStorage.getItem('uysa_stok_v2')||'[]'); }catch(e){ return []; }
+  // Stok modülü depo bazlı 'uysa_stok_<depo>' objelerine yazar — hepsini düz listeye çevir
+  try{
+    const depolar = JSON.parse(localStorage.getItem('uysa_depolar')||'[]');
+    const out = [];
+    depolar.forEach(d=>{
+      const stok = JSON.parse(localStorage.getItem('uysa_stok_'+d.ad)||'{}');
+      Object.entries(stok).forEach(([malzeme,v])=>{
+        out.push({ urun:malzeme+' ('+d.ad+')', miktar:Number(v.miktar||0), minStok:Number(v.kritik||0), birim:v.birim||'kg' });
+      });
+    });
+    return out;
+  }catch(e){ return []; }
 }
 function getSozlesmeler(){
   try{ return JSON.parse(localStorage.getItem('uysa_sozlesmeler')||'[]'); }catch(e){ return []; }
 }
 function getButce(){
-  try{ return JSON.parse(localStorage.getItem('uysa_butce_v1')||'{}'); }catch(e){ return {}; }
+  // Bütçe modülü 'uysa_butceler' dizisine yazar: {yil, ay, gelirHedef, giderHedef}
+  try{ return JSON.parse(localStorage.getItem('uysa_butceler')||'[]'); }catch(e){ return []; }
 }
 
 // ── Hesaplamalar ──────────────────────────────────────────────
@@ -18812,22 +18930,23 @@ function calcKPIs(){
   const ym    = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
   const gelirler = getGelirler();
   const giderler = getGiderler();
-  const uretim   = getUretimGiderleri();
   const sayilar  = getUretimSayilari();
 
-  // Bu ay
+  // Bu ay — üretim giderleri zaten gider listesine 'uretim*' kategorisiyle kopyalanıyor,
+  // ayrı eklersek çifte sayım olur; üretim payını kategoriden ayıklıyoruz
+  const ayGiderler   = giderler.filter(g=>g.tarih?.startsWith(ym));
   const thisAyGelir  = gelirler.filter(g=>g.tarih?.startsWith(ym)).reduce((s,g)=>s+Number(g.tutar||0),0);
-  const thisAyGider  = giderler.filter(g=>g.tarih?.startsWith(ym)).reduce((s,g)=>s+Number(g.tutar||0),0);
-  const thisAyUretim = uretim.filter(u=>u.tarih?.startsWith(ym)).reduce((s,u)=>s+Number(u.toplam||u.tutar||0),0);
-  const totalGider   = thisAyGider + thisAyUretim;
+  const thisAyGider  = ayGiderler.reduce((s,g)=>s+Number(g.tutar||0),0);
+  const thisAyUretim = ayGiderler.filter(g=>(g.kat||'').startsWith('uretim')).reduce((s,g)=>s+Number(g.tutar||0),0);
+  const totalGider   = thisAyGider;
 
   // Toplam tüm zamanlar
   const tumGelir = gelirler.reduce((s,g)=>s+Number(g.tutar||0),0);
-  const tumGider = giderler.reduce((s,g)=>s+Number(g.tutar||0),0)+uretim.reduce((s,u)=>s+Number(u.toplam||u.tutar||0),0);
+  const tumGider = giderler.reduce((s,g)=>s+Number(g.tutar||0),0);
 
-  // Kişi başı maliyet (bu ay — üretim gideri / toplam kişi sayısı)
+  // Kişi başı maliyet (bu ay — üretim gideri / günlük sayılardan toplam kişi)
   const thisAySayilar = sayilar.filter(s=>s.tarih?.startsWith(ym));
-  const totalKisi = thisAySayilar.reduce((s,r)=>s+(Number(r.adet||r.kisi||r.kisiSayisi||0)),0);
+  const totalKisi = thisAySayilar.reduce((s,r)=>s+(Number(r.kisi||r.adet||r.kisiSayisi||0)),0);
   const kisiBasi  = totalKisi>0 ? thisAyUretim/totalKisi : 0;
 
   // Net kâr & marj
@@ -18837,8 +18956,7 @@ function calcKPIs(){
   // Geçen ay (karşılaştırma için)
   const prevDate = new Date(now.getFullYear(), now.getMonth()-1, 1);
   const prevYm   = prevDate.getFullYear()+'-'+String(prevDate.getMonth()+1).padStart(2,'0');
-  const prevGider = giderler.filter(g=>g.tarih?.startsWith(prevYm)).reduce((s,g)=>s+Number(g.tutar||0),0)
-                  + uretim.filter(u=>u.tarih?.startsWith(prevYm)).reduce((s,u)=>s+Number(u.tutar||0),0);
+  const prevGider = giderler.filter(g=>g.tarih?.startsWith(prevYm)).reduce((s,g)=>s+Number(g.tutar||0),0);
 
   return { thisAyGelir, thisAyGider, thisAyUretim, totalGider, tumGelir, tumGider,
            totalKisi, kisiBasi, netKar, kar_marj, prevGider };
@@ -18888,7 +19006,6 @@ function renderHomeTrendChart(){
   if(_homeCharts.line){ _homeCharts.line.destroy(); }
 
   const giderler  = getGiderler();
-  const uretim    = getUretimGiderleri();
   const gelirler  = getGelirler();
   const now       = new Date();
   const labels=[], gelData=[], gidData=[];
@@ -18899,10 +19016,8 @@ function renderHomeTrendChart(){
     const ayAd = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'][d.getMonth()];
     labels.push(ayAd+' '+String(d.getFullYear()).slice(2));
     gelData.push(gelirler.filter(g=>g.tarih?.startsWith(ym)).reduce((s,g)=>s+Number(g.tutar||0),0));
-    gidData.push(
-      giderler.filter(g=>g.tarih?.startsWith(ym)).reduce((s,g)=>s+Number(g.tutar||0),0)+
-      uretim.filter(u=>u.tarih?.startsWith(ym)).reduce((s,u)=>s+Number(u.tutar||0),0)
-    );
+    // Üretim giderleri zaten gider listesinde — ayrı toplama yok (çifte sayım önlenir)
+    gidData.push(giderler.filter(g=>g.tarih?.startsWith(ym)).reduce((s,g)=>s+Number(g.tutar||0),0));
   }
 
   _homeCharts.line = new Chart(ctx,{
@@ -18936,14 +19051,13 @@ function renderHomePieChart(){
   const ym  = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
   const giderler = getGiderler().filter(g=>g.tarih?.startsWith(ym));
 
-  // Kategori bazlı grupla
+  // Kategori bazlı grupla — gider kayıtları 'kat' alanı kullanır, Türkçe etikete çevir
+  const katLabels = window.giderKatLabel||{};
   const cats = {};
   giderler.forEach(g=>{
-    const cat = g.kategori||g.category||g.tip||'Diğer';
+    const cat = katLabels[g.kat] || g.kat || g.kategori || 'Diğer';
     cats[cat] = (cats[cat]||0)+Number(g.tutar||0);
   });
-  const uretimToplam = getUretimGiderleri().filter(u=>u.tarih?.startsWith(ym)).reduce((s,u)=>s+Number(u.tutar||0),0);
-  if(uretimToplam>0) cats['Üretim'] = (cats['Üretim']||0)+uretimToplam;
 
   const sorted = Object.entries(cats).sort((a,b)=>b[1]-a[1]).slice(0,7);
 
@@ -18978,34 +19092,28 @@ function renderHomeBudgetChart(){
   if(!ctx) return;
   if(_homeCharts.budget){ _homeCharts.budget.destroy(); }
 
-  const butce    = getButce();
+  const butceler = getButce();
   const now      = new Date();
-  const ym       = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
-  const giderler = getGiderler().filter(g=>g.tarih?.startsWith(ym));
-  const uretim   = getUretimGiderleri().filter(u=>u.tarih?.startsWith(ym));
+  const yil      = String(now.getFullYear());
+  const ay       = now.getMonth()+1;
+  const ym       = yil+'-'+String(ay).padStart(2,'0');
+  const buAyButce = butceler.find(b=>String(b.yil)===yil && Number(b.ay)===ay);
 
-  // Kategori bazlı gerçek gider
-  const gercek = {};
-  giderler.forEach(g=>{ const c=g.kategori||'Diğer'; gercek[c]=(gercek[c]||0)+Number(g.tutar||0); });
-  const uretimTop = uretim.reduce((s,u)=>s+Number(u.tutar||0),0);
-  if(uretimTop) gercek['Üretim']=(gercek['Üretim']||0)+uretimTop;
-
-  const keys = Object.keys(butce.kategoriler||gercek);
-  if(!keys.length){
-    ctx.parentElement.innerHTML += '<div class="home-empty">Bütçe verisi için Finans → Bütçe sekmesini kullanın</div>';
+  if(!buAyButce){
+    ctx.parentElement.innerHTML += '<div class="home-empty">Bu ay için bütçe hedefi yok — Finans → Bütçe sekmesinden girin</div>';
     return;
   }
 
-  const butceData  = keys.map(k=>Number((butce.kategoriler||{})[k]||0));
-  const gercekData = keys.map(k=>Number(gercek[k]||0));
+  const gercekGelir = getGelirler().filter(g=>g.tarih?.startsWith(ym)).reduce((s,g)=>s+Number(g.tutar||0),0);
+  const gercekGider = getGiderler().filter(g=>g.tarih?.startsWith(ym)).reduce((s,g)=>s+Number(g.tutar||0),0);
 
   _homeCharts.budget = new Chart(ctx,{
     type:'bar',
     data:{
-      labels:keys,
+      labels:['Gelir','Gider'],
       datasets:[
-        { label:'Bütçe', data:butceData, backgroundColor:'rgba(26,86,219,.25)', borderColor:'#1a56db', borderWidth:2, borderRadius:4 },
-        { label:'Gerçek', data:gercekData, backgroundColor:'rgba(220,38,38,.25)', borderColor:'#dc2626', borderWidth:2, borderRadius:4 },
+        { label:'Hedef',  data:[Number(buAyButce.gelirHedef||0), Number(buAyButce.giderHedef||0)], backgroundColor:'rgba(26,86,219,.25)', borderColor:'#1a56db', borderWidth:2, borderRadius:4 },
+        { label:'Gerçekleşen', data:[gercekGelir, gercekGider], backgroundColor:'rgba(220,38,38,.25)', borderColor:'#dc2626', borderWidth:2, borderRadius:4 },
       ]
     },
     options:{
@@ -19077,14 +19185,16 @@ function renderSonIslemler(){
     .slice(0,8);
 
   if(!all.length){ el.innerHTML='<div class="home-empty">Henüz finansal kayıt yok</div>'; return; }
-  el.innerHTML = all.map(x=>`
+  el.innerHTML = all.map(x=>{
+    const oto = x.kaynak==='fatura' ? '🧾' : (x.kaynak==='gunluk'||(x.aciklama&&x.aciklama.startsWith('Günlük üretim'))) ? '📊' : '';
+    return `
     <div class="tx-row">
       <span class="tx-type" style="color:${x._tip==='G'?'#059669':'#dc2626'}">${x._tip==='G'?'📥':'📤'}</span>
-      <span class="tx-desc">${x.aciklama||x.musteri||x.kategori||'—'}</span>
+      <span class="tx-desc">${oto?oto+' ':''}${x.aciklama||x.musteri||x.kategori||'—'}</span>
       <span class="tx-amt" style="color:${x._tip==='G'?'#059669':'#dc2626'}">${x._tip==='G'?'+':'−'}${fmtTL(Number(x.tutar||0))}</span>
       <span class="tx-date">${x.tarih||''}</span>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 }
 
 // ── Stok Uyarıları ────────────────────────────────────────────
@@ -19457,21 +19567,7 @@ window.renderAnasayfa = function(){
   renderSozlesmeUyarilari();
 };
 
-// ── Refresh butonu ekle ────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', function(){
-  const panel = document.getElementById('mod-anasayfa');
-  if(panel){
-    const content = panel.querySelector('.content');
-    if(content){
-      const btn = document.createElement('button');
-      btn.id = 'homeRefreshBtn';
-      btn.innerHTML = '🔄 Yenile';
-      btn.onclick = function(){ window.renderAnasayfa(); };
-      content.style.position = 'relative';
-      content.insertBefore(btn, content.firstChild);
-    }
-  }
-});
+// Not: Yenile butonu HTML'de zaten var (homeRefreshBtn) — dinamik mükerrer buton kaldırıldı
 
 })(); // end IIFE
 
@@ -21231,6 +21327,333 @@ window.uysaAI = {
   async retryConnect() { clearSess();await startConn(); },
   addMsg: renderMsg,
 };
+
+})();
+</script>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════
+   UYSA — GÜNLÜK İŞLEM MERKEZİ (Anasayfa Kokpiti)
+   A) Günlük yemek sayısı girişi  → otomatik GELİR kaydı
+   B) Hızlı çok kalemli fatura girişi → otomatik GİDER kaydı
+   Finans → "Günlük Üretim Sayıları" sekmesi ve Satın Alma → Fatura
+   ile AYNI veri anahtarlarını (uysa_gunluk_uretim, uysa_gelirler,
+   uysa_faturalar, uysa_giderler) ve aynı mükerrer-önleme kurallarını
+   kullanır; iki giriş noktası birbirinin üzerine yazmaz.
+   ══════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+
+var _ls = {
+  get: function(k,d){ try{ var v=localStorage.getItem(k); return v===null?d:JSON.parse(v); }catch(e){ return d; } },
+  set: function(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
+};
+function _today(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function _fmt(n){ return Number(n||0).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function _toast(msg){
+  if(typeof window.toast==='function'){ try{ window.toast(msg); return; }catch(e){} }
+  var t=document.createElement('div');
+  t.textContent=msg;
+  t.style.cssText='position:fixed;bottom:24px;right:24px;background:#1e293b;color:#fff;padding:12px 20px;border-radius:10px;font-size:13px;z-index:99999;max-width:360px;box-shadow:0 4px 20px rgba(0,0,0,.35)';
+  document.body.appendChild(t);
+  setTimeout(function(){ t.remove(); },3500);
+}
+function _custs(){
+  try{
+    var raw=localStorage.getItem('uysa_customers_v1');
+    if(!raw) return [];
+    var pasif=_ls.get('uysa_pasif_musteriler',[]);
+    return (JSON.parse(raw).customers||[]).filter(function(x){ return x&&x!=='GENEL'&&pasif.indexOf(x)===-1; });
+  }catch(e){ return []; }
+}
+function _focusIcinde(id){
+  var el=document.getElementById(id);
+  return !!(el && el.contains(document.activeElement) && document.activeElement.tagName==='INPUT');
+}
+
+/* ════════════ A) GÜNLÜK SAYI → GELİR ════════════ */
+var _hgsEdit = {}; // kullanıcının o an yazdığı değerler (re-render kaybetmesin)
+
+window.renderHomeGunlukWidget = function(){
+  var div=document.getElementById('hgs-table');
+  if(!div) return;
+  if(_focusIcinde('hgs-table')) return; // yazarken senkron tetiklenirse girişi bozma
+
+  var tarihEl=document.getElementById('hgs-tarih');
+  if(tarihEl && !tarihEl.value) tarihEl.value=_today();
+  var tarih=(tarihEl&&tarihEl.value)||_today();
+  var custs=_custs();
+  var durumEl=document.getElementById('hgs-durum');
+
+  if(!custs.length){
+    div.innerHTML='<div style="color:#64748b;padding:14px;text-align:center">Henüz müşteri yok.<br><button class="btn primary" style="margin-top:8px" onclick="document.querySelector(\'[data-module=satis]\')?.click()">🤝 Satış &amp; CRM\'den müşteri ekle</button></div>';
+    if(durumEl) durumEl.textContent='';
+    return;
+  }
+
+  var gunluk=_ls.get('uysa_gunluk_uretim',[]);
+  var bugunKayit={};
+  gunluk.forEach(function(u){ if(u.tarih===tarih) bugunKayit[u.musteri]=u; });
+
+  var girilen=Object.keys(bugunKayit).filter(function(m){ return bugunKayit[m].kisi>0; }).length;
+  if(durumEl){
+    durumEl.innerHTML = girilen>0
+      ? '<span style="background:#dcfce7;color:#166534;padding:3px 10px;border-radius:12px">✓ '+girilen+'/'+custs.length+' müşteri girildi</span>'
+      : '<span style="background:#fef9c3;color:#92400e;padding:3px 10px;border-radius:12px">⏳ Bugün henüz giriş yok</span>';
+  }
+
+  var hg=tarih?new Date(tarih).getDay():0, haftasonu=(hg===0||hg===6);
+
+  var rows=custs.map(function(cust,i){
+    var crm=_ls.get('uysa_crm_'+cust,{});
+    var kayit=bugunKayit[cust];
+    var edit=_hgsEdit[cust]||{};
+
+    // Kişi: yazılan → bugünkü kayıt → (hafta içiyse) son 14 günün en yakın hafta içi kaydı → CRM
+    var kisiVal;
+    if(edit.kisi!==undefined) kisiVal=edit.kisi;
+    else if(kayit) kisiVal=kayit.kisi;
+    else if(haftasonu) kisiVal='';
+    else {
+      var onceki=gunluk.filter(function(u){
+        if(u.musteri!==cust||!u.tarih||u.tarih>=tarih||!(u.kisi>0)) return false;
+        var g=new Date(u.tarih).getDay();
+        return g!==0&&g!==6;
+      }).sort(function(a,b){ return b.tarih.localeCompare(a.tarih); });
+      kisiVal=onceki.length?onceki[0].kisi:(crm.kisi||'');
+    }
+
+    // Fiyat: yazılan → bugünkü kayıt → CRM → son kayıt
+    var fiyatVal;
+    if(edit.fiyat!==undefined) fiyatVal=edit.fiyat;
+    else if(kayit) fiyatVal=kayit.fiyat;
+    else if(crm.fiyat) fiyatVal=crm.fiyat;
+    else {
+      var son=gunluk.filter(function(u){ return u.musteri===cust&&u.fiyat>0; })
+                    .sort(function(a,b){ return (b.tarih||'').localeCompare(a.tarih||''); });
+      fiyatVal=son.length?son[0].fiyat:'';
+    }
+
+    var tutar=(parseFloat(kisiVal)||0)*(parseFloat(fiyatVal)||0);
+    return '<div style="display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;gap:6px;align-items:center;padding:5px 2px;border-bottom:1px solid #e2e8f0;background:'+(kayit?'#f0fdf4':'transparent')+'">'
+      +'<div style="font-weight:700;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+cust+'">'+cust+(kayit?' <span style="color:#16a34a;font-size:10px">✓</span>':'')+'</div>'
+      +'<input type="number" min="0" step="1" class="hgs-kisi" data-musteri="'+cust+'" value="'+(kisiVal||'')+'" placeholder="kişi" oninput="hgsInput(this,\'kisi\')" style="padding:6px;border:1.5px solid '+(kayit?'#86efac':'#cbd5e1')+';border-radius:7px;text-align:center;font-size:13px;font-weight:700;width:100%"/>'
+      +'<input type="number" min="0" step="0.01" class="hgs-fiyat" data-musteri="'+cust+'" value="'+(fiyatVal||'')+'" placeholder="₺/kişi" oninput="hgsInput(this,\'fiyat\')" style="padding:6px;border:1.5px solid '+(kayit?'#86efac':'#cbd5e1')+';border-radius:7px;text-align:center;font-size:12px;width:100%"/>'
+      +'<div class="hgs-tutar" data-musteri="'+cust+'" style="text-align:right;font-weight:800;font-size:12px;color:'+(tutar?'#166534':'#94a3b8')+'">'+(tutar?_fmt(tutar)+' ₺':'—')+'</div>'
+      +'</div>';
+  }).join('');
+
+  div.innerHTML='<div style="display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;gap:6px;font-size:10px;font-weight:700;color:#1e40af;padding:0 2px 4px">'
+    +'<span>MÜŞTERİ</span><span style="text-align:center">KİŞİ</span><span style="text-align:center">FİYAT ₺</span><span style="text-align:right">TUTAR</span></div>'+rows;
+  hgsOzet();
+};
+
+window.hgsInput = function(inp, alan){
+  var cust=inp.dataset.musteri;
+  if(!_hgsEdit[cust]) _hgsEdit[cust]={};
+  _hgsEdit[cust][alan]=inp.value;
+  // Satır tutarını anlık güncelle
+  var row=inp.parentElement;
+  var k=parseFloat(row.querySelector('.hgs-kisi').value)||0;
+  var f=parseFloat(row.querySelector('.hgs-fiyat').value)||0;
+  var t=row.querySelector('.hgs-tutar');
+  if(t){ var top=k*f; t.textContent=top?_fmt(top)+' ₺':'—'; t.style.color=top?'#166534':'#94a3b8'; }
+  hgsOzet();
+};
+
+function hgsOzet(){
+  var ozet=document.getElementById('hgs-ozet');
+  var div=document.getElementById('hgs-table');
+  if(!ozet||!div) return;
+  var topK=0, topT=0;
+  div.querySelectorAll('.hgs-kisi').forEach(function(inp){
+    var k=parseFloat(inp.value)||0;
+    var f=parseFloat(inp.parentElement.querySelector('.hgs-fiyat').value)||0;
+    topK+=k; topT+=k*f;
+  });
+  ozet.innerHTML = topK>0
+    ? '<span>👥 '+topK+' kişi</span><span style="color:#166534">💰 '+_fmt(topT)+' ₺</span>'
+    : '<span style="color:#94a3b8;font-weight:400">Kişi sayılarını girin…</span><span></span>';
+}
+
+window.hgsKaydet = function(){
+  var div=document.getElementById('hgs-table');
+  var tarih=document.getElementById('hgs-tarih')?.value||_today();
+  if(!div||!div.querySelector('.hgs-kisi')){ alert('Önce müşteri ekleyin.'); return; }
+
+  // Aynı günün eski kayıtlarını temizle (üzerine yaz) — Finans sekmesiyle birebir aynı kural
+  var gunluk=_ls.get('uysa_gunluk_uretim',[]).filter(function(u){ return u.tarih!==tarih; });
+  var gelir=_ls.get('uysa_gelirler',[]).filter(function(g){
+    return !(g.tarih===tarih && g.aciklama && g.aciklama.startsWith('Günlük üretim'));
+  });
+
+  var count=0, topT=0;
+  div.querySelectorAll('.hgs-kisi').forEach(function(inp){
+    var cust=inp.dataset.musteri;
+    var k=parseInt(inp.value)||0;
+    var f=parseFloat(inp.parentElement.querySelector('.hgs-fiyat')?.value)||0;
+    if(k<=0) return;
+    var t=k*f;
+    gunluk.push({musteri:cust, tarih:tarih, kisi:k, fiyat:f, tutar:t, not:''});
+    gelir.push({musteri:cust, tarih:tarih, tutar:t, kisi:k, fatura:'', kaynak:'gunluk',
+      aciklama:'Günlük üretim — '+k+' kişi × '+f+' ₺'});
+    count++; topT+=t;
+    // Fiyat hafızası: CRM varsayılanını son kullanılan fiyatla güncelle
+    if(f>0){
+      var crm=_ls.get('uysa_crm_'+cust,{});
+      if(crm.fiyat!==f){ crm.fiyat=f; _ls.set('uysa_crm_'+cust,crm); }
+    }
+  });
+
+  if(count===0){ alert('Kayıt için en az bir müşteriye kişi sayısı girin.'); return; }
+
+  _ls.set('uysa_gunluk_uretim',gunluk);
+  _ls.set('uysa_gelirler',gelir);
+  _hgsEdit={};
+
+  // Diğer modülleri tazele
+  if(typeof window.renderGelirler==='function') try{ window.renderGelirler(); }catch(e){}
+  if(typeof window.refreshFinStats==='function') try{ window.refreshFinStats(); }catch(e){}
+  if(typeof window.renderAnasayfa==='function') try{ window.renderAnasayfa(); }catch(e){}
+  try{ if(typeof window.autoSaveToFolder==='function') window.autoSaveToFolder(); }catch(e){}
+
+  _toast('✅ '+count+' müşteri kaydedildi — '+_fmt(topT)+' ₺ gelire işlendi.');
+};
+
+/* ════════════ B) HIZLI FATURA → GİDER ════════════ */
+var _hfKalemler=[{urun:'',miktar:'',fiyat:''}];
+
+window.renderHomeFaturaWidget = function(){
+  var div=document.getElementById('hf-kalemler');
+  if(!div) return;
+  if(_focusIcinde('hf-kalemler')) return;
+
+  var tarihEl=document.getElementById('hf-tarih');
+  if(tarihEl && !tarihEl.value) tarihEl.value=_today();
+
+  // Firma & ürün önerileri (tedarikçiler + fatura geçmişi + fiyat kataloğu)
+  try{
+    var firmalar={};
+    _ls.get('uysa_tedarikci',[]).forEach(function(t){ var v=t.firma||t.isim||''; if(v) firmalar[v]=1; });
+    _ls.get('uysa_faturalar',[]).forEach(function(f){ if(f.firma) firmalar[f.firma]=1; });
+    var fl=document.getElementById('hfFirmaListesi');
+    if(fl) fl.innerHTML=Object.keys(firmalar).map(function(f){ return '<option value="'+f.replace(/"/g,'&quot;')+'">'; }).join('');
+    var urunler={};
+    Object.keys(_ls.get('uysa_prices_v1',{})).forEach(function(u){ urunler[u]=1; });
+    _ls.get('uysa_faturalar',[]).forEach(function(f){ if(f.urun) urunler[f.urun]=1; });
+    var ul=document.getElementById('hfUrunListesi');
+    if(ul) ul.innerHTML=Object.keys(urunler).map(function(u){ return '<option value="'+u.replace(/"/g,'&quot;')+'">'; }).join('');
+  }catch(e){}
+
+  div.innerHTML=_hfKalemler.map(function(k,i){
+    var tutar=(parseFloat(k.miktar)||0)*(parseFloat(k.fiyat)||0);
+    return '<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 30px;gap:6px;align-items:center;padding:4px 2px">'
+      +'<input list="hfUrunListesi" value="'+String(k.urun).replace(/"/g,'&quot;')+'" placeholder="Ürün adı" oninput="hfInput('+i+',\'urun\',this.value)" style="padding:6px;border:1.5px solid #cbd5e1;border-radius:7px;font-size:12px;width:100%"/>'
+      +'<input type="number" min="0" step="0.001" value="'+k.miktar+'" placeholder="kg" oninput="hfInput('+i+',\'miktar\',this.value)" style="padding:6px;border:1.5px solid #cbd5e1;border-radius:7px;text-align:center;font-size:12px;width:100%"/>'
+      +'<input type="number" min="0" step="0.01" value="'+k.fiyat+'" placeholder="₺" oninput="hfInput('+i+',\'fiyat\',this.value)" style="padding:6px;border:1.5px solid #cbd5e1;border-radius:7px;text-align:center;font-size:12px;width:100%"/>'
+      +'<div class="hf-tutar" style="text-align:right;font-weight:800;font-size:12px;color:'+(tutar?'#b91c1c':'#94a3b8')+'">'+(tutar?_fmt(tutar):'—')+'</div>'
+      +'<button onclick="hfKalemSil('+i+')" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:14px" title="Kalemi sil">✕</button>'
+      +'</div>';
+  }).join('');
+  hfToplam();
+};
+
+window.hfInput = function(i, alan, val){
+  if(!_hfKalemler[i]) return;
+  _hfKalemler[i][alan]=val;
+  // Ürün seçilince katalogdan fiyat öner
+  if(alan==='urun' && !_hfKalemler[i].fiyat){
+    var p=_ls.get('uysa_prices_v1',{})[val];
+    if(p>0){
+      _hfKalemler[i].fiyat=p;
+      var row=document.getElementById('hf-kalemler').children[i];
+      if(row){ var f=row.querySelectorAll('input')[2]; if(f) f.value=p; }
+    }
+  }
+  // Satır tutarı
+  var row2=document.getElementById('hf-kalemler').children[i];
+  if(row2){
+    var t=(parseFloat(_hfKalemler[i].miktar)||0)*(parseFloat(_hfKalemler[i].fiyat)||0);
+    var td=row2.querySelector('.hf-tutar');
+    if(td){ td.textContent=t?_fmt(t):'—'; td.style.color=t?'#b91c1c':'#94a3b8'; }
+  }
+  hfToplam();
+};
+
+function hfToplam(){
+  var el=document.getElementById('hf-toplam');
+  if(!el) return;
+  var top=_hfKalemler.reduce(function(s,k){ return s+(parseFloat(k.miktar)||0)*(parseFloat(k.fiyat)||0); },0);
+  el.textContent = top>0 ? 'Fatura Toplamı: '+_fmt(top)+' ₺' : '';
+}
+
+window.hfKalemEkle = function(){
+  _hfKalemler.push({urun:'',miktar:'',fiyat:''});
+  window.renderHomeFaturaWidget();
+};
+
+window.hfKalemSil = function(i){
+  _hfKalemler.splice(i,1);
+  if(!_hfKalemler.length) _hfKalemler.push({urun:'',miktar:'',fiyat:''});
+  window.renderHomeFaturaWidget();
+};
+
+window.hfKaydet = function(){
+  var firma=document.getElementById('hf-firma')?.value.trim()||'';
+  var tarih=document.getElementById('hf-tarih')?.value||_today();
+  var no=document.getElementById('hf-no')?.value.trim()||'';
+  if(!firma){ alert('Tedarikçi firma adı girin.'); return; }
+  var kalemler=_hfKalemler.filter(function(k){ return (k.urun||'').trim() && (parseFloat(k.miktar)||0)>0; });
+  if(!kalemler.length){ alert('En az bir kalem girin (ürün + miktar).'); return; }
+
+  var faturalar=_ls.get('uysa_faturalar',[]);
+  var prices=_ls.get('uysa_prices_v1',{});
+  var topT=0;
+
+  kalemler.forEach(function(k){
+    var miktar=parseFloat(k.miktar)||0;
+    var birimFiyat=parseFloat(k.fiyat)||0;
+    var kalem={
+      firma:firma, tarih:tarih, no:no,
+      urun:k.urun.trim(), miktar:miktar, birimFiyat:birimFiyat,
+      toplam:miktar*birimFiyat,
+      fid:'f'+Date.now()+'_'+Math.random().toString(36).slice(2,7)
+    };
+    faturalar.push(kalem);
+    if(birimFiyat>0) prices[kalem.urun]=birimFiyat;
+    topT+=kalem.toplam;
+    // Gideri otomatik oluştur (Satın Alma modülüyle aynı yol)
+    if(typeof window.uysaFaturadanGider==='function') window.uysaFaturadanGider(kalem);
+  });
+
+  _ls.set('uysa_faturalar',faturalar);
+  _ls.set('uysa_prices_v1',prices);
+
+  // Formu sıfırla (tarih kalsın), diğer modülleri tazele
+  _hfKalemler=[{urun:'',miktar:'',fiyat:''}];
+  var fEl=document.getElementById('hf-firma'); if(fEl) fEl.value='';
+  var nEl=document.getElementById('hf-no'); if(nEl) nEl.value='';
+  if(typeof window.uysaSatinalmaRefresh==='function') try{ window.uysaSatinalmaRefresh(); }catch(e){}
+  if(typeof window.renderAnasayfa==='function') try{ window.renderAnasayfa(); }catch(e){}
+  try{ if(typeof window.autoSaveToFolder==='function') window.autoSaveToFolder(); }catch(e){}
+
+  _toast('✅ '+kalemler.length+' kalem kaydedildi — '+_fmt(topT)+' ₺ gidere işlendi ('+firma+').');
+};
+
+/* ════════════ INIT & renderAnasayfa kancası ════════════ */
+function _init(){
+  var orig=window.renderAnasayfa;
+  window.renderAnasayfa=function(){
+    if(typeof orig==='function') try{ orig.apply(this,arguments); }catch(e){}
+    try{ window.renderHomeGunlukWidget(); }catch(e){}
+    try{ window.renderHomeFaturaWidget(); }catch(e){}
+  };
+  window.renderHomeGunlukWidget();
+  window.renderHomeFaturaWidget();
+  console.log('✅ UYSA Günlük İşlem Merkezi yüklendi (sayı→gelir, fatura→gider).');
+}
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',_init);
+else _init();
 
 })();
 </script>
