@@ -1554,12 +1554,102 @@
   background: rgba(255,255,255,.7) !important;
 }
 
+/* ── KPI kartı: kaynak ipucu ────────────────────────────────── */
+.home-kpi-card .kpi-src {
+  position: absolute;
+  bottom: 7px; right: 10px;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--subtle);
+  opacity: 0;
+  transition: opacity var(--t);
+  pointer-events: none;
+}
+.home-kpi-card:hover .kpi-src { opacity: 1; }
+
+/* ── Panel başlığındaki kaynak butonu ───────────────────────── */
+.panel h3 .hk-src {
+  margin-left: auto;
+  font-size: 10px !important;
+  padding: 3px 9px !important;
+  font-weight: 700 !important;
+}
+
+/* ── Veri kaynağı modalı ────────────────────────────────────── */
+#uysaKaynakModal {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(8,15,35,.55);
+  backdrop-filter: blur(3px);
+  z-index: 99990;
+  align-items: center; justify-content: center;
+  padding: 18px;
+}
+#uysaKaynakModal.acik { display: flex; }
+.km-card {
+  background: #fff;
+  border-radius: var(--radius-lg);
+  width: 720px; max-width: 96vw;
+  max-height: 86vh;
+  display: flex; flex-direction: column;
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: fadeSlideIn .18s cubic-bezier(.4,0,.2,1);
+}
+.km-head {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, #f6f8fc, #eef2f8);
+}
+.km-head b { font-size: 14px; color: var(--heading); }
+.km-meta { display: flex; gap: 8px; flex-wrap: wrap; padding: 10px 18px 0; font-size: 11px; }
+.km-meta .badge { font-size: 10px !important; }
+.km-body { padding: 12px 18px 16px; overflow-y: auto; font-size: 12px; }
+.km-row {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  padding: 7px 4px; border-bottom: 1px solid #eef2f7;
+}
+.km-row:last-child { border-bottom: none; }
+.km-rozet { font-size: 9px; font-weight: 800; padding: 1px 6px; border-radius: 8px; white-space: nowrap; }
+.km-rozet.oto    { background: #ede9fe; color: #6d28d9; }
+.km-rozet.fatura { background: #fef3c7; color: #92400e; }
+.km-rozet.elle   { background: #f1f5f9; color: #475569; }
+.km-toplam {
+  display: flex; justify-content: space-between;
+  padding: 10px 4px 0; margin-top: 6px;
+  border-top: 2px solid var(--border);
+  font-weight: 900; font-size: 13px; color: var(--heading);
+}
+
+/* ── Aylık sayı çizelgesi (Excel görünümü) ──────────────────── */
+#hag-table table { border-collapse: separate; min-width: 100%; }
+#hag-table th, #hag-table td { padding: 4px 6px; font-size: 11.5px; white-space: nowrap; }
+#hag-table thead th { position: sticky; top: 0; z-index: 3; }
+#hag-table .hag-gun { font-weight: 800; color: var(--heading); position: sticky; left: 0; background: #fff; z-index: 2; box-shadow: 1px 0 0 var(--border); }
+#hag-table tr.hag-hs td { background: #fefce8 !important; }
+#hag-table tr.hag-hs .hag-gun { background: #fef9c3 !important; color: #854d0e; }
+#hag-table tr.hag-bugun td { background: #eff6ff !important; }
+#hag-table tr.hag-bugun .hag-gun { background: #dbeafe !important; color: #1d4ed8; }
+.hag-cell {
+  width: 58px !important;
+  padding: 4px 5px !important;
+  text-align: center !important;
+  font-weight: 700 !important;
+  font-size: 11.5px !important;
+  border-radius: 6px !important;
+}
+.hag-cell.dolu { background: #f0fdf4 !important; border-color: #bbf7d0 !important; color: #166534; }
+#hag-table tfoot td { font-weight: 900; background: #f6f8fc; border-top: 2px solid var(--border-strong); color: var(--heading); }
+#hag-table .hag-rowtop { font-weight: 800; text-align: center; color: #1d4ed8; }
+
 /* ── Mobil: kokpit satır düzeni bozulmasın ──────────────────── */
 @media (max-width: 480px) {
   #hgs-table div[style*="display:grid"] { grid-template-columns: 1.6fr 1fr 1fr 1fr !important; }
   #hf-kalemler div[style*="display:grid"] { grid-template-columns: 2fr 1fr 1fr 1fr 30px !important; }
   #hf-head { display: none !important; }
   #home-daily-actions { grid-template-columns: 1fr !important; }
+  #home-period-bar span[style*="margin-left:auto"] { margin-left: 0 !important; width: 100%; }
 }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" defer></script>
@@ -1972,17 +2062,45 @@
           </div>
         </div>
 
-        <!-- ═══ HERO KPI ROW ═══ -->
+        <!-- ═══ DÖNEM SEÇİCİ — tüm dashboard bu aralığı kullanır ═══ -->
+        <div id="home-period-bar" class="panel" style="padding:10px 14px !important;display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+          <span style="font-weight:800;font-size:12px;color:#14254a">📅 Dönem:</span>
+          <button class="btn active" data-hr="bu-ay" onclick="uysaHomeRangeSec('bu-ay')">Bu Ay</button>
+          <button class="btn" data-hr="gecen-ay" onclick="uysaHomeRangeSec('gecen-ay')">Geçen Ay</button>
+          <button class="btn" data-hr="yil" onclick="uysaHomeRangeSec('yil')">Bu Yıl</button>
+          <button class="btn" data-hr="tum" onclick="uysaHomeRangeSec('tum')">Tümü</button>
+          <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-left:auto">
+            <input type="date" id="hr-bas" style="width:auto;padding:6px 8px;font-size:12px"/>
+            <span style="color:#94a3b8">—</span>
+            <input type="date" id="hr-bit" style="width:auto;padding:6px 8px;font-size:12px"/>
+            <button class="btn primary" onclick="uysaHomeRangeUygula()" style="padding:6px 12px !important">Uygula</button>
+          </span>
+          <span id="hr-etiket" class="badge" style="background:#eff6ff !important;color:#1d4ed8 !important;border-color:#bfdbfe !important"></span>
+        </div>
+
+        <!-- ═══ HERO KPI ROW (kartlara tıkla → veri kaynağı) ═══ -->
         <div id="home-kpi-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px"><div style="grid-column:1/-1;text-align:center;padding:20px;color:#64748b;font-size:13px">⏳ Veriler yükleniyor...</div></div>
+
+        <!-- ═══ AYLIK SAYI ÇİZELGESİ (Excel görünümü: gün × müşteri) ═══ -->
+        <div class="panel" id="home-aylik-grid-panel" style="margin-bottom:14px">
+          <h3 style="flex-wrap:wrap">📆 Aylık Sayı Çizelgesi
+            <span style="display:flex;gap:8px;align-items:center;margin-left:auto;font-weight:400">
+              <input type="month" id="hag-ay" style="width:auto;padding:5px 8px;font-size:12px" onchange="renderHomeAylikGrid()"/>
+              <button class="btn ghost" onclick="hagExcel()" style="padding:4px 10px !important;font-size:11px !important">📥 Excel (CSV)</button>
+            </span>
+          </h3>
+          <div class="hint">Hücreye kişi sayısını yaz, çık — kayıt ve gelir otomatik güncellenir. Boşaltırsan o günün kaydı silinir. Hafta sonları sarı zeminlidir.</div>
+          <div id="hag-table" style="overflow-x:auto;max-height:480px;overflow-y:auto"></div>
+        </div>
 
         <!-- ═══ ROW 1: Maliyet Trend + Gider Dağılımı ═══ -->
         <div style="display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:14px">
           <div class="panel">
-            <h3>📈 Aylık Gelir / Gider Trendi</h3>
+            <h3>📈 Aylık Gelir / Gider Trendi <button class="btn ghost hk-src" onclick="uysaKaynakTrend()">🔍 Kaynak</button></h3>
             <div style="position:relative;height:170px"><canvas id="homeLineChart"></canvas></div>
           </div>
           <div class="panel">
-            <h3>🥧 Bu Ay Gider Dağılımı</h3>
+            <h3>🥧 Dönem Gider Dağılımı <button class="btn ghost hk-src" onclick="uysaKaynakGoster('gider')">🔍 Kaynak</button></h3>
             <div style="position:relative;height:200px"><canvas id="homePieChart"></canvas></div>
           </div>
         </div>
@@ -1990,11 +2108,11 @@
         <!-- ═══ ROW 2: Kişi Başı Maliyet + Bütçe Takibi ═══ -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
           <div class="panel">
-            <h3>👤 Müşteri Bazlı Kişi Başı Maliyet</h3>
+            <h3>👤 Müşteri Bazlı Kişi Başı Maliyet <button class="btn ghost hk-src" onclick="uysaKaynakGoster('kisi')">🔍 Kaynak</button></h3>
             <div id="home-kisibasi-tablo"></div>
           </div>
           <div class="panel">
-            <h3>🎯 Bütçe vs Gerçek Harcama</h3>
+            <h3>🎯 Bütçe vs Gerçek Harcama <button class="btn ghost hk-src" onclick="uysaKaynakGoster('butce')">🔍 Kaynak</button></h3>
             <div style="position:relative;height:220px"><canvas id="homeBudgetChart"></canvas></div>
           </div>
         </div>
@@ -2002,7 +2120,7 @@
         <!-- ═══ ROW 3: Son İşlemler + Hızlı Erişim ═══ -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
           <div class="panel">
-            <h3>⚡ Son Finansal İşlemler</h3>
+            <h3>⚡ Son Finansal İşlemler <button class="btn ghost hk-src" onclick="uysaKaynakGoster('net')">🔍 Kaynak</button></h3>
             <div id="home-son-islemler"></div>
           </div>
           <div class="panel">
@@ -2589,7 +2707,7 @@
             <button class="btn" id="finTabGelir" onclick="switchFinTab('gelir')">📥 Gelir Ekle</button>
             <button class="btn" id="finTabGider" onclick="switchFinTab('gider')">📤 Gider Ekle</button>
             <button class="btn" id="finTabUretim" onclick="switchFinTab('uretim')">🍳 Günlük Üretim Gideri</button>
-            <button class="btn" id="finTabSayi" onclick="switchFinTab('sayi')">📊 Günlük Üretim Sayıları <span style="background:#7c3aed;color:#fff;font-size:10px;padding:1px 6px;border-radius:10px;margin-left:4px">+KDV</span></button>
+            <button class="btn" id="finTabSayi" onclick="switchFinTab('sayi')" style="display:none">📊 Günlük Üretim Sayıları <span style="background:#7c3aed;color:#fff;font-size:10px;padding:1px 6px;border-radius:10px;margin-left:4px">+KDV</span></button><!-- Anasayfa Günlük İşlem Merkezi'ne taşındı (mükerrer giriş kaldırıldı) -->
             <button class="btn" id="finTabOzet" onclick="switchFinTab('ozet')">📊 Gelir/Gider Tablosu</button>
             <button class="btn" id="finTabButce" onclick="switchFinTab('butce')">🎯 Bütçe</button>
           </div>
@@ -19055,41 +19173,62 @@ function getButce(){
 
 // ── Hesaplamalar ──────────────────────────────────────────────
 
+// ── Dönem (varsayılan: içinde bulunulan ay; üst çubuktan değiştirilebilir) ──
+const AY_ADLARI = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+function _pad2(n){ return String(n).padStart(2,'0'); }
+function defaultHomeRange(){
+  const now=new Date(), y=now.getFullYear(), m=now.getMonth();
+  return { bas: y+'-'+_pad2(m+1)+'-01',
+           bit: y+'-'+_pad2(m+1)+'-'+_pad2(new Date(y,m+1,0).getDate()),
+           label: AY_ADLARI[m]+' '+y, tip:'bu-ay' };
+}
+function homeRange(){ return window._uysaHomeRange || defaultHomeRange(); }
+window._uysaHomeRangeGet = homeRange;
+function inHomeRange(t){ const r=homeRange(); return !!t && (!r.bas||t>=r.bas) && (!r.bit||t<=r.bit); }
+
 function calcKPIs(){
-  const now   = new Date();
-  const ym    = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  const r = homeRange();
   const gelirler = getGelirler();
   const giderler = getGiderler();
   const sayilar  = getUretimSayilari();
 
-  // Bu ay — üretim giderleri zaten gider listesine 'uretim*' kategorisiyle kopyalanıyor,
+  // Dönem — üretim giderleri zaten gider listesine 'uretim*' kategorisiyle kopyalanıyor,
   // ayrı eklersek çifte sayım olur; üretim payını kategoriden ayıklıyoruz
-  const ayGiderler   = giderler.filter(g=>g.tarih?.startsWith(ym));
-  const thisAyGelir  = gelirler.filter(g=>g.tarih?.startsWith(ym)).reduce((s,g)=>s+Number(g.tutar||0),0);
-  const thisAyGider  = ayGiderler.reduce((s,g)=>s+Number(g.tutar||0),0);
-  const thisAyUretim = ayGiderler.filter(g=>(g.kat||'').startsWith('uretim')).reduce((s,g)=>s+Number(g.tutar||0),0);
+  const dGiderler    = giderler.filter(g=>inHomeRange(g.tarih));
+  const thisAyGelir  = gelirler.filter(g=>inHomeRange(g.tarih)).reduce((s,g)=>s+Number(g.tutar||0),0);
+  const thisAyGider  = dGiderler.reduce((s,g)=>s+Number(g.tutar||0),0);
+  const thisAyUretim = dGiderler.filter(g=>(g.kat||'').startsWith('uretim')).reduce((s,g)=>s+Number(g.tutar||0),0);
   const totalGider   = thisAyGider;
 
   // Toplam tüm zamanlar
   const tumGelir = gelirler.reduce((s,g)=>s+Number(g.tutar||0),0);
   const tumGider = giderler.reduce((s,g)=>s+Number(g.tutar||0),0);
 
-  // Kişi başı maliyet (bu ay — üretim gideri / günlük sayılardan toplam kişi)
-  const thisAySayilar = sayilar.filter(s=>s.tarih?.startsWith(ym));
-  const totalKisi = thisAySayilar.reduce((s,r)=>s+(Number(r.kisi||r.adet||r.kisiSayisi||0)),0);
+  // Kişi başı maliyet (dönem üretim gideri / günlük sayılardan toplam kişi)
+  const dSayilar  = sayilar.filter(s=>inHomeRange(s.tarih));
+  const totalKisi = dSayilar.reduce((s,rec)=>s+(Number(rec.kisi||rec.adet||rec.kisiSayisi||0)),0);
   const kisiBasi  = totalKisi>0 ? thisAyUretim/totalKisi : 0;
 
   // Net kâr & marj
   const netKar   = thisAyGelir - totalGider;
   const kar_marj = thisAyGelir>0 ? (netKar/thisAyGelir*100) : 0;
 
-  // Geçen ay (karşılaştırma için)
-  const prevDate = new Date(now.getFullYear(), now.getMonth()-1, 1);
-  const prevYm   = prevDate.getFullYear()+'-'+String(prevDate.getMonth()+1).padStart(2,'0');
-  const prevGider = giderler.filter(g=>g.tarih?.startsWith(prevYm)).reduce((s,g)=>s+Number(g.tutar||0),0);
+  // Önceki eşit uzunluktaki dönem (gider trendi karşılaştırması)
+  let prevGider = 0;
+  if(r.bas && r.bit){
+    try{
+      const basD=new Date(r.bas), bitD=new Date(r.bit);
+      const gunSay=Math.round((bitD-basD)/86400000)+1;
+      const pBit=new Date(basD); pBit.setDate(pBit.getDate()-1);
+      const pBas=new Date(pBit); pBas.setDate(pBas.getDate()-(gunSay-1));
+      const f=d=>d.getFullYear()+'-'+_pad2(d.getMonth()+1)+'-'+_pad2(d.getDate());
+      const pb=f(pBas), pe=f(pBit);
+      prevGider = giderler.filter(g=>g.tarih && g.tarih>=pb && g.tarih<=pe).reduce((s,g)=>s+Number(g.tutar||0),0);
+    }catch(e){}
+  }
 
   return { thisAyGelir, thisAyGider, thisAyUretim, totalGider, tumGelir, tumGider,
-           totalKisi, kisiBasi, netKar, kar_marj, prevGider };
+           totalKisi, kisiBasi, netKar, kar_marj, prevGider, rangeLabel:r.label };
 }
 
 // ── KPI Kartları ──────────────────────────────────────────────
@@ -19107,23 +19246,23 @@ function renderHomeKPIs(){
     return '<span class="kpi-trend flat">→ Stabil</span>';
   };
 
-  const now = new Date();
-  const ayAd = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'][now.getMonth()];
+  const rl = k.rangeLabel || '';
 
   row.innerHTML = [
-    { color:'blue',   icon:'💰', lbl:'Bu Ay Gelir',              val:fmtTL(k.thisAyGelir),  sub: ayAd+' satış toplamı',                    trend: '' },
-    { color:'red',    icon:'📤', lbl:'Bu Ay Toplam Gider',       val:fmtTL(k.totalGider),   sub: 'İşletme + Üretim',                       trend: trend(k.totalGider, k.prevGider) },
-    { color:'green',  icon:'📈', lbl:'Net Kâr',                  val:fmtTL(k.netKar),       sub: `Kâr Marjı: ${k.kar_marj.toFixed(1)}%`,   trend: k.netKar>=0?'<span class="kpi-trend up">✅ Kârlı</span>':'<span class="kpi-trend down">⚠️ Zararda</span>' },
-    { color:'orange', icon:'🍳', lbl:'Üretim Maliyeti',          val:fmtTL(k.thisAyUretim), sub: ayAd+' üretim giderleri',                 trend: '' },
-    { color:'teal',   icon:'👤', lbl:'Kişi Başı Maliyet',        val:k.kisiBasi>0?fmtTL(k.kisiBasi):'—', sub:k.totalKisi>0?`${fmt(k.totalKisi)} kişi/ay`:'Üretim verisi girin', trend: '' },
-    { color:'purple', icon:'⚖️', lbl:'Maliyet / Gelir Oranı',    val:k.thisAyGelir>0?(k.totalGider/k.thisAyGelir*100).toFixed(1)+'%':'—',  sub:'Düşük = daha iyi', trend: '' },
+    { color:'blue',   icon:'💰', lbl:'Gelir',                 tip:'gelir',  val:fmtTL(k.thisAyGelir),  sub: rl+' toplamı',                            trend: '' },
+    { color:'red',    icon:'📤', lbl:'Toplam Gider',          tip:'gider',  val:fmtTL(k.totalGider),   sub: 'İşletme + Üretim · '+rl,                 trend: trend(k.totalGider, k.prevGider) },
+    { color:'green',  icon:'📈', lbl:'Net Kâr',               tip:'net',    val:fmtTL(k.netKar),       sub: `Kâr Marjı: ${k.kar_marj.toFixed(1)}%`,   trend: k.netKar>=0?'<span class="kpi-trend up">✅ Kârlı</span>':'<span class="kpi-trend down">⚠️ Zararda</span>' },
+    { color:'orange', icon:'🍳', lbl:'Üretim Maliyeti',       tip:'uretim', val:fmtTL(k.thisAyUretim), sub: rl+' üretim giderleri',                   trend: '' },
+    { color:'teal',   icon:'👤', lbl:'Kişi Başı Maliyet',     tip:'kisi',   val:k.kisiBasi>0?fmtTL(k.kisiBasi):'—', sub:k.totalKisi>0?`${fmt(k.totalKisi)} kişi`:'Sayı girişi yapın', trend: '' },
+    { color:'purple', icon:'⚖️', lbl:'Maliyet / Gelir Oranı', tip:'oran',   val:k.thisAyGelir>0?(k.totalGider/k.thisAyGelir*100).toFixed(1)+'%':'—',  sub:'Düşük = daha iyi', trend: '' },
   ].map(c=>`
-    <div class="home-kpi-card kpi-${c.color}">
+    <div class="home-kpi-card kpi-${c.color}" onclick="uysaKaynakGoster('${c.tip}')" title="Tıkla: verinin kaynağını gör" style="cursor:pointer">
       <span class="kpi-icon">${c.icon}</span>
       <div class="kpi-label">${c.lbl}</div>
       <div class="kpi-value">${c.val}</div>
       <div class="kpi-sub">${c.sub}</div>
       ${c.trend}
+      <span class="kpi-src">🔍 kaynağı gör</span>
     </div>
   `).join('');
 }
@@ -19177,9 +19316,7 @@ function renderHomePieChart(){
   if(!ctx) return;
   if(_homeCharts.pie){ _homeCharts.pie.destroy(); }
 
-  const now = new Date();
-  const ym  = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
-  const giderler = getGiderler().filter(g=>g.tarih?.startsWith(ym));
+  const giderler = getGiderler().filter(g=>inHomeRange(g.tarih));
 
   // Kategori bazlı grupla — gider kayıtları 'kat' alanı kullanır, Türkçe etikete çevir
   const katLabels = window.giderKatLabel||{};
@@ -19191,8 +19328,16 @@ function renderHomePieChart(){
 
   const sorted = Object.entries(cats).sort((a,b)=>b[1]-a[1]).slice(0,7);
 
+  // Boş durum mesajını yönet (innerHTML += canvas'ı bozuyordu)
+  const oldEmpty = ctx.parentElement.querySelector('.home-empty');
+  if(oldEmpty) oldEmpty.remove();
+  ctx.style.display = '';
   if(!sorted.length){
-    ctx.parentElement.innerHTML += '<div class="home-empty">Bu ay için gider verisi yok</div>';
+    ctx.style.display = 'none';
+    const d = document.createElement('div');
+    d.className = 'home-empty';
+    d.textContent = 'Bu dönem için gider verisi yok';
+    ctx.parentElement.appendChild(d);
     return;
   }
 
@@ -19223,19 +19368,38 @@ function renderHomeBudgetChart(){
   if(_homeCharts.budget){ _homeCharts.budget.destroy(); }
 
   const butceler = getButce();
-  const now      = new Date();
-  const yil      = String(now.getFullYear());
-  const ay       = now.getMonth()+1;
-  const ym       = yil+'-'+String(ay).padStart(2,'0');
-  const buAyButce = butceler.find(b=>String(b.yil)===yil && Number(b.ay)===ay);
+  const r        = homeRange();
 
-  if(!buAyButce){
-    ctx.parentElement.innerHTML += '<div class="home-empty">Bu ay için bütçe hedefi yok — Finans → Bütçe sekmesinden girin</div>';
+  // Boş durum mesajını yönet
+  const oldEmptyB = ctx.parentElement.querySelector('.home-empty');
+  if(oldEmptyB) oldEmptyB.remove();
+  ctx.style.display = '';
+  const bosMesaj = (msg)=>{
+    ctx.style.display = 'none';
+    const d = document.createElement('div');
+    d.className = 'home-empty';
+    d.textContent = msg;
+    ctx.parentElement.appendChild(d);
+  };
+
+  // Bütçeler ay bazlı tutulur — seçili dönemle kesişen ayların hedeflerini topla
+  let hedefGelir = 0, hedefGider = 0, ayBulundu = 0;
+  butceler.forEach(b=>{
+    if(!b.yil || !b.ay) return;
+    const ayBas = String(b.yil)+'-'+String(b.ay).padStart(2,'0')+'-01';
+    const ayBit = String(b.yil)+'-'+String(b.ay).padStart(2,'0')+'-'+String(new Date(Number(b.yil), Number(b.ay), 0).getDate()).padStart(2,'0');
+    const kesisir = (!r.bas || ayBit>=r.bas) && (!r.bit || ayBas<=r.bit);
+    if(kesisir){ hedefGelir+=Number(b.gelirHedef||0); hedefGider+=Number(b.giderHedef||0); ayBulundu++; }
+  });
+
+  if(!ayBulundu){
+    bosMesaj('Seçili dönem için bütçe hedefi yok — Finans → Bütçe sekmesinden girin');
     return;
   }
 
-  const gercekGelir = getGelirler().filter(g=>g.tarih?.startsWith(ym)).reduce((s,g)=>s+Number(g.tutar||0),0);
-  const gercekGider = getGiderler().filter(g=>g.tarih?.startsWith(ym)).reduce((s,g)=>s+Number(g.tutar||0),0);
+  const gercekGelir = getGelirler().filter(g=>inHomeRange(g.tarih)).reduce((s,g)=>s+Number(g.tutar||0),0);
+  const gercekGider = getGiderler().filter(g=>inHomeRange(g.tarih)).reduce((s,g)=>s+Number(g.tutar||0),0);
+  const buAyButce = { gelirHedef: hedefGelir, giderHedef: hedefGider };
 
   _homeCharts.budget = new Chart(ctx,{
     type:'bar',
@@ -19262,10 +19426,8 @@ function renderHomeBudgetChart(){
 function renderKisiBasiTablo(){
   const el = document.getElementById('home-kisibasi-tablo');
   if(!el) return;
-  const now  = new Date();
-  const ym   = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
-  const uretim  = getUretimGiderleri().filter(u=>u.tarih?.startsWith(ym));
-  const sayilar = getUretimSayilari().filter(s=>s.tarih?.startsWith(ym));
+  const uretim  = getUretimGiderleri().filter(u=>inHomeRange(u.tarih));
+  const sayilar = getUretimSayilari().filter(s=>inHomeRange(s.tarih));
 
   // Müşteri bazlı grupla
   const byMusteri = {};
@@ -19308,8 +19470,8 @@ function renderKisiBasiTablo(){
 function renderSonIslemler(){
   const el = document.getElementById('home-son-islemler');
   if(!el) return;
-  const gelirler = getGelirler().map(g=>({...g,_tip:'G'}));
-  const giderler = getGiderler().map(g=>({...g,_tip:'GD'}));
+  const gelirler = getGelirler().filter(g=>inHomeRange(g.tarih)).map(g=>({...g,_tip:'G'}));
+  const giderler = getGiderler().filter(g=>inHomeRange(g.tarih)).map(g=>({...g,_tip:'GD'}));
   const all = [...gelirler,...giderler]
     .sort((a,b)=>(b.tarih||'').localeCompare(a.tarih||''))
     .slice(0,8);
@@ -21781,6 +21943,443 @@ function _init(){
   window.renderHomeGunlukWidget();
   window.renderHomeFaturaWidget();
   console.log('✅ UYSA Günlük İşlem Merkezi yüklendi (sayı→gelir, fatura→gider).');
+}
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',_init);
+else _init();
+
+})();
+</script>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════
+   UYSA — DÖNEM SEÇİCİ + VERİ KAYNAĞI İZLEME + AYLIK SAYI ÇİZELGESİ
+   1) Dashboard varsayılan olarak içinde bulunulan ayı gösterir;
+      hazır dönemler veya özel tarih aralığı seçilebilir.
+   2) KPI kartına / grafik "Kaynak" butonuna tıklayınca o rakamı
+      oluşturan kayıtlar (hangi anahtar, hangi girişten) listelenir.
+   3) Aylık çizelge: Excel alışkanlığındaki gün × müşteri tablosu —
+      hücreler düzenlenebilir, kayıt + gelir otomatik senkron olur.
+   ══════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+
+var _ls = {
+  get: function(k,d){ try{ var v=localStorage.getItem(k); return v===null?d:JSON.parse(v); }catch(e){ return d; } },
+  set: function(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
+};
+function _pad(n){ return String(n).padStart(2,'0'); }
+function _today(){ var d=new Date(); return d.getFullYear()+'-'+_pad(d.getMonth()+1)+'-'+_pad(d.getDate()); }
+function _thisMonth(){ var d=new Date(); return d.getFullYear()+'-'+_pad(d.getMonth()+1); }
+function _fmt(n){ return Number(n||0).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function _toast(msg){
+  if(typeof window.toast==='function'){ try{ window.toast(msg); return; }catch(e){} }
+  var t=document.createElement('div');
+  t.textContent=msg;
+  t.style.cssText='position:fixed;bottom:24px;right:24px;background:#1e293b;color:#fff;padding:12px 20px;border-radius:10px;font-size:13px;z-index:99999;max-width:360px;box-shadow:0 4px 20px rgba(0,0,0,.35)';
+  document.body.appendChild(t);
+  setTimeout(function(){ t.remove(); },3500);
+}
+function _custs(){
+  try{
+    var raw=localStorage.getItem('uysa_customers_v1');
+    if(!raw) return [];
+    var pasif=_ls.get('uysa_pasif_musteriler',[]);
+    return (JSON.parse(raw).customers||[]).filter(function(x){ return x&&x!=='GENEL'&&pasif.indexOf(x)===-1; });
+  }catch(e){ return []; }
+}
+function _focusIcinde(id){
+  var el=document.getElementById(id);
+  return !!(el && el.contains(document.activeElement) && document.activeElement.tagName==='INPUT');
+}
+var AYLAR=['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+var KAT=window.giderKatLabel||{};
+
+/* ════════════ 1) DÖNEM SEÇİCİ ════════════ */
+window.uysaHomeRangeSec = function(tip){
+  var now=new Date(), y=now.getFullYear(), m=now.getMonth();
+  if(tip==='bu-ay'){
+    window._uysaHomeRange=null; // varsayılan = bu ay
+  } else if(tip==='gecen-ay'){
+    var d=new Date(y,m-1,1), gy=d.getFullYear(), gm=d.getMonth();
+    window._uysaHomeRange={ bas:gy+'-'+_pad(gm+1)+'-01',
+      bit:gy+'-'+_pad(gm+1)+'-'+_pad(new Date(gy,gm+1,0).getDate()),
+      label:AYLAR[gm]+' '+gy, tip:'gecen-ay' };
+  } else if(tip==='yil'){
+    window._uysaHomeRange={ bas:y+'-01-01', bit:y+'-12-31', label:y+' Yılı', tip:'yil' };
+  } else if(tip==='tum'){
+    window._uysaHomeRange={ bas:'', bit:'', label:'Tüm Zamanlar', tip:'tum' };
+  }
+  _rangeUiSync();
+  if(typeof window.renderAnasayfa==='function') window.renderAnasayfa();
+};
+
+window.uysaHomeRangeUygula = function(){
+  var bas=document.getElementById('hr-bas')?.value||'';
+  var bit=document.getElementById('hr-bit')?.value||'';
+  if(!bas||!bit){ alert('Başlangıç ve bitiş tarihini seçin.'); return; }
+  if(bas>bit){ alert('Başlangıç tarihi bitişten büyük olamaz.'); return; }
+  window._uysaHomeRange={ bas:bas, bit:bit, label:bas+' → '+bit, tip:'ozel' };
+  _rangeUiSync();
+  if(typeof window.renderAnasayfa==='function') window.renderAnasayfa();
+};
+
+function _rangeUiSync(){
+  var r = typeof window._uysaHomeRangeGet==='function' ? window._uysaHomeRangeGet() : null;
+  if(!r) return;
+  document.querySelectorAll('#home-period-bar [data-hr]').forEach(function(b){
+    b.classList.toggle('active', b.dataset.hr===r.tip);
+  });
+  var basEl=document.getElementById('hr-bas'), bitEl=document.getElementById('hr-bit');
+  if(basEl && document.activeElement!==basEl) basEl.value=r.bas||'';
+  if(bitEl && document.activeElement!==bitEl) bitEl.value=r.bit||'';
+  var et=document.getElementById('hr-etiket');
+  if(et) et.textContent='📊 '+r.label;
+}
+
+/* ════════════ 2) VERİ KAYNAĞI MODALI ════════════ */
+function _ensureModal(){
+  if(document.getElementById('uysaKaynakModal')) return;
+  var d=document.createElement('div');
+  d.id='uysaKaynakModal';
+  d.innerHTML='<div class="km-card">'
+    +'<div class="km-head"><b id="km-baslik">Veri Kaynağı</b>'
+    +'<button class="btn ghost" onclick="document.getElementById(\'uysaKaynakModal\').classList.remove(\'acik\')">✕ Kapat</button></div>'
+    +'<div class="km-meta" id="km-meta"></div>'
+    +'<div class="km-body" id="km-body"></div>'
+    +'</div>';
+  d.addEventListener('click', function(e){ if(e.target===d) d.classList.remove('acik'); });
+  document.body.appendChild(d);
+}
+function _rozet(g){
+  if(g.kaynak==='fatura') return '<span class="km-rozet fatura">🧾 FATURADAN</span>';
+  if(g.kaynak==='gunluk'||(g.aciklama&&g.aciklama.startsWith('Günlük üretim'))) return '<span class="km-rozet oto">📊 GÜNLÜK SAYIDAN</span>';
+  return '<span class="km-rozet elle">✍️ ELLE</span>';
+}
+function _kmSatir(sol, orta, rozet, tutar, renk){
+  return '<div class="km-row"><span style="color:#64748b;white-space:nowrap">'+sol+'</span>'
+    +'<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 6px">'+orta+'</span>'
+    +rozet
+    +'<b style="white-space:nowrap;color:'+(renk||'#0f172a')+'">'+_fmt(tutar)+' ₺</b></div>';
+}
+function _ozetChip(txt){ return '<span class="badge">'+txt+'</span>'; }
+
+window.uysaKaynakGoster = function(tip, basOv, bitOv, labelOv){
+  _ensureModal();
+  var r0 = typeof window._uysaHomeRangeGet==='function' ? window._uysaHomeRangeGet() : {bas:'',bit:'',label:'Tüm Zamanlar'};
+  var r = (basOv!==undefined||bitOv!==undefined) ? {bas:basOv||'',bit:bitOv||'',label:labelOv||((basOv||'…')+' → '+(bitOv||'…'))} : r0;
+  function inR(t){ return !!t && (!r.bas||t>=r.bas) && (!r.bit||t<=r.bit); }
+
+  var baslik='', meta=[], body='';
+  var MAX=300;
+
+  function liste(arr, satirFn){
+    var html=arr.slice(0,MAX).map(satirFn).join('');
+    if(arr.length>MAX) html+='<div style="color:#94a3b8;text-align:center;padding:8px">… ve '+(arr.length-MAX)+' kayıt daha</div>';
+    if(!arr.length) html='<div class="home-empty">Bu dönemde kayıt yok.</div>';
+    return html;
+  }
+
+  if(tip==='gelir' || tip==='net' || tip==='oran'){
+    var gelirler=_ls.get('uysa_gelirler',[]).filter(function(g){ return inR(g.tarih); })
+      .sort(function(a,b){ return (b.tarih||'').localeCompare(a.tarih||''); });
+    var gTop=gelirler.reduce(function(s,g){ return s+Number(g.tutar||0); },0);
+    var gOto=gelirler.filter(function(g){ return g.kaynak==='gunluk'||(g.aciklama&&g.aciklama.startsWith('Günlük üretim')); }).length;
+  }
+  if(tip==='gider' || tip==='uretim' || tip==='net' || tip==='oran'){
+    var giderler=_ls.get('uysa_giderler',[]).filter(function(g){ return inR(g.tarih); })
+      .sort(function(a,b){ return (b.tarih||'').localeCompare(a.tarih||''); });
+    if(tip==='uretim') giderler=giderler.filter(function(g){ return (g.kat||'').startsWith('uretim'); });
+    var dTop=giderler.reduce(function(s,g){ return s+Number(g.tutar||0); },0);
+    var dFat=giderler.filter(function(g){ return g.kaynak==='fatura'; }).length;
+  }
+
+  if(tip==='gelir'){
+    baslik='💰 Gelir — veri kaynağı';
+    meta=[_ozetChip('Anahtar: uysa_gelirler'), _ozetChip(gelirler.length+' kayıt'), _ozetChip('📊 '+gOto+' otomatik (günlük sayıdan)'), _ozetChip('✍️ '+(gelirler.length-gOto)+' elle')];
+    body='<div class="hint">Günlük sayı girişi ve Aylık Çizelge hücreleri bu kayıtları otomatik üretir; Finans → Gelir Ekle ile elle de eklenebilir.</div>'
+      +liste(gelirler,function(g){ return _kmSatir(g.tarih||'?', '<b>'+(g.musteri||'—')+'</b> '+(g.aciklama||''), _rozet(g), g.tutar, '#166534'); })
+      +'<div class="km-toplam"><span>TOPLAM</span><span style="color:#166534">'+_fmt(gTop)+' ₺</span></div>';
+  }
+  else if(tip==='gider' || tip==='uretim'){
+    baslik=(tip==='uretim'?'🍳 Üretim Maliyeti':'📤 Gider')+' — veri kaynağı';
+    meta=[_ozetChip('Anahtar: uysa_giderler'+(tip==='uretim'?' (kat: uretim*)':'')), _ozetChip(giderler.length+' kayıt'), _ozetChip('🧾 '+dFat+' faturadan'), _ozetChip('✍️ '+(giderler.length-dFat)+' elle/üretim')];
+    body='<div class="hint">Fatura girişleri (Anasayfa & Satın Alma) gideri otomatik üretir; Finans → Gider Ekle ve Üretim Gideri girişleri de buraya yazar.</div>'
+      +liste(giderler,function(g){ return _kmSatir(g.tarih||'?', '<b>'+(KAT[g.kat]||g.kat||'—')+'</b> '+(g.tedarikci?'· 🏪'+g.tedarikci:'')+' '+(g.aciklama||'')+(g.belge?' · Belge:'+g.belge:''), _rozet(g), g.tutar, '#dc2626'); })
+      +'<div class="km-toplam"><span>TOPLAM</span><span style="color:#dc2626">'+_fmt(dTop)+' ₺</span></div>';
+  }
+  else if(tip==='kisi'){
+    var gunluk=_ls.get('uysa_gunluk_uretim',[]).filter(function(u){ return inR(u.tarih); });
+    var grup={};
+    gunluk.forEach(function(u){
+      if(!grup[u.musteri]) grup[u.musteri]={kisi:0,tutar:0,gun:0};
+      grup[u.musteri].kisi+=u.kisi||0; grup[u.musteri].tutar+=u.tutar||0; grup[u.musteri].gun++;
+    });
+    var topK=0;
+    var satirlar=Object.entries(grup).sort(function(a,b){ return b[1].kisi-a[1].kisi; }).map(function(e){
+      topK+=e[1].kisi;
+      return _kmSatir(e[1].gun+' gün', '<b>'+e[0]+'</b> — '+e[1].kisi+' kişi', '<span class="km-rozet oto">📊 GÜNLÜK SAYIDAN</span>', e[1].tutar, '#166534');
+    }).join('')||'<div class="home-empty">Bu dönemde sayı girişi yok.</div>';
+    baslik='👤 Kişi Sayıları — veri kaynağı';
+    meta=[_ozetChip('Anahtar: uysa_gunluk_uretim'), _ozetChip(gunluk.length+' günlük kayıt'), _ozetChip('Toplam '+topK+' kişi')];
+    body='<div class="hint">Anasayfa "Bugünün Yemek Sayıları" ve Aylık Çizelge hücrelerinden gelir. Kişi başı maliyet = dönem üretim gideri ÷ toplam kişi.</div>'+satirlar;
+  }
+  else if(tip==='net' || tip==='oran'){
+    baslik=(tip==='net'?'📈 Net Kâr':'⚖️ Maliyet / Gelir Oranı')+' — veri kaynağı';
+    var net=gTop-dTop;
+    meta=[_ozetChip('uysa_gelirler + uysa_giderler'), _ozetChip(gelirler.length+' gelir / '+giderler.length+' gider kaydı')];
+    body='<div class="hint">'+(tip==='net'
+        ?'Net Kâr = Dönem Geliri − Dönem Gideri. Ayrıntı için Gelir veya Gider kartına tıklayın.'
+        :'Oran = Dönem Gideri ÷ Dönem Geliri × 100. Ayrıntı için Gelir veya Gider kartına tıklayın.')+'</div>'
+      +'<div class="km-row"><span>💰 Dönem Geliri</span><span></span><b style="color:#166534">'+_fmt(gTop)+' ₺</b></div>'
+      +'<div class="km-row"><span>📤 Dönem Gideri</span><span></span><b style="color:#dc2626">'+_fmt(dTop)+' ₺</b></div>'
+      +(tip==='net'
+        ?'<div class="km-toplam"><span>NET KÂR</span><span style="color:'+(net>=0?'#166534':'#dc2626')+'">'+_fmt(net)+' ₺</span></div>'
+        :'<div class="km-toplam"><span>ORAN</span><span>'+(gTop>0?(dTop/gTop*100).toFixed(1)+'%':'—')+'</span></div>')
+      +'<div style="margin-top:12px;font-weight:800;color:#14254a">Son işlemler (dönem içi)</div>'
+      +liste(
+        gelirler.map(function(g){ return Object.assign({_t:'G'},g); })
+          .concat(giderler.map(function(g){ return Object.assign({_t:'D'},g); }))
+          .sort(function(a,b){ return (b.tarih||'').localeCompare(a.tarih||''); }).slice(0,20),
+        function(x){ return _kmSatir((x._t==='G'?'📥 ':'📤 ')+(x.tarih||'?'), x._t==='G'?('<b>'+(x.musteri||'—')+'</b> '+(x.aciklama||'')):('<b>'+(KAT[x.kat]||x.kat||'—')+'</b> '+(x.aciklama||'')), _rozet(x), x.tutar, x._t==='G'?'#166534':'#dc2626'); });
+  }
+  else if(tip==='butce'){
+    var butceler=_ls.get('uysa_butceler',[]);
+    baslik='🎯 Bütçe — veri kaynağı';
+    meta=[_ozetChip('Anahtar: uysa_butceler'), _ozetChip(butceler.length+' aylık hedef')];
+    body='<div class="hint">Hedefler Finans → Bütçe sekmesinden girilir; "Gerçekleşen" değerler gelir/gider kayıtlarından hesaplanır.</div>'
+      +(butceler.length?butceler.sort(function(a,b){ return String(b.yil)+_pad(b.ay) < String(a.yil)+_pad(a.ay) ? -1:1; }).map(function(b){
+          return '<div class="km-row"><span>'+(AYLAR[(b.ay||1)-1]||b.ay)+' '+b.yil+'</span>'
+            +'<span style="flex:1;padding:0 6px;color:#64748b">Hedef gelir '+_fmt(b.gelirHedef)+' ₺ · hedef gider '+_fmt(b.giderHedef)+' ₺</span><span></span><b></b></div>';
+        }).join(''):'<div class="home-empty">Henüz bütçe hedefi girilmemiş.</div>');
+  }
+
+  document.getElementById('km-baslik').textContent=baslik;
+  document.getElementById('km-meta').innerHTML=_ozetChip('📅 '+r.label)+meta.join('');
+  document.getElementById('km-body').innerHTML=body;
+  document.getElementById('uysaKaynakModal').classList.add('acik');
+};
+
+window.uysaKaynakTrend = function(){
+  var now=new Date();
+  var d=new Date(now.getFullYear(), now.getMonth()-5, 1);
+  var bas=d.getFullYear()+'-'+_pad(d.getMonth()+1)+'-01';
+  window.uysaKaynakGoster('net', bas, _today(), 'Son 6 Ay');
+};
+
+/* ════════════ 3) AYLIK SAYI ÇİZELGESİ (gün × müşteri) ════════════ */
+var GUN_AD=['Paz','Pzt','Sal','Çar','Per','Cum','Cmt'];
+
+window.renderHomeAylikGrid = function(){
+  var wrap=document.getElementById('hag-table');
+  if(!wrap) return;
+  if(_focusIcinde('hag-table')) return; // yazarken yeniden çizme
+
+  var ayInp=document.getElementById('hag-ay');
+  if(ayInp && !ayInp.value) ayInp.value=_thisMonth();
+  var ym=(ayInp&&ayInp.value)||_thisMonth();
+
+  var custs=_custs();
+  if(!custs.length){
+    wrap.innerHTML='<div class="home-empty">Müşteri yok — Satış &amp; CRM modülünden ekleyin.</div>';
+    return;
+  }
+
+  var gunluk=_ls.get('uysa_gunluk_uretim',[]);
+  var map={};
+  gunluk.forEach(function(u){ if((u.tarih||'').startsWith(ym)) map[u.tarih+'||'+u.musteri]=u; });
+
+  var p=ym.split('-'), Y=+p[0], M=+p[1];
+  var gunSay=new Date(Y,M,0).getDate();
+  var bugun=_today();
+
+  var thead='<tr><th class="hag-gun" style="z-index:4">TARİH</th>'
+    +custs.map(function(c){ return '<th style="text-align:center" title="'+c+'">'+c+'</th>'; }).join('')
+    +'<th style="text-align:center">Σ GÜN</th></tr>';
+
+  var rows='';
+  for(var d=1; d<=gunSay; d++){
+    var tarih=ym+'-'+_pad(d);
+    var gd=new Date(Y, M-1, d).getDay();
+    var hs=(gd===0||gd===6);
+    var cls=tarih===bugun?'hag-bugun':(hs?'hag-hs':'');
+    var rowTop=0;
+    var cells=custs.map(function(c){
+      var rec=map[tarih+'||'+c];
+      var v=rec?(rec.kisi||0):0;
+      rowTop+=v;
+      return '<td style="text-align:center"><input type="number" min="0" step="1" class="hag-cell'+(v?' dolu':'')+'"'
+        +' data-m="'+c.replace(/"/g,'&quot;')+'" data-t="'+tarih+'" value="'+(v||'')+'"'
+        +' placeholder="'+(hs?'H.S.':'·')+'" onchange="hagCellChange(this)"/></td>';
+    }).join('');
+    rows+='<tr class="'+cls+'"><td class="hag-gun">'+_pad(d)+' '+GUN_AD[gd]+'</td>'+cells
+      +'<td class="hag-rowtop" data-rt="'+tarih+'">'+(rowTop||'—')+'</td></tr>';
+  }
+
+  wrap.innerHTML='<table><thead>'+thead+'</thead><tbody>'+rows+'</tbody><tfoot>'+_hagFootHtml(custs,ym,gunluk)+'</tfoot></table>';
+  wrap.dataset.custs=JSON.stringify(custs);
+  wrap.dataset.ym=ym;
+};
+
+function _hagFootHtml(custs, ym, gunluk){
+  var kisiTop=custs.map(function(){ return 0; }), tutarTop=custs.map(function(){ return 0; });
+  var gKisi=0, gTutar=0;
+  gunluk.forEach(function(u){
+    if(!(u.tarih||'').startsWith(ym)) return;
+    var i=custs.indexOf(u.musteri);
+    if(i<0) return;
+    kisiTop[i]+=u.kisi||0; tutarTop[i]+=u.tutar||0;
+    gKisi+=u.kisi||0; gTutar+=u.tutar||0;
+  });
+  return '<tr><td class="hag-gun">TOPLAM KİŞİ</td>'
+    +custs.map(function(c,i){ return '<td style="text-align:center" data-ct="'+i+'">'+(kisiTop[i]||'—')+'</td>'; }).join('')
+    +'<td style="text-align:center" data-gt="k">'+gKisi+'</td></tr>'
+    +'<tr><td class="hag-gun">TUTAR (₺)</td>'
+    +custs.map(function(c,i){ return '<td style="text-align:center;font-size:10.5px" data-tt="'+i+'">'+(tutarTop[i]?_fmt(tutarTop[i]):'—')+'</td>'; }).join('')
+    +'<td style="text-align:center;font-size:10.5px;color:#166534" data-gt="t">'+_fmt(gTutar)+'</td></tr>';
+}
+
+window.hagCellChange = function(inp){
+  var musteri=inp.dataset.m, tarih=inp.dataset.t;
+  var k=parseInt(inp.value)||0;
+
+  var gunluk=_ls.get('uysa_gunluk_uretim',[]);
+  var idx=gunluk.findIndex(function(u){ return u.musteri===musteri && u.tarih===tarih; });
+
+  // Fiyat: mevcut kayıt → CRM varsayılanı → son bilinen fiyat
+  var fiyat=idx>=0?(gunluk[idx].fiyat||0):0;
+  if(!fiyat){ fiyat=(_ls.get('uysa_crm_'+musteri,{}).fiyat)||0; }
+  if(!fiyat){
+    var son=gunluk.filter(function(u){ return u.musteri===musteri && u.fiyat>0; })
+      .sort(function(a,b){ return (b.tarih||'').localeCompare(a.tarih||''); });
+    if(son.length) fiyat=son[0].fiyat;
+  }
+
+  if(k>0){
+    var rec={musteri:musteri, tarih:tarih, kisi:k, fiyat:fiyat, tutar:k*fiyat, not:''};
+    if(idx>=0) gunluk[idx]=rec; else gunluk.push(rec);
+    if(!fiyat && !window.__hagFiyatUyari){
+      window.__hagFiyatUyari=true;
+      _toast('⚠️ '+musteri+' için fiyat tanımlı değil — tutar 0₺ yazıldı. CRM\'den veya günlük girişten fiyat belirleyin.');
+    }
+  } else if(idx>=0){
+    gunluk.splice(idx,1);
+  }
+  _ls.set('uysa_gunluk_uretim',gunluk);
+
+  // O günün gelir kayıtlarını yeniden üret (günlük girişle aynı mükerrer-önleme kuralı)
+  var gelir=_ls.get('uysa_gelirler',[]).filter(function(g){
+    return !(g.tarih===tarih && g.aciklama && g.aciklama.startsWith('Günlük üretim'));
+  });
+  gunluk.forEach(function(u){
+    if(u.tarih!==tarih || !(u.kisi>0)) return;
+    gelir.push({musteri:u.musteri, tarih:tarih, tutar:u.tutar, kisi:u.kisi, fatura:'', kaynak:'gunluk',
+      aciklama:'Günlük üretim — '+u.kisi+' kişi × '+u.fiyat+' ₺'});
+  });
+  _ls.set('uysa_gelirler',gelir);
+
+  inp.classList.toggle('dolu', k>0);
+  _hagTotalsRefresh();
+
+  // KPI ve diğer görünümleri tazele (yazma akışını bozmadan, gecikmeli)
+  clearTimeout(window.__hagKpiT);
+  window.__hagKpiT=setTimeout(function(){
+    if(typeof window.renderGelirler==='function') try{ window.renderGelirler(); }catch(e){}
+    if(typeof window.refreshFinStats==='function') try{ window.refreshFinStats(); }catch(e){}
+    if(typeof window.renderAnasayfa==='function') try{ window.renderAnasayfa(); }catch(e){}
+  },600);
+};
+
+function _hagTotalsRefresh(){
+  var wrap=document.getElementById('hag-table');
+  if(!wrap||!wrap.dataset.custs) return;
+  var custs=[]; try{ custs=JSON.parse(wrap.dataset.custs); }catch(e){}
+  var ym=wrap.dataset.ym||_thisMonth();
+  var gunluk=_ls.get('uysa_gunluk_uretim',[]);
+
+  // Satır toplamları (DOM girdilerinden)
+  wrap.querySelectorAll('[data-rt]').forEach(function(td){
+    var tarih=td.dataset.rt, top=0;
+    wrap.querySelectorAll('.hag-cell[data-t="'+tarih+'"]').forEach(function(i2){ top+=parseInt(i2.value)||0; });
+    td.textContent=top||'—';
+  });
+  // Kolon + genel toplamlar (kayıtlardan — tutar fiyat bilgisi ister)
+  var foot=_hagFootHtml(custs, ym, gunluk);
+  var tfoot=wrap.querySelector('tfoot');
+  if(tfoot) tfoot.innerHTML=foot;
+}
+
+/* CSV dışa aktar (Excel ile uyumlu, UTF-8 BOM + ; ayraç) */
+window.hagExcel = function(){
+  var wrap=document.getElementById('hag-table');
+  var ym=(document.getElementById('hag-ay')?.value)||_thisMonth();
+  var custs=_custs();
+  if(!custs.length){ alert('Müşteri yok.'); return; }
+  var gunluk=_ls.get('uysa_gunluk_uretim',[]);
+  var map={};
+  gunluk.forEach(function(u){ if((u.tarih||'').startsWith(ym)) map[u.tarih+'||'+u.musteri]=u; });
+  var p=ym.split('-'), Y=+p[0], M=+p[1];
+  var gunSay=new Date(Y,M,0).getDate();
+
+  var satirlar=[['TARİH'].concat(custs).concat(['TOPLAM']).join(';')];
+  var kolTop=custs.map(function(){ return 0; });
+  for(var d=1; d<=gunSay; d++){
+    var tarih=ym+'-'+_pad(d);
+    var gd=new Date(Y,M-1,d).getDay();
+    var rowTop=0;
+    var hücreler=custs.map(function(c,i){
+      var rec=map[tarih+'||'+c];
+      var v=rec?(rec.kisi||0):0;
+      rowTop+=v; kolTop[i]+=v;
+      return v|| (gd===0||gd===6 ? 'H.S.' : '');
+    });
+    satirlar.push([_pad(d)+'.'+_pad(M)+'.'+Y+' '+GUN_AD[gd]].concat(hücreler).concat([rowTop||'']).join(';'));
+  }
+  satirlar.push(['TOPLAM'].concat(kolTop).concat([kolTop.reduce(function(a,b){ return a+b; },0)]).join(';'));
+  var tutarlar=custs.map(function(c){
+    return gunluk.filter(function(u){ return u.musteri===c&&(u.tarih||'').startsWith(ym); })
+      .reduce(function(s,u){ return s+(u.tutar||0); },0);
+  });
+  satirlar.push(['TUTAR (TL)'].concat(tutarlar.map(function(t){ return t?t.toFixed(2).replace('.',','):''; }))
+    .concat([tutarlar.reduce(function(a,b){ return a+b; },0).toFixed(2).replace('.',',')]).join(';'));
+
+  var blob=new Blob(['﻿'+satirlar.join('\r\n')],{type:'text/csv;charset=utf-8'});
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='uysa-sayilar-'+ym+'.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(a.href);
+  _toast('📥 '+ym+' çizelgesi indirildi (CSV — Excel ile açılır).');
+};
+
+/* ════════════ 4) MÜKERRER SEKME YÖNLENDİRMESİ ════════════ */
+/* Finans → "Günlük Üretim Sayıları" anasayfadaki kokpitle birebir
+   aynı işi yapıyordu; sekme gizlendi, eski çağrılar anasayfaya gider. */
+var _origSwitchFinTab = window.switchFinTab;
+window.switchFinTab = function(tab){
+  if(tab==='sayi'){
+    document.querySelector('.mod-nav-item[data-module="anasayfa"]')?.click();
+    _toast('📊 Günlük sayılar artık Anasayfa — Günlük İşlem Merkezi\'nde.');
+    return;
+  }
+  if(typeof _origSwitchFinTab==='function') return _origSwitchFinTab.apply(this,arguments);
+};
+
+/* ════════════ INIT ════════════ */
+function _init(){
+  var ayInp=document.getElementById('hag-ay');
+  if(ayInp && !ayInp.value) ayInp.value=_thisMonth();
+
+  // renderAnasayfa zincirine katıl (kokpit wrap'inin üstüne)
+  var orig=window.renderAnasayfa;
+  window.renderAnasayfa=function(){
+    if(typeof orig==='function') try{ orig.apply(this,arguments); }catch(e){}
+    try{ _rangeUiSync(); }catch(e){}
+    try{ window.renderHomeAylikGrid(); }catch(e){}
+  };
+
+  _rangeUiSync();
+  window.renderHomeAylikGrid();
+  console.log('✅ UYSA dönem seçici + kaynak izleme + aylık çizelge yüklendi.');
 }
 if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',_init);
 else _init();

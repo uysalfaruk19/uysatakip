@@ -136,6 +136,14 @@ Sistem iki günlük işlem etrafında çalışır — her şey anasayfadan yapı
   maliyet kataloğuna otomatik aktarılır.
 - **Rozetler**: Otomatik oluşan kayıtlar listelerde 📊 OTO / 🧾 FATURADAN
   rozetiyle görünür — elle girilenlerden ayırt edilir.
+- **Aylık Sayı Çizelgesi**: Excel alışkanlığındaki gün × müşteri tablosu
+  anasayfada. Hücreye kişi sayısını yaz → kayıt ve gelir otomatik güncellenir;
+  hafta sonları H.S. olarak işaretli; CSV (Excel) dışa aktarım var.
+- **Dönem seçici**: Dashboard varsayılan olarak içinde bulunulan ayı gösterir;
+  Bu Ay / Geçen Ay / Bu Yıl / Tümü veya özel tarih aralığı seçilebilir.
+- **Veri kaynağı izleme**: Herhangi bir KPI kartına veya grafikteki 🔍 Kaynak
+  butonuna tıkla → o rakamı oluşturan kayıtlar (hangi anahtar, hangi girişten
+  geldiği, otomatik/elle dağılımı) listelenir.
 
 > ⚠️ Fatura işledikten sonra aynı tutarı Finans'a elle gider olarak girmeyin —
 > sistem zaten oluşturur.
