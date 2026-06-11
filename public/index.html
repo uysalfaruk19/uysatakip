@@ -22323,6 +22323,11 @@ window.renderHomeAylikGrid = function(){
         +custs.map(function(c){ return '<option value="'+c.replace(/"/g,'&quot;')+'">'+c+'</option>'; }).join('');
       sel.dataset.list=listJson;
       if(onceki && custs.indexOf(onceki)>=0) sel.value=onceki;
+      else if(!sel.dataset.mobileDefaulted && window.innerWidth<=760 && custs.length>1){
+        // MOBİL: dar ekranda ilk açılışta tek-müşteri ekstresine geç (yatay kaydırma derdi olmasın).
+        // Tek seferlik: kullanıcı "Tüm Müşteriler" veya başka müşteri seçince flag kalır, zorla değiştirilmez.
+        sel.value=custs[0]; sel.dataset.mobileDefaulted='1';
+      }
     }
   }
 
