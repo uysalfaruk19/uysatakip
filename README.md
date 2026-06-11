@@ -28,9 +28,9 @@ uysa-project/
 | OFU | 👑 Süper Yönetici | Tüm işlemler + kullanıcı yönetimi |
 | Azim | 👤 Standart Kullanıcı | Okuma + yazma |
 
-> **İlk giriş şifreleri:**
-> - OFU: `05321608119` (telefon numarası — ilk girişten sonra değiştirin!)
-> - Azim: `Azim2024!`
+> **İlk giriş şifreleri:** Güvenlik gereği README'den kaldırıldı.
+> Kurulum sırasında ortam değişkeni / yönetici paneli üzerinden belirleyin
+> ve güçlü, kişiye özel şifreler kullanın (telefon numarası vb. kullanmayın).
 
 ## 🚀 Kurulum
 
