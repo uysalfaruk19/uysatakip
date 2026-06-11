@@ -1847,7 +1847,7 @@
     <div class="login-error" id="loginError">Kullanıcı adı veya şifre hatalı!</div>
     <div class="login-field">
       <label>Kullanıcı Adı</label>
-      <input type="text" id="loginUser" placeholder="Kullanıcı adınız" autocomplete="username"
+      <input type="text" id="loginUser" placeholder="Kullanıcı adınız" autocomplete="username" value="uysa"
         onkeydown="if(event.key==='Enter') document.getElementById('loginPass').focus()"/>
     </div>
     <div class="login-field">
@@ -11436,8 +11436,8 @@ window.addEventListener('DOMContentLoaded', function() {
     const gelirler=getGelirler(), giderler=getGiderler();
     const aylar=[];
     for(let i=5;i>=0;i--){
-      const d=new Date(); d.setMonth(d.getMonth()-i);
-      const ay=d.toISOString().slice(0,7);
+      const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-i);
+      const ay=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
       const g=gelirler.filter(x=>x.tarih&&x.tarih.startsWith(ay)).reduce((s,x)=>s+(x.tutar||0),0);
       const gd=giderler.filter(x=>x.tarih&&x.tarih.startsWith(ay)).reduce((s,x)=>s+(x.tutar||0),0);
       aylar.push({label:ay.slice(5)+'.'+ay.slice(2,4), gelir:g, gider:gd, kar:g-gd});
