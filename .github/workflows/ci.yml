@@ -88,7 +88,7 @@ jobs:
             echo "❌ uysaDoLogin function not found in index.html"
             exit 1
           fi
-          if ! grep -q 'id="loginOverlay"' public/index.html; then
+          if ! grep -qE 'id="(uysaLoginOverlay|loginOverlay)"' public/index.html; then
             echo "❌ Login overlay not found in index.html"
             exit 1
           fi
