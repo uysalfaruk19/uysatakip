@@ -75,7 +75,8 @@ foreach ($KNOWN as $k) {
 $report = [
     'mojibake_map'   => [],   // raw => fixed (yalnız gerçekten değişenler)
     'unmatched'      => [],   // onarılamayan / KNOWN dışı adlar
-    'skipped_rows'   => [],   // anomali satırlar
+    'skipped_rows'   => [],   // boş ad/bozuk/boş gün (taşınmaz)
+    'mismatch_info'  => [],   // öğün-üst farkı (taşındı, öğün esas — bilgi)
     'collisions'     => [],   // UNIQUE çakışması
     'sections'       => [],   // bölüm bazlı sayı/toplam
 ];
@@ -125,9 +126,9 @@ $MEALS = ['sabah', 'ogle', 'aksam', 'gece', 'kumanya'];
 $validProd = [];      // [customer => [ [date,meal,persons,price,amount,note], ... ]]
 $latestPrice = [];    // canonical => ['date'=>,'price'=>]
 $custContact = [];    // canonical => ['contact'=>,'phone'=>]
-$skippedTotal = 0.0;  // ad/tarih anomalisi tutar toplamı
-$mismatchTotal = 0.0; // kırılım≠tutar uyuşmazlığı tutar toplamı
-$mismatchRows = 0;
+$skippedTotal = 0.0;  // atlanan (boş ad/tarih/boş gün) üst tutar toplamı
+$mismatchNet = 0.0;   // öğün-toplam − üst-tutar net farkı (öğünden kurtarılan ciro)
+$mismatchRows = 0;    // öğün-üst uyuşmazlığı bulunan satır sayısı (atlanmaz, INFO)
 $breakdownSrcRows = 0;
 $flatSrcRows = 0;
 
@@ -159,10 +160,12 @@ foreach ($gu as $r) {
         }
     }
 
+    // ÖĞÜN-GERÇEK: öğün kırılımı ham veridir, üst `tutar` türetilmiş (çoğu satırda akşam/öğün
+    // eklenmiş ama üst toplam güncellenmemiş — v1 bu ciroyu düşürüyordu). Öğün>0 olan satırlar
+    // öğünden yazılır; öğün-üst uyuşmazlığı ANOMALİ DEĞİL, INFO'dur (öğün esas alınır).
+    $mealRows = [];
+    $sum = 0.0;
     if ($hasBreakdown) {
-        $breakdownSrcRows++;
-        $mealRows = [];
-        $sum = 0.0;
         foreach ($MEALS as $m) {
             if (!isset($r[$m]) || !is_array($r[$m])) {
                 continue;
@@ -176,28 +179,38 @@ foreach ($gu as $r) {
             $mealRows[] = ['date' => $date, 'meal' => $m, 'persons' => $k, 'price' => $f, 'amount' => $amt, 'note' => $rowNote];
             $sum += $amt;
         }
+    }
+
+    if ($mealRows) {
+        // Öğün kırılımı var → yaz. Üst tutarla fark INFO olarak izlenir (net denklik için).
+        $breakdownSrcRows++;
         if (abs($sum - $tutar) > 0.005) {
-            // Kırılım toplamı türetilmiş tutar ile uyuşmuyor → ANOMALİ, tahminle yazma
-            $report['skipped_rows'][] = [
-                'kaynak' => 'gunluk_uretim',
-                'sebep'  => sprintf('kirilim_tutar_uyusmazligi (ogun_toplam=%s / tutar=%s)',
-                    number_format($sum, 2, ',', '.'), number_format($tutar, 2, ',', '.')),
-                'ham'    => $r,
-            ];
-            $mismatchTotal += $tutar;
             $mismatchRows++;
-        } else {
-            foreach ($mealRows as $mr) {
-                $validProd[$canon][] = $mr;
-            }
+            $report['mismatch_info'][] = [
+                'musteri' => $canon, 'tarih' => $date,
+                'ogun_toplam' => $sum, 'ust_tutar' => $tutar, 'fark' => round($sum - $tutar, 2),
+                'not' => $rowNote,
+            ];
         }
-    } else {
-        // Düz satır (kırılım alanı hiç yok) → tek satır meal='ogle', amount = v1 tutar
+        $mismatchNet += ($sum - $tutar);
+        foreach ($mealRows as $mr) {
+            $validProd[$canon][] = $mr;
+        }
+    } elseif ((int) ($r['kisi'] ?? 0) > 0) {
+        // Kırılım yok/hepsi 0 ama üst kisi>0 → düz satır meal='ogle', amount = v1 tutar
         $flatSrcRows++;
         $validProd[$canon][] = [
             'date' => $date, 'meal' => 'ogle', 'persons' => (int) ($r['kisi'] ?? 0),
             'price' => $topPrice, 'amount' => $tutar, 'note' => $rowNote,
         ];
+    } else {
+        // Üst kisi=0 VE öğün toplamı 0 → gerçekten boş gün, atla (tahmin yok)
+        $report['skipped_rows'][] = [
+            'kaynak' => 'gunluk_uretim',
+            'sebep'  => 'bos_gun (kisi=0 ve ogun=0)',
+            'ham'    => $r,
+        ];
+        $skippedTotal += $tutar;
     }
 
     if (!isset($latestPrice[$canon]) || $date > $latestPrice[$canon]['date']) {
@@ -393,12 +406,16 @@ foreach ($validProd as $rows) {
         $validTotal += $row['amount'];
     }
 }
+// Denklik (öğün-gerçek): valid_total == (raw_total − skipped_total) + mismatch_net
+$expectedValid = round(($rawTotal - $skippedTotal) + $mismatchNet, 2);
 $report['sections']['production'] = [
     'raw_rows' => $rawRows, 'raw_total' => $rawTotal,
     'breakdown_src' => $breakdownSrcRows, 'flat_src' => $flatSrcRows,
-    'valid_rows' => $validRows, 'valid_total' => $validTotal,
+    'valid_rows' => $validRows, 'valid_total' => round($validTotal, 2),
     'skipped_total' => $skippedTotal,
-    'mismatch_rows' => $mismatchRows, 'mismatch_total' => $mismatchTotal,
+    'mismatch_rows' => $mismatchRows, 'mismatch_net' => round($mismatchNet, 2),
+    'expected_valid' => $expectedValid,
+    'denklik_ok' => abs($validTotal - $expectedValid) < 0.01,
 ];
 
 // ════════════════════════════════════════════════════════════
@@ -501,24 +518,24 @@ echo "  UYSA v1 → v2 MİGRASYON " . ($dryRun ? "[DRY-RUN — yazım yok]" : "[
 echo "  Kaynak: {$sourceDb}\n";
 echo "════════════════════════════════════════════════════════════\n\n";
 
-echo "── ÜRETİM RECONCILIATION (kabul kriteri — TUTAR bazlı) ─────\n";
+echo "── ÜRETİM RECONCILIATION (kabul kriteri — öğün-gerçek) ─────\n";
 $p = $report['sections']['production'];
-echo "  Öğün kırılımı: v1 satır ≠ v2 satır (kırılımlı satır → öğün başına ayrı production).\n";
+echo "  Öğün-gerçek: öğün kırılımı ham veri; üst 'tutar' türetilmiş. Öğün>0 satırlar öğünden\n";
+echo "  yazılır (v1'in düşürdüğü akşam/öğün cirosu KURTARILIR); yalnız boş/bozuk satır atlanır.\n";
 printf("  Kaynak satır: %d ham (%d kırılımlı + %d düz)\n", $p['raw_rows'], $p['breakdown_src'], $p['flat_src']);
-printf("  %-38s %10s  %16s\n", "", "SATIR", "TUTAR (TL)");
-printf("  %-38s %10s  %16s\n", "v1 ham (gunluk_uretim tutar toplamı)", '', $m($p['raw_total']));
-printf("  %-38s %10d  %16s\n", "  - ad/tarih anomalisi (atlandı)", 0, $m($p['skipped_total']));
-printf("  %-38s %10d  %16s\n", "  - kırılım≠tutar anomalisi (atlandı)", $p['mismatch_rows'], $m($p['mismatch_total']));
-printf("  %-38s %10d  %16s\n", "= production'a taşınan (öğün satırı)", $p['valid_rows'], $m($p['valid_total']));
+printf("  %-40s %10s  %16s\n", "", "SATIR", "TUTAR (TL)");
+printf("  %-40s %10s  %16s\n", "v1 ham (gunluk_uretim üst tutar toplamı)", '', $m($p['raw_total']));
+printf("  %-40s %10s  %16s\n", "  - atlanan (boş ad/tarih/boş gün)", '', "-" . $m($p['skipped_total']));
+printf("  %-40s %10d  %16s\n", "  +/- öğün-üst farkı (kurtarılan ciro)", $p['mismatch_rows'], $m($p['mismatch_net']));
+printf("  %-40s %10s  %16s\n", "= beklenen taşınacak (hesap)", '', $m($p['expected_valid']));
+printf("  %-40s %10d  %16s\n", "→ production'a yazılan (öğün satırı)", $p['valid_rows'], $m($p['valid_total']));
 if (!$dryRun) {
-    printf("  %-38s %10d  %16s\n", "→ production DB'de OKUNAN", $inserted['production'], $m($prodInsertedTotal));
     $dbSum = (float) $dst->query('SELECT COALESCE(SUM(amount),0) FROM production')->fetchColumn();
     $dbCnt = (int) $dst->query('SELECT COUNT(*) FROM production')->fetchColumn();
-    printf("  %-38s %10d  %16s\n", "→ production DB SUM (kanıt)", $dbCnt, $m($dbSum));
+    printf("  %-40s %10d  %16s\n", "→ production DB SUM (kanıt)", $dbCnt, $m($dbSum));
 }
-$sumAll = $p['valid_total'] + $p['skipped_total'] + $p['mismatch_total'];
-$balanced = abs($sumAll - $p['raw_total']) < 0.005;
-echo "  DENKLİK (TUTAR): taşınan + anomaliler == ham → " . ($balanced ? "✅ TUTUYOR" : "❌ TUTMUYOR (" . $m($sumAll) . " / " . $m($p['raw_total']) . ")") . "\n";
+echo "  DENKLİK: yazılan == (ham − atlanan) + öğün-farkı → "
+    . ($p['denklik_ok'] ? "✅ TUTUYOR" : "❌ TUTMUYOR (" . $m($p['valid_total']) . " / " . $m($p['expected_valid']) . ")") . "\n";
 if (!empty($report['collisions'])) {
     echo "  UYARI: " . count($report['collisions']) . " UNIQUE çakışması (aynı müşteri×gün×öğün) — aşağıda.\n";
 }
@@ -555,9 +572,18 @@ if ($report['unmatched']) {
     echo "  Eşleşmeyen müşteri adı YOK.\n";
 }
 if ($report['skipped_rows']) {
-    echo "  Atlanan anomali satırlar (" . count($report['skipped_rows']) . "):\n";
+    echo "  ATLANAN satırlar (boş ad/bozuk/boş gün — taşınmadı, " . count($report['skipped_rows']) . "):\n";
     foreach ($report['skipped_rows'] as $s) {
         echo "    [{$s['kaynak']}] {$s['sebep']}: " . json_encode($s['ham'], JSON_UNESCAPED_UNICODE) . "\n";
+    }
+}
+if (!empty($report['mismatch_info'])) {
+    echo "\n  ÖĞÜN-ÜST FARKI olan satırlar (TAŞINDI, öğün esas alındı — bilgi, " . count($report['mismatch_info']) . "):\n";
+    echo "  (v1'de üst tutar güncellenmemiş; öğün kırılımı yazıldı. Ömer gözden geçirebilir.)\n";
+    foreach ($report['mismatch_info'] as $mi) {
+        printf("    %-16s %s  öğün=%s üst=%s fark=%s %s\n",
+            $mi['musteri'], $mi['tarih'], $m($mi['ogun_toplam']), $m($mi['ust_tutar']),
+            $m($mi['fark']), $mi['not'] ? "({$mi['not']})" : '');
     }
 }
 if ($report['collisions']) {
