@@ -7,13 +7,11 @@ use Uysa\Helpers;
 
 $u = Auth::requireLogin();
 
-// Yol haritasındaki (henüz doldurulmamış) modüller — temiz placeholder, kırık ekran YOK.
+// Yol haritasındaki (henüz doldurulmamış) GELECEK özellikler — temiz placeholder, kırık ekran YOK.
+// Broşür menü seti (kiosk hariç) tamamlandı; buradaki modüllerin hepsi CANLI. Burası artık
+// yalnızca ileride açılacak özellikler için (ör. profil).
 $MODULES = [
-    'siparisler' => ['Siparişler', 'bi-basket', 'Müşteri sipariş akışı ve onay kuyruğu. Müşteri uygulaması (F2) ile birlikte açılır.'],
-    'stok'       => ['Stok Durumu', 'bi-box-seam', 'Malzeme giriş/çıkış, anlık stok ve kritik stok uyarıları.'],
-    'recete'     => ['Reçete & Maliyet', 'bi-clipboard2-data', 'Reçete × gramaj → porsiyon maliyeti → müşteri karlılığı.'],
-    'personel'   => ['Personel Giderleri', 'bi-person-badge', 'Maaş, prim ve personel giderleri takibi, raporlara yansıması.'],
-    'profil'     => ['Profil', 'bi-person-gear', 'Kullanıcı ayarları, şifre değiştirme ve tercih yönetimi.'],
+    'profil' => ['Profil', 'bi-person-gear', 'Kullanıcı ayarları, şifre değiştirme ve tercih yönetimi.'],
 ];
 
 $key = (string) ($_GET['m'] ?? '');

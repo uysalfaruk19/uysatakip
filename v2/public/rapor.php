@@ -125,6 +125,7 @@ if ($drill) {
 $rows = $repo->monthProductionByCustomer($month);
 $fin = $repo->monthFinanceTotals($month);
 $tasimaTot = $repo->monthTasimaTotals($month);
+$nk = $repo->netKarlilik($month);
 $tasimaList = $repo->listCustomersByCategory('tasima');
 $toplamCiro = 0.0; $toplamKisi = 0;
 foreach ($rows as $r) {
@@ -144,6 +145,19 @@ require __DIR__ . '/partials/header.php';
         <div class="summary-card tint-orange"><p class="label">Toplam kişi</p><p class="metric"><?= number_format($toplamKisi, 0, ',', '.') ?></p></div>
         <div class="summary-card tint-green"><p class="label">Üretim cirosu</p><p class="metric">₺ <?= Helpers::money($toplamCiro) ?></p></div>
         <div class="summary-card wide"><p class="label">Finans net nakit</p><p class="metric <?= $fin['net'] < 0 ? 'neg' : '' ?>">₺ <?= Helpers::money($fin['net']) ?></p></div>
+      </div>
+
+      <div class="cardx card-pad">
+        <h2>Net karlılık <span class="text-muted" style="font-size:12px;font-weight:600">(üretim − maliyet, ayrı kalemler)</span></h2>
+        <table class="tablex">
+          <tbody>
+            <tr><td>Üretim cirosu</td><td class="num">₺ <?= Helpers::money($nk['ciro']) ?></td></tr>
+            <tr><td>Hammadde / işletme gideri</td><td class="num">− ₺ <?= Helpers::money($nk['hammadde']) ?></td></tr>
+            <tr><td>Personel gideri</td><td class="num">− ₺ <?= Helpers::money($nk['personel']) ?></td></tr>
+            <tr><td>Taşıma sabit gideri</td><td class="num">− ₺ <?= Helpers::money($nk['tasima_gider']) ?></td></tr>
+            <tr class="is-total"><td>Net karlılık</td><td class="num" style="color:<?= $nk['net'] < 0 ? 'var(--red)' : 'var(--green)' ?>">₺ <?= Helpers::money($nk['net']) ?></td></tr>
+          </tbody>
+        </table>
       </div>
 
       <div class="section-head"><h2>Üretim müşterileri</h2><span class="text-muted" style="font-size:12px">adına tıkla → gün gün</span></div>

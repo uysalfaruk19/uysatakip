@@ -926,4 +926,205 @@ final class Repo
              ORDER BY sm.move_date DESC, sm.id DESC LIMIT ' . (int) $limit
         )->fetchAll();
     }
+
+    // ── Personel Giderleri (opus-009) ─────────────────────────
+    /** Geçerli personel gider türleri (ENUM/CHECK ile eş). */
+    public const PERSONEL_GIDER_TUR = ['maas', 'prim', 'avans', 'sgk', 'diger'];
+
+    /** @return array<int,array> personel listesi (aktif varsayılan). */
+    public function listPersonel(bool $activeOnly = true): array
+    {
+        $sql = 'SELECT id, ad, gorev, aylik_ucret, is_active FROM personel';
+        if ($activeOnly) {
+            $sql .= ' WHERE is_active = 1';
+        }
+        $sql .= ' ORDER BY ad';
+        return $this->pdo->query($sql)->fetchAll();
+    }
+
+    public function personel(int $id): ?array
+    {
+        $st = $this->pdo->prepare('SELECT id, ad, gorev, aylik_ucret, is_active FROM personel WHERE id = ?');
+        $st->execute([$id]);
+        return $st->fetch() ?: null;
+    }
+
+    /** Personel ekle/düzenle. $id verilirse günceller (ad dahil), yoksa ekler. */
+    public function upsertPersonel(string $ad, ?string $gorev, float $aylikUcret, ?int $id = null): int
+    {
+        if ($id !== null) {
+            $this->pdo->prepare('UPDATE personel SET ad = ?, gorev = ?, aylik_ucret = ? WHERE id = ?')
+                ->execute([$ad, $gorev, $aylikUcret, $id]);
+            return $id;
+        }
+        $this->pdo->prepare('INSERT INTO personel (ad, gorev, aylik_ucret) VALUES (?, ?, ?)')
+            ->execute([$ad, $gorev, $aylikUcret]);
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    /** Personel pasifleştir (silme YOK — gider geçmişi bütünlüğü). */
+    public function setPersonelActive(int $id, bool $active): void
+    {
+        $this->pdo->prepare('UPDATE personel SET is_active = ? WHERE id = ?')
+            ->execute([$active ? 1 : 0, $id]);
+    }
+
+    /** Personel gider kaydı ekle. $personelId NULL = kişiye bağlı olmayan toplu gider. */
+    public function addPersonelGider(?int $personelId, string $tarih, string $tur, float $tutar, ?string $aciklama = null): int
+    {
+        if (!in_array($tur, self::PERSONEL_GIDER_TUR, true)) {
+            throw new \InvalidArgumentException('Geçersiz gider türü: ' . $tur);
+        }
+        $this->pdo->prepare(
+            'INSERT INTO personel_gider (personel_id, tarih, tur, tutar, aciklama) VALUES (?, ?, ?, ?, ?)'
+        )->execute([$personelId, $tarih, $tur, $tutar, $aciklama]);
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    /** Aylık toplam personel gideri (tüm türler). */
+    public function monthPersonelTotal(string $ay): float
+    {
+        $st = $this->pdo->prepare(
+            'SELECT COALESCE(SUM(tutar),0) FROM personel_gider WHERE substr(tarih,1,7) = ?'
+        );
+        $st->execute([$ay]);
+        return (float) $st->fetchColumn();
+    }
+
+    /** Aylık personel gideri tür kırılımı [tur => toplam]. */
+    public function monthPersonelByType(string $ay): array
+    {
+        $st = $this->pdo->prepare(
+            'SELECT tur, COALESCE(SUM(tutar),0) AS toplam FROM personel_gider
+             WHERE substr(tarih,1,7) = ? GROUP BY tur'
+        );
+        $st->execute([$ay]);
+        $out = [];
+        foreach ($st->fetchAll() as $r) {
+            $out[$r['tur']] = (float) $r['toplam'];
+        }
+        return $out;
+    }
+
+    /** Aydaki personel gider kayıtları (personel adıyla, yeni→eski). */
+    public function monthPersonelGider(string $ay, int $limit = 60): array
+    {
+        $st = $this->pdo->prepare(
+            'SELECT pg.id, pg.tarih, pg.tur, pg.tutar, pg.aciklama, p.ad AS personel_ad
+             FROM personel_gider pg LEFT JOIN personel p ON p.id = pg.personel_id
+             WHERE substr(pg.tarih,1,7) = ?
+             ORDER BY pg.tarih DESC, pg.id DESC LIMIT ' . (int) $limit
+        );
+        $st->execute([$ay]);
+        return $st->fetchAll();
+    }
+
+    // ── Faturalar (aylık müşteri faturası — opus-009) ─────────
+    /** Aylık üretim cirosu (production tutar toplamı). */
+    public function monthProductionTotal(string $ay): float
+    {
+        $st = $this->pdo->prepare(
+            'SELECT COALESCE(SUM(amount),0) FROM production WHERE substr(prod_date,1,7) = ?'
+        );
+        $st->execute([$ay]);
+        return (float) $st->fetchColumn();
+    }
+
+    /**
+     * Bir müşterinin aylık faturası: üretim (gün gün öğün) satırları + toplamlar.
+     * KDV opsiyonel: kdv_tutar = ara × kdv/100, genel = ara + kdv_tutar.
+     * ara_toplam o ay production tutar toplamına eşittir (fatura = üretimden üretilir).
+     * @return array{lines:array,ara_toplam:float,kdv_oran:float,kdv_tutar:float,genel_toplam:float,persons:int,gun:int}
+     */
+    public function customerInvoice(int $customerId, string $ay, float $kdvOran = 0.0): array
+    {
+        $lines = $this->customerDailyGrid($customerId, $ay);
+        $araToplam = 0.0;
+        $persons = 0;
+        foreach ($lines as $l) {
+            $araToplam += (float) $l['tutar'];
+            $persons += (int) $l['kisi'];
+        }
+        $araToplam = round($araToplam, 2);
+        $kdvOran = max(0.0, $kdvOran);
+        $kdvTutar = round($araToplam * $kdvOran / 100, 2);
+        $genelToplam = round($araToplam + $kdvTutar, 2);
+        return [
+            'lines'        => $lines,
+            'ara_toplam'   => $araToplam,
+            'kdv_oran'     => $kdvOran,
+            'kdv_tutar'    => $kdvTutar,
+            'genel_toplam' => $genelToplam,
+            'persons'      => $persons,
+            'gun'          => count($lines),
+        ];
+    }
+
+    /** Fatura kaydı üret/güncelle (UNIQUE customer_id, ay → upsert). @return fatura id */
+    public function saveFatura(int $customerId, string $ay, float $araToplam, float $kdvOran, float $genelToplam, string $durum = 'taslak'): int
+    {
+        if (!in_array($durum, ['taslak', 'kesildi'], true)) {
+            $durum = 'taslak';
+        }
+        $driver = $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+        $onConf = $driver === 'sqlite'
+            ? 'ON CONFLICT(customer_id, ay) DO UPDATE SET
+                 ara_toplam = excluded.ara_toplam, kdv_oran = excluded.kdv_oran,
+                 genel_toplam = excluded.genel_toplam, durum = excluded.durum'
+            : 'ON DUPLICATE KEY UPDATE
+                 ara_toplam = VALUES(ara_toplam), kdv_oran = VALUES(kdv_oran),
+                 genel_toplam = VALUES(genel_toplam), durum = VALUES(durum)';
+        $this->pdo->prepare(
+            'INSERT INTO fatura (customer_id, ay, ara_toplam, kdv_oran, genel_toplam, durum)
+             VALUES (?, ?, ?, ?, ?, ?) ' . $onConf
+        )->execute([$customerId, $ay, $araToplam, $kdvOran, $genelToplam, $durum]);
+        $st = $this->pdo->prepare('SELECT id FROM fatura WHERE customer_id = ? AND ay = ?');
+        $st->execute([$customerId, $ay]);
+        return (int) $st->fetchColumn();
+    }
+
+    /** Fatura listesi (müşteri adıyla, yeni→eski). $customerId verilirse filtreli. */
+    public function listFaturalar(?int $customerId = null, int $limit = 50): array
+    {
+        $sql = 'SELECT f.id, f.customer_id, f.ay, f.ara_toplam, f.kdv_oran, f.genel_toplam, f.durum, f.created_at,
+                       c.name AS customer_name
+                FROM fatura f JOIN customers c ON c.id = f.customer_id';
+        $params = [];
+        if ($customerId !== null) {
+            $sql .= ' WHERE f.customer_id = ?';
+            $params[] = $customerId;
+        }
+        $sql .= ' ORDER BY f.ay DESC, c.name ASC LIMIT ' . (int) $limit;
+        $st = $this->pdo->prepare($sql);
+        $st->execute($params);
+        return $st->fetchAll();
+    }
+
+    /**
+     * Aylık net karlılık (tahakkuk, finans nakit akışından ayrı):
+     *   üretim cirosu − hammadde/işletme gideri − personel gideri − taşıma sabit gideri = net.
+     * Kalemler AYRI (karıştırma yok). 'Personel' kategorili finans gideri hammaddeden düşülür
+     * (çift sayım önlenir); personel gideri TEK kaynak = personel_gider.
+     * @return array{ciro:float,hammadde:float,personel:float,tasima_gider:float,net:float}
+     */
+    public function netKarlilik(string $ay): array
+    {
+        $ciro = $this->monthProductionTotal($ay);
+        $st = $this->pdo->prepare(
+            "SELECT COALESCE(SUM(amount),0) FROM transactions
+             WHERE type = 'gider' AND substr(tx_date,1,7) = ?
+               AND (category IS NULL OR category <> 'Personel')"
+        );
+        $st->execute([$ay]);
+        $hammadde = (float) $st->fetchColumn();
+        $personel = $this->monthPersonelTotal($ay);
+        $tasimaGider = $this->monthTasimaTotals($ay)['gider'];
+        return [
+            'ciro'         => $ciro,
+            'hammadde'     => $hammadde,
+            'personel'     => $personel,
+            'tasima_gider' => $tasimaGider,
+            'net'          => $ciro - $hammadde - $personel - $tasimaGider,
+        ];
+    }
 }

@@ -272,6 +272,52 @@ CREATE TABLE IF NOT EXISTS `stock_moves` (
   CONSTRAINT `fk_sm_ingredient` FOREIGN KEY (`ingredient_id`) REFERENCES `ingredients` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ── Personel (maaş/prim/gider takibi — opus-009) ──────────────
+CREATE TABLE IF NOT EXISTS `personel` (
+  `id`          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `ad`          VARCHAR(150) NOT NULL,
+  `gorev`       VARCHAR(120)          DEFAULT NULL,
+  `aylik_ucret` DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'sözleşme aylık ücret TL',
+  `is_active`   TINYINT(1)   NOT NULL DEFAULT 1,
+  `created_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_personel_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Personel gider kayıtları (maaş/prim/avans/sgk/diğer). personel_id NULL = kişiye
+-- bağlı olmayan toplu gider (ör. toplu SGK). Aylık toplam finans net karlılığa yansır.
+CREATE TABLE IF NOT EXISTS `personel_gider` (
+  `id`          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `personel_id` INT UNSIGNED          DEFAULT NULL,
+  `tarih`       DATE         NOT NULL,
+  `tur`         ENUM('maas','prim','avans','sgk','diger') NOT NULL DEFAULT 'maas',
+  `tutar`       DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `aciklama`    VARCHAR(500)          DEFAULT NULL,
+  `created_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_pg_personel` (`personel_id`),
+  KEY `idx_pg_tarih` (`tarih`),
+  CONSTRAINT `fk_pg_personel` FOREIGN KEY (`personel_id`) REFERENCES `personel` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── Faturalar (aylık müşteri faturası — production'dan üretilir) ─
+-- Üret+kaydet: ara_toplam (o ay üretim tutarı) + KDV opsiyonel = genel_toplam.
+-- source: 'manuel' | 'parasut' (e-fatura entegrasyonu F-sonra; alan hazır).
+CREATE TABLE IF NOT EXISTS `fatura` (
+  `id`           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `customer_id`  INT UNSIGNED NOT NULL,
+  `ay`           CHAR(7)      NOT NULL COMMENT 'YYYY-MM',
+  `ara_toplam`   DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `kdv_oran`     DECIMAL(5,2)  NOT NULL DEFAULT 0.00 COMMENT 'KDV %; 0 = KDV yok',
+  `genel_toplam` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `durum`        ENUM('taslak','kesildi') NOT NULL DEFAULT 'taslak',
+  `source`       VARCHAR(20)  NOT NULL DEFAULT 'manuel',
+  `created_at`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_fatura` (`customer_id`,`ay`),
+  CONSTRAINT `fk_fatura_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ── Denetim + oran sınırlama (v1 güvenlik desenleri) ──────────
 CREATE TABLE IF NOT EXISTS `audit` (
   `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,

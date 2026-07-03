@@ -98,6 +98,7 @@ function handleInvoiceUpload(array $file, Repo $repo, string $by, string &$flash
 
 $fin = $repo->monthFinanceTotals($month);
 $tasimaTot = $repo->monthTasimaTotals($month);
+$nk = $repo->netKarlilik($month);
 $txs = $repo->transactionsForMonth($month);
 $customers = $repo->activeCustomers();
 $suppliers = $repo->activeSuppliers();
@@ -138,6 +139,21 @@ require __DIR__ . '/partials/header.php';
             <tr><td>Taşıma satış / hakediş</td><td class="num">₺ <?= Helpers::money($tasimaTot['satis']) ?></td></tr>
             <tr><td>Taşıma sabit gider</td><td class="num">₺ <?= Helpers::money($tasimaTot['gider']) ?></td></tr>
             <tr class="is-total"><td>Taşıma kâr</td><td class="num" style="color:<?= $tasimaTot['kar'] < 0 ? 'var(--red)' : 'var(--green)' ?>">₺ <?= Helpers::money($tasimaTot['kar']) ?></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <?php endif; ?>
+
+      <?php if ($nk['ciro'] > 0 || $nk['personel'] > 0 || $nk['hammadde'] > 0 || $nk['tasima_gider'] > 0): ?>
+      <div class="cardx card-pad">
+        <h2>Net karlılık <span class="text-muted" style="font-size:12px;font-weight:600">(tahakkuk — nakit akışından ayrı)</span></h2>
+        <table class="tablex">
+          <tbody>
+            <tr><td>Üretim cirosu</td><td class="num">₺ <?= Helpers::money($nk['ciro']) ?></td></tr>
+            <tr><td>Hammadde / işletme gideri</td><td class="num">− ₺ <?= Helpers::money($nk['hammadde']) ?></td></tr>
+            <tr><td>Personel gideri</td><td class="num">− ₺ <?= Helpers::money($nk['personel']) ?></td></tr>
+            <tr><td>Taşıma sabit gideri</td><td class="num">− ₺ <?= Helpers::money($nk['tasima_gider']) ?></td></tr>
+            <tr class="is-total"><td>Net karlılık</td><td class="num" style="color:<?= $nk['net'] < 0 ? 'var(--red)' : 'var(--green)' ?>">₺ <?= Helpers::money($nk['net']) ?></td></tr>
           </tbody>
         </table>
       </div>

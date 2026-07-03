@@ -149,10 +149,10 @@ require __DIR__ . '/partials/header.php';
           <div class="mt">Kâr / Zarar</div>
           <div class="md">Aylık rapor + müşteri drill-down</div>
         </a>
-        <a class="mod-card" href="finans.php">
+        <a class="mod-card" href="faturalar.php">
           <div class="mico"><i class="bi bi-receipt"></i></div>
-          <div class="mt">Aylık Faturalar</div>
-          <div class="md">Gelir / gider akışı</div>
+          <div class="mt">Faturalar</div>
+          <div class="md">Aylık müşteri faturası oluştur</div>
         </a>
         <a class="mod-card i-green" href="cari.php">
           <div class="mico"><i class="bi bi-cash-coin"></i></div>
@@ -176,10 +176,9 @@ require __DIR__ . '/partials/header.php';
           <div class="mt">Reçete & Maliyet</div>
           <div class="md">Porsiyon maliyeti</div>
         </a>
-        <a class="mod-card soon i-amber" href="yakinda.php?m=personel">
-          <span class="soon-chip">yakında</span>
+        <a class="mod-card i-amber" href="personel.php">
           <div class="mico"><i class="bi bi-person-badge"></i></div>
-          <div class="mt">Personel Gideri</div>
+          <div class="mt">Personel Giderleri</div>
           <div class="md">Maaş / prim takibi</div>
         </a>
       </div>
