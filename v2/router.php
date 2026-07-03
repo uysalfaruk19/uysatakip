@@ -68,6 +68,19 @@ if (str_starts_with($uri, '/eski/')) {
     return true;
 }
 
+// Müşteri API (oturumlu): /api/musteri/siparis → public/api/musteri/siparis.php
+if (preg_match('#^/api/musteri/([a-z_]+)/?$#', $uri, $m)) {
+    $f = $pub . '/api/musteri/' . $m[1] . '.php';
+    if (is_file($f)) {
+        require $f;
+        return true;
+    }
+    http_response_code(404);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['ok' => false, 'error' => 'Bilinmeyen endpoint'], JSON_UNESCAPED_UNICODE);
+    return true;
+}
+
 // Pretty API: /api/uretim → public/api/uretim.php
 if (preg_match('#^/api/([a-z_]+)/?$#', $uri, $m)) {
     $f = $pub . '/api/' . $m[1] . '.php';

@@ -1,0 +1,23 @@
+<?php
+/** @var string $active */
+$active = $active ?? '';
+$tabs = [
+  'panel'   => ['Panel', 'bi-house-check'],
+  'siparis' => ['Sipariş', 'bi-plus-square'],
+  'menu'    => ['Menü', 'bi-card-list'],
+  'cari'    => ['Cari', 'bi-receipt'],
+  'talep'   => ['Talep', 'bi-chat-left-text'],
+];
+?>
+  </section><!-- /.screen-stack -->
+</main>
+<nav class="bottom-tabs">
+<?php foreach ($tabs as $key => [$label, $icon]): ?>
+  <a class="tab-item <?= $active === $key ? 'active' : '' ?>" href="<?= $key ?>.php">
+    <i class="bi <?= $icon ?>"></i><?= $label ?>
+  </a>
+<?php endforeach; ?>
+</nav>
+<script src="/assets/app.js"></script>
+</body>
+</html>

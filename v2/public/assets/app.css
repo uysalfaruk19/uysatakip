@@ -179,6 +179,22 @@ h3 { margin-bottom: 6px; font-size: 14px; line-height: 1.25; font-weight: 750; }
 
 .empty-state { padding: 20px; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: var(--radius); background: var(--surface-2); }
 
+/* ── Günün menüsü kartı (broşür yeşil tonu) ────────────────── */
+.meal-card { padding: 15px 16px; border-radius: var(--radius); border: 1px solid var(--line-2); background: var(--green-tint); box-shadow: var(--shadow-sm); }
+.meal-card .label { color: #12813b; }
+.meal-card h2 { margin: 0; color: #0f6b32; }
+
+/* ── Talep mesaj dizisi (sohbet balonları) ─────────────────── */
+.msg-thread { display: grid; gap: 9px; padding: 4px 0; }
+.msg { max-width: 86%; padding: 10px 12px; border-radius: 14px; box-shadow: var(--shadow-sm); }
+.msg.mine { justify-self: end; background: var(--primary-tint); border: 1px solid var(--primary-tint-2); border-bottom-right-radius: 4px; }
+.msg.theirs { justify-self: start; background: var(--surface-2); border: 1px solid var(--line-2); border-bottom-left-radius: 4px; }
+.msg-body { margin: 0; font-size: 13.5px; line-height: 1.4; overflow-wrap: anywhere; }
+.msg-meta { display: block; margin-top: 5px; font-size: 10.5px; color: var(--muted); font-weight: 700; }
+
+/* Müşteri alt-nav 5 sekme (FAB yok) */
+.customer .bottom-tabs, body.customer-page .bottom-tabs { grid-template-columns: repeat(5, 1fr); }
+
 /* ── Modül grid'i (broşür alt kartları: Stok, Reçete, Faturalar…) ─ */
 .mod-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
 .mod-card { position: relative; display: flex; flex-direction: column; gap: 9px; padding: 14px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line-2); box-shadow: var(--shadow-sm); min-height: 104px; }

@@ -163,4 +163,20 @@ final class Helpers
     {
         return date('Y-m-d');
     }
+
+    /**
+     * Sipariş son değişiklik zamanı: order_date'ten bir gün önce saat $hour:00 (müşteri bazlı ayar
+     * ileride). Bu andan sonra müşteri o günün siparişini değiştiremez (üretim planı kilitlenir).
+     */
+    public static function orderDeadline(string $date, int $hour = 16): int
+    {
+        $prev = date('Y-m-d', strtotime($date . ' -1 day'));
+        return (int) strtotime($prev . ' ' . sprintf('%02d:00:00', $hour));
+    }
+
+    /** Müşteri bu tarihi hâlâ değiştirebilir mi? (bir gün önce $hour:00 geçmedi). */
+    public static function orderEditable(string $date, int $hour = 16, ?int $now = null): bool
+    {
+        return ($now ?? time()) <= self::orderDeadline($date, $hour);
+    }
 }

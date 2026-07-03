@@ -446,6 +446,17 @@ final class Repo
         return (int) $this->pdo->query("SELECT COUNT(*) FROM orders WHERE status = 'gonderildi'")->fetchColumn();
     }
 
+    /** Admin geçmişi: karar verilmiş siparişler (onaylandı/reddedildi, yeni→eski). */
+    public function decidedOrders(int $limit = 20): array
+    {
+        return $this->pdo->query(
+            "SELECT o.*, c.name AS customer_name, c.unit_price
+             FROM orders o JOIN customers c ON c.id = o.customer_id
+             WHERE o.status IN ('onaylandi','reddedildi')
+             ORDER BY o.order_date DESC, o.id DESC LIMIT " . (int) $limit
+        )->fetchAll();
+    }
+
     /**
      * Sipariş onayı → production'a yaz (fiyat snapshot) + order.status=onaylandi.
      * Tek yön: production UNIQUE(customer,date,meal) sayesinde tekrar onay duplicate üretmez.

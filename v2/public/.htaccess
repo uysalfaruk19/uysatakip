@@ -4,6 +4,10 @@
 <IfModule mod_rewrite.c>
   RewriteEngine On
 
+  # /api/musteri/<ad> → /api/musteri/<ad>.php  (oturumlu müşteri API)
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteRule ^api/musteri/([a-z_]+)/?$ api/musteri/$1.php [L,QSA]
+
   # /api/<ad> → /api/<ad>.php  (zaten .php ise dokunma)
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteRule ^api/([a-z_]+)/?$ api/$1.php [L,QSA]

@@ -83,6 +83,7 @@ $total = count($rowsData);
 
 $prevDay = date('Y-m-d', strtotime($date . ' -1 day'));
 $nextDay = date('Y-m-d', strtotime($date . ' +1 day'));
+$pendingCount = $repo->pendingOrdersCount();
 
 // Bar grafik verisi (girilen firmalar × kişi), broşür "Bugün Sipariş Veren Firmalar".
 $barRows = [];
@@ -157,11 +158,11 @@ require __DIR__ . '/partials/header.php';
           <div class="mt">Cari</div>
           <div class="md">Bakiye ve tahsilat</div>
         </a>
-        <a class="mod-card soon i-amber" href="yakinda.php?m=siparisler">
-          <span class="soon-chip">yakında</span>
+        <a class="mod-card i-amber" href="siparisler.php">
+          <?php if ($pendingCount > 0): ?><span class="soon-chip" style="background:var(--red-tint);color:var(--red)"><?= $pendingCount ?> yeni</span><?php endif; ?>
           <div class="mico"><i class="bi bi-basket"></i></div>
           <div class="mt">Siparişler</div>
-          <div class="md">Onay kuyruğu (F2)</div>
+          <div class="md">Müşteri onay kuyruğu</div>
         </a>
         <a class="mod-card soon i-blue" href="yakinda.php?m=stok">
           <span class="soon-chip">yakında</span>
