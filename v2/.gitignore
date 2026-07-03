@@ -1,0 +1,7 @@
+# v2 ortam ve yüklemeler (kök .gitignore .env'i zaten kapsar; burada v2 yolları)
+.env
+public/uploads/*
+!public/uploads/.htaccess
+!public/uploads/.gitkeep
+*.log
+*.sqlite

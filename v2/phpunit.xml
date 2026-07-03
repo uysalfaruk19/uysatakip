@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- PHPUnit 9.x uyumlu (PHP 8.0). Testler SQLite in-memory kullanır (üretim MySQL). -->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         bootstrap="tests/bootstrap.php"
+         colors="true"
+         cacheResult="false"
+         convertErrorsToExceptions="true"
+         convertWarningsToExceptions="true">
+  <testsuites>
+    <testsuite name="UYSA Kokpit v2">
+      <directory>tests</directory>
+    </testsuite>
+  </testsuites>
+</phpunit>
