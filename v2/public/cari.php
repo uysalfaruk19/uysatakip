@@ -27,7 +27,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $flashOk = false;
     } else {
         $cid = (int) ($_POST['customer_id'] ?? $cid);
-        $amount = (float) str_replace([',', '₺', ' '], ['.', '', ''], (string) ($_POST['amount'] ?? '0'));
+        $amount = Helpers::parseMoney((string) ($_POST['amount'] ?? '0'));
         $txDate = (string) ($_POST['entry_date'] ?? Helpers::today());
         if (!Helpers::isDate($txDate)) {
             $txDate = Helpers::today();

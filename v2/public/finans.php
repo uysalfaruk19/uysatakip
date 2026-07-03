@@ -32,7 +32,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $flashOk = false;
     } else {
         $type = in_array($_POST['type'] ?? '', ['gelir', 'gider'], true) ? $_POST['type'] : 'gider';
-        $amount = (float) str_replace([',', '₺', ' '], ['.', '', ''], (string) ($_POST['amount'] ?? '0'));
+        $amount = Helpers::parseMoney((string) ($_POST['amount'] ?? '0'));
         $txDate = (string) ($_POST['tx_date'] ?? Helpers::today());
         if (!Helpers::isDate($txDate)) {
             $txDate = Helpers::today();
