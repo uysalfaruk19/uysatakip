@@ -33,8 +33,9 @@ try {
 $repo = new Repo($pdo);
 $ip = client_ip();
 
-// ── Kimlik: X-UYSA-Token == API_TOKEN ────────────────────────
-$token = $_SERVER['HTTP_X_UYSA_TOKEN'] ?? ($_GET['token'] ?? '');
+// ── Kimlik: X-UYSA-Token == API_TOKEN (SADECE header — query string'de token YOK,
+//    URL/log/referrer sızıntısı riski taşımasın) ──────────────
+$token = $_SERVER['HTTP_X_UYSA_TOKEN'] ?? '';
 $apiToken = (string) Env::get('API_TOKEN', '');
 
 // token endpoint'i başına rate-limit (brute-force koruması)

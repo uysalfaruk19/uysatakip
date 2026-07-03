@@ -243,6 +243,18 @@ final class Repo
         return $st->fetchAll();
     }
 
+    /** Bir müşterinin belirli aydaki üretimi (kişi + tutar). F2 fatura akışının girdisi. */
+    public function customerMonthProduction(int $customerId, string $month): array
+    {
+        $st = $this->pdo->prepare(
+            "SELECT COALESCE(SUM(persons),0) AS persons, COALESCE(SUM(amount),0) AS amount, COUNT(*) AS cnt
+             FROM production WHERE customer_id = ? AND substr(prod_date,1,7) = ?"
+        );
+        $st->execute([$customerId, $month]);
+        $r = $st->fetch();
+        return ['persons' => (int) $r['persons'], 'amount' => (float) $r['amount'], 'cnt' => (int) $r['cnt']];
+    }
+
     // ── Rapor / Özet ──────────────────────────────────────────
     public function monthProductionByCustomer(string $month): array
     {

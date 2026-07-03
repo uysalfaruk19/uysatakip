@@ -2,12 +2,15 @@
 declare(strict_types=1);
 
 /**
- * PHP yerleşik sunucu yönlendiricisi.
+ * PHP yerleşik GELİŞTİRME sunucusu yönlendiricisi + üretim referansı.
  * Çalıştır:  php -S 127.0.0.1:8099 -t public router.php
  * - /api/uretim → public/api/uretim.php (pretty URL)
  * - .php sayfalar → doğrudan require (public/ kökünden)
- * - statik dosyalar (css/js/img) → return false (sunucu servis eder)
- * Üretimde Apache/traefik rewrite bu işi görür; bu dosya SADECE geliştirme sunucusu içindir.
+ * - statik dosyalar (css/js/img) → doğrudan servis
+ *
+ * ÜRETİM: web kökü = public/. Pretty /api/* için Apache rewrite public/.htaccess'te
+ * (aynı mantık); Nginx/traefik'te eşdeğer `try_files`/rewrite kurulur. Bu router yalnız
+ * geliştirme sunucusu içindir; üretimde çalışmaz.
  */
 
 $pub = __DIR__ . '/public';

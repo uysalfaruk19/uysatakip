@@ -59,6 +59,28 @@ final class HelpersTest extends TestCase
         $this->assertNull($m['id'], 'alakasız ad eşleşmemeli');
     }
 
+    /** H1: minimum skor kapısı — çok kısa/belirsiz girdi yanlış müşteriye yazmamalı. */
+    public function testMatchCustomerMinScoreGate(): void
+    {
+        $cands = [1 => 'CANTAŞ', 2 => 'OPAK', 3 => 'ERMETAL', 4 => 'E-DEPO'];
+
+        $m = Helpers::matchCustomer('e', $cands); // "e 300" → çok kısa/belirsiz
+        $this->assertNull($m['id'], '"e" eşik altı → eşleşme yok');
+
+        $m = Helpers::matchCustomer('op', $cands); // "op 280"
+        $this->assertNull($m['id'], '"op" eşik altı → eşleşme yok');
+
+        // Levenshtein eşik-altı yakın miss → gate 'dusuk_skor' ile null döner
+        $m = Helpers::matchCustomer('cantx', $cands);
+        $this->assertNull($m['id'], '"cantx" eşik altı → eşleşme yok');
+        $this->assertSame('dusuk_skor', $m['reason']);
+        $this->assertLessThan(Helpers::MATCH_MIN_SCORE, $m['score']);
+
+        $m = Helpers::matchCustomer('cantas', $cands); // tam ad → eşleşir
+        $this->assertSame(1, $m['id']);
+        $this->assertGreaterThanOrEqual(Helpers::MATCH_MIN_SCORE, $m['score']);
+    }
+
     public function testIsDate(): void
     {
         $this->assertTrue(Helpers::isDate('2026-07-03'));

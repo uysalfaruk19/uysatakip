@@ -40,6 +40,31 @@ final class RepoTest extends TestCase
         $this->assertEqualsWithDelta(75000.0, (float) $tot['amount'], 0.001);
     }
 
+    public function testKumanyaMealAccepted(): void
+    {
+        $id = seed_customer($this->pdo, 'TALAY', 235.00);
+        // Aynı gün 3 öğün AYRI satır (öğün kırılımı senaryosu)
+        $this->repo->upsertProduction($id, '2026-07-01', 140, 235, 'ogle');
+        $this->repo->upsertProduction($id, '2026-07-01', 48, 235, 'aksam');
+        $this->repo->upsertProduction($id, '2026-07-01', 12, 235, 'kumanya');
+        $rows = (int) $this->pdo->query("SELECT COUNT(*) FROM production WHERE meal='kumanya'")->fetchColumn();
+        $this->assertSame(1, $rows, 'kumanya öğünü kabul edilmeli (ENUM/CHECK)');
+        $all = (int) $this->pdo->query('SELECT COUNT(*) FROM production')->fetchColumn();
+        $this->assertSame(3, $all, '3 öğün = 3 satır (UNIQUE customer,date,meal)');
+    }
+
+    public function testCustomerMonthProduction(): void
+    {
+        $id = seed_customer($this->pdo, 'CANTAŞ', 328);
+        $this->repo->upsertProduction($id, '2026-07-01', 10, 328, 'ogle');
+        $this->repo->upsertProduction($id, '2026-07-15', 20, 328, 'ogle');
+        $this->repo->upsertProduction($id, '2026-06-30', 5, 328, 'ogle'); // başka ay
+        $m = $this->repo->customerMonthProduction($id, '2026-07');
+        $this->assertSame(30, $m['persons']);
+        $this->assertEqualsWithDelta(9840.0, $m['amount'], 0.001, '(10+20)*328');
+        $this->assertSame(2, $m['cnt']);
+    }
+
     public function testCustomerBalance(): void
     {
         $id = seed_customer($this->pdo, 'ERMETAL', 200.00);

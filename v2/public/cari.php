@@ -47,13 +47,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 $cust = $cid ? $repo->customer($cid) : null;
 $balance = $cust ? $repo->customerBalance($cid) : 0.0;
 $statement = $cust ? $repo->customerStatement($cid, $month) : [];
-$monthProd = $cust ? $repo->monthProductionByCustomer($month) : [];
-$ayKisi = 0;
-foreach ($monthProd as $mp) {
-    if ($mp['name'] === ($cust['name'] ?? null)) {
-        $ayKisi = (int) $mp['persons'];
-    }
-}
+// Bu ayki üretim = faturalanacak tutar (production tek gerçek kaynak).
+// TODO (F2): bu tutardan fatura üret → cari_entries'e 'borc' yaz (onay akışı). Şimdilik
+// sadece gösterilir; migrasyondaki alacaklar cari borcu oluşturuyor, üretim otomatik borca dönmüyor.
+$ayUretim = $cust ? $repo->customerMonthProduction($cid, $month) : ['persons' => 0, 'amount' => 0.0, 'cnt' => 0];
+$ayKisi = $ayUretim['persons'];
 
 $eyebrow = 'Müşteri kartı';
 $pageTitle = $cust ? $cust['name'] : 'Cari';
@@ -68,7 +66,8 @@ require __DIR__ . '/partials/header.php';
         <div class="summary-grid">
           <div class="summary-card"><p class="label">Birim fiyat</p><p class="metric">₺ <?= Helpers::money((float) $cust['unit_price']) ?></p></div>
           <div class="summary-card"><p class="label">Bakiye</p><p class="metric <?= $balance < 0 ? 'neg' : '' ?>">₺ <?= Helpers::money($balance) ?></p></div>
-          <div class="summary-card wide"><p class="label"><?= Helpers::e(ay_label_tr($month)) ?> üretim</p><p class="metric"><?= number_format($ayKisi, 0, ',', '.') ?> kişi</p>
+          <div class="summary-card wide"><p class="label"><?= Helpers::e(ay_label_tr($month)) ?> üretim (faturalanacak)</p>
+            <p class="metric"><?= number_format($ayKisi, 0, ',', '.') ?> kişi · ₺ <?= Helpers::money($ayUretim['amount']) ?></p>
             <span class="delta"><i class="bi bi-check2-circle"></i> <?= $balance >= 0 ? 'Alacak (bize borçlu)' : 'Fazla ödeme' ?></span></div>
         </div>
 

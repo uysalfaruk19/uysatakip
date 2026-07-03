@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS orders (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
   order_date TEXT NOT NULL,
-  meal TEXT NOT NULL DEFAULT 'ogle' CHECK(meal IN ('sabah','ogle','aksam','gece')),
+  meal TEXT NOT NULL DEFAULT 'ogle' CHECK(meal IN ('sabah','ogle','aksam','gece','kumanya')),
   persons INTEGER NOT NULL DEFAULT 0,
   menu_type TEXT,
   status TEXT NOT NULL DEFAULT 'gonderildi' CHECK(status IN ('taslak','gonderildi','onaylandi','reddedildi')),
@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS production (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
   prod_date TEXT NOT NULL,
-  meal TEXT NOT NULL DEFAULT 'ogle' CHECK(meal IN ('sabah','ogle','aksam','gece')),
+  meal TEXT NOT NULL DEFAULT 'ogle' CHECK(meal IN ('sabah','ogle','aksam','gece','kumanya')),
   persons INTEGER NOT NULL DEFAULT 0,
   unit_price_snap REAL NOT NULL DEFAULT 0,
   amount REAL NOT NULL DEFAULT 0,
@@ -163,7 +163,7 @@ CREATE TABLE IF NOT EXISTS recipe_items (
 CREATE TABLE IF NOT EXISTS menu_days (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   menu_date TEXT NOT NULL,
-  meal TEXT NOT NULL DEFAULT 'ogle' CHECK(meal IN ('sabah','ogle','aksam','gece')),
+  meal TEXT NOT NULL DEFAULT 'ogle' CHECK(meal IN ('sabah','ogle','aksam','gece','kumanya')),
   menu_type TEXT NOT NULL DEFAULT 'standart',
   recipe_id INTEGER REFERENCES recipes(id) ON DELETE SET NULL,
   is_published INTEGER NOT NULL DEFAULT 0

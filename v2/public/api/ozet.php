@@ -18,7 +18,7 @@ if ($gun !== '') {
         Helpers::json(['ok' => false, 'error' => 'Geçersiz gün'], 400);
     }
     $meal = $_GET['meal'] ?? 'ogle';
-    if (!in_array($meal, ['sabah', 'ogle', 'aksam', 'gece'], true)) {
+    if (!in_array($meal, ['sabah', 'ogle', 'aksam', 'gece', 'kumanya'], true)) {
         $meal = 'ogle';
     }
     $grid = $repo->dayGrid($gun, $meal);

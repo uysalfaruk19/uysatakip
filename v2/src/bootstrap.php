@@ -71,9 +71,21 @@ if (!function_exists('gun_label_tr')) {
 }
 
 if (!function_exists('client_ip')) {
+    /**
+     * İstemci IP. TRUST_PROXY açıksa (reverse proxy/traefik arkası) X-Forwarded-For'un
+     * EN SAĞDAKİ (proxy'nin eklediği, güvenilir) değeri; kapalıysa REMOTE_ADDR.
+     * Not: rate-limit anahtarı için kullanılır — istemcinin XFF spoof'u ile atlatılmasını önler.
+     */
     function client_ip(): string
     {
-        $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
-        return trim(explode(',', (string) $ip)[0]);
+        $trust = in_array(strtolower((string) \Uysa\Env::get('TRUST_PROXY', '0')), ['1', 'true', 'yes', 'on'], true);
+        if ($trust && !empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+            $parts = array_map('trim', explode(',', (string) $_SERVER['HTTP_X_FORWARDED_FOR']));
+            $ip = end($parts); // en sağdaki = proxy'nin gördüğü gerçek istemci
+            if ($ip !== '') {
+                return $ip;
+            }
+        }
+        return trim((string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'));
     }
 }

@@ -23,10 +23,15 @@ final class MigrationTest extends TestCase
         $pdo->exec('CREATE TABLE uysa_storage (store_key TEXT PRIMARY KEY, store_value TEXT NOT NULL)');
 
         $gunluk = [
-            ['musteri' => 'CANTAÅž', 'tarih' => '2026-07-01', 'kisi' => 10, 'fiyat' => 328, 'tutar' => 3280, 'not' => ''],
-            ['musteri' => 'CANTAÅž', 'tarih' => '2026-07-02', 'kisi' => 20, 'fiyat' => 328, 'tutar' => 6560, 'not' => ''],
+            // A) KIRILIMLI + tutarlı → 3 ayrı production satırı (ogle+aksam+kumanya)
+            ['musteri' => 'CANTAÅž', 'tarih' => '2026-07-01', 'kisi' => 19, 'fiyat' => 328, 'tutar' => 6232, 'not' => '',
+                'ogle' => ['kisi' => 10, 'fiyat' => 328], 'aksam' => ['kisi' => 5, 'fiyat' => 328], 'kumanya' => ['kisi' => 4, 'fiyat' => 328]],
+            // B) DÜZ (kırılım yok) → tek satır meal=ogle
             ['musteri' => 'OPAK', 'tarih' => '2026-07-01', 'kisi' => 5, 'fiyat' => 250, 'tutar' => 1250, 'not' => ''],
-            // anomali: boş müşteri adı — atlanmalı, RAPORLANMALI
+            // C) KIRILIMLI ama toplam ≠ tutar → ANOMALİ, atlanmalı
+            ['musteri' => 'CANTAÅž', 'tarih' => '2026-07-02', 'kisi' => 10, 'fiyat' => 328, 'tutar' => 3280, 'not' => '',
+                'ogle' => ['kisi' => 10, 'fiyat' => 328], 'aksam' => ['kisi' => 15, 'fiyat' => 328], 'kumanya' => ['kisi' => 0, 'fiyat' => 328]],
+            // D) boş müşteri adı — anomali, atlanmalı
             ['musteri' => '', 'tarih' => '2026-07-01', 'kisi' => 4, 'fiyat' => 250, 'tutar' => 1000, 'not' => ''],
         ];
         $ins = $pdo->prepare('INSERT INTO uysa_storage (store_key, store_value) VALUES (?, ?)');
@@ -63,15 +68,27 @@ final class MigrationTest extends TestCase
         $code = proc_close($proc);
 
         $this->assertSame(0, $code, "migrate exit 0 olmalı. STDERR: $err\nSTDOUT: $out");
-        $this->assertStringContainsString('TUTUYOR', $out, 'reconciliation denkliği');
+        $this->assertStringContainsString('TUTUYOR', $out, 'reconciliation TUTAR denkliği');
         $this->assertStringContainsString('MİGRASYON TAMAM', $out);
+        $this->assertStringContainsString('kirilim_tutar_uyusmazligi', $out, 'C satırı anomali raporlanmalı');
 
         // DB doğrulaması
         $pdo = new PDO('sqlite:' . $this->dbFile, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
         $prodCount = (int) $pdo->query('SELECT COUNT(*) FROM production')->fetchColumn();
         $prodSum = (float) $pdo->query('SELECT COALESCE(SUM(amount),0) FROM production')->fetchColumn();
-        $this->assertSame(3, $prodCount, '3 geçerli üretim satırı (1 anomali atlandı)');
-        $this->assertEqualsWithDelta(11090.0, $prodSum, 0.001, '3280+6560+1250');
+        // A → 3 öğün satırı (10*328 + 5*328 + 4*328 = 6232) · B → 1 düz satır (1250) = 4 satır
+        $this->assertSame(4, $prodCount, 'A(3 öğün) + B(1 düz) = 4; C ve D atlandı');
+        $this->assertEqualsWithDelta(7482.0, $prodSum, 0.001, '6232 + 1250');
+
+        // Öğün kırılımı: A satırı 3 farklı öğüne bölündü
+        $st = $pdo->prepare("SELECT p.meal, p.persons, p.amount FROM production p
+            JOIN customers c ON c.id = p.customer_id
+            WHERE c.name = 'CANTAŞ' AND p.prod_date = '2026-07-01' ORDER BY p.meal");
+        $st->execute();
+        $mealRows = $st->fetchAll(PDO::FETCH_ASSOC);
+        $meals = array_column($mealRows, 'meal');
+        sort($meals);
+        $this->assertSame(['aksam', 'kumanya', 'ogle'], $meals, 'ogle+aksam+kumanya ayrı satır');
 
         // Mojibake onarıldı mı?
         $names = $pdo->query('SELECT name FROM customers ORDER BY name')->fetchAll(PDO::FETCH_COLUMN);

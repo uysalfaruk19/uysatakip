@@ -19,10 +19,13 @@ final class Auth
         }
         $name = Env::get('SESSION_NAME', 'uysa_kokpit');
         session_name((string) $name);
+        // HTTPS tespiti: doğrudan TLS VEYA reverse proxy (traefik) X-Forwarded-Proto
+        $https = (($_SERVER['HTTPS'] ?? '') !== '' && ($_SERVER['HTTPS'] ?? '') !== 'off')
+            || strtolower((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https';
         session_set_cookie_params([
             'httponly' => true,
             'samesite' => 'Lax',
-            'secure'   => (($_SERVER['HTTPS'] ?? '') !== ''),
+            'secure'   => $https,
         ]);
         session_start();
     }
@@ -34,8 +37,9 @@ final class Auth
         $st->execute([$username]);
         $user = $st->fetch();
 
-        // Timing-attack azaltma
-        $dummy = '$2y$12$usesomesillystringforsalt.padding.padding.padding.pad';
+        // Timing-attack azaltma: kullanıcı yoksa da gerçek bir bcrypt doğrulaması yapılır
+        // (aşağıdaki hash gerçek password_hash('...', BCRYPT, cost=12) çıktısıdır)
+        $dummy = '$2y$12$aBtE2nt2RGExYW89REDD/OEGwALSTvubXDTPSGtUIod.aolyX5WmG';
         $hash = $user ? $user['password'] : $dummy;
         if (!$user || !password_verify($password, $hash)) {
             return null;

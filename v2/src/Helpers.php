@@ -5,6 +5,9 @@ namespace Uysa;
 
 final class Helpers
 {
+    /** Fuzzy müşteri eşleşmesi minimum güven eşiği. Altı → eşleşmedi. */
+    public const MATCH_MIN_SCORE = 0.72;
+
     /** Çift-kodlanmış UTF-8 (CP1252 üzerinden) mojibake onarımı. Onarılamazsa aynen döner. */
     public static function unmojibake(string $s): string
     {
@@ -71,25 +74,37 @@ final class Helpers
                 $score = 1.0;
                 $reason = 'tam';
             } elseif (str_starts_with($n, $q) || str_starts_with($q, $n)) {
+                // Önek: en az 3 karakterlik anlamlı önek gerekir ("e"/"op" belirsiz → atla).
+                // Gerçek önek eşik üstünde kabul edilir (kısa marka adı "talay" gibi).
                 $shorter = min(strlen($n), strlen($q));
                 $longer = max(strlen($n), strlen($q));
-                $score = 0.90 * ($shorter / max(1, $longer));
-                $reason = 'onek';
+                if ($shorter >= 3) {
+                    $score = max(self::MATCH_MIN_SCORE + 0.02, 0.90 * ($shorter / $longer));
+                    $reason = 'onek';
+                }
             } elseif (str_contains($n, $q) || str_contains($q, $n)) {
-                $score = 0.80;
-                $reason = 'icinde';
+                if (min(strlen($n), strlen($q)) >= 4) {
+                    $score = 0.80;
+                    $reason = 'icinde';
+                }
             } else {
+                // Levenshtein oranı — skoru her zaman ata; eşik kontrolü sondaki kapıda.
                 $dist = self::lev($q, $n);
                 $maxLen = max(strlen($q), strlen($n));
-                $ratio = $maxLen > 0 ? 1 - ($dist / $maxLen) : 0.0;
-                if ($ratio >= 0.72) {
-                    $score = $ratio;
-                    $reason = 'levenshtein';
-                }
+                $score = $maxLen > 0 ? 1 - ($dist / $maxLen) : 0.0;
+                $reason = 'levenshtein';
             }
             if ($score > $best['score']) {
                 $best = ['id' => (int) $id, 'name' => $name, 'score' => $score, 'reason' => $reason];
             }
+        }
+        // Minimum skor kapısı: eşik altı → eşleşme YOK (yanlış müşteriye yazmayı önle).
+        // En yakın aday tanı için 'aday'/'score'te korunur ama id=null döner.
+        if ($best['id'] !== null && $best['score'] < self::MATCH_MIN_SCORE) {
+            return [
+                'id' => null, 'name' => null, 'score' => $best['score'],
+                'reason' => 'dusuk_skor', 'aday' => $best['name'],
+            ];
         }
         return $best;
     }
