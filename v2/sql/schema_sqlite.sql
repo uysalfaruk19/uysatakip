@@ -156,6 +156,7 @@ CREATE TABLE IF NOT EXISTS ingredients (
   name TEXT NOT NULL UNIQUE,
   unit TEXT NOT NULL DEFAULT 'kg',
   price_per_unit REAL NOT NULL DEFAULT 0,
+  min_stok REAL NOT NULL DEFAULT 0,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -180,6 +181,17 @@ CREATE TABLE IF NOT EXISTS menu_days (
   menu_type TEXT NOT NULL DEFAULT 'standart',
   recipe_id INTEGER REFERENCES recipes(id) ON DELETE SET NULL,
   is_published INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS stock_moves (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ingredient_id INTEGER NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
+  move_date TEXT NOT NULL,
+  direction TEXT NOT NULL CHECK(direction IN ('giris','cikis')),
+  quantity REAL NOT NULL DEFAULT 0,
+  unit TEXT NOT NULL DEFAULT 'kg',
+  note TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS audit (

@@ -217,6 +217,7 @@ CREATE TABLE IF NOT EXISTS `ingredients` (
   `name`           VARCHAR(150) NOT NULL,
   `unit`           VARCHAR(20)  NOT NULL DEFAULT 'kg',
   `price_per_unit` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `min_stok`       DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'kritik stok eşiği (0 = uyarı yok)',
   `updated_at`     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_ingredient` (`name`)
@@ -252,6 +253,23 @@ CREATE TABLE IF NOT EXISTS `menu_days` (
   PRIMARY KEY (`id`),
   KEY `idx_menu_date` (`menu_date`),
   CONSTRAINT `fk_md_recipe` FOREIGN KEY (`recipe_id`) REFERENCES `recipes` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── Stok hareketleri (M4 — Stok Durumu) ───────────────────────
+-- Mevcut stok = Σ(giris) − Σ(cikis) malzeme başına. Kritik = stok < ingredients.min_stok (>0).
+CREATE TABLE IF NOT EXISTS `stock_moves` (
+  `id`            INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `ingredient_id` INT UNSIGNED NOT NULL,
+  `move_date`     DATE         NOT NULL,
+  `direction`     ENUM('giris','cikis') NOT NULL,
+  `quantity`      DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `unit`          VARCHAR(20)  NOT NULL DEFAULT 'kg',
+  `note`          VARCHAR(500)          DEFAULT NULL,
+  `created_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_sm_ingredient` (`ingredient_id`),
+  KEY `idx_sm_date` (`move_date`),
+  CONSTRAINT `fk_sm_ingredient` FOREIGN KEY (`ingredient_id`) REFERENCES `ingredients` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ── Denetim + oran sınırlama (v1 güvenlik desenleri) ──────────

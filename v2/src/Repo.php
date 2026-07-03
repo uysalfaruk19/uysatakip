@@ -688,4 +688,242 @@ final class Repo
         }
         return array_values($days);
     }
+
+    // ── Reçete & Maliyet (M4) ─────────────────────────────────
+    /** Malzeme listesi (ad, birim, kg/birim fiyat, kritik eşik). $search verilirse ada göre LIKE filtre. */
+    public function listIngredients(?string $search = null): array
+    {
+        $sql = 'SELECT id, name, unit, price_per_unit, min_stok FROM ingredients';
+        $params = [];
+        if ($search !== null && $search !== '') {
+            $sql .= ' WHERE name LIKE ?';
+            $params[] = '%' . $search . '%';
+        }
+        $sql .= ' ORDER BY name';
+        $st = $this->pdo->prepare($sql);
+        $st->execute($params);
+        return $st->fetchAll();
+    }
+
+    public function ingredient(int $id): ?array
+    {
+        $st = $this->pdo->prepare('SELECT id, name, unit, price_per_unit, min_stok FROM ingredients WHERE id = ?');
+        $st->execute([$id]);
+        return $st->fetch() ?: null;
+    }
+
+    /** Malzeme birim fiyatını güncelle (reçete maliyeti anında değişir). */
+    public function upsertIngredientPrice(int $id, float $price): void
+    {
+        $now = $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite' ? "datetime('now')" : 'NOW()';
+        $this->pdo->prepare("UPDATE ingredients SET price_per_unit = ?, updated_at = $now WHERE id = ?")
+            ->execute([$price, $id]);
+    }
+
+    /** Malzeme kritik stok eşiğini güncelle (0 = uyarı yok). */
+    public function setIngredientMinStock(int $id, float $min): void
+    {
+        $this->pdo->prepare('UPDATE ingredients SET min_stok = ? WHERE id = ?')->execute([$min, $id]);
+    }
+
+    /**
+     * Reçete listesi + porsiyon maliyeti (tek grup sorgu — N+1 yok).
+     * cost = Σ(gram/1000 × price_per_unit). $search ada göre LIKE filtre.
+     * @return array<int,array> ['id','name','category','item_count','cost']
+     */
+    public function listRecipes(?string $search = null): array
+    {
+        $sql = 'SELECT r.id, r.name, r.category,
+                       COUNT(ri.id) AS item_count,
+                       COALESCE(SUM(ri.grams / 1000.0 * i.price_per_unit), 0) AS cost
+                FROM recipes r
+                LEFT JOIN recipe_items ri ON ri.recipe_id = r.id
+                LEFT JOIN ingredients i ON i.id = ri.ingredient_id';
+        $params = [];
+        if ($search !== null && $search !== '') {
+            $sql .= ' WHERE r.name LIKE ?';
+            $params[] = '%' . $search . '%';
+        }
+        $sql .= ' GROUP BY r.id, r.name, r.category ORDER BY r.name';
+        $st = $this->pdo->prepare($sql);
+        $st->execute($params);
+        return $st->fetchAll();
+    }
+
+    public function recipe(int $id): ?array
+    {
+        $st = $this->pdo->prepare('SELECT id, name, category, portion_note FROM recipes WHERE id = ?');
+        $st->execute([$id]);
+        return $st->fetch() ?: null;
+    }
+
+    /**
+     * Bir reçetenin malzeme×gramaj kalemleri + satır maliyeti.
+     * @return array<int,array> ['item_id','ingredient_id','name','unit','grams','price_per_unit','line_cost']
+     */
+    public function recipeItems(int $recipeId): array
+    {
+        $st = $this->pdo->prepare(
+            'SELECT ri.id AS item_id, ri.ingredient_id, i.name, i.unit, ri.grams, i.price_per_unit,
+                    (ri.grams / 1000.0 * i.price_per_unit) AS line_cost
+             FROM recipe_items ri JOIN ingredients i ON i.id = ri.ingredient_id
+             WHERE ri.recipe_id = ? ORDER BY i.name'
+        );
+        $st->execute([$recipeId]);
+        return $st->fetchAll();
+    }
+
+    /** Porsiyon maliyeti = Σ(gram/1000 × birim fiyat). */
+    public function recipeCost(int $recipeId): float
+    {
+        $st = $this->pdo->prepare(
+            'SELECT COALESCE(SUM(ri.grams / 1000.0 * i.price_per_unit), 0)
+             FROM recipe_items ri JOIN ingredients i ON i.id = ri.ingredient_id
+             WHERE ri.recipe_id = ?'
+        );
+        $st->execute([$recipeId]);
+        return (float) $st->fetchColumn();
+    }
+
+    /** Reçete ekle/düzenle (ada göre benzersiz). $id verilirse günceller. */
+    public function upsertRecipe(string $name, ?string $category = null, ?int $id = null): int
+    {
+        if ($id !== null) {
+            $this->pdo->prepare('UPDATE recipes SET name = ?, category = ? WHERE id = ?')
+                ->execute([$name, $category, $id]);
+            return $id;
+        }
+        $st = $this->pdo->prepare('SELECT id FROM recipes WHERE name = ?');
+        $st->execute([$name]);
+        $found = $st->fetchColumn();
+        if ($found !== false) {
+            return (int) $found;
+        }
+        $this->pdo->prepare('INSERT INTO recipes (name, category) VALUES (?, ?)')->execute([$name, $category]);
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    /** Reçeteye malzeme ekle/gramaj güncelle (aynı malzeme varsa gramajı günceller). */
+    public function upsertRecipeItem(int $recipeId, int $ingredientId, float $grams): void
+    {
+        $st = $this->pdo->prepare('SELECT id FROM recipe_items WHERE recipe_id = ? AND ingredient_id = ?');
+        $st->execute([$recipeId, $ingredientId]);
+        $found = $st->fetchColumn();
+        if ($found !== false) {
+            $this->pdo->prepare('UPDATE recipe_items SET grams = ? WHERE id = ?')->execute([$grams, (int) $found]);
+            return;
+        }
+        $this->pdo->prepare('INSERT INTO recipe_items (recipe_id, ingredient_id, grams) VALUES (?, ?, ?)')
+            ->execute([$recipeId, $ingredientId, $grams]);
+    }
+
+    /** Reçete kalemini sil (scope: recipe_id ile — yanlış reçete kalemi silinmez). */
+    public function deleteRecipeItem(int $itemId, int $recipeId): void
+    {
+        $this->pdo->prepare('DELETE FROM recipe_items WHERE id = ? AND recipe_id = ?')->execute([$itemId, $recipeId]);
+    }
+
+    /**
+     * Bir menü gününün reçeteleri + porsiyon maliyetleri (menu_days varsa).
+     * @return array<int,array> ['recipe_id','name','cost']
+     */
+    public function menuDayCost(string $date, string $meal = 'ogle'): array
+    {
+        $st = $this->pdo->prepare(
+            'SELECT r.id AS recipe_id, r.name,
+                    COALESCE(SUM(ri.grams / 1000.0 * i.price_per_unit), 0) AS cost
+             FROM menu_days md JOIN recipes r ON r.id = md.recipe_id
+             LEFT JOIN recipe_items ri ON ri.recipe_id = r.id
+             LEFT JOIN ingredients i ON i.id = ri.ingredient_id
+             WHERE md.menu_date = ? AND md.meal = ?
+             GROUP BY r.id, r.name ORDER BY r.name'
+        );
+        $st->execute([$date, $meal]);
+        return $st->fetchAll();
+    }
+
+    // ── Stok Durumu (M4) ──────────────────────────────────────
+    /**
+     * Malzeme başına güncel stok = Σ(giriş) − Σ(çıkış). $search ada göre LIKE filtre.
+     * is_critical PHP tarafında: min_stok > 0 && stok < min_stok.
+     * @return array<int,array> ['id','name','unit','min_stok','stok']
+     */
+    public function stockLevels(?string $search = null): array
+    {
+        $sql = "SELECT i.id, i.name, i.unit, i.min_stok,
+                       COALESCE(SUM(CASE WHEN sm.direction = 'giris' THEN sm.quantity ELSE 0 END), 0)
+                     - COALESCE(SUM(CASE WHEN sm.direction = 'cikis' THEN sm.quantity ELSE 0 END), 0) AS stok
+                FROM ingredients i
+                LEFT JOIN stock_moves sm ON sm.ingredient_id = i.id";
+        $params = [];
+        if ($search !== null && $search !== '') {
+            $sql .= ' WHERE i.name LIKE ?';
+            $params[] = '%' . $search . '%';
+        }
+        $sql .= ' GROUP BY i.id, i.name, i.unit, i.min_stok ORDER BY i.name';
+        $st = $this->pdo->prepare($sql);
+        $st->execute($params);
+        return $st->fetchAll();
+    }
+
+    /** Tek malzemenin güncel stoğu (Σ giriş − Σ çıkış). */
+    public function stockLevel(int $ingredientId): float
+    {
+        $st = $this->pdo->prepare(
+            "SELECT COALESCE(SUM(CASE WHEN direction = 'giris' THEN quantity ELSE 0 END), 0)
+                  - COALESCE(SUM(CASE WHEN direction = 'cikis' THEN quantity ELSE 0 END), 0)
+             FROM stock_moves WHERE ingredient_id = ?"
+        );
+        $st->execute([$ingredientId]);
+        return (float) $st->fetchColumn();
+    }
+
+    /** Stok hareketi ekle (giriş/çıkış). $unit null ise malzemenin birimi kullanılır. */
+    public function addStockMove(
+        int $ingredientId,
+        string $moveDate,
+        string $direction,
+        float $quantity,
+        ?string $unit = null,
+        ?string $note = null
+    ): int {
+        if (!in_array($direction, ['giris', 'cikis'], true)) {
+            throw new \InvalidArgumentException('direction giris|cikis olmalı');
+        }
+        if ($unit === null || $unit === '') {
+            $ing = $this->ingredient($ingredientId);
+            $unit = $ing['unit'] ?? 'kg';
+        }
+        $this->pdo->prepare(
+            'INSERT INTO stock_moves (ingredient_id, move_date, direction, quantity, unit, note)
+             VALUES (?, ?, ?, ?, ?, ?)'
+        )->execute([$ingredientId, $moveDate, $direction, $quantity, $unit, $note]);
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    /**
+     * Kritik stok: eşiği (min_stok > 0) olan ve güncel stoğu eşiğin altındaki malzemeler.
+     * @return array<int,array> ['id','name','unit','min_stok','stok']
+     */
+    public function criticalStock(): array
+    {
+        $out = [];
+        foreach ($this->stockLevels() as $r) {
+            $min = (float) $r['min_stok'];
+            if ($min > 0 && (float) $r['stok'] < $min) {
+                $out[] = $r;
+            }
+        }
+        return $out;
+    }
+
+    /** Son stok hareketleri (yeni→eski, malzeme adıyla). */
+    public function recentStockMoves(int $limit = 20): array
+    {
+        return $this->pdo->query(
+            'SELECT sm.id, sm.move_date, sm.direction, sm.quantity, sm.unit, sm.note, i.name AS ingredient_name
+             FROM stock_moves sm JOIN ingredients i ON i.id = sm.ingredient_id
+             ORDER BY sm.move_date DESC, sm.id DESC LIMIT ' . (int) $limit
+        )->fetchAll();
+    }
 }

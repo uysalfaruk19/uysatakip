@@ -84,6 +84,7 @@ $total = count($rowsData);
 $prevDay = date('Y-m-d', strtotime($date . ' -1 day'));
 $nextDay = date('Y-m-d', strtotime($date . ' +1 day'));
 $pendingCount = $repo->pendingOrdersCount();
+$critCount = count($repo->criticalStock());
 
 // Bar grafik verisi (girilen firmalar × kişi), broşür "Bugün Sipariş Veren Firmalar".
 $barRows = [];
@@ -164,14 +165,13 @@ require __DIR__ . '/partials/header.php';
           <div class="mt">Siparişler</div>
           <div class="md">Müşteri onay kuyruğu</div>
         </a>
-        <a class="mod-card soon i-blue" href="yakinda.php?m=stok">
-          <span class="soon-chip">yakında</span>
+        <a class="mod-card i-blue" href="stok.php">
+          <?php if ($critCount > 0): ?><span class="soon-chip" style="background:var(--red-tint);color:var(--red)"><?= $critCount ?> kritik</span><?php endif; ?>
           <div class="mico"><i class="bi bi-box-seam"></i></div>
           <div class="mt">Stok Durumu</div>
           <div class="md">Malzeme giriş/çıkış</div>
         </a>
-        <a class="mod-card soon" href="menu.php">
-          <span class="soon-chip">yakında</span>
+        <a class="mod-card" href="recete.php">
           <div class="mico"><i class="bi bi-clipboard2-data"></i></div>
           <div class="mt">Reçete & Maliyet</div>
           <div class="md">Porsiyon maliyeti</div>
