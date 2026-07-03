@@ -97,6 +97,7 @@ function handleInvoiceUpload(array $file, Repo $repo, string $by, string &$flash
 }
 
 $fin = $repo->monthFinanceTotals($month);
+$tasimaTot = $repo->monthTasimaTotals($month);
 $txs = $repo->transactionsForMonth($month);
 $customers = $repo->activeCustomers();
 $suppliers = $repo->activeSuppliers();
@@ -124,10 +125,23 @@ require __DIR__ . '/partials/header.php';
       </form>
 
       <div class="summary-grid">
-        <div class="summary-card"><p class="label">Gelir</p><p class="metric">₺ <?= Helpers::money($fin['gelir']) ?></p></div>
-        <div class="summary-card"><p class="label">Gider</p><p class="metric">₺ <?= Helpers::money($fin['gider']) ?></p></div>
+        <div class="summary-card tint-green"><p class="label">Gelir</p><p class="metric">₺ <?= Helpers::money($fin['gelir']) ?></p></div>
+        <div class="summary-card tint-orange"><p class="label">Gider</p><p class="metric">₺ <?= Helpers::money($fin['gider']) ?></p></div>
         <div class="summary-card wide"><p class="label">Net nakit</p><p class="metric <?= $fin['net'] < 0 ? 'neg' : '' ?>">₺ <?= Helpers::money($fin['net']) ?></p></div>
       </div>
+
+      <?php if ($tasimaTot['satis'] > 0 || $tasimaTot['gider'] > 0): ?>
+      <div class="cardx card-pad">
+        <h2>Taşıma karlılığı <span class="text-muted" style="font-size:12px;font-weight:600">(üretim cirosundan ayrı)</span></h2>
+        <table class="tablex">
+          <tbody>
+            <tr><td>Taşıma satış / hakediş</td><td class="num">₺ <?= Helpers::money($tasimaTot['satis']) ?></td></tr>
+            <tr><td>Taşıma sabit gider</td><td class="num">₺ <?= Helpers::money($tasimaTot['gider']) ?></td></tr>
+            <tr class="is-total"><td>Taşıma kâr</td><td class="num" style="color:<?= $tasimaTot['kar'] < 0 ? 'var(--red)' : 'var(--green)' ?>">₺ <?= Helpers::money($tasimaTot['kar']) ?></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <?php endif; ?>
 
       <div class="segmented">
         <a class="chip <?= $filter === 'all' ? 'active' : '' ?>" href="finans.php?ay=<?= $month ?>&tur=all">Tümü</a>

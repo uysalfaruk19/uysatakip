@@ -8,8 +8,7 @@ declare(strict_types=1);
  *   php tools/setup_db.php --seed-only
  *
  * Kullanıcılar .env'den okunur (koda gömülü şifre YOK):
- *   ADMIN_USER / ADMIN_PASS   (OFU süperadmin)
- *   STAFF_USER / STAFF_PASS   (Azim, editor)
+ *   ADMIN_USER / ADMIN_PASS   (uysal süperadmin — tek admin)
  * Verilmezse güçlü rastgele şifre üretilir ve EKRANA yazılır (bir kez).
  */
 
@@ -48,6 +47,5 @@ function seedUser(PDO $pdo, Auth $auth, string $username, string $role, string $
 }
 
 echo "Kullanıcılar seed ediliyor...\n";
-seedUser($pdo, $auth, Env::get('ADMIN_USER', 'OFU'), 'superadmin', 'Ömer Faruk Uysal', Env::get('ADMIN_PASS'));
-seedUser($pdo, $auth, Env::get('STAFF_USER', 'Azim'), 'editor', 'Azim', Env::get('STAFF_PASS'));
+seedUser($pdo, $auth, Env::get('ADMIN_USER', 'uysal'), 'superadmin', 'Ömer Faruk Uysal', Env::get('ADMIN_PASS'));
 echo "Bitti.\n";

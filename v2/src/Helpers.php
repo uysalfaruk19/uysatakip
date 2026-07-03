@@ -31,6 +31,18 @@ final class Helpers
         return number_format($n, 2, ',', '.');
     }
 
+    /**
+     * Türkçe para girdisini float'a çevir: "180.000,00" -> 180000.0, "1.500,50" -> 1500.5,
+     * "250" -> 250.0. Binlik '.' atılır, ondalık ',' noktaya çevrilir (₺/boşluk temizlenir).
+     */
+    public static function parseMoney(string $s): float
+    {
+        $s = str_replace(['₺', ' ', "\u{00A0}"], '', trim($s));
+        $s = str_replace('.', '', $s);   // binlik ayıracı
+        $s = str_replace(',', '.', $s);  // ondalık ayıracı
+        return (float) $s;
+    }
+
     /** Türkçe-duyarlı normalize: küçült, aksan/İ-ı düzelt, sadece a-z0-9 bırak. Fuzzy eşleşme için. */
     public static function normalizeName(string $s): string
     {

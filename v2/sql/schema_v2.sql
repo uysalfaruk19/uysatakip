@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS `customers` (
   `id`            INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `name`          VARCHAR(150) NOT NULL,
   `unit_price`    DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'kişi başı TL',
+  `category`      ENUM('uretim','tasima') NOT NULL DEFAULT 'uretim' COMMENT 'üretim (yemek) / taşıma müşterisi',
   `contact`       VARCHAR(255)          DEFAULT NULL,
   `phone`         VARCHAR(40)           DEFAULT NULL,
   `contract_note` VARCHAR(500)          DEFAULT NULL,
@@ -37,6 +38,22 @@ CREATE TABLE IF NOT EXISTS `customers` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_customer_name` (`name`),
   KEY `idx_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── Taşıma müşterisi aylık karlılık (satış − sabit gider) ─────
+-- Taşıma müşterisinin üretim (kişi×fiyat) modeli yok; kâr AYLIK sözleşme:
+-- satis_fiyati (aylık hakediş) − sabit_gider (araç/yakıt/şoför vb.) = kâr (türetilmiş).
+CREATE TABLE IF NOT EXISTS `tasima_aylik` (
+  `id`           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `customer_id`  INT UNSIGNED NOT NULL,
+  `ay`           CHAR(7)      NOT NULL COMMENT 'YYYY-MM',
+  `satis_fiyati` DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'aylık satış/hakediş TL',
+  `sabit_gider`  DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'aylık sabit gider TL',
+  `note`         VARCHAR(500)          DEFAULT NULL,
+  `created_at`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_tasima_ay` (`customer_id`,`ay`),
+  CONSTRAINT `fk_tasima_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ── Müşteri uygulaması kullanıcıları (M6, dış) — F1'de sadece şema ─
@@ -167,6 +184,8 @@ CREATE TABLE IF NOT EXISTS `transactions` (
   `supplier_id` INT UNSIGNED          DEFAULT NULL,
   `description` VARCHAR(500)          DEFAULT NULL,
   `file_id`     INT UNSIGNED          DEFAULT NULL,
+  -- TODO (Paraşüt): dış-kaynak senkron alanı. Bu turda kullanılmıyor; 'manuel'/'parasut'.
+  `source`      VARCHAR(20)  NOT NULL DEFAULT 'manuel',
   `created_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_tx_date` (`tx_date`),

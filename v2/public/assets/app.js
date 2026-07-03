@@ -49,5 +49,13 @@
     if (el) el.style.display = (el.style.display === 'none' || !el.style.display) ? 'block' : 'none';
   };
 
+  window.toggleFabMenu = function () {
+    var m = document.getElementById('fab-menu');
+    var b = document.getElementById('fab-backdrop');
+    if (!m || !b) return;
+    var open = m.classList.toggle('open');
+    b.classList.toggle('open', open);
+  };
+
   document.addEventListener('DOMContentLoaded', recalc);
 })();

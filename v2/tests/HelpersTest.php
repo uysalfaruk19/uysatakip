@@ -27,6 +27,15 @@ final class HelpersTest extends TestCase
         $this->assertSame('0,00', Helpers::money(0));
     }
 
+    public function testParseMoneyTurkish(): void
+    {
+        $this->assertEqualsWithDelta(180000.0, Helpers::parseMoney('180.000,00'), 0.001, 'binlik ayıraç');
+        $this->assertEqualsWithDelta(1500.5, Helpers::parseMoney('1.500,50'), 0.001);
+        $this->assertEqualsWithDelta(250.0, Helpers::parseMoney('250'), 0.001);
+        $this->assertEqualsWithDelta(328.0, Helpers::parseMoney('₺ 328,00'), 0.001);
+        $this->assertEqualsWithDelta(0.0, Helpers::parseMoney(''), 0.001);
+    }
+
     public function testNormalizeNameFoldsTurkish(): void
     {
         $this->assertSame('cantas', Helpers::normalizeName('CANTAŞ'));

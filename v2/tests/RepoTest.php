@@ -98,4 +98,112 @@ final class RepoTest extends TestCase
         $this->assertSame(450, (int) $byName['CANTAŞ']);
         $this->assertNull($byName['OPAK'], 'girilmeyen müşteri NULL (eksik işareti)');
     }
+
+    // ── opus-006: müşteri kategorisi + taşıma kâr + drill-down ──
+    public function testUpsertCustomerCategoryGroups(): void
+    {
+        $this->repo->upsertCustomer('CANTAŞ', 328.0, 'uretim');
+        $this->repo->upsertCustomer('X LOJİSTİK', 0.0, 'tasima');
+        $this->repo->upsertCustomer('OPAK', 250.0); // varsayılan üretim
+
+        $uretim = $this->repo->listCustomersByCategory('uretim');
+        $tasima = $this->repo->listCustomersByCategory('tasima');
+        $this->assertCount(2, $uretim, 'CANTAŞ + OPAK üretim');
+        $this->assertCount(1, $tasima, 'X LOJİSTİK taşıma');
+        $this->assertSame('X LOJİSTİK', $tasima[0]['name']);
+        $this->assertSame('tasima', $tasima[0]['category']);
+    }
+
+    public function testUpsertCustomerEditByIdChangesCategory(): void
+    {
+        $id = $this->repo->upsertCustomer('DENEME', 100.0, 'uretim');
+        $same = $this->repo->upsertCustomer('DENEME AŞ', 120.0, 'tasima', $id);
+        $this->assertSame($id, $same, 'aynı id güncellenir');
+        $c = $this->repo->customer($id);
+        $this->assertSame('DENEME AŞ', $c['name']);
+        $this->assertSame('tasima', $c['category']);
+        $this->assertEqualsWithDelta(120.0, (float) $c['unit_price'], 0.001);
+        $rows = (int) $this->pdo->query('SELECT COUNT(*) FROM customers')->fetchColumn();
+        $this->assertSame(1, $rows, 'yeni satır oluşmaz (düzenleme)');
+    }
+
+    public function testSetCustomerActiveHidesFromList(): void
+    {
+        $id = $this->repo->upsertCustomer('PASIF AŞ', 0.0, 'tasima');
+        $this->assertCount(1, $this->repo->listCustomersByCategory('tasima'));
+        $this->repo->setCustomerActive($id, false);
+        $this->assertCount(0, $this->repo->listCustomersByCategory('tasima'), 'pasif liste dışı');
+        $this->assertNotNull($this->repo->customer($id), 'kayıt silinmez (FK bütünlüğü)');
+    }
+
+    public function testTasimaKarIsSatisMinusGider(): void
+    {
+        $id = $this->repo->upsertCustomer('KARGO AŞ', 0.0, 'tasima');
+        $this->repo->upsertTasimaAylik($id, '2026-07', 180000.0, 125000.0, '2 araç');
+        $this->assertEqualsWithDelta(55000.0, $this->repo->tasimaKar($id, '2026-07'), 0.001);
+
+        $rec = $this->repo->tasimaAylik($id, '2026-07');
+        $this->assertEqualsWithDelta(55000.0, (float) $rec['kar'], 0.001);
+        $this->assertSame('2 araç', $rec['note']);
+
+        // Aynı ay tekrar → upsert (güncelle, çift satır yok)
+        $this->repo->upsertTasimaAylik($id, '2026-07', 200000.0, 125000.0, null);
+        $this->assertEqualsWithDelta(75000.0, $this->repo->tasimaKar($id, '2026-07'), 0.001);
+        $cnt = (int) $this->pdo->query('SELECT COUNT(*) FROM tasima_aylik')->fetchColumn();
+        $this->assertSame(1, $cnt, 'UNIQUE(customer,ay): tek satır');
+    }
+
+    public function testMonthTasimaTotals(): void
+    {
+        $a = $this->repo->upsertCustomer('KARGO A', 0.0, 'tasima');
+        $b = $this->repo->upsertCustomer('KARGO B', 0.0, 'tasima');
+        $this->repo->upsertTasimaAylik($a, '2026-07', 100000, 60000);
+        $this->repo->upsertTasimaAylik($b, '2026-07', 80000, 90000); // zarar
+        $this->repo->upsertTasimaAylik($a, '2026-06', 100000, 10000); // başka ay
+        $tot = $this->repo->monthTasimaTotals('2026-07');
+        $this->assertEqualsWithDelta(180000.0, $tot['satis'], 0.001);
+        $this->assertEqualsWithDelta(150000.0, $tot['gider'], 0.001);
+        $this->assertEqualsWithDelta(30000.0, $tot['kar'], 0.001, '(40000) + (-10000)');
+    }
+
+    public function testCustomerDailyGridBreakdownAndScope(): void
+    {
+        $a = seed_customer($this->pdo, 'CANTAŞ', 328);
+        $b = seed_customer($this->pdo, 'OPAK', 250);
+        // A: 07-01 öğle 10 + akşam 5 + kumanya 4 ; 07-02 öğle 20
+        $this->repo->upsertProduction($a, '2026-07-01', 10, 328, 'ogle');
+        $this->repo->upsertProduction($a, '2026-07-01', 5, 328, 'aksam');
+        $this->repo->upsertProduction($a, '2026-07-01', 4, 328, 'kumanya');
+        $this->repo->upsertProduction($a, '2026-07-02', 20, 328, 'ogle');
+        // B: başka müşteri — A'nın grid'inde görünmemeli
+        $this->repo->upsertProduction($b, '2026-07-01', 99, 250, 'ogle');
+        $this->repo->upsertProduction($a, '2026-06-30', 7, 328, 'ogle'); // başka ay
+
+        $grid = $this->repo->customerDailyGrid($a, '2026-07');
+        $this->assertCount(2, $grid, 'temmuz 2 gün (haziran hariç)');
+
+        $day1 = $grid[0];
+        $this->assertSame('2026-07-01', $day1['gun']);
+        $this->assertSame(10, (int) $day1['ogle']);
+        $this->assertSame(5, (int) $day1['aksam']);
+        $this->assertSame(4, (int) $day1['kumanya']);
+        $this->assertSame(19, (int) $day1['kisi'], 'gün toplam 10+5+4');
+        $this->assertEqualsWithDelta(19 * 328.0, (float) $day1['tutar'], 0.001);
+
+        $day2 = $grid[1];
+        $this->assertSame(20, (int) $day2['kisi']);
+        // Scope: B'nin 99 kişisi A'nın toplamına karışmadı
+        $allKisi = array_sum(array_column($grid, 'kisi'));
+        $this->assertSame(39, $allKisi, 'sadece A: 19 + 20');
+    }
+
+    public function testMonthProductionByCustomerHasIdAndCategory(): void
+    {
+        $a = seed_customer($this->pdo, 'CANTAŞ', 328);
+        $this->repo->upsertProduction($a, '2026-07-01', 10, 328, 'ogle');
+        $rows = $this->repo->monthProductionByCustomer('2026-07');
+        $this->assertCount(1, $rows);
+        $this->assertSame($a, (int) $rows[0]['customer_id'], 'drill-down için id döner');
+        $this->assertSame('uretim', $rows[0]['category']);
+    }
 }

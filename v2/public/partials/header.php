@@ -10,7 +10,7 @@ $eyebrow = $eyebrow ?? ('UYSA Kokpit · ' . ($u['display_name'] ?: $u['username'
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0b1117">
+<meta name="theme-color" content="#f2f6fa">
 <title>UYSA Kokpit · <?= Helpers::e($pageTitle) ?></title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
 <link href="assets/app.css" rel="stylesheet">

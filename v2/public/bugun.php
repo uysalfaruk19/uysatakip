@@ -84,7 +84,19 @@ $total = count($rowsData);
 $prevDay = date('Y-m-d', strtotime($date . ' -1 day'));
 $nextDay = date('Y-m-d', strtotime($date . ' +1 day'));
 
-$pageTitle = 'Bugün';
+// Bar grafik verisi (girilen firmalar × kişi), broşür "Bugün Sipariş Veren Firmalar".
+$barRows = [];
+$barMax = 0;
+foreach ($rowsData as $r) {
+    if ($r['val'] > 0) {
+        $barRows[] = ['name' => $r['name'], 'val' => $r['val']];
+        $barMax = max($barMax, $r['val']);
+    }
+}
+usort($barRows, static fn($a, $b) => $b['val'] <=> $a['val']);
+$barRows = array_slice($barRows, 0, 6);
+
+$pageTitle = 'Panel';
 $active = 'bugun';
 require __DIR__ . '/partials/header.php';
 ?>
@@ -99,17 +111,92 @@ require __DIR__ . '/partials/header.php';
 
       <?php if ($flash): ?><div class="flash <?= $flashOk ? 'ok' : 'err' ?>"><?= Helpers::e($flash) ?></div><?php endif; ?>
 
-      <div class="summary-grid">
-        <div class="summary-card">
-          <p class="label">Toplam kişi</p>
-          <p class="metric" id="sum-persons"><?= number_format($sumP, 0, ',', '.') ?></p>
+      <div class="stat-stack">
+        <div class="stat-card stat-green">
+          <div class="ico"><i class="bi bi-cash-stack"></i></div>
+          <div class="txt">
+            <p class="lbl">Bugünkü toplam ciro</p>
+            <p class="val">₺ <span id="sum-amount"><?= Helpers::money($sumA) ?></span></p>
+          </div>
         </div>
-        <div class="summary-card">
-          <p class="label">Gün tutarı</p>
-          <p class="metric">₺ <span id="sum-amount"><?= Helpers::money($sumA) ?></span></p>
-          <span class="delta"><i class="bi bi-check2-circle"></i> <span id="sum-filled"><?= $filled ?>/<?= $total ?> girildi</span></span>
+        <div class="stat-card stat-orange">
+          <div class="ico"><i class="bi bi-people-fill"></i></div>
+          <div class="txt">
+            <p class="lbl">Bugünkü toplam kişi</p>
+            <p class="val" id="sum-persons"><?= number_format($sumP, 0, ',', '.') ?></p>
+          </div>
+        </div>
+        <div class="stat-card stat-blue">
+          <div class="ico"><i class="bi bi-shop"></i></div>
+          <div class="txt">
+            <p class="lbl">Giriş yapılan müşteri</p>
+            <p class="val"><span id="sum-filled"><?= $filled ?>/<?= $total ?></span></p>
+          </div>
         </div>
       </div>
+
+      <div class="section-head"><h2>Bölümler</h2></div>
+      <div class="mod-grid">
+        <a class="mod-card i-green" href="musteriler.php">
+          <div class="mico"><i class="bi bi-people"></i></div>
+          <div class="mt">Müşteriler</div>
+          <div class="md">Üretim / taşıma, birim fiyat, kâr</div>
+        </a>
+        <a class="mod-card i-blue" href="rapor.php">
+          <div class="mico"><i class="bi bi-graph-up-arrow"></i></div>
+          <div class="mt">Kâr / Zarar</div>
+          <div class="md">Aylık rapor + müşteri drill-down</div>
+        </a>
+        <a class="mod-card" href="finans.php">
+          <div class="mico"><i class="bi bi-receipt"></i></div>
+          <div class="mt">Aylık Faturalar</div>
+          <div class="md">Gelir / gider akışı</div>
+        </a>
+        <a class="mod-card i-green" href="cari.php">
+          <div class="mico"><i class="bi bi-cash-coin"></i></div>
+          <div class="mt">Cari</div>
+          <div class="md">Bakiye ve tahsilat</div>
+        </a>
+        <a class="mod-card soon i-amber" href="yakinda.php?m=siparisler">
+          <span class="soon-chip">yakında</span>
+          <div class="mico"><i class="bi bi-basket"></i></div>
+          <div class="mt">Siparişler</div>
+          <div class="md">Onay kuyruğu (F2)</div>
+        </a>
+        <a class="mod-card soon i-blue" href="yakinda.php?m=stok">
+          <span class="soon-chip">yakında</span>
+          <div class="mico"><i class="bi bi-box-seam"></i></div>
+          <div class="mt">Stok Durumu</div>
+          <div class="md">Malzeme giriş/çıkış</div>
+        </a>
+        <a class="mod-card soon" href="menu.php">
+          <span class="soon-chip">yakında</span>
+          <div class="mico"><i class="bi bi-clipboard2-data"></i></div>
+          <div class="mt">Reçete & Maliyet</div>
+          <div class="md">Porsiyon maliyeti</div>
+        </a>
+        <a class="mod-card soon i-amber" href="yakinda.php?m=personel">
+          <span class="soon-chip">yakında</span>
+          <div class="mico"><i class="bi bi-person-badge"></i></div>
+          <div class="mt">Personel Gideri</div>
+          <div class="md">Maaş / prim takibi</div>
+        </a>
+      </div>
+
+      <?php if ($barRows): ?>
+      <div class="cardx card-pad">
+        <h2>Bugün üretim veren firmalar</h2>
+        <div class="barchart">
+          <?php foreach ($barRows as $b): $w = $barMax > 0 ? max(4, round($b['val'] / $barMax * 100)) : 4; ?>
+            <div class="bar-row">
+              <span class="bar-name"><?= Helpers::e($b['name']) ?></span>
+              <span class="bar-track"><span class="bar-fill" style="width: <?= $w ?>%"></span></span>
+              <span class="bar-val"><?= number_format($b['val'], 0, ',', '.') ?></span>
+            </div>
+          <?php endforeach; ?>
+        </div>
+      </div>
+      <?php endif; ?>
 
       <div class="hint-card">
         Bu veriler WhatsApp'tan da girilebilir: OFUclaw'a <strong>"cantaş 450 opak 280"</strong> yaz.

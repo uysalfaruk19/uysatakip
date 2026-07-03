@@ -19,11 +19,23 @@ CREATE TABLE IF NOT EXISTS customers (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL UNIQUE,
   unit_price REAL NOT NULL DEFAULT 0,
+  category TEXT NOT NULL DEFAULT 'uretim' CHECK(category IN ('uretim','tasima')),
   contact TEXT,
   phone TEXT,
   contract_note TEXT,
   is_active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS tasima_aylik (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  ay TEXT NOT NULL,
+  satis_fiyati REAL NOT NULL DEFAULT 0,
+  sabit_gider REAL NOT NULL DEFAULT 0,
+  note TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(customer_id, ay)
 );
 
 CREATE TABLE IF NOT EXISTS customer_users (
@@ -124,6 +136,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   supplier_id INTEGER REFERENCES suppliers(id) ON DELETE SET NULL,
   description TEXT,
   file_id INTEGER REFERENCES files(id) ON DELETE SET NULL,
+  source TEXT NOT NULL DEFAULT 'manuel',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
