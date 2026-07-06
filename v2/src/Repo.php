@@ -2046,6 +2046,45 @@ final class Repo
         return $st->fetchAll();
     }
 
+    /**
+     * Excel import: gün listesini menüye toplu upsert (opus-016). Aynı tarih+öğün → GÜNCELLE
+     * (upsertMenuItem UNIQUE sayesinde duplicate yok). Tek transaction.
+     * @param array<int,array{date:string,dishes:mixed}> $days dishes: dizi (satır satır) veya metin
+     * @return int işlenen gün sayısı (geçersiz tarih / boş yemek atlanır)
+     */
+    public function importMenuItems(int $menuId, array $days, string $meal = 'ogle'): int
+    {
+        $own = !$this->pdo->inTransaction();
+        if ($own) {
+            $this->pdo->beginTransaction();
+        }
+        try {
+            $n = 0;
+            foreach ($days as $d) {
+                $date = trim((string) ($d['date'] ?? ''));
+                $dishes = $d['dishes'] ?? '';
+                if (is_array($dishes)) {
+                    $dishes = implode("\n", array_map('strval', $dishes));
+                }
+                $dishes = trim((string) $dishes);
+                if (!Helpers::isDate($date) || $dishes === '') {
+                    continue;
+                }
+                $this->upsertMenuItem($menuId, $date, $meal, mb_substr($dishes, 0, 1000));
+                $n++;
+            }
+            if ($own) {
+                $this->pdo->commit();
+            }
+            return $n;
+        } catch (\Throwable $e) {
+            if ($own) {
+                $this->pdo->rollBack();
+            }
+            throw $e;
+        }
+    }
+
     /** Menü kalemini sil (scope: menu_id ile — yanlış menü kalemi silinmez). */
     public function deleteMenuItem(int $itemId, int $menuId): void
     {

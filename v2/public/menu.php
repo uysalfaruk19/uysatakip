@@ -6,6 +6,7 @@ use Uysa\Auth;
 use Uysa\Db;
 use Uysa\Helpers;
 use Uysa\Repo;
+use Uysa\XlsxMenu;
 
 $u = Auth::requireLogin();
 $pdo = Db::pdo();
@@ -16,6 +17,62 @@ $flash = '';
 $flashOk = true;
 $editId = (int) ($_GET['edit'] ?? 0) ?: null;
 $formOpen = isset($_GET['yeni']);
+$preview = null; // Excel yükleme önizlemesi (excel_preview sonrası)
+
+// ── Excel indir (export): seçili menü → haftalık grid xlsx (header'dan ÖNCE) ──
+if (isset($_GET['export'])) {
+    $mid = (int) $_GET['export'];
+    $m = $repo->menu($mid);
+    if ($m) {
+        $bin = XlsxMenu::write((string) $m['title'], $repo->menuItems($mid));
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="menu-' . (int) $mid . '.xlsx"');
+        header('Content-Length: ' . strlen($bin));
+        echo $bin;
+        exit;
+    }
+    header('Location: menu.php');
+    exit;
+}
+
+/**
+ * Yüklenen menü xlsx'ini güvenli doğrula + parse et. Hata → $err doldurur, [] döner.
+ * @return array{title:string,days:array} veya hata durumunda ['title'=>'','days'=>[]]
+ */
+function handleMenuXlsx(array $file, string &$err): array
+{
+    $empty = ['title' => '', 'days' => []];
+    if (empty($file['name']) || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        $err = 'Dosya yüklenemedi.';
+        return $empty;
+    }
+    $maxMb = \Uysa\Env::int('UPLOAD_MAX_MB', 25);
+    if ($file['size'] > $maxMb * 1024 * 1024) {
+        $err = "Dosya $maxMb MB limitini aşıyor.";
+        return $empty;
+    }
+    $ext = strtolower(pathinfo((string) $file['name'], PATHINFO_EXTENSION));
+    if ($ext !== 'xlsx') {
+        $err = 'Yalnızca .xlsx dosyası yüklenebilir.';
+        return $empty;
+    }
+    $finfo = new finfo(FILEINFO_MIME_TYPE);
+    $mime = (string) $finfo->file($file['tmp_name']);
+    $okMime = [
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/zip', 'application/x-zip-compressed', 'application/octet-stream',
+    ];
+    if (!in_array($mime, $okMime, true)) {
+        $err = "İzin verilmeyen dosya türü: $mime";
+        return $empty;
+    }
+    try {
+        return XlsxMenu::read($file['tmp_name']);
+    } catch (\Throwable $e) {
+        $err = 'Excel okunamadı: ' . $e->getMessage();
+        return $empty;
+    }
+}
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     if (!Helpers::csrfCheck($_POST['csrf'] ?? null)) {
@@ -80,6 +137,75 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $repo->publishMenu($menuId, false);
             $flash = 'Menü taslağa alındı.';
             $editId = $menuId;
+        } elseif ($action === 'excel_preview') {
+            // Excel yükle → parse → önizleme (henüz DB'ye yazılmaz)
+            $targetMenu = (int) ($_POST['target_menu'] ?? 0); // 0 = yeni menü
+            $err = '';
+            $parsed = handleMenuXlsx($_FILES['xlsx'] ?? [], $err);
+            if ($err !== '') {
+                $flash = $err;
+                $flashOk = false;
+                $editId = $targetMenu ?: null;
+            } elseif (!$parsed['days']) {
+                $flash = 'Excel içinde tarihli menü bulunamadı. Format: her tarih sütununun altında yemekler.';
+                $flashOk = false;
+                $editId = $targetMenu ?: null;
+            } else {
+                $dates = array_column($parsed['days'], 'date');
+                sort($dates);
+                $existing = [];
+                if ($targetMenu > 0) {
+                    foreach ($repo->menuItems($targetMenu) as $it) {
+                        $existing[$it['item_date']] = true;
+                    }
+                }
+                $overwrite = array_values(array_intersect($dates, array_keys($existing)));
+                $preview = [
+                    'target_menu' => $targetMenu,
+                    'title'       => $parsed['title'] !== '' ? $parsed['title'] : 'İçe aktarılan menü',
+                    'days'        => $parsed['days'],
+                    'date_start'  => $dates[0],
+                    'date_end'    => end($dates),
+                    'overwrite'   => $overwrite,
+                ];
+                $editId = $targetMenu ?: null;
+            }
+        } elseif ($action === 'excel_import') {
+            // Önizleme onayı → menü oluştur/güncelle + kalemleri upsert
+            $days = json_decode((string) ($_POST['days_json'] ?? ''), true);
+            $title = trim((string) ($_POST['title'] ?? ''));
+            $targetMenu = (int) ($_POST['target_menu'] ?? 0);
+            if (!is_array($days) || !$days) {
+                $flash = 'İçe aktarılacak veri bulunamadı.';
+                $flashOk = false;
+            } else {
+                $dates = array_values(array_filter(array_column($days, 'date'), [Helpers::class, 'isDate']));
+                sort($dates);
+                try {
+                    $pdo->beginTransaction();
+                    if ($targetMenu > 0 && $repo->menu($targetMenu)) {
+                        $mid = $targetMenu;
+                    } else {
+                        $mid = $repo->upsertMenu(
+                            $title !== '' ? $title : 'İçe aktarılan menü',
+                            $dates[0] ?? Helpers::today(),
+                            end($dates) ?: Helpers::today(),
+                            'all'
+                        );
+                    }
+                    $count = $repo->importMenuItems($mid, $days);
+                    $pdo->commit();
+                    uysa_audit('menu_excel_import', $u['username'], (string) $mid, json_encode(['gun' => $count]), client_ip());
+                    $flash = $count . ' gün Excel\'den içe aktarıldı.';
+                    $editId = $mid;
+                } catch (\Throwable $e) {
+                    if ($pdo->inTransaction()) {
+                        $pdo->rollBack();
+                    }
+                    $flash = 'İçe aktarma başarısız oldu.';
+                    $flashOk = false;
+                }
+            }
         }
     }
 }
@@ -106,8 +232,68 @@ require __DIR__ . '/partials/header.php';
 ?>
       <?php if ($flash): ?><div class="flash <?= $flashOk ? 'ok' : 'err' ?>"><?= Helpers::e($flash) ?></div><?php endif; ?>
 
+<?php if ($preview): ?>
+      <div class="cardx card-pad">
+        <h2><i class="bi bi-file-earmark-excel"></i> Excel önizleme</h2>
+        <p class="row-meta">
+          <strong><?= count($preview['days']) ?> gün</strong> bulundu ·
+          <?= date('d.m.Y', strtotime($preview['date_start'])) ?> – <?= date('d.m.Y', strtotime($preview['date_end'])) ?>
+          <?= $preview['target_menu'] ? ' · bu menüye eklenecek' : ' · yeni taslak menü oluşturulacak' ?>
+        </p>
+        <?php if ($preview['overwrite']): ?>
+          <div class="flash err" style="margin:8px 0"><i class="bi bi-exclamation-triangle"></i>
+            <?= count($preview['overwrite']) ?> gün zaten var, ÜZERİNE YAZILACAK:
+            <?= Helpers::e(implode(', ', array_map(static fn($d) => date('d.m', strtotime($d)), $preview['overwrite']))) ?>
+          </div>
+        <?php endif; ?>
+
+        <div class="list-groupx" style="max-height:280px;overflow:auto;margin:10px 0">
+          <?php foreach ($preview['days'] as $d): ?>
+            <div class="flow-item">
+              <div>
+                <strong><?= Helpers::e(gun_label_tr($d['date'])) ?></strong>
+                <p class="row-meta"><?= Helpers::e(implode(' · ', $d['dishes'])) ?></p>
+              </div>
+            </div>
+          <?php endforeach; ?>
+        </div>
+
+        <form method="post" class="form-grid">
+          <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
+          <input type="hidden" name="action" value="excel_import">
+          <input type="hidden" name="target_menu" value="<?= (int) $preview['target_menu'] ?>">
+          <input type="hidden" name="days_json" value="<?= Helpers::e(json_encode($preview['days'], JSON_UNESCAPED_UNICODE)) ?>">
+          <?php if (!$preview['target_menu']): ?>
+            <div class="field"><label>Menü başlığı</label>
+              <input class="inputx" name="title" value="<?= Helpers::e($preview['title']) ?>" required>
+            </div>
+          <?php endif; ?>
+          <div class="actions-row">
+            <a class="btn-action btn-ghost flex-fill" href="menu.php<?= $preview['target_menu'] ? '?edit=' . (int) $preview['target_menu'] : '' ?>">Vazgeç</a>
+            <button class="btn-action btn-primaryx flex-fill" type="submit"><i class="bi bi-check2"></i> İçe al</button>
+          </div>
+        </form>
+      </div>
+<?php require __DIR__ . '/partials/footer.php'; exit; endif; ?>
+
 <?php if ($edit): ?>
       <a class="btn-action btn-secondaryx mb-2" href="menu.php"><i class="bi bi-arrow-left"></i> Tüm menüler</a>
+
+      <!-- Excel indir / bu menüye yükle -->
+      <div class="cardx card-pad">
+        <div class="actions-row">
+          <a class="btn-action btn-secondaryx flex-fill" href="menu.php?export=<?= (int) $edit['id'] ?>"><i class="bi bi-download"></i> Excel indir</a>
+          <button class="btn-action btn-secondaryx flex-fill" type="button" onclick="document.getElementById('xlsx-up-edit').style.display=(document.getElementById('xlsx-up-edit').style.display==='none'?'block':'none')"><i class="bi bi-upload"></i> Excel yükle</button>
+        </div>
+        <form method="post" enctype="multipart/form-data" class="form-grid" id="xlsx-up-edit" style="display:none;margin-top:10px">
+          <input type="hidden" name="csrf" value="<?= Helpers::e($csrf) ?>">
+          <input type="hidden" name="action" value="excel_preview">
+          <input type="hidden" name="target_menu" value="<?= (int) $edit['id'] ?>">
+          <p class="row-meta">Haftalık grid xlsx yükle → bu menüye eklenir (aynı gün üzerine yazılır).</p>
+          <input class="inputx" type="file" name="xlsx" accept=".xlsx" required>
+          <button class="btn-action btn-primaryx btn-full" type="submit"><i class="bi bi-eye"></i> Önizle</button>
+        </form>
+      </div>
 
       <!-- Menü başlığı + hedef -->
       <div class="cardx card-pad">
@@ -189,7 +375,7 @@ require __DIR__ . '/partials/header.php';
               <div class="d-flex align-items-start justify-between gap-2">
                 <div style="min-width:0">
                   <p class="label"><?= Helpers::e(gun_label_tr($it['item_date'])) ?> · <?= Helpers::e($meals[$it['meal']] ?? $it['meal']) ?></p>
-                  <h2 style="margin:2px 0 0; font-size:15px"><?= Helpers::e($it['dishes']) ?></h2>
+                  <h2 style="margin:2px 0 0; font-size:15px"><?= nl2br(Helpers::e($it['dishes'])) ?></h2>
                 </div>
                 <form method="post" onsubmit="return confirm('Bu gün silinsin mi?');" style="display:inline">
                   <input type="hidden" name="csrf" value="<?= Helpers::e($csrf) ?>">
@@ -226,6 +412,17 @@ require __DIR__ . '/partials/header.php';
 <?php else: ?>
       <?php if (!$formOpen): ?>
         <a class="btn-action btn-primaryx btn-full" href="menu.php?yeni=1"><i class="bi bi-plus-lg"></i> Yeni menü</a>
+        <div class="cardx card-pad mt-2">
+          <form method="post" enctype="multipart/form-data" class="form-grid">
+            <input type="hidden" name="csrf" value="<?= Helpers::e($csrf) ?>">
+            <input type="hidden" name="action" value="excel_preview">
+            <input type="hidden" name="target_menu" value="0">
+            <label style="font-weight:600"><i class="bi bi-file-earmark-excel"></i> Excel'den menü yükle</label>
+            <p class="row-meta">Haftalık grid xlsx (Ömer'in menü dosyası) → önizle → yeni taslak menü oluşur.</p>
+            <input class="inputx" type="file" name="xlsx" accept=".xlsx" required>
+            <button class="btn-action btn-secondaryx btn-full" type="submit"><i class="bi bi-upload"></i> Yükle & önizle</button>
+          </form>
+        </div>
       <?php endif; ?>
 
       <div class="fab-sheet" id="menu-form" style="<?= $formOpen ? '' : 'display:none' ?>">

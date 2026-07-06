@@ -3,7 +3,11 @@
 # v2 uygulaması kökte (public/ web kökü), v1 SPA /eski arşivinde (salt-okunur, router korur).
 FROM php:8.2-cli
 
-RUN docker-php-ext-install pdo pdo_mysql
+# pdo_mysql (üretim DB) + zip (opus-016 Menü Excel import/export; SimpleXML/libxml zaten gömülü).
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends libzip-dev \
+ && rm -rf /var/lib/apt/lists/* \
+ && docker-php-ext-install pdo pdo_mysql zip
 
 RUN printf "upload_max_filesize=30M\npost_max_size=32M\nmemory_limit=256M\nmax_execution_time=120\nexpose_php=Off\n" \
     > /usr/local/etc/php/conf.d/uysa.ini
