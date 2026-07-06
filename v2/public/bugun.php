@@ -85,6 +85,7 @@ $prevDay = date('Y-m-d', strtotime($date . ' -1 day'));
 $nextDay = date('Y-m-d', strtotime($date . ' +1 day'));
 $pendingCount = $repo->pendingOrdersCount();
 $critCount = count($repo->criticalStock());
+$supplyCount = $repo->openSupplyRequestsCount();
 
 // Bar grafik verisi (girilen firmalar × kişi), broşür "Bugün Sipariş Veren Firmalar".
 $barRows = [];
@@ -180,6 +181,17 @@ require __DIR__ . '/partials/header.php';
           <div class="mico"><i class="bi bi-person-badge"></i></div>
           <div class="mt">Personel Giderleri</div>
           <div class="md">Maaş / prim takibi</div>
+        </a>
+        <a class="mod-card i-green" href="menu.php">
+          <div class="mico"><i class="bi bi-card-list"></i></div>
+          <div class="mt">Menü</div>
+          <div class="md">Menü oluştur + hedefli yayınla</div>
+        </a>
+        <a class="mod-card i-amber" href="malzeme.php">
+          <?php if ($supplyCount > 0): ?><span class="soon-chip" style="background:var(--red-tint);color:var(--red)"><?= $supplyCount ?> yeni</span><?php endif; ?>
+          <div class="mico"><i class="bi bi-box-seam"></i></div>
+          <div class="mt">Malzeme Talepleri</div>
+          <div class="md">Katalog · hakediş · talep kuyruğu</div>
         </a>
       </div>
 

@@ -246,3 +246,79 @@ CREATE TABLE IF NOT EXISTS rate_locks (
   rl_key TEXT PRIMARY KEY,
   locked_until INTEGER NOT NULL
 );
+
+-- ── Yayınlanan menü (opus-010, müşteri-yüzü; menu_days'ten AYRI) ──
+CREATE TABLE IF NOT EXISTS menu (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  date_start TEXT NOT NULL,
+  date_end TEXT NOT NULL,
+  audience TEXT NOT NULL DEFAULT 'all' CHECK(audience IN ('all','selected')),
+  status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','published')),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS menu_item (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  menu_id INTEGER NOT NULL REFERENCES menu(id) ON DELETE CASCADE,
+  item_date TEXT NOT NULL,
+  meal TEXT NOT NULL DEFAULT 'ogle' CHECK(meal IN ('sabah','ogle','aksam','gece','kumanya')),
+  dishes TEXT,
+  UNIQUE(menu_id, item_date, meal)
+);
+
+CREATE TABLE IF NOT EXISTS menu_target (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  menu_id INTEGER NOT NULL REFERENCES menu(id) ON DELETE CASCADE,
+  customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  UNIQUE(menu_id, customer_id)
+);
+
+-- ── Malzeme talebi (sarf malzeme; katalog + müşteri talebi) ──
+CREATE TABLE IF NOT EXISTS supply_item (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ad TEXT NOT NULL UNIQUE,
+  birim TEXT NOT NULL DEFAULT 'adet',
+  is_active INTEGER NOT NULL DEFAULT 1,
+  sort_order INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS supply_request (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  customer_user_id INTEGER,
+  request_date TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'acik' CHECK(status IN ('acik','hazirlandi','teslim')),
+  note TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS supply_request_item (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  request_id INTEGER NOT NULL REFERENCES supply_request(id) ON DELETE CASCADE,
+  supply_item_id INTEGER NOT NULL REFERENCES supply_item(id),
+  miktar REAL NOT NULL DEFAULT 1,
+  UNIQUE(request_id, supply_item_id)
+);
+
+-- Müşteri × malzeme standing hakediş (her müşterinin her kalemden hakkı).
+CREATE TABLE IF NOT EXISTS supply_entitlement (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  supply_item_id INTEGER NOT NULL REFERENCES supply_item(id) ON DELETE CASCADE,
+  miktar REAL NOT NULL DEFAULT 0,
+  UNIQUE(customer_id, supply_item_id)
+);
+
+-- Sarf malzeme başlangıç kataloğu (Ömer düzenler). Boşsa seed (idempotent).
+INSERT OR IGNORE INTO supply_item (ad, birim, sort_order) VALUES
+  ('Ayçiçek Yağı', 'litre', 10),
+  ('Sirke', 'litre', 20),
+  ('Ketçap', 'adet', 30),
+  ('Mayonez', 'adet', 40),
+  ('Bulaşık Deterjanı', 'litre', 50),
+  ('Peçete', 'paket', 60),
+  ('Tuz', 'kg', 70),
+  ('Karabiber', 'paket', 80),
+  ('Çöp Poşeti', 'paket', 90),
+  ('Eldiven', 'kutu', 100);

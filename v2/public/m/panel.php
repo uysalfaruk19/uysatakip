@@ -19,14 +19,29 @@ $tomorrow = date('Y-m-d', strtotime('+1 day'));
 $order = $repo->customerOrder($cid, $tomorrow, 'ogle');
 
 $today = Helpers::today();
-$menuToday = $repo->publishedMenu($today, $today, 'ogle');
-$menuText = implode(' · ', array_filter(array_map(static fn($r) => $r['recipe_name'], $menuToday)));
+// Bugünün menüsü: SADECE bu müşteriye yayınlanmış menülerden (IDOR scope) öğle kalemi.
+$menuText = '';
+foreach ($repo->menusForCustomer($cid) as $m) {
+    foreach ($repo->menuItems((int) $m['id']) as $it) {
+        if ($it['item_date'] === $today && $it['meal'] === 'ogle' && trim((string) $it['dishes']) !== '') {
+            $menuText = (string) $it['dishes'];
+            break 2;
+        }
+    }
+}
 
 $openReqs = $repo->customerRequests($cid);
 $openCount = 0;
 foreach ($openReqs as $r) {
     if ($r['status'] === 'acik') {
         $openCount++;
+    }
+}
+// Bekleyen (açık/hazırlanan) malzeme talebi rozeti
+$openSupply = 0;
+foreach ($repo->supplyRequestsForCustomer($cid) as $sr) {
+    if ($sr['status'] !== 'teslim') {
+        $openSupply++;
     }
 }
 
@@ -90,4 +105,11 @@ require __DIR__ . '/partials/header_m.php';
           <div class="mt-3"><a class="btn-action btn-secondaryx" href="talep.php">Talep aç</a></div>
         </div>
       <?php endif; ?>
+
+      <a class="cardx card-pad" href="malzeme.php" style="display:block">
+        <div class="d-flex align-items-center justify-content-between gap-2">
+          <div><p class="label">Sarf malzeme</p><h2 style="margin:0"><?= $openSupply > 0 ? $openSupply . ' talep sürüyor' : 'Malzeme iste' ?></h2></div>
+          <span class="badge-soft <?= $openSupply > 0 ? 'badge-warn' : 'badge-blue' ?>"><i class="bi bi-box-seam"></i> <?= $openSupply > 0 ? 'Görüntüle' : 'Talep aç' ?></span>
+        </div>
+      </a>
 <?php require __DIR__ . '/partials/footer_m.php'; ?>

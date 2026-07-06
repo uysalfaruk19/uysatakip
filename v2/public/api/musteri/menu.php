@@ -2,26 +2,32 @@
 declare(strict_types=1);
 
 /**
- * GET /api/musteri/menu?from=YYYY-MM-DD&to=YYYY-MM-DD&meal=ogle — yayınlanan menü.
- * Menü tüm müşterilere ortak (yayın = is_published); kişisel veri yok, yine de oturum zorunlu.
+ * GET /api/musteri/menu — bu müşteriye YAYINLANMIŞ menüler (IDOR scope).
+ * audience='all' VEYA menu_target'ta customer_id VAR olan yayınlanmış, süresi geçmemiş menüler.
+ * Müşteri A, sadece-B-hedefli menüyü GÖRMEZ.
  */
 
 require __DIR__ . '/_boot_m.php';
 
 use Uysa\Helpers;
 
-$from = (string) ($_GET['from'] ?? Helpers::today());
-$to = (string) ($_GET['to'] ?? date('Y-m-d', strtotime('+6 day')));
-if (!Helpers::isDate($from)) {
-    $from = Helpers::today();
+$menus = $repo->menusForCustomer($cid);
+$out = [];
+foreach ($menus as $m) {
+    $items = [];
+    foreach ($repo->menuItems((int) $m['id']) as $it) {
+        $items[] = [
+            'tarih'   => $it['item_date'],
+            'ogun'    => $it['meal'],
+            'yemekler' => $it['dishes'],
+        ];
+    }
+    $out[] = [
+        'id'         => (int) $m['id'],
+        'baslik'     => $m['title'],
+        'date_start' => $m['date_start'],
+        'date_end'   => $m['date_end'],
+        'gunler'     => $items,
+    ];
 }
-if (!Helpers::isDate($to)) {
-    $to = date('Y-m-d', strtotime($from . ' +6 day'));
-}
-$meal = (string) ($_GET['meal'] ?? 'ogle');
-if (!in_array($meal, ['sabah', 'ogle', 'aksam', 'gece', 'kumanya'], true)) {
-    $meal = 'ogle';
-}
-
-$rows = $repo->publishedMenu($from, $to, $meal);
-Helpers::json(['ok' => true, 'from' => $from, 'to' => $to, 'ogun' => $meal, 'menu' => $rows]);
+Helpers::json(['ok' => true, 'menu' => $out]);

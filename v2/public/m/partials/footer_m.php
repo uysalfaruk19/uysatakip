@@ -5,6 +5,7 @@ $tabs = [
   'panel'   => ['Panel', 'bi-house-check'],
   'siparis' => ['Sipariş', 'bi-plus-square'],
   'menu'    => ['Menü', 'bi-card-list'],
+  'malzeme' => ['Malzeme', 'bi-box-seam'],
   'cari'    => ['Cari', 'bi-receipt'],
   'talep'   => ['Talep', 'bi-chat-left-text'],
 ];

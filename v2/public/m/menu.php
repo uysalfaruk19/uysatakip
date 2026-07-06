@@ -12,36 +12,44 @@ $cid = (int) $cu['customer_id'];
 $pdo = Db::pdo();
 $repo = new Repo($pdo);
 
-$from = Helpers::today();
-$to = date('Y-m-d', strtotime('+6 day'));
-$rows = $repo->publishedMenu($from, $to, 'ogle');
-
-// Güne göre grupla
-$byDay = [];
-foreach ($rows as $r) {
-    $byDay[$r['menu_date']][] = $r['recipe_name'];
-}
+// SADECE bu müşteriye yayınlanmış menüler (all-audience VEYA menu_target'ta) — IDOR scope.
+$menus = $repo->menusForCustomer($cid);
+$meals = ['sabah' => 'Sabah', 'ogle' => 'Öğle', 'aksam' => 'Akşam', 'gece' => 'Gece', 'kumanya' => 'Kumanya'];
 
 $eyebrow = Helpers::e($cu['customer_name']) . ' · Menü';
-$pageTitle = 'Haftalık menü';
+$pageTitle = 'Menü';
 $active = 'menu';
 require __DIR__ . '/partials/header_m.php';
 ?>
-      <p class="eyebrow mb-2" style="margin-top:0"><?= Helpers::e(gun_label_tr($from)) ?> – <?= Helpers::e(gun_label_tr($to)) ?> · Öğle</p>
-
-      <?php if (!$byDay): ?>
+      <?php if (!$menus): ?>
         <div class="empty-state">
           Yayınlanan menü yok.
-          <div class="row-meta mt-2">UYSA menüyü yayınladığında burada görünecek.</div>
+          <div class="row-meta mt-2">UYSA size menü yayınladığında burada görünecek.</div>
         </div>
       <?php else: ?>
-        <div class="screen-stack">
-          <?php foreach ($byDay as $day => $items): ?>
-            <div class="meal-card cardx card-pad">
-              <p class="label"><?= Helpers::e(gun_label_tr($day)) ?></p>
-              <h2 style="margin:0"><?= Helpers::e(implode(' · ', array_filter($items))) ?></h2>
+        <?php foreach ($menus as $m): $items = $repo->menuItems((int) $m['id']); ?>
+          <div class="cardx card-pad mb-3">
+            <div class="d-flex align-items-center justify-between gap-2 mb-2">
+              <div style="min-width:0">
+                <p class="label" style="margin:0">Günün Menüsü</p>
+                <h2 style="margin:2px 0 0"><?= Helpers::e($m['title']) ?></h2>
+              </div>
+              <span class="badge-soft badge-ok"><i class="bi bi-broadcast"></i> Yayında</span>
             </div>
-          <?php endforeach; ?>
-        </div>
+            <p class="row-meta mb-2"><i class="bi bi-calendar2-week"></i> <?= date('d.m', strtotime($m['date_start'])) ?> – <?= date('d.m.Y', strtotime($m['date_end'])) ?></p>
+            <?php if (!$items): ?>
+              <div class="empty-state">Bu menüde gün eklenmemiş.</div>
+            <?php else: ?>
+              <div class="screen-stack">
+                <?php foreach ($items as $it): ?>
+                  <div class="meal-card">
+                    <p class="label"><?= Helpers::e(gun_label_tr($it['item_date'])) ?> · <?= Helpers::e($meals[$it['meal']] ?? $it['meal']) ?></p>
+                    <h2 style="margin:2px 0 0; font-size:16px"><?= Helpers::e($it['dishes']) ?></h2>
+                  </div>
+                <?php endforeach; ?>
+              </div>
+            <?php endif; ?>
+          </div>
+        <?php endforeach; ?>
       <?php endif; ?>
 <?php require __DIR__ . '/partials/footer_m.php'; ?>

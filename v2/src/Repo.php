@@ -1127,4 +1127,371 @@ final class Repo
             'net'          => $ciro - $hammadde - $personel - $tasimaGider,
         ];
     }
+
+    // ── Yayınlanan menü (opus-010, müşteri-yüzü; menu_days'ten AYRI) ─
+    /**
+     * Admin menü listesi (taslak + yayında) + gün sayısı + hedef sayısı.
+     * @return array<int,array> ['id','title','date_start','date_end','audience','status','item_count','target_count']
+     */
+    public function listMenus(int $limit = 50): array
+    {
+        return $this->pdo->query(
+            'SELECT m.id, m.title, m.date_start, m.date_end, m.audience, m.status, m.created_at,
+                    (SELECT COUNT(*) FROM menu_item mi WHERE mi.menu_id = m.id) AS item_count,
+                    (SELECT COUNT(*) FROM menu_target mt WHERE mt.menu_id = m.id) AS target_count
+             FROM menu m ORDER BY m.date_start DESC, m.id DESC LIMIT ' . (int) $limit
+        )->fetchAll();
+    }
+
+    /** Tek menü (admin, scope'suz — yönetim ekranı). */
+    public function menu(int $id): ?array
+    {
+        $st = $this->pdo->prepare('SELECT * FROM menu WHERE id = ?');
+        $st->execute([$id]);
+        return $st->fetch() ?: null;
+    }
+
+    /** Menü oluştur/güncelle (başlık, tarih aralığı, audience). $id verilirse günceller. @return menu id */
+    public function upsertMenu(string $title, string $dateStart, string $dateEnd, string $audience = 'all', ?int $id = null): int
+    {
+        if (!in_array($audience, ['all', 'selected'], true)) {
+            $audience = 'all';
+        }
+        if ($id !== null) {
+            $this->pdo->prepare(
+                'UPDATE menu SET title = ?, date_start = ?, date_end = ?, audience = ? WHERE id = ?'
+            )->execute([$title, $dateStart, $dateEnd, $audience, $id]);
+            return $id;
+        }
+        $this->pdo->prepare(
+            'INSERT INTO menu (title, date_start, date_end, audience) VALUES (?, ?, ?, ?)'
+        )->execute([$title, $dateStart, $dateEnd, $audience]);
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    /** Menü gün×öğün yemek listesi upsert (UNIQUE menu_id,item_date,meal). */
+    public function upsertMenuItem(int $menuId, string $itemDate, string $meal, string $dishes): void
+    {
+        if (!in_array($meal, ['sabah', 'ogle', 'aksam', 'gece', 'kumanya'], true)) {
+            $meal = 'ogle';
+        }
+        $driver = $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+        $onConf = $driver === 'sqlite'
+            ? 'ON CONFLICT(menu_id, item_date, meal) DO UPDATE SET dishes = excluded.dishes'
+            : 'ON DUPLICATE KEY UPDATE dishes = VALUES(dishes)';
+        $this->pdo->prepare(
+            'INSERT INTO menu_item (menu_id, item_date, meal, dishes) VALUES (?, ?, ?, ?) ' . $onConf
+        )->execute([$menuId, $itemDate, $meal, $dishes]);
+    }
+
+    /** Bir menünün gün×öğün kalemleri (tarih, öğün sıralı). */
+    public function menuItems(int $menuId): array
+    {
+        $st = $this->pdo->prepare(
+            'SELECT id, item_date, meal, dishes FROM menu_item WHERE menu_id = ? ORDER BY item_date ASC, meal ASC'
+        );
+        $st->execute([$menuId]);
+        return $st->fetchAll();
+    }
+
+    /** Menü kalemini sil (scope: menu_id ile — yanlış menü kalemi silinmez). */
+    public function deleteMenuItem(int $itemId, int $menuId): void
+    {
+        $this->pdo->prepare('DELETE FROM menu_item WHERE id = ? AND menu_id = ?')->execute([$itemId, $menuId]);
+    }
+
+    /**
+     * Menü hedefini ayarla. audience='all' → hedef listesi temizlenir (herkes görür).
+     * audience='selected' → verilen customerIds hedef olur (önce temizle, sonra ekle).
+     */
+    public function setMenuAudience(int $menuId, string $audience, array $customerIds = []): void
+    {
+        if (!in_array($audience, ['all', 'selected'], true)) {
+            $audience = 'all';
+        }
+        $own = !$this->pdo->inTransaction();
+        if ($own) {
+            $this->pdo->beginTransaction();
+        }
+        try {
+            $this->pdo->prepare('UPDATE menu SET audience = ? WHERE id = ?')->execute([$audience, $menuId]);
+            $this->pdo->prepare('DELETE FROM menu_target WHERE menu_id = ?')->execute([$menuId]);
+            if ($audience === 'selected') {
+                $ins = $this->pdo->prepare('INSERT INTO menu_target (menu_id, customer_id) VALUES (?, ?)');
+                foreach (array_unique(array_map('intval', $customerIds)) as $cId) {
+                    if ($cId > 0) {
+                        $ins->execute([$menuId, $cId]);
+                    }
+                }
+            }
+            if ($own) {
+                $this->pdo->commit();
+            }
+        } catch (\Throwable $e) {
+            if ($own) {
+                $this->pdo->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    /** @return array<int,int> menü hedef customer_id listesi (audience='selected' iken). */
+    public function menuTargets(int $menuId): array
+    {
+        $st = $this->pdo->prepare('SELECT customer_id FROM menu_target WHERE menu_id = ?');
+        $st->execute([$menuId]);
+        return array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
+    }
+
+    /** Menüyü yayınla / taslağa al. */
+    public function publishMenu(int $menuId, bool $publish = true): void
+    {
+        $this->pdo->prepare('UPDATE menu SET status = ? WHERE id = ?')
+            ->execute([$publish ? 'published' : 'draft', $menuId]);
+    }
+
+    /**
+     * IDOR SCOPE: bir müşteriye görünür YAYINLANMIŞ menüler.
+     * Görünürlük: status='published' VE date_end >= bugün VE
+     * (audience='all' VEYA menu_target'ta customer_id VAR).
+     * Müşteri A, sadece-B-hedefli menüyü GÖRMEZ; all-audience menüyü görür.
+     * @return array<int,array>
+     */
+    public function menusForCustomer(int $customerId, ?string $today = null): array
+    {
+        $today ??= date('Y-m-d');
+        $st = $this->pdo->prepare(
+            "SELECT DISTINCT m.id, m.title, m.date_start, m.date_end, m.audience, m.status
+             FROM menu m
+             LEFT JOIN menu_target mt ON mt.menu_id = m.id AND mt.customer_id = ?
+             WHERE m.status = 'published' AND m.date_end >= ?
+               AND (m.audience = 'all' OR mt.customer_id IS NOT NULL)
+             ORDER BY m.date_start ASC, m.id ASC"
+        );
+        $st->execute([$customerId, $today]);
+        return $st->fetchAll();
+    }
+
+    // ── Malzeme talebi (opus-010) ───────────────────────────────
+    /** Sarf malzeme katalog listesi (aktif varsayılan, sort_order sonra ad). */
+    public function listSupplyItems(bool $activeOnly = true): array
+    {
+        $sql = 'SELECT id, ad, birim, is_active, sort_order FROM supply_item';
+        if ($activeOnly) {
+            $sql .= ' WHERE is_active = 1';
+        }
+        $sql .= ' ORDER BY sort_order ASC, ad ASC';
+        return $this->pdo->query($sql)->fetchAll();
+    }
+
+    public function supplyItem(int $id): ?array
+    {
+        $st = $this->pdo->prepare('SELECT id, ad, birim, is_active, sort_order FROM supply_item WHERE id = ?');
+        $st->execute([$id]);
+        return $st->fetch() ?: null;
+    }
+
+    /** Katalog ekle/düzenle. $id verilirse günceller; yoksa ada göre upsert. @return id */
+    public function upsertSupplyItem(string $ad, string $birim = 'adet', ?int $id = null, int $sortOrder = 0): int
+    {
+        if ($id === null) {
+            $st = $this->pdo->prepare('SELECT id FROM supply_item WHERE ad = ?');
+            $st->execute([$ad]);
+            $found = $st->fetchColumn();
+            $id = $found !== false ? (int) $found : null;
+        }
+        if ($id !== null) {
+            $this->pdo->prepare('UPDATE supply_item SET ad = ?, birim = ?, sort_order = ? WHERE id = ?')
+                ->execute([$ad, $birim, $sortOrder, $id]);
+            return $id;
+        }
+        $this->pdo->prepare('INSERT INTO supply_item (ad, birim, sort_order) VALUES (?, ?, ?)')
+            ->execute([$ad, $birim, $sortOrder]);
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    /** Katalog kalemini pasif/aktif (silme YOK — geçmiş talep bütünlüğü). */
+    public function setSupplyItemActive(int $id, bool $active): void
+    {
+        $this->pdo->prepare('UPDATE supply_item SET is_active = ? WHERE id = ?')
+            ->execute([$active ? 1 : 0, $id]);
+    }
+
+    /**
+     * Müşteri malzeme talebi oluştur: supply_request + kalemler.
+     * $items: [supply_item_id => miktar]. miktar<=0 kalemler atlanır. customerId ZORUNLU (IDOR).
+     * @return int request id (kalem yoksa 0 — talep açılmaz)
+     */
+    public function createSupplyRequest(int $customerId, array $items, ?int $customerUserId = null, ?string $note = null, ?string $requestDate = null): int
+    {
+        $requestDate ??= date('Y-m-d');
+        // Geçerli kalemleri süz (miktar > 0)
+        $valid = [];
+        foreach ($items as $itemId => $qty) {
+            $itemId = (int) $itemId;
+            $qty = (float) $qty;
+            if ($itemId > 0 && $qty > 0) {
+                $valid[$itemId] = $qty;
+            }
+        }
+        if (!$valid) {
+            return 0;
+        }
+        $own = !$this->pdo->inTransaction();
+        if ($own) {
+            $this->pdo->beginTransaction();
+        }
+        try {
+            $this->pdo->prepare(
+                'INSERT INTO supply_request (customer_id, customer_user_id, request_date, note) VALUES (?, ?, ?, ?)'
+            )->execute([$customerId, $customerUserId, $requestDate, $note]);
+            $reqId = (int) $this->pdo->lastInsertId();
+            $ins = $this->pdo->prepare(
+                'INSERT INTO supply_request_item (request_id, supply_item_id, miktar) VALUES (?, ?, ?)'
+            );
+            foreach ($valid as $itemId => $qty) {
+                $ins->execute([$reqId, $itemId, $qty]);
+            }
+            if ($own) {
+                $this->pdo->commit();
+            }
+            return $reqId;
+        } catch (\Throwable $e) {
+            if ($own) {
+                $this->pdo->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    /** IDOR SCOPE: müşteri kapsamlı talep listesi (yeni→eski) + kalem sayısı. */
+    public function supplyRequestsForCustomer(int $customerId): array
+    {
+        $st = $this->pdo->prepare(
+            'SELECT sr.id, sr.request_date, sr.status, sr.note, sr.created_at,
+                    (SELECT COUNT(*) FROM supply_request_item i WHERE i.request_id = sr.id) AS item_count
+             FROM supply_request sr WHERE sr.customer_id = ?
+             ORDER BY sr.created_at DESC, sr.id DESC'
+        );
+        $st->execute([$customerId]);
+        return $st->fetchAll();
+    }
+
+    /** Bir talebin kalemleri (ad + birim + miktar). */
+    public function supplyRequestItems(int $requestId): array
+    {
+        $st = $this->pdo->prepare(
+            'SELECT sri.id, sri.supply_item_id, si.ad, si.birim, sri.miktar
+             FROM supply_request_item sri JOIN supply_item si ON si.id = sri.supply_item_id
+             WHERE sri.request_id = ? ORDER BY si.sort_order ASC, si.ad ASC'
+        );
+        $st->execute([$requestId]);
+        return $st->fetchAll();
+    }
+
+    /** IDOR guard: talep SADECE sahibi müşteriye döner (müşteri-yüzü kalem erişimi). */
+    public function supplyRequestForCustomer(int $requestId, int $customerId): ?array
+    {
+        $st = $this->pdo->prepare('SELECT * FROM supply_request WHERE id = ? AND customer_id = ?');
+        $st->execute([$requestId, $customerId]);
+        return $st->fetch() ?: null;
+    }
+
+    /** Admin: talep kuyruğu (müşteri adıyla). $status null = hepsi, aksi belirli durum. */
+    public function openSupplyRequests(?string $status = 'acik'): array
+    {
+        $sql = 'SELECT sr.id, sr.customer_id, sr.request_date, sr.status, sr.note, sr.created_at,
+                       c.name AS customer_name,
+                       (SELECT COUNT(*) FROM supply_request_item i WHERE i.request_id = sr.id) AS item_count
+                FROM supply_request sr JOIN customers c ON c.id = sr.customer_id';
+        $params = [];
+        if ($status !== null) {
+            $sql .= ' WHERE sr.status = ?';
+            $params[] = $status;
+        }
+        $sql .= ' ORDER BY sr.created_at DESC, sr.id DESC';
+        $st = $this->pdo->prepare($sql);
+        $st->execute($params);
+        return $st->fetchAll();
+    }
+
+    public function openSupplyRequestsCount(): int
+    {
+        return (int) $this->pdo->query("SELECT COUNT(*) FROM supply_request WHERE status = 'acik'")->fetchColumn();
+    }
+
+    /** Admin: talep id ile (scope'suz, müşteri adıyla). */
+    public function supplyRequestById(int $requestId): ?array
+    {
+        $st = $this->pdo->prepare(
+            'SELECT sr.*, c.name AS customer_name FROM supply_request sr
+             JOIN customers c ON c.id = sr.customer_id WHERE sr.id = ?'
+        );
+        $st->execute([$requestId]);
+        return $st->fetch() ?: null;
+    }
+
+    public function setSupplyRequestStatus(int $requestId, string $status): void
+    {
+        if (!in_array($status, ['acik', 'hazirlandi', 'teslim'], true)) {
+            throw new \InvalidArgumentException('Geçersiz talep durumu: ' . $status);
+        }
+        $this->pdo->prepare('UPDATE supply_request SET status = ? WHERE id = ?')->execute([$status, $requestId]);
+    }
+
+    // ── Müşteri malzeme hakedişi (standing entitlement) ─────────
+    /**
+     * IDOR SCOPE: bir müşterinin malzeme hakedişleri [supply_item_id => miktar].
+     * Sadece verilen customerId — başka müşterinin hakedişi sızmaz.
+     * @return array<int,float>
+     */
+    public function getEntitlements(int $customerId): array
+    {
+        $st = $this->pdo->prepare('SELECT supply_item_id, miktar FROM supply_entitlement WHERE customer_id = ?');
+        $st->execute([$customerId]);
+        $out = [];
+        foreach ($st->fetchAll() as $r) {
+            $out[(int) $r['supply_item_id']] = (float) $r['miktar'];
+        }
+        return $out;
+    }
+
+    /** Tek müşteri×malzeme hakediş upsert. miktar<=0 → kaydı sil (hakediş yok). */
+    public function setEntitlement(int $customerId, int $supplyItemId, float $miktar): void
+    {
+        if ($miktar <= 0) {
+            $this->pdo->prepare('DELETE FROM supply_entitlement WHERE customer_id = ? AND supply_item_id = ?')
+                ->execute([$customerId, $supplyItemId]);
+            return;
+        }
+        $driver = $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+        $onConf = $driver === 'sqlite'
+            ? 'ON CONFLICT(customer_id, supply_item_id) DO UPDATE SET miktar = excluded.miktar'
+            : 'ON DUPLICATE KEY UPDATE miktar = VALUES(miktar)';
+        $this->pdo->prepare(
+            'INSERT INTO supply_entitlement (customer_id, supply_item_id, miktar) VALUES (?, ?, ?) ' . $onConf
+        )->execute([$customerId, $supplyItemId, $miktar]);
+    }
+
+    /** Bir müşterinin hakedişlerini toplu ayarla [supply_item_id => miktar]. Tek transaction. */
+    public function upsertEntitlementsBulk(int $customerId, array $items): void
+    {
+        $own = !$this->pdo->inTransaction();
+        if ($own) {
+            $this->pdo->beginTransaction();
+        }
+        try {
+            foreach ($items as $itemId => $miktar) {
+                $this->setEntitlement($customerId, (int) $itemId, (float) $miktar);
+            }
+            if ($own) {
+                $this->pdo->commit();
+            }
+        } catch (\Throwable $e) {
+            if ($own) {
+                $this->pdo->rollBack();
+            }
+            throw $e;
+        }
+    }
 }
