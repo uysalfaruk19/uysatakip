@@ -39,6 +39,14 @@ DAHİL — F1'de UI yok, F2'de açılır (sonradan migration istemesin).
   `public/talepler.php` (tip/durum/müşteri filtre, cevap+durum). Foto servisi IDOR-scope:
   `public/dosya.php` (admin) · `public/m/dosya.php` (müşteri, sadece kendi eki). Şema: `sql/migrate_019.sql`.
 
+**Kokpit bot API (opus-020, iki bot: OFUclaw + UYSA botu):** X-UYSA-Token'lı, salt-bilgi + sınırlı yazma uçları
+(bot Opus doğal dili cümleye çevirir). `GET /api/menu?gun=|hafta=|from=&to=` (yayınlanmış menü, `publishedMenuItems`) ·
+`GET /api/kar?ay=` (`karAnalizi` sarar, ekranla birebir) · `POST /api/gider` `{tutar,neresi_icin:'genel'|ad[],aciklama}`
+(ciro-oranlı dağıtım opus-015; fuzzy düşük güven/eşleşmeyen → **422 netleştir**, yazmaz) · `GET /api/musteri?ad=` (fuzzy,
+bu ay kişi/ciro/net + cari/Paraşüt bakiye) · `GET /api/personel?ay=` (yüklü maliyet+kıdem, salt-okuma). Yazma yalnız
+üretim+gider (yıkıcı/silme YOK). Bot skill taslağı: `bot/kokpit-skill.md` (🔒 körü körüne yapma, eksik/belirsiz→Ömer'e SOR).
+FAZ 2 (tool+2 bota deploy) = Fable. İş emri: `is-emirleri/opus-020-kokpit-bot-api.md`.
+
 ## Kurulum
 
 ```bash

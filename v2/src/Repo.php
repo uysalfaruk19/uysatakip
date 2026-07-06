@@ -2282,6 +2282,28 @@ final class Repo
         return $st->fetchAll();
     }
 
+    /**
+     * Bot/admin görünümü: bir tarih aralığında YAYINLANMIŞ menülerin gün×öğün yemekleri.
+     * Müşteri-scope YOK — Ömer/bot tüm yayınlanmış menüyü görür (audience gözetilmez).
+     * $meal verilirse o öğüne kısıtlar. Aynı gün+öğün birden çok menüde varsa hepsi döner.
+     * @return array<int,array{item_date:string,meal:string,dishes:string,menu_title:string}>
+     */
+    public function publishedMenuItems(string $from, string $to, ?string $meal = null): array
+    {
+        $sql = "SELECT mi.item_date, mi.meal, mi.dishes, m.title AS menu_title
+                FROM menu_item mi JOIN menu m ON m.id = mi.menu_id
+                WHERE m.status = 'published' AND mi.item_date BETWEEN ? AND ?";
+        $params = [$from, $to];
+        if ($meal !== null) {
+            $sql .= ' AND mi.meal = ?';
+            $params[] = $meal;
+        }
+        $sql .= ' ORDER BY mi.item_date ASC, mi.meal ASC';
+        $st = $this->pdo->prepare($sql);
+        $st->execute($params);
+        return $st->fetchAll();
+    }
+
     /** IDOR SCOPE: tek menü — SADECE bu müşteriye görünürse döner (PDF indirme için). */
     public function menuForCustomer(int $customerId, int $menuId, ?string $minEndDate = null): ?array
     {
