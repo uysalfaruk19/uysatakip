@@ -131,20 +131,22 @@ require __DIR__ . '/partials/header.php';
         <div class="summary-card wide"><p class="label">Net nakit</p><p class="metric <?= $fin['net'] < 0 ? 'neg' : '' ?>">₺ <?= Helpers::money($fin['net']) ?></p></div>
       </div>
 
-      <?php if ($tasimaTot['satis'] > 0 || $tasimaTot['gider'] > 0): ?>
+      <?php if ($tasimaTot['satis'] > 0 || $tasimaTot['alis'] > 0 || $tasimaTot['gider'] > 0): ?>
       <div class="cardx card-pad">
-        <h2>Taşıma karlılığı <span class="text-muted" style="font-size:12px;font-weight:600">(üretim cirosundan ayrı)</span></h2>
+        <h2>Taşıma karlılığı <span class="text-muted" style="font-size:12px;font-weight:600">(adet×(satış−alış), üretim cirosundan ayrı)</span></h2>
         <table class="tablex">
           <tbody>
-            <tr><td>Taşıma satış / hakediş</td><td class="num">₺ <?= Helpers::money($tasimaTot['satis']) ?></td></tr>
-            <tr><td>Taşıma sabit gider</td><td class="num">₺ <?= Helpers::money($tasimaTot['gider']) ?></td></tr>
-            <tr class="is-total"><td>Taşıma kâr</td><td class="num" style="color:<?= $tasimaTot['kar'] < 0 ? 'var(--red)' : 'var(--green)' ?>">₺ <?= Helpers::money($tasimaTot['kar']) ?></td></tr>
+            <tr><td>Taşıma toplam satış</td><td class="num">₺ <?= Helpers::money($tasimaTot['satis']) ?></td></tr>
+            <tr><td>Taşıma toplam alış</td><td class="num">− ₺ <?= Helpers::money($tasimaTot['alis']) ?></td></tr>
+            <tr><td>Brüt kâr</td><td class="num">₺ <?= Helpers::money($tasimaTot['brut']) ?></td></tr>
+            <tr><td>Sabit gider</td><td class="num">− ₺ <?= Helpers::money($tasimaTot['gider']) ?></td></tr>
+            <tr class="is-total"><td>Taşıma net kâr</td><td class="num" style="color:<?= $tasimaTot['net'] < 0 ? 'var(--red)' : 'var(--green)' ?>">₺ <?= Helpers::money($tasimaTot['net']) ?></td></tr>
           </tbody>
         </table>
       </div>
       <?php endif; ?>
 
-      <?php if ($nk['ciro'] > 0 || $nk['personel'] > 0 || $nk['hammadde'] > 0 || $nk['tasima_gider'] > 0): ?>
+      <?php if ($nk['ciro'] > 0 || $nk['personel'] > 0 || $nk['hammadde'] > 0 || $nk['tasima_kar'] != 0): ?>
       <div class="cardx card-pad">
         <h2>Net karlılık <span class="text-muted" style="font-size:12px;font-weight:600">(tahakkuk — nakit akışından ayrı)</span></h2>
         <table class="tablex">
@@ -152,7 +154,7 @@ require __DIR__ . '/partials/header.php';
             <tr><td>Üretim cirosu</td><td class="num">₺ <?= Helpers::money($nk['ciro']) ?></td></tr>
             <tr><td>Hammadde / işletme gideri</td><td class="num">− ₺ <?= Helpers::money($nk['hammadde']) ?></td></tr>
             <tr><td>Personel gideri</td><td class="num">− ₺ <?= Helpers::money($nk['personel']) ?></td></tr>
-            <tr><td>Taşıma sabit gideri</td><td class="num">− ₺ <?= Helpers::money($nk['tasima_gider']) ?></td></tr>
+            <tr><td>Taşıma net kâr (adet×(satış−alış)−sabit)</td><td class="num" style="color:<?= $nk['tasima_kar'] < 0 ? 'var(--red)' : 'var(--green)' ?>"><?= $nk['tasima_kar'] < 0 ? '− ₺ ' . Helpers::money(abs($nk['tasima_kar'])) : '+ ₺ ' . Helpers::money($nk['tasima_kar']) ?></td></tr>
             <tr class="is-total"><td>Net karlılık</td><td class="num" style="color:<?= $nk['net'] < 0 ? 'var(--red)' : 'var(--green)' ?>">₺ <?= Helpers::money($nk['net']) ?></td></tr>
           </tbody>
         </table>

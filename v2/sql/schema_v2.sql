@@ -41,14 +41,16 @@ CREATE TABLE IF NOT EXISTS `customers` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ── Taşıma müşterisi aylık karlılık (satış − sabit gider) ─────
--- Taşıma müşterisinin üretim (kişi×fiyat) modeli yok; kâr AYLIK sözleşme:
--- satis_fiyati (aylık hakediş) − sabit_gider (araç/yakıt/şoför vb.) = kâr (türetilmiş).
+-- Taşıma müşterisinin üretim (kişi×fiyat) modeli yok; kâr adet×birim fiyat farkı:
+-- brüt kâr = adet × (birim_satis − birim_alis); net kâr = brüt − sabit_gider (opsiyonel).
 CREATE TABLE IF NOT EXISTS `tasima_aylik` (
   `id`           INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `customer_id`  INT UNSIGNED NOT NULL,
   `ay`           CHAR(7)      NOT NULL COMMENT 'YYYY-MM',
-  `satis_fiyati` DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'aylık satış/hakediş TL',
-  `sabit_gider`  DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'aylık sabit gider TL',
+  `adet`         DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'o ay satılan yemek adedi',
+  `birim_alis`   DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'adet başı alış/tedarik TL',
+  `birim_satis`  DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'adet başı satış TL',
+  `sabit_gider`  DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'opsiyonel aylık sabit gider TL',
   `note`         VARCHAR(500)          DEFAULT NULL,
   `created_at`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),

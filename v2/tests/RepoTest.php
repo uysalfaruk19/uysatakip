@@ -136,19 +136,25 @@ final class RepoTest extends TestCase
         $this->assertNotNull($this->repo->customer($id), 'kayıt silinmez (FK bütünlüğü)');
     }
 
-    public function testTasimaKarIsSatisMinusGider(): void
+    public function testTasimaKarIsAdetTimesSatisMinusAlisMinusGider(): void
     {
+        // adet 100, birim alış 80, birim satış 120, sabit gider 500
         $id = $this->repo->upsertCustomer('KARGO AŞ', 0.0, 'tasima');
-        $this->repo->upsertTasimaAylik($id, '2026-07', 180000.0, 125000.0, '2 araç');
-        $this->assertEqualsWithDelta(55000.0, $this->repo->tasimaKar($id, '2026-07'), 0.001);
+        $this->repo->upsertTasimaAylik($id, '2026-07', 100.0, 80.0, 120.0, 500.0, '2 araç');
+        // brüt = 100×(120−80)=4000; net = 4000−500=3500
+        $this->assertEqualsWithDelta(3500.0, $this->repo->tasimaKar($id, '2026-07'), 0.001);
 
         $rec = $this->repo->tasimaAylik($id, '2026-07');
-        $this->assertEqualsWithDelta(55000.0, (float) $rec['kar'], 0.001);
+        $this->assertEqualsWithDelta(8000.0, (float) $rec['toplam_alis'], 0.001);
+        $this->assertEqualsWithDelta(12000.0, (float) $rec['toplam_satis'], 0.001);
+        $this->assertEqualsWithDelta(4000.0, (float) $rec['brut'], 0.001);
+        $this->assertEqualsWithDelta(3500.0, (float) $rec['net'], 0.001);
+        $this->assertEqualsWithDelta(3500.0, (float) $rec['kar'], 0.001, 'kar = net (geriye dönük)');
         $this->assertSame('2 araç', $rec['note']);
 
-        // Aynı ay tekrar → upsert (güncelle, çift satır yok)
-        $this->repo->upsertTasimaAylik($id, '2026-07', 200000.0, 125000.0, null);
-        $this->assertEqualsWithDelta(75000.0, $this->repo->tasimaKar($id, '2026-07'), 0.001);
+        // Sabit gider opsiyonel (default 0): net = brüt
+        $this->repo->upsertTasimaAylik($id, '2026-07', 100.0, 80.0, 120.0);
+        $this->assertEqualsWithDelta(4000.0, $this->repo->tasimaKar($id, '2026-07'), 0.001, 'sabit gider yok → net=brüt');
         $cnt = (int) $this->pdo->query('SELECT COUNT(*) FROM tasima_aylik')->fetchColumn();
         $this->assertSame(1, $cnt, 'UNIQUE(customer,ay): tek satır');
     }
@@ -157,13 +163,18 @@ final class RepoTest extends TestCase
     {
         $a = $this->repo->upsertCustomer('KARGO A', 0.0, 'tasima');
         $b = $this->repo->upsertCustomer('KARGO B', 0.0, 'tasima');
-        $this->repo->upsertTasimaAylik($a, '2026-07', 100000, 60000);
-        $this->repo->upsertTasimaAylik($b, '2026-07', 80000, 90000); // zarar
-        $this->repo->upsertTasimaAylik($a, '2026-06', 100000, 10000); // başka ay
+        // A: adet 1000, alış 100, satış 160, sabit 60000 → brüt 60000, net 0
+        $this->repo->upsertTasimaAylik($a, '2026-07', 1000.0, 100.0, 160.0, 60000.0);
+        // B: adet 1000, alış 100, satış 180, sabit 90000 → brüt 80000, net -10000 (zarar)
+        $this->repo->upsertTasimaAylik($b, '2026-07', 1000.0, 100.0, 180.0, 90000.0);
+        // başka ay (toplama girmemeli)
+        $this->repo->upsertTasimaAylik($a, '2026-06', 500.0, 100.0, 200.0, 10000.0);
         $tot = $this->repo->monthTasimaTotals('2026-07');
-        $this->assertEqualsWithDelta(180000.0, $tot['satis'], 0.001);
+        $this->assertEqualsWithDelta(200000.0, $tot['alis'], 0.001, '(1000×100)+(1000×100)');
+        $this->assertEqualsWithDelta(340000.0, $tot['satis'], 0.001, '(1000×160)+(1000×180)');
         $this->assertEqualsWithDelta(150000.0, $tot['gider'], 0.001);
-        $this->assertEqualsWithDelta(30000.0, $tot['kar'], 0.001, '(40000) + (-10000)');
+        $this->assertEqualsWithDelta(140000.0, $tot['brut'], 0.001, '60000+80000');
+        $this->assertEqualsWithDelta(-10000.0, $tot['net'], 0.001, '0 + (-10000)');
     }
 
     public function testCustomerDailyGridBreakdownAndScope(): void

@@ -105,41 +105,57 @@ final class Repo
         return (int) $this->pdo->lastInsertId();
     }
 
-    // ── Taşıma karlılık (aylık satış − sabit gider) ───────────
-    public function upsertTasimaAylik(int $customerId, string $ay, float $satisFiyati, float $sabitGider, ?string $note = null): void
+    // ── Taşıma karlılık (adet × (birim satış − birim alış) − sabit gider) ─
+    /**
+     * Taşıma müşterisi aylık kayıt upsert (UNIQUE customer_id, ay).
+     * adet = o ay satılan yemek adedi; birim_alis = adet başı alış/tedarik;
+     * birim_satis = adet başı satış; sabit_gider = OPSİYONEL aylık sabit gider (default 0).
+     */
+    public function upsertTasimaAylik(int $customerId, string $ay, float $adet, float $birimAlis, float $birimSatis, float $sabitGider = 0.0, ?string $note = null): void
     {
         $driver = $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
         $onConf = $driver === 'sqlite'
             ? 'ON CONFLICT(customer_id, ay) DO UPDATE SET
-                 satis_fiyati = excluded.satis_fiyati, sabit_gider = excluded.sabit_gider, note = excluded.note'
+                 adet = excluded.adet, birim_alis = excluded.birim_alis,
+                 birim_satis = excluded.birim_satis, sabit_gider = excluded.sabit_gider, note = excluded.note'
             : 'ON DUPLICATE KEY UPDATE
-                 satis_fiyati = VALUES(satis_fiyati), sabit_gider = VALUES(sabit_gider), note = VALUES(note)';
+                 adet = VALUES(adet), birim_alis = VALUES(birim_alis),
+                 birim_satis = VALUES(birim_satis), sabit_gider = VALUES(sabit_gider), note = VALUES(note)';
         $this->pdo->prepare(
-            'INSERT INTO tasima_aylik (customer_id, ay, satis_fiyati, sabit_gider, note)
-             VALUES (?, ?, ?, ?, ?) ' . $onConf
-        )->execute([$customerId, $ay, $satisFiyati, $sabitGider, $note]);
+            'INSERT INTO tasima_aylik (customer_id, ay, adet, birim_alis, birim_satis, sabit_gider, note)
+             VALUES (?, ?, ?, ?, ?, ?, ?) ' . $onConf
+        )->execute([$customerId, $ay, $adet, $birimAlis, $birimSatis, $sabitGider, $note]);
     }
 
-    /** Bir taşıma müşterisinin belirli ay satış/gider/kâr kaydı (yoksa null). */
+    /**
+     * Bir taşıma müşterisinin belirli ay kaydı (yoksa null). Türetilmiş alanlar:
+     * toplam_alis = adet×birim_alis · toplam_satis = adet×birim_satis
+     * brut = adet×(birim_satis−birim_alis) · net (=kar) = brut − sabit_gider.
+     */
     public function tasimaAylik(int $customerId, string $ay): ?array
     {
         $st = $this->pdo->prepare(
-            'SELECT satis_fiyati, sabit_gider, note FROM tasima_aylik WHERE customer_id = ? AND ay = ?'
+            'SELECT adet, birim_alis, birim_satis, sabit_gider, note FROM tasima_aylik WHERE customer_id = ? AND ay = ?'
         );
         $st->execute([$customerId, $ay]);
         $r = $st->fetch();
         if (!$r) {
             return null;
         }
-        $r['kar'] = (float) $r['satis_fiyati'] - (float) $r['sabit_gider'];
+        $adet = (float) $r['adet'];
+        $r['toplam_alis']  = $adet * (float) $r['birim_alis'];
+        $r['toplam_satis'] = $adet * (float) $r['birim_satis'];
+        $r['brut'] = $adet * ((float) $r['birim_satis'] - (float) $r['birim_alis']);
+        $r['net']  = $r['brut'] - (float) $r['sabit_gider'];
+        $r['kar']  = $r['net']; // geriye dönük UI adı
         return $r;
     }
 
-    /** Kâr = satış − sabit gider (kayıt yoksa 0). */
+    /** Net kâr = adet × (birim satış − birim alış) − sabit gider (kayıt yoksa 0). */
     public function tasimaKar(int $customerId, string $ay): float
     {
         $st = $this->pdo->prepare(
-            'SELECT COALESCE(satis_fiyati,0) - COALESCE(sabit_gider,0)
+            'SELECT COALESCE(adet,0) * (COALESCE(birim_satis,0) - COALESCE(birim_alis,0)) - COALESCE(sabit_gider,0)
              FROM tasima_aylik WHERE customer_id = ? AND ay = ?'
         );
         $st->execute([$customerId, $ay]);
@@ -147,28 +163,44 @@ final class Repo
         return $v === false ? 0.0 : (float) $v;
     }
 
-    /** Taşıma müşterisi aylar trendi (yeni→eski). */
+    /** Taşıma müşterisi aylar trendi (yeni→eski, türetilmiş toplam/brüt/net). */
     public function customerMonthlyProfit(int $customerId): array
     {
         $st = $this->pdo->prepare(
-            'SELECT ay, satis_fiyati, sabit_gider, (satis_fiyati - sabit_gider) AS kar
+            'SELECT ay, adet, birim_alis, birim_satis, sabit_gider,
+                    (adet * birim_alis) AS toplam_alis,
+                    (adet * birim_satis) AS toplam_satis,
+                    (adet * (birim_satis - birim_alis)) AS brut,
+                    (adet * (birim_satis - birim_alis) - sabit_gider) AS net
              FROM tasima_aylik WHERE customer_id = ? ORDER BY ay DESC'
         );
         $st->execute([$customerId]);
         return $st->fetchAll();
     }
 
-    /** Ayın tüm taşıma müşterilerinin sabit gider + kâr toplamı (finans net için). */
+    /**
+     * Ayın tüm taşıma müşterileri toplamı (finans net için).
+     * @return array{alis:float,satis:float,gider:float,brut:float,net:float}
+     */
     public function monthTasimaTotals(string $ay): array
     {
         $st = $this->pdo->prepare(
-            'SELECT COALESCE(SUM(satis_fiyati),0) AS satis, COALESCE(SUM(sabit_gider),0) AS gider,
-                    COALESCE(SUM(satis_fiyati - sabit_gider),0) AS kar
+            'SELECT COALESCE(SUM(adet * birim_alis),0) AS alis,
+                    COALESCE(SUM(adet * birim_satis),0) AS satis,
+                    COALESCE(SUM(sabit_gider),0) AS gider,
+                    COALESCE(SUM(adet * (birim_satis - birim_alis)),0) AS brut,
+                    COALESCE(SUM(adet * (birim_satis - birim_alis) - sabit_gider),0) AS net
              FROM tasima_aylik WHERE ay = ?'
         );
         $st->execute([$ay]);
-        $r = $st->fetch() ?: ['satis' => 0, 'gider' => 0, 'kar' => 0];
-        return ['satis' => (float) $r['satis'], 'gider' => (float) $r['gider'], 'kar' => (float) $r['kar']];
+        $r = $st->fetch() ?: ['alis' => 0, 'satis' => 0, 'gider' => 0, 'brut' => 0, 'net' => 0];
+        return [
+            'alis'  => (float) $r['alis'],
+            'satis' => (float) $r['satis'],
+            'gider' => (float) $r['gider'],
+            'brut'  => (float) $r['brut'],
+            'net'   => (float) $r['net'],
+        ];
     }
 
     // ── Üretim (Bugün) ────────────────────────────────────────
@@ -1102,10 +1134,12 @@ final class Repo
 
     /**
      * Aylık net karlılık (tahakkuk, finans nakit akışından ayrı):
-     *   üretim cirosu − hammadde/işletme gideri − personel gideri − taşıma sabit gideri = net.
-     * Kalemler AYRI (karıştırma yok). 'Personel' kategorili finans gideri hammaddeden düşülür
-     * (çift sayım önlenir); personel gideri TEK kaynak = personel_gider.
-     * @return array{ciro:float,hammadde:float,personel:float,tasima_gider:float,net:float}
+     *   üretim cirosu − hammadde/işletme gideri − personel gideri + taşıma net kârı = net.
+     * Kalemler AYRI (karıştırma yok — taşıma satışı üretim cirosuna KARIŞMAZ).
+     * Taşıma net kârı = Σ adet×(birim_satis−birim_alis) − sabit_gider (kâr merkezi katkısı, − olabilir).
+     * 'Personel' kategorili finans gideri hammaddeden düşülür (çift sayım önlenir);
+     * personel gideri TEK kaynak = personel_gider.
+     * @return array{ciro:float,hammadde:float,personel:float,tasima_kar:float,net:float}
      */
     public function netKarlilik(string $ay): array
     {
@@ -1118,13 +1152,13 @@ final class Repo
         $st->execute([$ay]);
         $hammadde = (float) $st->fetchColumn();
         $personel = $this->monthPersonelTotal($ay);
-        $tasimaGider = $this->monthTasimaTotals($ay)['gider'];
+        $tasimaKar = $this->monthTasimaTotals($ay)['net'];
         return [
-            'ciro'         => $ciro,
-            'hammadde'     => $hammadde,
-            'personel'     => $personel,
-            'tasima_gider' => $tasimaGider,
-            'net'          => $ciro - $hammadde - $personel - $tasimaGider,
+            'ciro'       => $ciro,
+            'hammadde'   => $hammadde,
+            'personel'   => $personel,
+            'tasima_kar' => $tasimaKar,
+            'net'        => $ciro - $hammadde - $personel + $tasimaKar,
         ];
     }
 

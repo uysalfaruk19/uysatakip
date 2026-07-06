@@ -135,14 +135,15 @@ final class PersonelInvoiceTest extends TestCase
         $this->repo->addPersonelGider(null, '2026-07-05', 'maas', 15000.0);              // personel
 
         $t = $this->repo->upsertCustomer('KARGO', 0.0, 'tasima');
-        $this->repo->upsertTasimaAylik($t, '2026-07', 50000.0, 20000.0);                 // taşıma sabit gider 20000
+        // adet 500, alış 80, satış 120, sabit 20000 → brüt 500×40=20000, net 20000−20000=0
+        $this->repo->upsertTasimaAylik($t, '2026-07', 500.0, 80.0, 120.0, 20000.0);
 
         $nk = $this->repo->netKarlilik('2026-07');
         $this->assertEqualsWithDelta(32800.0, $nk['ciro'], 0.001);
         $this->assertEqualsWithDelta(8000.0, $nk['hammadde'], 0.001, 'Personel kategorisi hariç');
         $this->assertEqualsWithDelta(15000.0, $nk['personel'], 0.001, 'personel gideri görünür');
-        $this->assertEqualsWithDelta(20000.0, $nk['tasima_gider'], 0.001);
-        // net = 32800 - 8000 - 15000 - 20000 = -10200
-        $this->assertEqualsWithDelta(-10200.0, $nk['net'], 0.001);
+        $this->assertEqualsWithDelta(0.0, $nk['tasima_kar'], 0.001, 'taşıma net kâr = brüt 20000 − sabit 20000');
+        // net = 32800 - 8000 - 15000 + 0 = 9800
+        $this->assertEqualsWithDelta(9800.0, $nk['net'], 0.001);
     }
 }
