@@ -96,7 +96,8 @@ try {
             continue;
         }
         $cust = $repo->customer($match['id']);
-        $unitPrice = $priceOverride ?? (float) $cust['unit_price'];
+        // opus-017: fiyat override yoksa o ayın ay-bazlı fiyatı (current default değil)
+        $unitPrice = $priceOverride ?? $repo->priceFor($match['id'], substr($date, 0, 7))['unit_price'];
         $res = $repo->upsertProduction(
             $match['id'], $date, $persons, $unitPrice, $meal, 'bot'
         );

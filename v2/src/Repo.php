@@ -115,6 +115,131 @@ final class Repo
         return (int) $this->pdo->lastInsertId();
     }
 
+    // ── Ay-bazlı fiyat (opus-017, reaktif) ────────────────────────
+    // Tek çözüm noktası: her fiyat okuyan yer priceFor'dan geçer. Bir ayın fiyatını
+    // değiştirince (setCustomerPrice) o ay production.amount da güncellenir → downstream
+    // (ciro/analiz/cari/net) production.amount okuduğu için OTOMATİK ve DÜŞÜK-RİSK yansır.
+
+    /**
+     * Bir müşterinin o AY geçerli fiyatı: o ay > carry-forward (en yakın önceki ay) > current default.
+     * @return array{unit_price:float,maliyet_birim:float,tasima_sabit_gider:float}
+     */
+    public function priceFor(int $customerId, string $ay): array
+    {
+        // 1) o ay tam eşleşme
+        $st = $this->pdo->prepare(
+            'SELECT unit_price, maliyet_birim, tasima_sabit_gider
+             FROM customer_price WHERE customer_id = ? AND ay = ?'
+        );
+        $st->execute([$customerId, $ay]);
+        if ($r = $st->fetch()) {
+            return $this->priceRow($r);
+        }
+        // 2) carry-forward: en yakın ÖNCEKİ ay ('YYYY-MM' leksikografik sıralı)
+        $st = $this->pdo->prepare(
+            'SELECT unit_price, maliyet_birim, tasima_sabit_gider
+             FROM customer_price WHERE customer_id = ? AND ay < ? ORDER BY ay DESC LIMIT 1'
+        );
+        $st->execute([$customerId, $ay]);
+        if ($r = $st->fetch()) {
+            return $this->priceRow($r);
+        }
+        // 3) current default (customers kartı)
+        $c = $this->customer($customerId);
+        return [
+            'unit_price'         => $c ? (float) $c['unit_price'] : 0.0,
+            'maliyet_birim'      => $c ? (float) ($c['maliyet_birim'] ?? 0) : 0.0,
+            'tasima_sabit_gider' => $c ? (float) ($c['tasima_sabit_gider'] ?? 0) : 0.0,
+        ];
+    }
+
+    /** @param array<string,mixed> $r */
+    private function priceRow(array $r): array
+    {
+        return [
+            'unit_price'         => (float) $r['unit_price'],
+            'maliyet_birim'      => (float) $r['maliyet_birim'],
+            'tasima_sabit_gider' => (float) $r['tasima_sabit_gider'],
+        ];
+    }
+
+    /**
+     * O ayın fiyatını düzenle (REAKTİF): customer_price upsert + o müşteri×o ay production
+     * satırlarını GÜNCELLE (unit_price_snap = yeni satış/kişi fiyatı; amount = persons×yeni).
+     * Böylece o ayın cirosu/analizi/carisi her yerde güncellenir; diğer aylar sabit kalır.
+     * $maliyetBirim / $sabit null verilirse o ayın mevcut çözümünden (priceFor) korunur.
+     */
+    public function setCustomerPrice(
+        int $customerId,
+        string $ay,
+        float $unitPrice,
+        ?float $maliyetBirim = null,
+        ?float $sabit = null
+    ): void {
+        $cur = $this->priceFor($customerId, $ay);
+        $maliyet = $maliyetBirim ?? $cur['maliyet_birim'];
+        $gider   = $sabit ?? $cur['tasima_sabit_gider'];
+
+        $driver = $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+        $onConf = $driver === 'sqlite'
+            ? 'ON CONFLICT(customer_id, ay) DO UPDATE SET
+                 unit_price = excluded.unit_price, maliyet_birim = excluded.maliyet_birim,
+                 tasima_sabit_gider = excluded.tasima_sabit_gider'
+            : 'ON DUPLICATE KEY UPDATE
+                 unit_price = VALUES(unit_price), maliyet_birim = VALUES(maliyet_birim),
+                 tasima_sabit_gider = VALUES(tasima_sabit_gider)';
+
+        $own = !$this->pdo->inTransaction();
+        if ($own) {
+            $this->pdo->beginTransaction();
+        }
+        try {
+            $this->pdo->prepare(
+                'INSERT INTO customer_price (customer_id, ay, unit_price, maliyet_birim, tasima_sabit_gider)
+                 VALUES (?, ?, ?, ?, ?) ' . $onConf
+            )->execute([$customerId, $ay, $unitPrice, $maliyet, $gider]);
+
+            // O ay production satırlarını yeni fiyata çek (amount kaynak kalır → düşük risk).
+            $this->pdo->prepare(
+                'UPDATE production SET unit_price_snap = ?, amount = persons * ?
+                 WHERE customer_id = ? AND substr(prod_date,1,7) = ?'
+            )->execute([$unitPrice, $unitPrice, $customerId, $ay]);
+
+            if ($own) {
+                $this->pdo->commit();
+            }
+        } catch (\Throwable $e) {
+            if ($own) {
+                $this->pdo->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    /**
+     * SEED (migrate_017 ile birebir, iki motorda da çalışır): production'ı olan her
+     * müşteri×ay için customer_price'a MEVCUT baskın snapshot fiyatını yaz (idempotent).
+     * Var olan (customer_id, ay) satırı ATLANIR → mevcut rakamlar DEĞİŞMEZ.
+     * @return int eklenen satır sayısı
+     */
+    public function seedCustomerPricesFromProduction(): int
+    {
+        $sql =
+            'INSERT INTO customer_price (customer_id, ay, unit_price, maliyet_birim, tasima_sabit_gider)
+             SELECT g.customer_id, g.ay,
+               (SELECT p2.unit_price_snap FROM production p2
+                  WHERE p2.customer_id = g.customer_id AND substr(p2.prod_date,1,7) = g.ay
+                  GROUP BY p2.unit_price_snap
+                  ORDER BY SUM(p2.persons) DESC, p2.unit_price_snap DESC LIMIT 1),
+               COALESCE(c.maliyet_birim, 0), COALESCE(c.tasima_sabit_gider, 0)
+             FROM (SELECT DISTINCT customer_id, substr(prod_date,1,7) AS ay FROM production) g
+             JOIN customers c ON c.id = g.customer_id
+             WHERE NOT EXISTS (
+               SELECT 1 FROM customer_price cp WHERE cp.customer_id = g.customer_id AND cp.ay = g.ay
+             )';
+        return (int) $this->pdo->exec($sql);
+    }
+
     // ── Paraşüt cari (opus-012, SALT-OKUMA) ───────────────────────
     // Paraşüt (CANLI muhasebe) bakiyeleri YEREL senkron ile çekilir (tools/parasut_sync.php),
     // sonuç buraya (customers.parasut_*) yazılır. Kokpit'in kendi cari hesabını EZMEZ; yanında
@@ -243,9 +368,11 @@ final class Repo
     public function tasimaProfit(int $customerId, string $ay): array
     {
         $c = $this->customer($customerId);
-        $satis = $c ? (float) $c['unit_price'] : 0.0;
-        $alis  = $c ? (float) ($c['maliyet_birim'] ?? 0) : 0.0;
-        $sabit = $c ? (float) ($c['tasima_sabit_gider'] ?? 0) : 0.0;
+        // opus-017: satış/alış/sabit o AY için priceFor'dan (ay-bazlı; current değil).
+        $pr = $this->priceFor($customerId, $ay);
+        $satis = $pr['unit_price'];
+        $alis  = $pr['maliyet_birim'];
+        $sabit = $pr['tasima_sabit_gider'];
         $note  = $c['tasima_not'] ?? null;
         $adet  = $this->monthProductionPersons($customerId, $ay);
         $brut  = $adet * ($satis - $alis);
@@ -283,9 +410,6 @@ final class Repo
         if (!$c) {
             return [];
         }
-        $satis = (float) $c['unit_price'];
-        $alis  = (float) ($c['maliyet_birim'] ?? 0);
-        $sabit = (float) ($c['tasima_sabit_gider'] ?? 0);
         $st = $this->pdo->prepare(
             'SELECT substr(prod_date,1,7) AS ay, COALESCE(SUM(persons),0) AS adet
              FROM production WHERE customer_id = ?
@@ -294,6 +418,11 @@ final class Repo
         $st->execute([$customerId]);
         $out = [];
         foreach ($st->fetchAll() as $r) {
+            // opus-017: her ay o ayın fiyatından (ay-bazlı).
+            $pr = $this->priceFor($customerId, (string) $r['ay']);
+            $satis = $pr['unit_price'];
+            $alis  = $pr['maliyet_birim'];
+            $sabit = $pr['tasima_sabit_gider'];
             $adet = (float) $r['adet'];
             $brut = $adet * ($satis - $alis);
             $out[] = [
@@ -747,7 +876,8 @@ final class Repo
             $this->pdo->beginTransaction();
         }
         try {
-            $price = (float) $cust['unit_price'];
+            // opus-017: o ayın fiyatı (customer_price o ay > carry-forward > current default).
+            $price = $this->priceFor((int) $o['customer_id'], substr((string) $o['order_date'], 0, 7))['unit_price'];
             $res = $this->upsertProduction(
                 (int) $o['customer_id'],
                 $o['order_date'],

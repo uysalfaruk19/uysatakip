@@ -47,6 +47,23 @@ CREATE TABLE IF NOT EXISTS `customers` (
   KEY `idx_parasut_id` (`parasut_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ── Müşteri AY-BAZLI fiyat (opus-017) ─────────────────────────
+-- Bir ayın fiyatını değiştirince o ay her yerde güncellenir; tarihsel doğruluk korunur.
+-- priceFor(cid, ay) = o ay > carry-forward (önceki ay) > customers current default.
+CREATE TABLE IF NOT EXISTS `customer_price` (
+  `id`                 INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `customer_id`        INT UNSIGNED NOT NULL,
+  `ay`                 CHAR(7)      NOT NULL COMMENT 'YYYY-MM',
+  `unit_price`         DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'üretim: kişi başı; taşıma: satış birim',
+  `maliyet_birim`      DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'taşıma: alış birim (üretimde 0)',
+  `tasima_sabit_gider` DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'taşıma: aylık sabit gider (üretimde 0)',
+  `created_at`         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_customer_price` (`customer_id`,`ay`),
+  KEY `idx_cp_cust_ay` (`customer_id`,`ay`),
+  CONSTRAINT `fk_cp_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ── Taşıma müşterisi aylık karlılık — ATIL (opus-013'te terk edildi) ──────────
 -- ARTIK KULLANILMIYOR: taşıma kartı customers'ta (unit_price/maliyet_birim/
 -- tasima_sabit_gider/tasima_not), adet = production.persons toplamı.

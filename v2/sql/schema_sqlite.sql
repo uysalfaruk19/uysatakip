@@ -34,6 +34,21 @@ CREATE TABLE IF NOT EXISTS customers (
 );
 CREATE INDEX IF NOT EXISTS idx_parasut_id ON customers(parasut_id);
 
+-- ── Müşteri AY-BAZLI fiyat (opus-017): bir ayın fiyatını değiştirince o ay her yerde güncellenir. ──
+-- priceFor(cid, ay) = o ay > carry-forward (önceki ay) > customers current default.
+-- üretim: unit_price (kişi başı) · taşıma: unit_price=satış + maliyet_birim=alış + tasima_sabit_gider.
+CREATE TABLE IF NOT EXISTS customer_price (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  ay TEXT NOT NULL,                              -- 'YYYY-MM'
+  unit_price REAL NOT NULL DEFAULT 0,            -- üretim: kişi başı; taşıma: satış birim
+  maliyet_birim REAL NOT NULL DEFAULT 0,         -- taşıma: alış birim (üretimde 0)
+  tasima_sabit_gider REAL NOT NULL DEFAULT 0,    -- taşıma: aylık sabit gider (üretimde 0)
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(customer_id, ay)
+);
+CREATE INDEX IF NOT EXISTS idx_cp_cust_ay ON customer_price(customer_id, ay);
+
 -- tasima_aylik: ATIL (opus-013'te terk; taşıma kartı customers'ta, adet production'dan)
 CREATE TABLE IF NOT EXISTS tasima_aylik (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

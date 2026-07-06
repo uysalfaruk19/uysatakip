@@ -35,7 +35,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $cid = (int) $c['id'];
                 $p = (int) ($persons[$cid] ?? 0);
                 if ($p > 0) {
-                    $repo->upsertProduction($cid, $date, $p, (float) $c['unit_price'], $meal, 'uysa');
+                    // opus-017: girilen günün ayına ait fiyat (ay-bazlı; current default değil)
+                    $price = $repo->priceFor($cid, substr($date, 0, 7))['unit_price'];
+                    $repo->upsertProduction($cid, $date, $p, $price, $meal, 'uysa');
                     $saved++;
                 } else {
                     $repo->deleteProduction($cid, $date, $meal);
@@ -71,10 +73,12 @@ $existing = $repo->productionPersonsByCustomer($date, $meal);
 // Sunucu-tarafı ilk render toplamları
 $sumP = 0; $sumA = 0.0; $filled = 0;
 $rowsData = [];
+$priceMonth = substr($date, 0, 7);
 foreach ($grid as $r) {
     $cid = (int) $r['customer_id'];
     $val = $copyValues[$cid] ?? ($existing[$cid] ?? 0);
-    $price = (float) $r['unit_price'];
+    // opus-017: bu ayın fiyatı (ay-bazlı) — girilmiş satırlar zaten snapshot'lı, boşlar bu fiyatı gösterir
+    $price = $repo->priceFor($cid, $priceMonth)['unit_price'];
     $amt = $val * $price;
     if ($val > 0) { $sumP += $val; $sumA += $amt; $filled++; }
     $rowsData[] = ['cid' => $cid, 'name' => $r['name'], 'price' => $price, 'val' => (int) $val, 'amt' => $amt];

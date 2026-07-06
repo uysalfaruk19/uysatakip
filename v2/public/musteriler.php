@@ -33,6 +33,38 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             uysa_audit('musteri_pasif', $u['username'], (string) $pid, null, client_ip());
             $flash = 'Müşteri pasifleştirildi.';
         }
+    } elseif (($_POST['action'] ?? '') === 'aylik_fiyat') {
+        // opus-017: bir ayın fiyatını düzenle → o ay production güncellenir (her yere yansır).
+        $pid = (int) ($_POST['id'] ?? 0);
+        $fiyatAy = (string) ($_POST['fiyat_ay'] ?? $month);
+        if (!preg_match('/^\d{4}-\d{2}$/', $fiyatAy)) {
+            $fiyatAy = $month;
+        }
+        $cust = $pid > 0 ? $repo->customer($pid) : null;
+        if ($cust) {
+            $unitPrice = Helpers::parseMoney((string) ($_POST['ay_unit_price'] ?? '0'));
+            $maliyet = null; $gider = null;
+            if (($cust['category'] ?? 'uretim') === 'tasima') {
+                $maliyet = Helpers::parseMoney((string) ($_POST['ay_maliyet_birim'] ?? '0'));
+                $gider = Helpers::parseMoney((string) ($_POST['ay_sabit_gider'] ?? '0'));
+            }
+            try {
+                $repo->setCustomerPrice($pid, $fiyatAy, $unitPrice, $maliyet, $gider);
+                uysa_audit('musteri_aylik_fiyat', $u['username'], (string) $pid,
+                    json_encode(['ay' => $fiyatAy, 'fiyat' => $unitPrice]), client_ip());
+                $flash = ay_label_tr($fiyatAy) . ' fiyatı güncellendi · o ayın cirosu/analizi her yerde yenilendi.';
+                $month = $fiyatAy;
+            } catch (\Throwable $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                $flash = 'Aylık fiyat kaydedilemedi.';
+                $flashOk = false;
+            }
+            $formOpen = true;
+            $_GET['edit'] = (string) $pid;
+            $editId = $pid;
+        }
     } else {
         $name = trim((string) ($_POST['name'] ?? ''));
         $category = ($_POST['category'] ?? 'uretim') === 'tasima' ? 'tasima' : 'uretim';
@@ -87,6 +119,8 @@ $fNote = $edit['tasima_not'] ?? '';
 $fBirimKar = $fPrice - $fAlis;
 // Bu ayki adet + net kâr (production'dan, bilgi amaçlı)
 $fProfit = ($edit && $edit['category'] === 'tasima') ? $repo->tasimaProfit($editId, $month) : null;
+// opus-017: seçilen ayın ay-bazlı fiyatı (o ay > carry-forward > current default)
+$ayFiyat = $edit ? $repo->priceFor($editId, $month) : null;
 
 $eyebrow = 'Müşteri yönetimi';
 $pageTitle = 'Müşteriler';
@@ -150,6 +184,47 @@ require __DIR__ . '/partials/header.php';
           </div>
         </form>
       </div>
+
+      <?php if ($edit): ?>
+      <!-- opus-017: AYLIK FİYAT — o ayın fiyatını gör/düzenle; kaydedince o ay her yerde güncellenir -->
+      <div class="cardx card-pad" id="aylik-fiyat">
+        <h2>Aylık fiyat</h2>
+        <p class="text-muted" style="font-size:12px">
+          Fiyatlar aya göre değişir (zam). Bir ayın fiyatını değiştirince <strong>o ayın</strong>
+          cirosu, kâr analizi ve carisi her yerde güncellenir; diğer aylar sabit kalır.
+        </p>
+        <form method="post" class="form-grid">
+          <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
+          <input type="hidden" name="action" value="aylik_fiyat">
+          <input type="hidden" name="id" value="<?= (int) $edit['id'] ?>">
+          <div class="field"><label>Ay</label>
+            <input class="inputx" type="month" name="fiyat_ay" value="<?= Helpers::e($month) ?>"
+                   onchange="window.location='musteriler.php?edit=<?= (int) $edit['id'] ?>&ay='+this.value">
+          </div>
+          <div class="field">
+            <label><?= $fCat === 'tasima' ? 'Birim fiyat — SATIŞ (₺ / adet)' : 'Birim fiyat (₺ / kişi)' ?></label>
+            <input class="inputx" name="ay_unit_price" inputmode="decimal"
+                   value="<?= Helpers::money((float) $ayFiyat['unit_price']) ?>" placeholder="0,00">
+          </div>
+          <?php if ($fCat === 'tasima'): ?>
+          <div class="field"><label>Maliyet birim (₺ — alış)</label>
+            <input class="inputx" name="ay_maliyet_birim" inputmode="decimal"
+                   value="<?= Helpers::money((float) $ayFiyat['maliyet_birim']) ?>" placeholder="0,00">
+          </div>
+          <div class="field"><label>Aylık sabit gider (₺ — opsiyonel)</label>
+            <input class="inputx" name="ay_sabit_gider" inputmode="decimal"
+                   value="<?= Helpers::money((float) $ayFiyat['tasima_sabit_gider']) ?>" placeholder="0,00">
+          </div>
+          <?php endif; ?>
+          <div class="hint-card" style="margin:0">
+            Bu fiyat değişince <strong><?= Helpers::e(ay_label_tr($month)) ?></strong> her yerde güncellenir.
+          </div>
+          <div class="actions-row">
+            <button class="btn-action btn-primaryx flex-fill" type="submit"><i class="bi bi-check2"></i> <?= Helpers::e(ay_label_tr($month)) ?> fiyatını kaydet</button>
+          </div>
+        </form>
+      </div>
+      <?php endif; ?>
 
       <!-- ÜRETİM müşterileri -->
       <div class="section-head"><h2>Üretim müşterileri</h2><span class="text-muted" style="font-size:12px"><?= count($uretim) ?> firma</span></div>
