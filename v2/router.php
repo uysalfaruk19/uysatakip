@@ -115,6 +115,15 @@ if ($path !== false && $base !== false && str_starts_with($path, $base) && is_fi
         'woff' => 'font/woff', 'woff2' => 'font/woff2', 'json' => 'application/json',
     ];
     $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+    // Tarayıcı önbelleği: statik varlık her sayfa geçişinde yeniden inmesin (akışkanlık).
+    // ETag (mtime-boyut) + kısa max-age; dosya değişince ETag değişir → taze gelir.
+    $etag = '"' . dechex((int) filemtime($path)) . '-' . dechex((int) filesize($path)) . '"';
+    header('Cache-Control: public, max-age=600');
+    header('ETag: ' . $etag);
+    if (($_SERVER['HTTP_IF_NONE_MATCH'] ?? '') === $etag) {
+        http_response_code(304);
+        return true;
+    }
     header('Content-Type: ' . ($mimes[$ext] ?? 'application/octet-stream') . '; charset=utf-8');
     header('Content-Length: ' . filesize($path));
     readfile($path);
