@@ -1104,6 +1104,196 @@ final class Repo
         return $id;
     }
 
+    /**
+     * Ay kapanışı kontrol özeti: veri yazmaz, mevcut modüllerden okur.
+     * @return array{ay:string,status:string,summary:array,checks:array<int,array>,negative_customers:array<int,array>,no_production_customers:array<int,array>,zero_price_rows:array<int,array>,fatura:array}
+     */
+    public function ayKapanis(string $ay): array
+    {
+        if (!preg_match('/^\d{4}-\d{2}$/', $ay)) {
+            $ay = date('Y-m');
+        }
+
+        $ka = $this->karAnalizi($ay);
+        $nk = $this->netKarlilik($ay);
+        $fin = $this->monthFinanceTotals($ay);
+        $kidem = $this->kidemToplamYukumluluk($ay);
+
+        $st = $this->pdo->prepare(
+            'SELECT COUNT(*) AS satir, COUNT(DISTINCT prod_date) AS gun_sayisi,
+                    COALESCE(SUM(persons),0) AS kisi, COALESCE(SUM(amount),0) AS tutar
+             FROM production WHERE substr(prod_date,1,7) = ?'
+        );
+        $st->execute([$ay]);
+        $prodSummary = $st->fetch() ?: ['satir' => 0, 'gun_sayisi' => 0, 'kisi' => 0, 'tutar' => 0];
+
+        $st = $this->pdo->prepare(
+            'SELECT c.id AS customer_id, c.name, p.prod_date, p.meal, p.persons, p.unit_price_snap, p.amount
+             FROM production p JOIN customers c ON c.id = p.customer_id
+             WHERE substr(p.prod_date,1,7) = ? AND p.persons > 0
+               AND (p.unit_price_snap <= 0 OR p.amount <= 0)
+             ORDER BY p.prod_date ASC, c.name ASC LIMIT 20'
+        );
+        $st->execute([$ay]);
+        $zeroPriceRows = $st->fetchAll();
+
+        $st = $this->pdo->prepare(
+            "SELECT COUNT(*) AS adet,
+                    COALESCE(SUM(ara_toplam),0) AS ara_toplam,
+                    COALESCE(SUM(genel_toplam),0) AS genel_toplam,
+                    COALESCE(SUM(CASE WHEN durum = 'kesildi' THEN 1 ELSE 0 END),0) AS kesildi
+             FROM fatura WHERE ay = ?"
+        );
+        $st->execute([$ay]);
+        $fatura = $st->fetch() ?: ['adet' => 0, 'ara_toplam' => 0, 'genel_toplam' => 0, 'kesildi' => 0];
+
+        $st = $this->pdo->prepare('SELECT COUNT(*) FROM transactions WHERE substr(tx_date,1,7) = ?');
+        $st->execute([$ay]);
+        $txCount = (int) $st->fetchColumn();
+
+        $prodBy = [];
+        foreach ($this->monthProductionByCustomer($ay) as $r) {
+            $prodBy[(int) $r['customer_id']] = $r;
+        }
+
+        $noProductionCustomers = [];
+        $priceIssues = [];
+        foreach ($this->activeCustomers() as $c) {
+            $cid = (int) $c['id'];
+            if (!isset($prodBy[$cid])) {
+                $noProductionCustomers[] = [
+                    'customer_id' => $cid,
+                    'name' => (string) $c['name'],
+                    'category' => (string) ($c['category'] ?? 'uretim'),
+                ];
+                continue;
+            }
+            $pr = $this->priceFor($cid, $ay);
+            if (($c['category'] ?? 'uretim') === 'tasima') {
+                if ($pr['unit_price'] <= 0 || $pr['maliyet_birim'] <= 0) {
+                    $priceIssues[] = ['customer_id' => $cid, 'name' => (string) $c['name'], 'category' => 'tasima'];
+                }
+            } elseif ($pr['unit_price'] <= 0) {
+                $priceIssues[] = ['customer_id' => $cid, 'name' => (string) $c['name'], 'category' => 'uretim'];
+            }
+        }
+
+        $negativeCustomers = [];
+        foreach (array_merge($ka['uretim']['rows'], $ka['tasima']['rows']) as $r) {
+            if ((float) $r['net'] < 0) {
+                $negativeCustomers[] = $r;
+            }
+        }
+        usort($negativeCustomers, static fn($a, $b) => (float) $a['net'] <=> (float) $b['net']);
+
+        $personelCount = count($this->listPersonel());
+        $netDiff = abs((float) $nk['net'] - (float) $ka['toplam_net']);
+
+        $checks = [];
+        $add = static function (string $key, string $label, string $status, string $detail, string $link = '') use (&$checks): void {
+            $checks[] = compact('key', 'label', 'status', 'detail', 'link');
+        };
+
+        $add(
+            'production',
+            'Üretim sayımları',
+            (int) $prodSummary['satir'] > 0 ? 'ok' : 'warn',
+            (int) $prodSummary['satir'] > 0
+                ? (int) $prodSummary['gun_sayisi'] . ' gün, ' . number_format((float) $prodSummary['kisi'], 0, ',', '.') . ' kişi girilmiş.'
+                : 'Bu ay üretim kaydı yok.',
+            'bugun.php?date=' . $ay . '-01'
+        );
+        $add(
+            'zero_price',
+            'Sıfır fiyat / tutar',
+            (!$zeroPriceRows && !$priceIssues) ? 'ok' : 'fail',
+            (!$zeroPriceRows && !$priceIssues) ? 'Fiyatı/tutarı sıfır görünen üretim yok.' : (count($zeroPriceRows) + count($priceIssues)) . ' kayıt/müşteri kontrol istiyor.',
+            'musteriler.php'
+        );
+        $add(
+            'no_production',
+            'Aktif müşteri sayımı',
+            !$noProductionCustomers ? 'ok' : 'warn',
+            !$noProductionCustomers ? 'Aktif müşterilerin tamamında bu ay kayıt var.' : count($noProductionCustomers) . ' aktif müşteride bu ay kayıt yok.',
+            'bugun.php?date=' . $ay . '-01'
+        );
+        $add(
+            'allocation',
+            'Gider/personel dağıtımı',
+            (float) $ka['dagitilmamis'] <= 0.01 ? 'ok' : 'warn',
+            (float) $ka['dagitilmamis'] <= 0.01 ? 'Dağıtılmamış gider/personel payı yok.' : 'Dağıtılmamış pay: ₺ ' . Helpers::money((float) $ka['dagitilmamis']),
+            'finans.php?ay=' . $ay
+        );
+        $add(
+            'personel',
+            'Personel maliyeti',
+            ((float) $nk['personel'] > 0 || $personelCount === 0) ? 'ok' : 'warn',
+            (float) $nk['personel'] > 0 ? 'Bu ay yüklü personel maliyeti: ₺ ' . Helpers::money((float) $nk['personel']) : 'Aktif personel var ama bu ay personel maliyeti sıfır görünüyor.',
+            'personel.php?ay=' . $ay
+        );
+        $add(
+            'negative_customers',
+            'Negatif müşteri kârı',
+            !$negativeCustomers ? 'ok' : 'warn',
+            !$negativeCustomers ? 'Negatif net kâr veren müşteri yok.' : count($negativeCustomers) . ' müşteri negatifte.',
+            'kar-analizi.php?ay=' . $ay
+        );
+        $add(
+            'invoice',
+            'Fatura durumu',
+            (int) $fatura['adet'] > 0 ? 'ok' : 'warn',
+            (int) $fatura['adet'] > 0 ? (int) $fatura['adet'] . ' fatura kaydı, ' . (int) $fatura['kesildi'] . ' kesildi.' : 'Bu ay fatura kaydı yok.',
+            'faturalar.php?ay=' . $ay
+        );
+        $add(
+            'net_match',
+            'Kâr hesabı tutarlılığı',
+            $netDiff <= 0.05 ? 'ok' : 'fail',
+            $netDiff <= 0.05 ? 'Finans net kârlılık ile Kâr Analizi birebir.' : 'Net fark: ₺ ' . Helpers::money($netDiff),
+            'kar-analizi.php?ay=' . $ay
+        );
+
+        $status = 'ok';
+        foreach ($checks as $c) {
+            if ($c['status'] === 'fail') {
+                $status = 'fail';
+                break;
+            }
+            if ($c['status'] === 'warn') {
+                $status = 'warn';
+            }
+        }
+
+        return [
+            'ay' => $ay,
+            'status' => $status,
+            'summary' => [
+                'production_days' => (int) $prodSummary['gun_sayisi'],
+                'production_rows' => (int) $prodSummary['satir'],
+                'persons' => (float) $prodSummary['kisi'],
+                'production_amount' => (float) $prodSummary['tutar'],
+                'toplam_gelir' => (float) $ka['toplam_gelir'],
+                'toplam_net' => (float) $ka['toplam_net'],
+                'toplam_marj' => (float) $ka['toplam_marj'],
+                'nakit_net' => (float) $fin['net'],
+                'transaction_count' => $txCount,
+                'personel' => (float) $nk['personel'],
+                'kidem_birikim' => (float) ($kidem['birikim'] ?? 0),
+                'warning_count' => count(array_filter($checks, static fn($c) => $c['status'] !== 'ok')),
+            ],
+            'checks' => $checks,
+            'negative_customers' => $negativeCustomers,
+            'no_production_customers' => $noProductionCustomers,
+            'zero_price_rows' => $zeroPriceRows,
+            'price_issues' => $priceIssues,
+            'fatura' => [
+                'adet' => (int) $fatura['adet'],
+                'kesildi' => (int) $fatura['kesildi'],
+                'ara_toplam' => (float) $fatura['ara_toplam'],
+                'genel_toplam' => (float) $fatura['genel_toplam'],
+            ],
+        ];
+    }
     // ── Yayınlanan menü (M6, salt-gösterim) ───────────────────
     /** @return array<int,array> yayınlanan menü günleri (recipe adıyla). Boşsa []. */
     public function publishedMenu(string $from, string $to, string $meal = 'ogle'): array
