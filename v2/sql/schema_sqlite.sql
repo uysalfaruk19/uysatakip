@@ -147,8 +147,19 @@ CREATE TABLE IF NOT EXISTS transactions (
   description TEXT,
   file_id INTEGER REFERENCES files(id) ON DELETE SET NULL,
   source TEXT NOT NULL DEFAULT 'manuel',
+  -- opus-015: gider dağıtım hedefi. 'genel'=tüm müşterilere ciro oranlı; 'musteri'=transaction_customer'daki hedeflere ciro oranlı.
+  alloc_type TEXT NOT NULL DEFAULT 'genel' CHECK(alloc_type IN ('genel','musteri')),
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- opus-015: gider → belirli müşteri(ler) dağıtım hedefi (alloc_type='musteri' iken).
+CREATE TABLE IF NOT EXISTS transaction_customer (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  transaction_id INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+  customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  UNIQUE(transaction_id, customer_id)
+);
+CREATE INDEX IF NOT EXISTS idx_tc_tx ON transaction_customer(transaction_id);
 
 CREATE TABLE IF NOT EXISTS cari_entries (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

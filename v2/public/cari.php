@@ -52,6 +52,7 @@ $statement = $cust ? $repo->customerStatement($cid, $month) : [];
 // sadece gösterilir; migrasyondaki alacaklar cari borcu oluşturuyor, üretim otomatik borca dönmüyor.
 $ayUretim = $cust ? $repo->customerMonthProduction($cid, $month) : ['persons' => 0, 'amount' => 0.0, 'cnt' => 0];
 $ayKisi = $ayUretim['persons'];
+$net = $cust ? $repo->customerNetKarlilik($cid, $month) : null;
 
 $eyebrow = 'Müşteri kartı';
 $pageTitle = $cust ? $cust['name'] : 'Cari';
@@ -81,6 +82,26 @@ require __DIR__ . '/partials/header.php';
             <a class="chip <?= $cid === (int) $c['id'] ? 'active' : '' ?>" href="cari.php?musteri=<?= (int) $c['id'] ?>&ay=<?= $month ?>"><?= Helpers::e($c['name']) ?></a>
           <?php endforeach; ?>
         </div>
+
+        <?php if ($net): ?>
+        <div class="cardx card-pad">
+          <h2>Net kâr <span class="text-muted" style="font-size:12px;font-weight:600">(personel + gider düşülmüş · <?= Helpers::e(ay_label_tr($month)) ?>)</span></h2>
+          <table class="tablex">
+            <tbody>
+              <?php if ($net['category'] === 'tasima'): ?>
+                <tr><td>Taşıma satış</td><td class="num">₺ <?= Helpers::money($net['ciro']) ?></td></tr>
+                <tr><td>Taşıma alış</td><td class="num">− ₺ <?= Helpers::money($net['alis']) ?></td></tr>
+                <tr><td>Sabit gider</td><td class="num">− ₺ <?= Helpers::money($net['sabit']) ?></td></tr>
+              <?php else: ?>
+                <tr><td>Üretim cirosu</td><td class="num">₺ <?= Helpers::money($net['ciro']) ?></td></tr>
+              <?php endif; ?>
+              <tr><td>Payına düşen gider (ciro oranlı)</td><td class="num">− ₺ <?= Helpers::money($net['pay_gider']) ?></td></tr>
+              <tr><td>Payına düşen personel</td><td class="num">− ₺ <?= Helpers::money($net['pay_personel']) ?></td></tr>
+              <tr class="is-total"><td>Net kâr</td><td class="num" style="color:<?= $net['net'] < 0 ? 'var(--red)' : 'var(--green)' ?>">₺ <?= Helpers::money($net['net']) ?></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <?php endif; ?>
 
         <div class="cardx card-pad">
           <h2><?= Helpers::e(ay_label_tr($month)) ?> ekstresi</h2>

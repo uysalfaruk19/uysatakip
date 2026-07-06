@@ -196,6 +196,8 @@ CREATE TABLE IF NOT EXISTS `transactions` (
   `file_id`     INT UNSIGNED          DEFAULT NULL,
   -- TODO (Paraşüt): dış-kaynak senkron alanı. Bu turda kullanılmıyor; 'manuel'/'parasut'.
   `source`      VARCHAR(20)  NOT NULL DEFAULT 'manuel',
+  -- opus-015: gider dağıtım hedefi. 'genel'=tüm müşterilere ciro oranlı; 'musteri'=transaction_customer hedefleri.
+  `alloc_type`  VARCHAR(10)  NOT NULL DEFAULT 'genel',
   `created_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_tx_date` (`tx_date`),
@@ -203,6 +205,18 @@ CREATE TABLE IF NOT EXISTS `transactions` (
   CONSTRAINT `fk_tx_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_tx_supplier` FOREIGN KEY (`supplier_id`) REFERENCES `suppliers` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_tx_file`     FOREIGN KEY (`file_id`)     REFERENCES `files` (`id`)     ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── Gider → müşteri dağıtım hedefi (opus-015, alloc_type='musteri' iken) ──
+CREATE TABLE IF NOT EXISTS `transaction_customer` (
+  `id`             INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `transaction_id` INT UNSIGNED NOT NULL,
+  `customer_id`    INT UNSIGNED NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_tc` (`transaction_id`,`customer_id`),
+  KEY `idx_tc_tx` (`transaction_id`),
+  CONSTRAINT `fk_tc_tx`       FOREIGN KEY (`transaction_id`) REFERENCES `transactions` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_tc_customer` FOREIGN KEY (`customer_id`)    REFERENCES `customers` (`id`)    ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ── Cari hareketler (alacak/borç, tahsilat) ───────────────────

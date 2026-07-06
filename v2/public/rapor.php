@@ -33,6 +33,7 @@ if ($drill) {
         $brut = (float) $t['brut'];
         $net = (float) $t['net'];
         $trend = $repo->customerMonthlyProfit($drillId);
+        $nk = $repo->customerNetKarlilik($drillId, $month);
         ?>
         <a class="btn-action btn-ghost" href="rapor.php?ay=<?= $month ?>"><i class="bi bi-arrow-left"></i> Rapora dön</a>
         <div class="summary-grid">
@@ -41,7 +42,8 @@ if ($drill) {
           <div class="summary-card tint-blue"><p class="label">Toplam alış</p><p class="metric small">₺ <?= Helpers::money((float) $t['toplam_alis']) ?></p></div>
           <div class="summary-card tint-blue"><p class="label">Toplam satış</p><p class="metric small">₺ <?= Helpers::money((float) $t['toplam_satis']) ?></p></div>
           <div class="summary-card tint-orange"><p class="label">Brüt kâr · sabit gider</p><p class="metric small">₺ <?= Helpers::money($brut) ?> · ₺ <?= Helpers::money((float) $t['sabit']) ?></p></div>
-          <div class="summary-card wide tint-green"><p class="label">Net kâr (brüt − sabit)</p><p class="metric <?= $net < 0 ? 'neg' : 'pos' ?>">₺ <?= Helpers::money($net) ?></p></div>
+          <div class="summary-card tint-orange"><p class="label">Pay: gider · personel</p><p class="metric small">₺ <?= Helpers::money($nk['pay_gider']) ?> · ₺ <?= Helpers::money($nk['pay_personel']) ?></p></div>
+          <div class="summary-card wide tint-green"><p class="label">Net kâr (satış − alış − sabit − gider payı − personel payı)</p><p class="metric <?= $nk['net'] < 0 ? 'neg' : 'pos' ?>">₺ <?= Helpers::money($nk['net']) ?></p></div>
         </div>
         <?php if ($adet <= 0): ?>
           <div class="empty-state">Bu ay <strong>Bugün</strong> ekranında bu müşteriye sayım girilmemiş (adet 0). <a href="bugun.php" style="color:var(--primary);font-weight:700">Bugün'e git →</a></div>
@@ -76,14 +78,14 @@ if ($drill) {
         $rows = $repo->customerDailyGrid($drillId, $month);
         $sumKisi = 0; $sumTutar = 0.0; $barMax = 0;
         foreach ($rows as $r) { $sumKisi += (int) $r['kisi']; $sumTutar += (float) $r['tutar']; $barMax = max($barMax, (int) $r['kisi']); }
-        $personelPayi = (float) ($repo->personelDagitim($month)['per_customer'][$drillId] ?? 0.0);
+        $nk = $repo->customerNetKarlilik($drillId, $month);
         ?>
         <a class="btn-action btn-ghost" href="rapor.php?ay=<?= $month ?>"><i class="bi bi-arrow-left"></i> Rapora dön</a>
         <div class="summary-grid">
           <div class="summary-card tint-orange"><p class="label">Ay toplam kişi</p><p class="metric"><?= number_format($sumKisi, 0, ',', '.') ?></p></div>
           <div class="summary-card tint-green"><p class="label">Ay cirosu</p><p class="metric">₺ <?= Helpers::money($sumTutar) ?></p></div>
-          <div class="summary-card tint-blue"><p class="label">Bu müşteriye düşen personel payı</p><p class="metric small">₺ <?= Helpers::money($personelPayi) ?></p></div>
-          <div class="summary-card wide"><p class="label">Üretim günü</p><p class="metric small"><?= count($rows) ?> gün</p></div>
+          <div class="summary-card tint-blue"><p class="label">Pay: gider · personel</p><p class="metric small">₺ <?= Helpers::money($nk['pay_gider']) ?> · ₺ <?= Helpers::money($nk['pay_personel']) ?></p></div>
+          <div class="summary-card wide tint-green"><p class="label">Net kâr (ciro − gider payı − personel payı)</p><p class="metric <?= $nk['net'] < 0 ? 'neg' : 'pos' ?>">₺ <?= Helpers::money($nk['net']) ?></p></div>
         </div>
         <div class="cardx card-pad">
           <h2>Gün gün öğün sayıları</h2>

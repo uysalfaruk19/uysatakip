@@ -33,14 +33,18 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     } else {
         $type = in_array($_POST['type'] ?? '', ['gelir', 'gider'], true) ? $_POST['type'] : 'gider';
         $amount = Helpers::parseMoney((string) ($_POST['amount'] ?? '0'));
+        // Gider → tarih otomatik bugün (form basit). Gelir → seçilen tarih (Paraşüt gelene kadar).
         $txDate = (string) ($_POST['tx_date'] ?? Helpers::today());
-        if (!Helpers::isDate($txDate)) {
+        if ($type === 'gider' || !Helpers::isDate($txDate)) {
             $txDate = Helpers::today();
         }
         $category = trim((string) ($_POST['category'] ?? ''));
         $desc = trim((string) ($_POST['description'] ?? ''));
         $customerId = (int) ($_POST['customer_id'] ?? 0) ?: null;
         $supplierId = (int) ($_POST['supplier_id'] ?? 0) ?: null;
+        // opus-015: gider dağıtım hedefi (genel / seçili müşteri(ler))
+        $allocType = in_array($_POST['alloc_type'] ?? 'genel', ['genel', 'musteri'], true) ? $_POST['alloc_type'] : 'genel';
+        $allocIds = array_map('intval', (array) ($_POST['alloc_customer'] ?? []));
 
         if ($amount <= 0) {
             $flash = 'Tutar sıfırdan büyük olmalı.';
@@ -54,8 +58,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 }
             }
             if ($flashOk) {
-                $repo->addTransaction($type, $amount, $txDate, $category ?: null, $desc ?: null, $customerId, $supplierId, $fileId);
-                uysa_audit('finans_ekle', $u['username'], $type, json_encode(['t' => $amount]), client_ip());
+                $repo->addTransaction($type, $amount, $txDate, $category ?: null, $desc ?: null, $customerId, $supplierId, $fileId, $allocType, $allocIds);
+                uysa_audit('finans_ekle', $u['username'], $type, json_encode(['t' => $amount, 'alloc' => $allocType]), client_ip());
                 $flash = ucfirst($type) . ' eklendi · ₺ ' . Helpers::money($amount);
                 $month = substr($txDate, 0, 7);
             }
@@ -202,31 +206,52 @@ require __DIR__ . '/partials/header.php';
       <?php endif; ?>
 
       <div class="fab-sheet" id="add-sheet">
-        <h2>Hızlı ekle</h2>
+        <h2>Gider ekle</h2>
         <form method="post" enctype="multipart/form-data" class="form-grid">
           <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
           <div class="segmented">
             <button class="chip active" type="button" onclick="setType(this,'gider')">Gider</button>
-            <button class="chip" type="button" onclick="setType(this,'gelir')">Gelir</button>
+            <button class="chip" type="button" onclick="setType(this,'gelir')">Gelir <span class="text-muted" style="font-size:11px">(Paraşüt)</span></button>
           </div>
           <input type="hidden" name="type" id="tx-type" value="gider">
-          <div class="field"><label>Tutar (₺)</label><input class="inputx" name="amount" inputmode="decimal" placeholder="0,00" required></div>
-          <div class="field"><label>Tarih</label><input class="inputx" type="date" name="tx_date" value="<?= Helpers::e(Helpers::today()) ?>"></div>
-          <div class="field"><label>Kategori</label>
-            <select class="selectx" name="category"><option value="">—</option>
-              <?php foreach ($CATS as $c): ?><option><?= Helpers::e($c) ?></option><?php endforeach; ?>
-            </select>
+
+          <div class="field"><label>Tutar (₺)</label><input class="inputx" name="amount" inputmode="decimal" placeholder="0,00" required autofocus></div>
+
+          <!-- opus-015: gider → neresi için (ciro oranında dağılır) -->
+          <div class="gider-only">
+            <div class="field"><label>Neresi için</label>
+              <div class="segmented">
+                <button class="chip active" type="button" onclick="setAlloc(this,'genel')">Genel (tüm müşteriler)</button>
+                <button class="chip" type="button" onclick="setAlloc(this,'musteri')">Belirli müşteri</button>
+              </div>
+              <input type="hidden" name="alloc_type" id="alloc-type" value="genel">
+              <p class="row-meta" id="alloc-hint">Tüm müşterilere ay cirosu oranında dağıtılır.</p>
+            </div>
+            <div class="field" id="alloc-customers" style="display:none">
+              <label>Müşteri(ler) seç</label>
+              <div class="check-list">
+                <?php foreach ($customers as $c): ?>
+                  <label class="check-row"><input type="checkbox" name="alloc_customer[]" value="<?= (int) $c['id'] ?>"> <?= Helpers::e($c['name']) ?></label>
+                <?php endforeach; ?>
+              </div>
+            </div>
           </div>
-          <div class="field"><label>Müşteri (gelir)</label>
-            <select class="selectx" name="customer_id"><option value="">—</option>
-              <?php foreach ($customers as $c): ?><option value="<?= (int) $c['id'] ?>"><?= Helpers::e($c['name']) ?></option><?php endforeach; ?>
-            </select>
+
+          <!-- Gelir (ikincil — Paraşüt gelene kadar elle) -->
+          <div class="gelir-only" style="display:none">
+            <div class="field"><label>Tarih</label><input class="inputx" type="date" name="tx_date" value="<?= Helpers::e(Helpers::today()) ?>"></div>
+            <div class="field"><label>Müşteri</label>
+              <select class="selectx" name="customer_id"><option value="">—</option>
+                <?php foreach ($customers as $c): ?><option value="<?= (int) $c['id'] ?>"><?= Helpers::e($c['name']) ?></option><?php endforeach; ?>
+              </select>
+            </div>
+            <div class="field"><label>Kategori</label>
+              <select class="selectx" name="category"><option value="">—</option>
+                <?php foreach ($CATS as $c): ?><option><?= Helpers::e($c) ?></option><?php endforeach; ?>
+              </select>
+            </div>
           </div>
-          <div class="field"><label>Tedarikçi (gider)</label>
-            <select class="selectx" name="supplier_id"><option value="">—</option>
-              <?php foreach ($suppliers as $s): ?><option value="<?= (int) $s['id'] ?>"><?= Helpers::e($s['name']) ?></option><?php endforeach; ?>
-            </select>
-          </div>
+
           <div class="field"><label>Açıklama</label><input class="inputx" name="description" placeholder="opsiyonel"></div>
           <div class="field"><label>Fatura foto (jpg/png/pdf)</label><input class="inputx" type="file" name="photo" accept="image/*,.pdf"></div>
           <button class="btn-action btn-primaryx btn-full" type="submit"><i class="bi bi-plus-lg"></i> Kaydet</button>
@@ -238,6 +263,18 @@ require __DIR__ . '/partials/header.php';
           document.getElementById('tx-type').value = v;
           btn.parentNode.querySelectorAll('.chip').forEach(function(c){c.classList.remove('active');});
           btn.classList.add('active');
+          document.querySelectorAll('.gider-only').forEach(function(e){e.style.display = v === 'gider' ? '' : 'none';});
+          document.querySelectorAll('.gelir-only').forEach(function(e){e.style.display = v === 'gelir' ? '' : 'none';});
+          var h = document.querySelector('#add-sheet h2'); if (h) h.textContent = v === 'gider' ? 'Gider ekle' : 'Gelir ekle';
+        }
+        function setAlloc(btn, v){
+          document.getElementById('alloc-type').value = v;
+          btn.parentNode.querySelectorAll('.chip').forEach(function(c){c.classList.remove('active');});
+          btn.classList.add('active');
+          document.getElementById('alloc-customers').style.display = v === 'musteri' ? '' : 'none';
+          document.getElementById('alloc-hint').textContent = v === 'musteri'
+            ? 'Seçilen müşteri(ler)e kendi ciroları oranında dağıtılır.'
+            : 'Tüm müşterilere ay cirosu oranında dağıtılır.';
         }
       </script>
 <?php require __DIR__ . '/partials/footer.php'; ?>

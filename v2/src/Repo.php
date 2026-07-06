@@ -438,13 +438,72 @@ final class Repo
     }
 
     // ── Finans ────────────────────────────────────────────────
-    public function addTransaction(string $type, float $amount, string $txDate, ?string $category, ?string $desc, ?int $customerId = null, ?int $supplierId = null, ?int $fileId = null): int
+    /**
+     * Gelir/gider kaydı. opus-015: gider dağıtım hedefi.
+     *   $allocType 'genel'  → rapor anında o ayki TÜM müşterilere ciro oranlı dağılır.
+     *   $allocType 'musteri'→ $allocCustomerIds hedeflerine kendi ciroları oranlı dağılır.
+     * Hedefler transaction_customer link tablosuna yazılır ('musteri' iken, boş değilse).
+     */
+    public function addTransaction(
+        string $type,
+        float $amount,
+        string $txDate,
+        ?string $category,
+        ?string $desc,
+        ?int $customerId = null,
+        ?int $supplierId = null,
+        ?int $fileId = null,
+        string $allocType = 'genel',
+        array $allocCustomerIds = []
+    ): int {
+        if (!in_array($allocType, ['genel', 'musteri'], true)) {
+            $allocType = 'genel';
+        }
+        $ids = [];
+        foreach (array_unique(array_map('intval', $allocCustomerIds)) as $cid) {
+            if ($cid > 0) {
+                $ids[] = $cid;
+            }
+        }
+        if ($allocType === 'musteri' && !$ids) {
+            $allocType = 'genel'; // hedef seçilmemiş → genele düş
+        }
+        $own = !$this->pdo->inTransaction();
+        if ($own) {
+            $this->pdo->beginTransaction();
+        }
+        try {
+            $this->pdo->prepare(
+                'INSERT INTO transactions (type, category, tx_date, amount, customer_id, supplier_id, description, file_id, alloc_type)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+            )->execute([$type, $category, $txDate, $amount, $customerId, $supplierId, $desc, $fileId, $allocType]);
+            $txId = (int) $this->pdo->lastInsertId();
+            if ($allocType === 'musteri' && $ids) {
+                $ins = $this->pdo->prepare(
+                    'INSERT INTO transaction_customer (transaction_id, customer_id) VALUES (?, ?)'
+                );
+                foreach ($ids as $cid) {
+                    $ins->execute([$txId, $cid]);
+                }
+            }
+            if ($own) {
+                $this->pdo->commit();
+            }
+            return $txId;
+        } catch (\Throwable $e) {
+            if ($own) {
+                $this->pdo->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    /** @return array<int,int> gider tx için hedef customer_id listesi (alloc_type='musteri'). */
+    public function transactionTargets(int $transactionId): array
     {
-        $this->pdo->prepare(
-            'INSERT INTO transactions (type, category, tx_date, amount, customer_id, supplier_id, description, file_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-        )->execute([$type, $category, $txDate, $amount, $customerId, $supplierId, $desc, $fileId]);
-        return (int) $this->pdo->lastInsertId();
+        $st = $this->pdo->prepare('SELECT customer_id FROM transaction_customer WHERE transaction_id = ?');
+        $st->execute([$transactionId]);
+        return array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
     }
 
     /** @return array<int,array> ay = 'YYYY-MM' */
@@ -1528,6 +1587,195 @@ final class Repo
         return $st->fetchAll();
     }
 
+    // ── Gider → müşteri dağıtımı (CİRO ORANLI, opus-015) ──────────
+    /**
+     * O ay her müşterinin cirosu [customer_id => ciro].
+     *   üretim: production.amount toplamı · taşıma: adet×birim_satis (= production.amount, snapshot satış).
+     * Sadece o ay üretim/sayım OLAN müşteriler döner.
+     * @return array<int,float>
+     */
+    public function customerCiroMap(string $ay): array
+    {
+        $out = [];
+        foreach ($this->monthProductionByCustomer($ay) as $r) {
+            $out[(int) $r['customer_id']] = (float) $r['ciro'];
+        }
+        return $out;
+    }
+
+    /**
+     * Gideri ciro oranında müşterilere dağıt (RAPOR ANINDA — ciro değişince güncellenir).
+     *   'genel' gider: o ayki TÜM müşterilere ciroları oranında.
+     *   'musteri' gider: hedef müşteri(ler)e kendi ciroları oranında (tek → %100).
+     *   Hedef cirosu 0 ise EŞİT böl (hedefler arası); hiç hedef/müşteri yoksa 'dagitilmamis'.
+     * 'Personel' kategorili gider HARİÇ (personel yüklü maliyetiyle çift sayımı önler — netKarlilik ile eş).
+     * @return array{per_customer:array<int,float>,dagitilmamis:float,toplam:float}
+     */
+    public function giderDagitim(string $ay): array
+    {
+        $ciro = $this->customerCiroMap($ay);
+        $totalCiro = array_sum($ciro);
+        $allIds = array_keys($ciro);
+
+        $st = $this->pdo->prepare(
+            "SELECT id, amount, alloc_type FROM transactions
+             WHERE type = 'gider' AND substr(tx_date,1,7) = ?
+               AND (category IS NULL OR category <> 'Personel')"
+        );
+        $st->execute([$ay]);
+
+        $per = [];
+        $dagitilmamis = 0.0;
+        $toplam = 0.0;
+        foreach ($st->fetchAll() as $t) {
+            $amt = (float) $t['amount'];
+            $toplam += $amt;
+
+            if ($t['alloc_type'] === 'musteri') {
+                $targets = $this->transactionTargets((int) $t['id']);
+            } else {
+                $targets = $allIds;
+            }
+            if (!$targets) {
+                $dagitilmamis += $amt; // hedef/müşteri yok → dağıtılamaz
+                continue;
+            }
+            $sub = 0.0;
+            foreach ($targets as $cid) {
+                $sub += $ciro[$cid] ?? 0.0;
+            }
+            if ($sub > 0) {
+                foreach ($targets as $cid) {
+                    $w = ($ciro[$cid] ?? 0.0) / $sub;
+                    $per[$cid] = ($per[$cid] ?? 0.0) + $amt * $w;
+                }
+            } else {
+                // Hedeflerin cirosu yok → eşit böl (kayıp önle)
+                $n = count($targets);
+                foreach ($targets as $cid) {
+                    $per[$cid] = ($per[$cid] ?? 0.0) + $amt / $n;
+                }
+            }
+        }
+        unset($totalCiro);
+        return ['per_customer' => $per, 'dagitilmamis' => $dagitilmamis, 'toplam' => $toplam];
+    }
+
+    /**
+     * Müşteri bazlı NET kâr (ay). opus-015:
+     *   üretim: net = ciro − payGider − payPersonel
+     *   taşıma: net = satış − alış − sabit − payGider − payPersonel
+     * $giderMap / $persMap verilirse yeniden hesaplanmaz (karAnalizi toplu çağrı için).
+     * @return array{category,ciro,alis,sabit,pay_gider,pay_personel,net}
+     */
+    public function customerNetKarlilik(int $customerId, string $ay, ?array $giderMap = null, ?array $persMap = null): array
+    {
+        $payGider = ($giderMap ?? $this->giderDagitim($ay)['per_customer'])[$customerId] ?? 0.0;
+        $payPersonel = ($persMap ?? $this->personelDagitim($ay)['per_customer'])[$customerId] ?? 0.0;
+        $c = $this->customer($customerId);
+        if ($c && ($c['category'] ?? 'uretim') === 'tasima') {
+            $t = $this->tasimaProfit($customerId, $ay);
+            $ciro = (float) $t['toplam_satis'];
+            $net = $ciro - (float) $t['toplam_alis'] - (float) $t['sabit'] - $payGider - $payPersonel;
+            return [
+                'category'     => 'tasima',
+                'ciro'         => $ciro,
+                'alis'         => (float) $t['toplam_alis'],
+                'sabit'        => (float) $t['sabit'],
+                'pay_gider'    => $payGider,
+                'pay_personel' => $payPersonel,
+                'net'          => $net,
+            ];
+        }
+        $ciro = (float) $this->customerMonthProduction($customerId, $ay)['amount'];
+        return [
+            'category'     => 'uretim',
+            'ciro'         => $ciro,
+            'alis'         => 0.0,
+            'sabit'        => 0.0,
+            'pay_gider'    => $payGider,
+            'pay_personel' => $payPersonel,
+            'net'          => $ciro - $payGider - $payPersonel,
+        ];
+    }
+
+    /**
+     * Kâr Analizi (opus-015, Ömer'in Excel'i): üretim/taşıma grup P&L + toplam.
+     *   ÜRETİM: gelir − gider(pay) − personel(pay) = net, marj=net/gelir
+     *   TAŞIMA: satış − alış − sabit − gider(pay) − personel(pay) = net, marj
+     *   TOPLAM net = üretim + taşıma − dağıtılmamış = netKarlilik net (BİREBİR).
+     * @return array{uretim:array,tasima:array,dagitilmamis:float,toplam_gelir:float,toplam_net:float,toplam_marj:float}
+     */
+    public function karAnalizi(string $ay): array
+    {
+        $giderD = $this->giderDagitim($ay);
+        $persD = $this->personelDagitim($ay);
+        $giderMap = $giderD['per_customer'];
+        $persMap = $persD['per_customer'];
+
+        $uretimRows = [];
+        $uGelir = 0.0; $uGider = 0.0; $uPers = 0.0; $uNet = 0.0;
+        foreach ($this->monthProductionByCustomer($ay, 'uretim') as $r) {
+            $cid = (int) $r['customer_id'];
+            $ciro = (float) $r['ciro'];
+            $pg = $giderMap[$cid] ?? 0.0;
+            $pp = $persMap[$cid] ?? 0.0;
+            $net = $ciro - $pg - $pp;
+            $uretimRows[] = [
+                'customer_id' => $cid, 'name' => $r['name'],
+                'gelir' => $ciro, 'gider' => $pg, 'personel' => $pp,
+                'net' => $net, 'marj' => $ciro > 0 ? $net / $ciro : 0.0,
+            ];
+            $uGelir += $ciro; $uGider += $pg; $uPers += $pp; $uNet += $net;
+        }
+
+        $tasimaRows = [];
+        $tSatis = 0.0; $tAlis = 0.0; $tSabit = 0.0; $tGider = 0.0; $tPers = 0.0; $tNet = 0.0;
+        foreach ($this->listCustomersByCategory('tasima') as $c) {
+            $cid = (int) $c['id'];
+            $t = $this->tasimaProfit($cid, $ay);
+            if ((float) $t['adet'] <= 0) {
+                continue;
+            }
+            $satis = (float) $t['toplam_satis'];
+            $alis = (float) $t['toplam_alis'];
+            $sabit = (float) $t['sabit'];
+            $pg = $giderMap[$cid] ?? 0.0;
+            $pp = $persMap[$cid] ?? 0.0;
+            $net = $satis - $alis - $sabit - $pg - $pp;
+            $tasimaRows[] = [
+                'customer_id' => $cid, 'name' => $c['name'],
+                'satis' => $satis, 'alis' => $alis, 'sabit' => $sabit,
+                'gider' => $pg, 'personel' => $pp,
+                'net' => $net, 'marj' => $satis > 0 ? $net / $satis : 0.0,
+            ];
+            $tSatis += $satis; $tAlis += $alis; $tSabit += $sabit;
+            $tGider += $pg; $tPers += $pp; $tNet += $net;
+        }
+
+        $dagitilmamis = $giderD['dagitilmamis'] + $persD['dagitilmamis'];
+        $toplamNet = $uNet + $tNet - $dagitilmamis; // = netKarlilik net (birebir)
+        $toplamGelir = $uGelir + $tSatis;
+
+        return [
+            'uretim' => [
+                'rows' => $uretimRows,
+                'gelir' => $uGelir, 'gider' => $uGider, 'personel' => $uPers,
+                'net' => $uNet, 'marj' => $uGelir > 0 ? $uNet / $uGelir : 0.0,
+            ],
+            'tasima' => [
+                'rows' => $tasimaRows,
+                'satis' => $tSatis, 'alis' => $tAlis, 'sabit' => $tSabit,
+                'gider' => $tGider, 'personel' => $tPers,
+                'net' => $tNet, 'marj' => $tSatis > 0 ? $tNet / $tSatis : 0.0,
+            ],
+            'dagitilmamis' => $dagitilmamis,
+            'toplam_gelir' => $toplamGelir,
+            'toplam_net' => $toplamNet,
+            'toplam_marj' => $toplamGelir > 0 ? $toplamNet / $toplamGelir : 0.0,
+        ];
+    }
+
     /**
      * Aylık net karlılık (tahakkuk, finans nakit akışından ayrı):
      *   üretim cirosu − hammadde/işletme gideri − personel gideri + taşıma net kârı = net.
@@ -1541,13 +1789,8 @@ final class Repo
     public function netKarlilik(string $ay): array
     {
         $ciro = $this->monthUretimCiro($ay); // taşıma HARİÇ (kategori ayrımı)
-        $st = $this->pdo->prepare(
-            "SELECT COALESCE(SUM(amount),0) FROM transactions
-             WHERE type = 'gider' AND substr(tx_date,1,7) = ?
-               AND (category IS NULL OR category <> 'Personel')"
-        );
-        $st->execute([$ay]);
-        $hammadde = (float) $st->fetchColumn();
+        // opus-015: hammadde = gider dağıtım toplamı (giderDagitim ile birebir; 'Personel' kategori HARİÇ).
+        $hammadde = $this->giderDagitim($ay)['toplam'];
         $personel = $this->personelDagitim($ay)['toplam']; // yüklü işveren maliyeti (dağıtılmış)
         $tasimaKar = $this->monthTasimaTotals($ay)['net'];
         return [

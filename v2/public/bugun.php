@@ -150,6 +150,11 @@ require __DIR__ . '/partials/header.php';
           <div class="mt">Kâr / Zarar</div>
           <div class="md">Aylık rapor + müşteri drill-down</div>
         </a>
+        <a class="mod-card i-green" href="kar-analizi.php">
+          <div class="mico"><i class="bi bi-pie-chart"></i></div>
+          <div class="mt">Kâr Analizi</div>
+          <div class="md">Üretim / taşıma P&amp;L + marj</div>
+        </a>
         <a class="mod-card" href="faturalar.php">
           <div class="mico"><i class="bi bi-receipt"></i></div>
           <div class="mt">Faturalar</div>
