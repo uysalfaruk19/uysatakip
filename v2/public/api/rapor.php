@@ -15,7 +15,7 @@ if (!preg_match('/^\d{4}-\d{2}$/', $ay)) {
     Helpers::json(['ok' => false, 'error' => 'Geçersiz ay (YYYY-MM)'], 400);
 }
 
-$byCust = $repo->monthProductionByCustomer($ay);
+$byCust = $repo->monthProductionByCustomer($ay, 'uretim'); // taşıma HARİÇ (kategori ayrımı)
 $fin = $repo->monthFinanceTotals($ay);
 
 $rows = [];

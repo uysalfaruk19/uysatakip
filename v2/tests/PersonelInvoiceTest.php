@@ -134,12 +134,13 @@ final class PersonelInvoiceTest extends TestCase
         $this->repo->addTransaction('gider', 9999.0, '2026-07-03', 'Personel', null);   // HARİÇ (personel_gider tek kaynak)
         $this->repo->addPersonelGider(null, '2026-07-05', 'maas', 15000.0);              // personel
 
-        $t = $this->repo->upsertCustomer('KARGO', 0.0, 'tasima');
-        // adet 500, alış 80, satış 120, sabit 20000 → brüt 500×40=20000, net 20000−20000=0
-        $this->repo->upsertTasimaAylik($t, '2026-07', 500.0, 80.0, 120.0, 20000.0);
+        // Taşıma kartı: satış 120, alış 80, sabit 20000; adet = production 500 (Bugün sayımı)
+        $t = $this->repo->upsertCustomer('KARGO', 120.0, 'tasima', null, null, null, null, 80.0, 20000.0);
+        $this->repo->upsertProduction($t, '2026-07-10', 500, 120.0, 'ogle');
+        // brüt = 500×(120−80)=20000, net = 20000−20000=0; üretim cirosuna KARIŞMAZ
 
         $nk = $this->repo->netKarlilik('2026-07');
-        $this->assertEqualsWithDelta(32800.0, $nk['ciro'], 0.001);
+        $this->assertEqualsWithDelta(32800.0, $nk['ciro'], 0.001, 'üretim cirosu taşımasız (500×120 hariç)');
         $this->assertEqualsWithDelta(8000.0, $nk['hammadde'], 0.001, 'Personel kategorisi hariç');
         $this->assertEqualsWithDelta(15000.0, $nk['personel'], 0.001, 'personel gideri görünür');
         $this->assertEqualsWithDelta(0.0, $nk['tasima_kar'], 0.001, 'taşıma net kâr = brüt 20000 − sabit 20000');

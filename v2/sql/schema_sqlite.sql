@@ -23,10 +23,14 @@ CREATE TABLE IF NOT EXISTS customers (
   contact TEXT,
   phone TEXT,
   contract_note TEXT,
+  maliyet_birim REAL NOT NULL DEFAULT 0,        -- taşıma: alış birim fiyatı (opus-013)
+  tasima_sabit_gider REAL NOT NULL DEFAULT 0,   -- taşıma: aylık sabit gider (opsiyonel)
+  tasima_not TEXT,                              -- taşıma: not (opsiyonel)
   is_active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- tasima_aylik: ATIL (opus-013'te terk; taşıma kartı customers'ta, adet production'dan)
 CREATE TABLE IF NOT EXISTS tasima_aylik (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,

@@ -28,22 +28,23 @@ if ($drill) {
     require __DIR__ . '/partials/header.php';
 
     if ($drill['category'] === 'tasima') {
-        $t = $repo->tasimaAylik($drillId, $month);
-        $brut = $t ? (float) $t['brut'] : 0.0;
-        $net = $t ? (float) $t['net'] : 0.0;
+        $t = $repo->tasimaProfit($drillId, $month);
+        $adet = (float) $t['adet'];
+        $brut = (float) $t['brut'];
+        $net = (float) $t['net'];
         $trend = $repo->customerMonthlyProfit($drillId);
         ?>
         <a class="btn-action btn-ghost" href="rapor.php?ay=<?= $month ?>"><i class="bi bi-arrow-left"></i> Rapora dön</a>
         <div class="summary-grid">
-          <div class="summary-card tint-orange"><p class="label">Adet</p><p class="metric"><?= number_format($t ? (float) $t['adet'] : 0, 0, ',', '.') ?></p></div>
-          <div class="summary-card tint-blue"><p class="label">Birim alış / satış</p><p class="metric small">₺ <?= Helpers::money($t ? (float) $t['birim_alis'] : 0) ?> / ₺ <?= Helpers::money($t ? (float) $t['birim_satis'] : 0) ?></p></div>
-          <div class="summary-card tint-blue"><p class="label">Toplam alış</p><p class="metric small">₺ <?= Helpers::money($t ? (float) $t['toplam_alis'] : 0) ?></p></div>
-          <div class="summary-card tint-blue"><p class="label">Toplam satış</p><p class="metric small">₺ <?= Helpers::money($t ? (float) $t['toplam_satis'] : 0) ?></p></div>
-          <div class="summary-card tint-orange"><p class="label">Brüt kâr · sabit gider</p><p class="metric small">₺ <?= Helpers::money($brut) ?> · ₺ <?= Helpers::money($t ? (float) $t['sabit_gider'] : 0) ?></p></div>
+          <div class="summary-card tint-orange"><p class="label">Adet (bu ay, Bugün sayımı)</p><p class="metric"><?= number_format($adet, 0, ',', '.') ?></p></div>
+          <div class="summary-card tint-blue"><p class="label">Birim alış / satış</p><p class="metric small">₺ <?= Helpers::money((float) $t['alis']) ?> / ₺ <?= Helpers::money((float) $t['satis']) ?></p></div>
+          <div class="summary-card tint-blue"><p class="label">Toplam alış</p><p class="metric small">₺ <?= Helpers::money((float) $t['toplam_alis']) ?></p></div>
+          <div class="summary-card tint-blue"><p class="label">Toplam satış</p><p class="metric small">₺ <?= Helpers::money((float) $t['toplam_satis']) ?></p></div>
+          <div class="summary-card tint-orange"><p class="label">Brüt kâr · sabit gider</p><p class="metric small">₺ <?= Helpers::money($brut) ?> · ₺ <?= Helpers::money((float) $t['sabit']) ?></p></div>
           <div class="summary-card wide tint-green"><p class="label">Net kâr (brüt − sabit)</p><p class="metric <?= $net < 0 ? 'neg' : 'pos' ?>">₺ <?= Helpers::money($net) ?></p></div>
         </div>
-        <?php if (!$t): ?>
-          <div class="empty-state">Bu ay için kâr girişi yok. <a href="musteriler.php?edit=<?= $drillId ?>&ay=<?= $month ?>" style="color:var(--primary);font-weight:700">Müşteriye ekle →</a></div>
+        <?php if ($adet <= 0): ?>
+          <div class="empty-state">Bu ay <strong>Bugün</strong> ekranında bu müşteriye sayım girilmemiş (adet 0). <a href="bugun.php" style="color:var(--primary);font-weight:700">Bugün'e git →</a></div>
         <?php endif; ?>
         <div class="cardx card-pad">
           <h2>Aylar trendi</h2>
@@ -130,7 +131,7 @@ if ($drill) {
 // ══════════════════════════════════════════════════════════════
 // LİSTE: ay × müşteri (üretim ciro + taşıma kâr), müşteri adı = link
 // ══════════════════════════════════════════════════════════════
-$rows = $repo->monthProductionByCustomer($month);
+$rows = $repo->monthProductionByCustomer($month, 'uretim'); // taşıma HARİÇ (kategori ayrımı)
 $fin = $repo->monthFinanceTotals($month);
 $tasimaTot = $repo->monthTasimaTotals($month);
 $nk = $repo->netKarlilik($month);
@@ -196,13 +197,13 @@ require __DIR__ . '/partials/header.php';
         <table class="tablex">
           <thead><tr><th>Müşteri</th><th class="num">Adet</th><th class="num">Alış</th><th class="num">Satış</th><th class="num">Sabit</th><th class="num">Net kâr</th></tr></thead>
           <tbody>
-          <?php foreach ($tasimaList as $c): $t = $repo->tasimaAylik((int) $c['id'], $month); if (!$t) continue; $k = (float) $t['net']; ?>
+          <?php foreach ($tasimaList as $c): $t = $repo->tasimaProfit((int) $c['id'], $month); if ((float) $t['adet'] <= 0) continue; $k = (float) $t['net']; ?>
             <tr>
               <td><a href="rapor.php?musteri=<?= (int) $c['id'] ?>&ay=<?= $month ?>" style="color:var(--primary);font-weight:750"><?= Helpers::e($c['name']) ?></a></td>
               <td class="num"><?= number_format((float) $t['adet'], 0, ',', '.') ?></td>
               <td class="num">₺ <?= Helpers::money((float) $t['toplam_alis']) ?></td>
               <td class="num">₺ <?= Helpers::money((float) $t['toplam_satis']) ?></td>
-              <td class="num">₺ <?= Helpers::money((float) $t['sabit_gider']) ?></td>
+              <td class="num">₺ <?= Helpers::money((float) $t['sabit']) ?></td>
               <td class="num" style="color:<?= $k < 0 ? 'var(--red)' : 'var(--green)' ?>">₺ <?= Helpers::money($k) ?></td>
             </tr>
           <?php endforeach; ?>

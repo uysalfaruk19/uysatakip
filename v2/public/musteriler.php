@@ -48,24 +48,23 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $formOpen = true;
         } else {
             try {
-                $pdo->beginTransaction();
-                $cid = $repo->upsertCustomer($name, $unitPrice, $category, $id);
+                // Taşıma kartı = 4 alan: unit_price (satış) + maliyet_birim (alış)
+                // + tasima_sabit_gider (opsiyonel) + tasima_not (opsiyonel). adet KARTTA YOK
+                // (adet = o ay production.persons toplamı, Bugün sayımlarından).
+                $maliyet = null; $gider = null; $tnot = null;
                 if ($category === 'tasima') {
-                    $adet = Helpers::parseMoney((string) ($_POST['adet'] ?? '0'));
-                    $alis = Helpers::parseMoney((string) ($_POST['birim_alis'] ?? '0'));
-                    $satis = Helpers::parseMoney((string) ($_POST['birim_satis'] ?? '0'));
+                    $maliyet = Helpers::parseMoney((string) ($_POST['maliyet_birim'] ?? '0'));
                     $gider = Helpers::parseMoney((string) ($_POST['sabit_gider'] ?? '0'));
-                    $note = trim((string) ($_POST['note'] ?? '')) ?: null;
-                    if ($adet > 0 || $alis > 0 || $satis > 0 || $gider > 0) {
-                        $repo->upsertTasimaAylik($cid, $postMonth, $adet, $alis, $satis, $gider, $note);
-                    }
+                    $tnot = trim((string) ($_POST['note'] ?? ''));
                 }
-                $pdo->commit();
+                $cid = $repo->upsertCustomer($name, $unitPrice, $category, $id, null, null, null, $maliyet, $gider, $tnot);
                 uysa_audit('musteri_kaydet', $u['username'], (string) $cid, json_encode(['cat' => $category]), client_ip());
                 $flash = 'Müşteri kaydedildi · ' . $name;
                 $month = $postMonth;
             } catch (\Throwable $e) {
-                $pdo->rollBack();
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
                 $flash = 'Kayıt hatası (ad benzersiz olmalı).';
                 $flashOk = false;
                 $formOpen = true;
@@ -77,19 +76,17 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 $uretim = $repo->listCustomersByCategory('uretim');
 $tasima = $repo->listCustomersByCategory('tasima');
 
-// Düzenlenen müşteri (form ön-dolum)
+// Düzenlenen müşteri (form ön-dolum) — taşıma kart değerleri customers'ta (standing)
 $edit = $editId ? $repo->customer($editId) : null;
-$editTasima = ($edit && $edit['category'] === 'tasima') ? $repo->tasimaAylik($editId, $month) : null;
 $fName = $edit['name'] ?? '';
 $fCat = $edit['category'] ?? 'uretim';
-$fPrice = $edit ? (float) $edit['unit_price'] : 0.0;
-$fAdet = $editTasima ? (float) $editTasima['adet'] : 0.0;
-$fAlis = $editTasima ? (float) $editTasima['birim_alis'] : 0.0;
-$fSatis = $editTasima ? (float) $editTasima['birim_satis'] : 0.0;
-$fGider = $editTasima ? (float) $editTasima['sabit_gider'] : 0.0;
-$fBrut = $fAdet * ($fSatis - $fAlis);
-$fNet = $fBrut - $fGider;
-$fNote = $editTasima['note'] ?? '';
+$fPrice = $edit ? (float) $edit['unit_price'] : 0.0;                 // satış
+$fAlis = $edit ? (float) ($edit['maliyet_birim'] ?? 0) : 0.0;        // alış
+$fGider = $edit ? (float) ($edit['tasima_sabit_gider'] ?? 0) : 0.0;  // sabit gider
+$fNote = $edit['tasima_not'] ?? '';
+$fBirimKar = $fPrice - $fAlis;
+// Bu ayki adet + net kâr (production'dan, bilgi amaçlı)
+$fProfit = ($edit && $edit['category'] === 'tasima') ? $repo->tasimaProfit($editId, $month) : null;
 
 $eyebrow = 'Müşteri yönetimi';
 $pageTitle = 'Müşteriler';
@@ -121,33 +118,30 @@ require __DIR__ . '/partials/header.php';
             <input type="hidden" name="category" id="cat-input" value="<?= Helpers::e($fCat) ?>">
           </div>
 
-          <div class="field"><label>Birim fiyat (₺ / kişi)</label>
-            <input class="inputx" name="unit_price" inputmode="decimal" value="<?= $fPrice > 0 ? Helpers::money($fPrice) : '' ?>" placeholder="0,00">
+          <div class="field"><label id="lbl-price"><span id="lbl-price-txt"><?= $fCat === 'tasima' ? 'Birim fiyat — SATIŞ (₺ / adet)' : 'Birim fiyat (₺ / kişi)' ?></span></label>
+            <input class="inputx" name="unit_price" id="f-satis" inputmode="decimal" value="<?= $fPrice > 0 ? Helpers::money($fPrice) : '' ?>" placeholder="0,00" oninput="calcKar()">
           </div>
 
           <div id="tasima-fields" style="<?= $fCat === 'tasima' ? '' : 'display:none' ?>; display:grid; gap:11px;">
-            <div class="text-muted" style="font-size:12px;font-weight:600"><?= Helpers::e(ay_label_tr($month)) ?> — adet × (satış − alış)</div>
-            <div class="field"><label>Adet (o ay satılan yemek)</label>
-              <input class="inputx" name="adet" id="f-adet" inputmode="decimal" value="<?= $fAdet > 0 ? Helpers::money($fAdet) : '' ?>" placeholder="0" oninput="calcKar()">
-            </div>
-            <div class="field"><label>Birim ALIŞ (₺ / adet — tedarik)</label>
-              <input class="inputx" name="birim_alis" id="f-alis" inputmode="decimal" value="<?= $fAlis > 0 ? Helpers::money($fAlis) : '' ?>" placeholder="0,00" oninput="calcKar()">
-            </div>
-            <div class="field"><label>Birim SATIŞ (₺ / adet — müşteriye)</label>
-              <input class="inputx" name="birim_satis" id="f-satis" inputmode="decimal" value="<?= $fSatis > 0 ? Helpers::money($fSatis) : '' ?>" placeholder="0,00" oninput="calcKar()">
+            <div class="text-muted" style="font-size:12px;font-weight:600">Taşıma kartı · aylık kâr = aydaki satış adedi × birim kâr − sabit gider</div>
+            <div class="field"><label>Maliyet birim fiyat (₺ — alış / tedarik)</label>
+              <input class="inputx" name="maliyet_birim" id="f-alis" inputmode="decimal" value="<?= $fAlis > 0 ? Helpers::money($fAlis) : '' ?>" placeholder="0,00" oninput="calcKar()">
             </div>
             <div class="field"><label>Aylık sabit gider (₺ — opsiyonel)</label>
-              <input class="inputx" name="sabit_gider" id="f-gider" inputmode="decimal" value="<?= $fGider > 0 ? Helpers::money($fGider) : '' ?>" placeholder="0,00" oninput="calcKar()">
+              <input class="inputx" name="sabit_gider" id="f-gider" inputmode="decimal" value="<?= $fGider > 0 ? Helpers::money($fGider) : '' ?>" placeholder="0,00">
             </div>
             <div class="field"><label>Not (opsiyonel)</label>
               <input class="inputx" name="note" value="<?= Helpers::e($fNote) ?>" placeholder="ör. 2 araç, şoför dahil">
             </div>
             <div class="summary-grid">
-              <div class="summary-card tint-blue"><p class="label">Toplam alış</p><p class="metric small" id="alis-live">₺ <?= Helpers::money($fAdet * $fAlis) ?></p></div>
-              <div class="summary-card tint-blue"><p class="label">Toplam satış</p><p class="metric small" id="satis-live">₺ <?= Helpers::money($fAdet * $fSatis) ?></p></div>
-              <div class="summary-card tint-orange"><p class="label">Brüt kâr (adet×(satış−alış))</p><p class="metric small" id="brut-live">₺ <?= Helpers::money($fBrut) ?></p></div>
-              <div class="summary-card tint-green"><p class="label">Net kâr (brüt − sabit)</p><p class="metric small" id="kar-live">₺ <?= Helpers::money($fNet) ?></p></div>
+              <div class="summary-card tint-blue"><p class="label">Birim satış</p><p class="metric small" id="satis-live">₺ <?= Helpers::money($fPrice) ?></p></div>
+              <div class="summary-card tint-blue"><p class="label">Birim alış</p><p class="metric small" id="alis-live">₺ <?= Helpers::money($fAlis) ?></p></div>
+              <div class="summary-card tint-orange"><p class="label">Birim kâr (satış − alış)</p><p class="metric small" id="birimkar-live">₺ <?= Helpers::money($fBirimKar) ?></p></div>
+              <?php if ($fProfit): ?>
+              <div class="summary-card tint-green"><p class="label"><?= Helpers::e(ay_label_tr($month)) ?> · <?= number_format((float) $fProfit['adet'], 0, ',', '.') ?> adet → net kâr</p><p class="metric small">₺ <?= Helpers::money((float) $fProfit['net']) ?></p></div>
+              <?php endif; ?>
             </div>
+            <p class="text-muted" style="font-size:11px">Adet buraya girilmez — <strong>Bugün</strong> ekranındaki günlük sayımlardan (o ayın toplamı) otomatik gelir.</p>
           </div>
 
           <div class="actions-row">
@@ -187,16 +181,17 @@ require __DIR__ . '/partials/header.php';
         <?php if (!$tasima): ?>
           <div class="empty-state">Taşıma müşterisi yok.</div>
         <?php else: foreach ($tasima as $c):
-            $t = $repo->tasimaAylik((int) $c['id'], $month);
-            $kar = $t ? (float) $t['kar'] : 0.0; ?>
+            $t = $repo->tasimaProfit((int) $c['id'], $month);
+            $adet = (float) $t['adet'];
+            $kar = (float) $t['net']; ?>
           <div class="customer-row">
             <div>
               <div class="row-title"><span class="status-dot"></span><strong><?= Helpers::e($c['name']) ?></strong>
-                <?php if ($t): ?><span class="badge-soft <?= $kar >= 0 ? 'badge-ok' : 'badge-neg' ?>">₺ <?= Helpers::money($kar) ?> kâr</span><?php endif; ?>
+                <?php if ($adet > 0): ?><span class="badge-soft <?= $kar >= 0 ? 'badge-ok' : 'badge-neg' ?>">₺ <?= Helpers::money($kar) ?> kâr</span><?php endif; ?>
               </div>
               <p class="row-meta">
-                <?php if ($t): ?><?= number_format((float) $t['adet'], 0, ',', '.') ?> adet · Satış ₺ <?= Helpers::money((float) $t['toplam_satis']) ?> · Alış ₺ <?= Helpers::money((float) $t['toplam_alis']) ?>
-                <?php else: ?>Bu ay kâr girişi yok<?php endif; ?>
+                Satış ₺ <?= Helpers::money((float) $t['satis']) ?> · Alış ₺ <?= Helpers::money((float) $t['alis']) ?> / adet
+                <?php if ($adet > 0): ?>· <?= number_format($adet, 0, ',', '.') ?> adet (bu ay)<?php else: ?>· bu ay sayım yok<?php endif; ?>
               </p>
             </div>
             <div class="actions-row" style="justify-content:flex-end">
@@ -213,19 +208,18 @@ require __DIR__ . '/partials/header.php';
           btn.parentNode.querySelectorAll('.chip').forEach(function(c){c.classList.remove('active');});
           btn.classList.add('active');
           document.getElementById('tasima-fields').style.display = (cat === 'tasima') ? 'grid' : 'none';
+          document.getElementById('lbl-price-txt').textContent =
+            (cat === 'tasima') ? 'Birim fiyat — SATIŞ (₺ / adet)' : 'Birim fiyat (₺ / kişi)';
+          calcKar();
         }
         function parseTL(v){ return parseFloat(String(v).replace(/\./g,'').replace(',', '.')) || 0; }
         function tl(n){ return '₺ ' + n.toLocaleString('tr-TR', {minimumFractionDigits:2, maximumFractionDigits:2}); }
         function calcKar(){
-          var adet = parseTL(document.getElementById('f-adet').value);
-          var alis = parseTL(document.getElementById('f-alis').value);
           var satis = parseTL(document.getElementById('f-satis').value);
-          var g = parseTL(document.getElementById('f-gider').value);
-          var brut = adet * (satis - alis);
-          document.getElementById('alis-live').textContent = tl(adet * alis);
-          document.getElementById('satis-live').textContent = tl(adet * satis);
-          document.getElementById('brut-live').textContent = tl(brut);
-          document.getElementById('kar-live').textContent = tl(brut - g);
+          var alis = parseTL(document.getElementById('f-alis').value);
+          document.getElementById('satis-live').textContent = tl(satis);
+          document.getElementById('alis-live').textContent = tl(alis);
+          document.getElementById('birimkar-live').textContent = tl(satis - alis);
         }
       </script>
 <?php require __DIR__ . '/partials/footer.php'; ?>

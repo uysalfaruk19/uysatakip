@@ -136,15 +136,19 @@ final class RepoTest extends TestCase
         $this->assertNotNull($this->repo->customer($id), 'kayıt silinmez (FK bütünlüğü)');
     }
 
-    public function testTasimaKarIsAdetTimesSatisMinusAlisMinusGider(): void
+    // ── opus-013: taşıma = 4-alan kart + adet(production)×(satış−alış)−sabit ──
+    public function testTasimaProfitFromProductionCounts(): void
     {
-        // adet 100, birim alış 80, birim satış 120, sabit gider 500
-        $id = $this->repo->upsertCustomer('KARGO AŞ', 0.0, 'tasima');
-        $this->repo->upsertTasimaAylik($id, '2026-07', 100.0, 80.0, 120.0, 500.0, '2 araç');
+        // Taşıma kartı: satış(unit_price) 120, alış(maliyet_birim) 80, sabit 500, not
+        $id = $this->repo->upsertCustomer('KARGO AŞ', 120.0, 'tasima', null, null, null, null, 80.0, 500.0, '2 araç');
+        // adet Bugün sayımlarından: 07-01 öğle 60 + 07-10 öğle 40 = 100
+        $this->repo->upsertProduction($id, '2026-07-01', 60, 120.0, 'ogle');
+        $this->repo->upsertProduction($id, '2026-07-10', 40, 120.0, 'ogle');
         // brüt = 100×(120−80)=4000; net = 4000−500=3500
         $this->assertEqualsWithDelta(3500.0, $this->repo->tasimaKar($id, '2026-07'), 0.001);
 
-        $rec = $this->repo->tasimaAylik($id, '2026-07');
+        $rec = $this->repo->tasimaProfit($id, '2026-07');
+        $this->assertEqualsWithDelta(100.0, (float) $rec['adet'], 0.001, 'adet = production.persons toplamı');
         $this->assertEqualsWithDelta(8000.0, (float) $rec['toplam_alis'], 0.001);
         $this->assertEqualsWithDelta(12000.0, (float) $rec['toplam_satis'], 0.001);
         $this->assertEqualsWithDelta(4000.0, (float) $rec['brut'], 0.001);
@@ -152,29 +156,51 @@ final class RepoTest extends TestCase
         $this->assertEqualsWithDelta(3500.0, (float) $rec['kar'], 0.001, 'kar = net (geriye dönük)');
         $this->assertSame('2 araç', $rec['note']);
 
-        // Sabit gider opsiyonel (default 0): net = brüt
-        $this->repo->upsertTasimaAylik($id, '2026-07', 100.0, 80.0, 120.0);
-        $this->assertEqualsWithDelta(4000.0, $this->repo->tasimaKar($id, '2026-07'), 0.001, 'sabit gider yok → net=brüt');
-        $cnt = (int) $this->pdo->query('SELECT COUNT(*) FROM tasima_aylik')->fetchColumn();
-        $this->assertSame(1, $cnt, 'UNIQUE(customer,ay): tek satır');
+        // Başka ay adet toplamına girmez (07 sadece 100)
+        $this->repo->upsertProduction($id, '2026-06-30', 999, 120.0, 'ogle');
+        $this->assertEqualsWithDelta(100.0, (float) $this->repo->tasimaProfit($id, '2026-07')['adet'], 0.001);
+
+        // Sabit gider 0 → net = brüt
+        $id2 = $this->repo->upsertCustomer('KARGO2', 120.0, 'tasima', null, null, null, null, 80.0, 0.0);
+        $this->repo->upsertProduction($id2, '2026-07-01', 100, 120.0, 'ogle');
+        $this->assertEqualsWithDelta(4000.0, $this->repo->tasimaKar($id2, '2026-07'), 0.001, 'sabit gider yok → net=brüt');
     }
 
     public function testMonthTasimaTotals(): void
     {
-        $a = $this->repo->upsertCustomer('KARGO A', 0.0, 'tasima');
-        $b = $this->repo->upsertCustomer('KARGO B', 0.0, 'tasima');
-        // A: adet 1000, alış 100, satış 160, sabit 60000 → brüt 60000, net 0
-        $this->repo->upsertTasimaAylik($a, '2026-07', 1000.0, 100.0, 160.0, 60000.0);
-        // B: adet 1000, alış 100, satış 180, sabit 90000 → brüt 80000, net -10000 (zarar)
-        $this->repo->upsertTasimaAylik($b, '2026-07', 1000.0, 100.0, 180.0, 90000.0);
+        // A: satış 160, alış 100, sabit 60000; adet 1000 → brüt 60000, net 0
+        $a = $this->repo->upsertCustomer('KARGO A', 160.0, 'tasima', null, null, null, null, 100.0, 60000.0);
+        $this->repo->upsertProduction($a, '2026-07-01', 1000, 160.0, 'ogle');
+        // B: satış 180, alış 100, sabit 90000; adet 1000 → brüt 80000, net -10000 (zarar)
+        $b = $this->repo->upsertCustomer('KARGO B', 180.0, 'tasima', null, null, null, null, 100.0, 90000.0);
+        $this->repo->upsertProduction($b, '2026-07-01', 1000, 180.0, 'ogle');
         // başka ay (toplama girmemeli)
-        $this->repo->upsertTasimaAylik($a, '2026-06', 500.0, 100.0, 200.0, 10000.0);
+        $this->repo->upsertProduction($a, '2026-06-15', 500, 160.0, 'ogle');
         $tot = $this->repo->monthTasimaTotals('2026-07');
+        $this->assertEqualsWithDelta(2000.0, $tot['adet'], 0.001, '1000+1000');
         $this->assertEqualsWithDelta(200000.0, $tot['alis'], 0.001, '(1000×100)+(1000×100)');
         $this->assertEqualsWithDelta(340000.0, $tot['satis'], 0.001, '(1000×160)+(1000×180)');
         $this->assertEqualsWithDelta(150000.0, $tot['gider'], 0.001);
         $this->assertEqualsWithDelta(140000.0, $tot['brut'], 0.001, '60000+80000');
         $this->assertEqualsWithDelta(-10000.0, $tot['net'], 0.001, '0 + (-10000)');
+    }
+
+    public function testNetKarlilikExcludesTasimaFromUretimCiro(): void
+    {
+        // ÜRETİM müşterisi (kişi×fiyat): ciro 50×100 = 5000
+        $u = seed_customer($this->pdo, 'ÜRETİM AŞ', 100.0);
+        $this->repo->upsertProduction($u, '2026-07-01', 50, 100.0, 'ogle');
+        // TAŞIMA müşterisi: satış 120, alış 80; adet 100 → production tutarı 12000 ama üretim cirosu DEĞİL
+        $t = $this->repo->upsertCustomer('TAŞIMA AŞ', 120.0, 'tasima', null, null, null, null, 80.0, 0.0);
+        $this->repo->upsertProduction($t, '2026-07-01', 100, 120.0, 'ogle');
+
+        $nk = $this->repo->netKarlilik('2026-07');
+        $this->assertEqualsWithDelta(5000.0, $nk['ciro'], 0.001, 'üretim cirosu taşımayı içermez (12000 hariç)');
+        $this->assertEqualsWithDelta(4000.0, $nk['tasima_kar'], 0.001, '100×(120−80)=4000');
+        // net = 5000 - 0 - 0 + 4000 = 9000
+        $this->assertEqualsWithDelta(9000.0, $nk['net'], 0.001);
+        // monthUretimCiro doğrudan da taşımasız
+        $this->assertEqualsWithDelta(5000.0, $this->repo->monthUretimCiro('2026-07'), 0.001);
     }
 
     public function testCustomerDailyGridBreakdownAndScope(): void
@@ -212,9 +238,15 @@ final class RepoTest extends TestCase
     {
         $a = seed_customer($this->pdo, 'CANTAŞ', 328);
         $this->repo->upsertProduction($a, '2026-07-01', 10, 328, 'ogle');
+        // Taşıma müşterisi de production'a düşer ama kategori filtresiyle ayrılır
+        $t = $this->repo->upsertCustomer('KARGO', 120.0, 'tasima', null, null, null, null, 80.0, 0.0);
+        $this->repo->upsertProduction($t, '2026-07-01', 5, 120.0, 'ogle');
+
         $rows = $this->repo->monthProductionByCustomer('2026-07');
-        $this->assertCount(1, $rows);
-        $this->assertSame($a, (int) $rows[0]['customer_id'], 'drill-down için id döner');
-        $this->assertSame('uretim', $rows[0]['category']);
+        $this->assertCount(2, $rows, 'filtre yok → üretim + taşıma');
+        $uretim = $this->repo->monthProductionByCustomer('2026-07', 'uretim');
+        $this->assertCount(1, $uretim, 'kategori filtresi: sadece üretim');
+        $this->assertSame($a, (int) $uretim[0]['customer_id'], 'drill-down için id döner');
+        $this->assertSame('uretim', $uretim[0]['category']);
     }
 }

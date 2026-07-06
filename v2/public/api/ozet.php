@@ -50,7 +50,7 @@ if ($ay !== '') {
         Helpers::json(['ok' => false, 'error' => 'Geçersiz ay (YYYY-MM)'], 400);
     }
     $fin = $repo->monthFinanceTotals($ay);
-    $byCust = $repo->monthProductionByCustomer($ay);
+    $byCust = $repo->monthProductionByCustomer($ay, 'uretim'); // taşıma HARİÇ (kategori ayrımı)
     $ciro = 0.0; $kisi = 0;
     foreach ($byCust as $r) {
         $ciro += (float) $r['ciro'];

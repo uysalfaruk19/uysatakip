@@ -79,7 +79,10 @@ final class Repo
         ?int $id = null,
         ?string $contact = null,
         ?string $phone = null,
-        ?string $note = null
+        ?string $note = null,
+        ?float $maliyetBirim = null,
+        ?float $tasimaSabitGider = null,
+        ?string $tasimaNot = null
     ): int {
         if (!in_array($category, ['uretim', 'tasima'], true)) {
             $category = 'uretim';
@@ -94,113 +97,142 @@ final class Repo
             $this->pdo->prepare(
                 'UPDATE customers SET name = ?, unit_price = ?, category = ?,
                  contact = COALESCE(?, contact), phone = COALESCE(?, phone),
-                 contract_note = COALESCE(?, contract_note) WHERE id = ?'
-            )->execute([$name, $unitPrice, $category, $contact, $phone, $note, $id]);
+                 contract_note = COALESCE(?, contract_note),
+                 maliyet_birim = COALESCE(?, maliyet_birim),
+                 tasima_sabit_gider = COALESCE(?, tasima_sabit_gider),
+                 tasima_not = COALESCE(?, tasima_not) WHERE id = ?'
+            )->execute([$name, $unitPrice, $category, $contact, $phone, $note,
+                $maliyetBirim, $tasimaSabitGider, $tasimaNot, $id]);
             return $id;
         }
         $this->pdo->prepare(
-            'INSERT INTO customers (name, unit_price, category, contact, phone, contract_note)
-             VALUES (?, ?, ?, ?, ?, ?)'
-        )->execute([$name, $unitPrice, $category, $contact, $phone, $note]);
+            'INSERT INTO customers (name, unit_price, category, contact, phone, contract_note,
+                 maliyet_birim, tasima_sabit_gider, tasima_not)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        )->execute([$name, $unitPrice, $category, $contact, $phone, $note,
+            $maliyetBirim ?? 0.0, $tasimaSabitGider ?? 0.0, $tasimaNot]);
         return (int) $this->pdo->lastInsertId();
     }
 
-    // ── Taşıma karlılık (adet × (birim satış − birim alış) − sabit gider) ─
-    /**
-     * Taşıma müşterisi aylık kayıt upsert (UNIQUE customer_id, ay).
-     * adet = o ay satılan yemek adedi; birim_alis = adet başı alış/tedarik;
-     * birim_satis = adet başı satış; sabit_gider = OPSİYONEL aylık sabit gider (default 0).
-     */
-    public function upsertTasimaAylik(int $customerId, string $ay, float $adet, float $birimAlis, float $birimSatis, float $sabitGider = 0.0, ?string $note = null): void
-    {
-        $driver = $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
-        $onConf = $driver === 'sqlite'
-            ? 'ON CONFLICT(customer_id, ay) DO UPDATE SET
-                 adet = excluded.adet, birim_alis = excluded.birim_alis,
-                 birim_satis = excluded.birim_satis, sabit_gider = excluded.sabit_gider, note = excluded.note'
-            : 'ON DUPLICATE KEY UPDATE
-                 adet = VALUES(adet), birim_alis = VALUES(birim_alis),
-                 birim_satis = VALUES(birim_satis), sabit_gider = VALUES(sabit_gider), note = VALUES(note)';
-        $this->pdo->prepare(
-            'INSERT INTO tasima_aylik (customer_id, ay, adet, birim_alis, birim_satis, sabit_gider, note)
-             VALUES (?, ?, ?, ?, ?, ?, ?) ' . $onConf
-        )->execute([$customerId, $ay, $adet, $birimAlis, $birimSatis, $sabitGider, $note]);
-    }
+    // ── Taşıma karlılık (opus-013: adet[production] × (satış − alış) − sabit gider) ─
+    // Model: taşıma müşterisi KARTI (customers) = 4 alan →
+    //   unit_price (satış birim fiyatı) · maliyet_birim (alış birim fiyatı) ·
+    //   tasima_sabit_gider (aylık sabit gider, opsiyonel) · tasima_not (opsiyonel).
+    // adet KARTTA YOK: adet = o müşterinin o ay production.persons TOPLAMI (Bugün sayımları).
+    // tasima_aylik tablosu ARTIK KULLANILMIYOR (opus-011 modeli terk edildi, tablo atıl).
 
-    /**
-     * Bir taşıma müşterisinin belirli ay kaydı (yoksa null). Türetilmiş alanlar:
-     * toplam_alis = adet×birim_alis · toplam_satis = adet×birim_satis
-     * brut = adet×(birim_satis−birim_alis) · net (=kar) = brut − sabit_gider.
-     */
-    public function tasimaAylik(int $customerId, string $ay): ?array
+    /** Bir müşterinin o ay production.persons toplamı = taşıma adedi (Bugün sayımlarından). */
+    public function monthProductionPersons(int $customerId, string $ay): float
     {
         $st = $this->pdo->prepare(
-            'SELECT adet, birim_alis, birim_satis, sabit_gider, note FROM tasima_aylik WHERE customer_id = ? AND ay = ?'
+            'SELECT COALESCE(SUM(persons),0) FROM production
+             WHERE customer_id = ? AND substr(prod_date,1,7) = ?'
         );
         $st->execute([$customerId, $ay]);
-        $r = $st->fetch();
-        if (!$r) {
-            return null;
-        }
-        $adet = (float) $r['adet'];
-        $r['toplam_alis']  = $adet * (float) $r['birim_alis'];
-        $r['toplam_satis'] = $adet * (float) $r['birim_satis'];
-        $r['brut'] = $adet * ((float) $r['birim_satis'] - (float) $r['birim_alis']);
-        $r['net']  = $r['brut'] - (float) $r['sabit_gider'];
-        $r['kar']  = $r['net']; // geriye dönük UI adı
-        return $r;
+        return (float) $st->fetchColumn();
     }
 
-    /** Net kâr = adet × (birim satış − birim alış) − sabit gider (kayıt yoksa 0). */
+    /**
+     * Taşıma müşterisi aylık kâr (KESİN model, opus-013):
+     *   adet  = o ay production.persons toplamı
+     *   satis = customers.unit_price (satış birim fiyatı)
+     *   alis  = customers.maliyet_birim (alış birim fiyatı)
+     *   brut  = adet × (satis − alis)
+     *   net   = brut − tasima_sabit_gider
+     * @return array{adet,satis,alis,birim_satis,birim_alis,toplam_satis,toplam_alis,brut,sabit,sabit_gider,net,kar,note}
+     */
+    public function tasimaProfit(int $customerId, string $ay): array
+    {
+        $c = $this->customer($customerId);
+        $satis = $c ? (float) $c['unit_price'] : 0.0;
+        $alis  = $c ? (float) ($c['maliyet_birim'] ?? 0) : 0.0;
+        $sabit = $c ? (float) ($c['tasima_sabit_gider'] ?? 0) : 0.0;
+        $note  = $c['tasima_not'] ?? null;
+        $adet  = $this->monthProductionPersons($customerId, $ay);
+        $brut  = $adet * ($satis - $alis);
+        $net   = $brut - $sabit;
+        return [
+            'adet'         => $adet,
+            'satis'        => $satis,
+            'alis'         => $alis,
+            'birim_satis'  => $satis,   // UI geriye dönük ad
+            'birim_alis'   => $alis,
+            'toplam_satis' => $adet * $satis,
+            'toplam_alis'  => $adet * $alis,
+            'brut'         => $brut,
+            'sabit'        => $sabit,
+            'sabit_gider'  => $sabit,   // UI geriye dönük ad
+            'net'          => $net,
+            'kar'          => $net,     // UI geriye dönük ad
+            'note'         => $note,
+        ];
+    }
+
+    /** Taşıma net kâr = adet×(satış−alış) − sabit gider. */
     public function tasimaKar(int $customerId, string $ay): float
     {
-        $st = $this->pdo->prepare(
-            'SELECT COALESCE(adet,0) * (COALESCE(birim_satis,0) - COALESCE(birim_alis,0)) - COALESCE(sabit_gider,0)
-             FROM tasima_aylik WHERE customer_id = ? AND ay = ?'
-        );
-        $st->execute([$customerId, $ay]);
-        $v = $st->fetchColumn();
-        return $v === false ? 0.0 : (float) $v;
-    }
-
-    /** Taşıma müşterisi aylar trendi (yeni→eski, türetilmiş toplam/brüt/net). */
-    public function customerMonthlyProfit(int $customerId): array
-    {
-        $st = $this->pdo->prepare(
-            'SELECT ay, adet, birim_alis, birim_satis, sabit_gider,
-                    (adet * birim_alis) AS toplam_alis,
-                    (adet * birim_satis) AS toplam_satis,
-                    (adet * (birim_satis - birim_alis)) AS brut,
-                    (adet * (birim_satis - birim_alis) - sabit_gider) AS net
-             FROM tasima_aylik WHERE customer_id = ? ORDER BY ay DESC'
-        );
-        $st->execute([$customerId]);
-        return $st->fetchAll();
+        return $this->tasimaProfit($customerId, $ay)['net'];
     }
 
     /**
-     * Ayın tüm taşıma müşterileri toplamı (finans net için).
-     * @return array{alis:float,satis:float,gider:float,brut:float,net:float}
+     * Taşıma müşterisi aylar trendi (yeni→eski). adet = o ay production.persons;
+     * satış/alış/sabit standing kart değerlerinden alınır.
+     */
+    public function customerMonthlyProfit(int $customerId): array
+    {
+        $c = $this->customer($customerId);
+        if (!$c) {
+            return [];
+        }
+        $satis = (float) $c['unit_price'];
+        $alis  = (float) ($c['maliyet_birim'] ?? 0);
+        $sabit = (float) ($c['tasima_sabit_gider'] ?? 0);
+        $st = $this->pdo->prepare(
+            'SELECT substr(prod_date,1,7) AS ay, COALESCE(SUM(persons),0) AS adet
+             FROM production WHERE customer_id = ?
+             GROUP BY substr(prod_date,1,7) ORDER BY ay DESC'
+        );
+        $st->execute([$customerId]);
+        $out = [];
+        foreach ($st->fetchAll() as $r) {
+            $adet = (float) $r['adet'];
+            $brut = $adet * ($satis - $alis);
+            $out[] = [
+                'ay'           => $r['ay'],
+                'adet'         => $adet,
+                'toplam_alis'  => $adet * $alis,
+                'toplam_satis' => $adet * $satis,
+                'brut'         => $brut,
+                'net'          => $brut - $sabit,
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * Ayın tüm taşıma müşterileri toplamı (finans net + rapor için).
+     * Sadece o ay adedi (production) olan müşteriler sayılır → sabit gider yalnızca
+     * hizmet verilen ayda düşer (listelenen satırlarla tutarlı).
+     * @return array{adet:float,alis:float,satis:float,gider:float,brut:float,net:float}
      */
     public function monthTasimaTotals(string $ay): array
     {
-        $st = $this->pdo->prepare(
-            'SELECT COALESCE(SUM(adet * birim_alis),0) AS alis,
-                    COALESCE(SUM(adet * birim_satis),0) AS satis,
-                    COALESCE(SUM(sabit_gider),0) AS gider,
-                    COALESCE(SUM(adet * (birim_satis - birim_alis)),0) AS brut,
-                    COALESCE(SUM(adet * (birim_satis - birim_alis) - sabit_gider),0) AS net
-             FROM tasima_aylik WHERE ay = ?'
-        );
-        $st->execute([$ay]);
-        $r = $st->fetch() ?: ['alis' => 0, 'satis' => 0, 'gider' => 0, 'brut' => 0, 'net' => 0];
-        return [
-            'alis'  => (float) $r['alis'],
-            'satis' => (float) $r['satis'],
-            'gider' => (float) $r['gider'],
-            'brut'  => (float) $r['brut'],
-            'net'   => (float) $r['net'],
-        ];
+        $ids = $this->pdo->query("SELECT id FROM customers WHERE category = 'tasima'")
+            ->fetchAll(PDO::FETCH_COLUMN);
+        $tot = ['adet' => 0.0, 'alis' => 0.0, 'satis' => 0.0, 'gider' => 0.0, 'brut' => 0.0, 'net' => 0.0];
+        foreach ($ids as $cid) {
+            $p = $this->tasimaProfit((int) $cid, $ay);
+            if ($p['adet'] <= 0) {
+                continue; // bu ay hizmet/sayım yok → sabit gider de düşmez
+            }
+            $tot['adet']  += $p['adet'];
+            $tot['alis']  += $p['toplam_alis'];
+            $tot['satis'] += $p['toplam_satis'];
+            $tot['gider'] += $p['sabit'];
+            $tot['brut']  += $p['brut'];
+            $tot['net']   += $p['net'];
+        }
+        return $tot;
     }
 
     // ── Üretim (Bugün) ────────────────────────────────────────
@@ -673,19 +705,21 @@ final class Repo
     }
 
     // ── Rapor / Özet ──────────────────────────────────────────
-    public function monthProductionByCustomer(string $month): array
+    public function monthProductionByCustomer(string $month, ?string $category = null): array
     {
-        $st = $this->pdo->prepare(
-            "SELECT c.id AS customer_id, c.name, c.category,
+        $sql = "SELECT c.id AS customer_id, c.name, c.category,
                     COALESCE(SUM(p.persons),0) AS persons, COALESCE(SUM(p.amount),0) AS ciro,
                     COUNT(p.id) AS gun
              FROM customers c
-             LEFT JOIN production p ON p.customer_id = c.id AND substr(p.prod_date,1,7) = ?
-             GROUP BY c.id, c.name, c.category
-             HAVING gun > 0
-             ORDER BY ciro DESC"
-        );
-        $st->execute([$month]);
+             LEFT JOIN production p ON p.customer_id = c.id AND substr(p.prod_date,1,7) = ?";
+        $params = [$month];
+        if ($category !== null) {
+            $sql .= ' WHERE c.category = ?';
+            $params[] = $category;
+        }
+        $sql .= " GROUP BY c.id, c.name, c.category HAVING gun > 0 ORDER BY ciro DESC";
+        $st = $this->pdo->prepare($sql);
+        $st->execute($params);
         return $st->fetchAll();
     }
 
@@ -1052,11 +1086,26 @@ final class Repo
     }
 
     // ── Faturalar (aylık müşteri faturası — opus-009) ─────────
-    /** Aylık üretim cirosu (production tutar toplamı). */
+    /** Aylık üretim cirosu (TÜM production tutar toplamı — kategori ayrımsız). */
     public function monthProductionTotal(string $ay): float
     {
         $st = $this->pdo->prepare(
             'SELECT COALESCE(SUM(amount),0) FROM production WHERE substr(prod_date,1,7) = ?'
+        );
+        $st->execute([$ay]);
+        return (float) $st->fetchColumn();
+    }
+
+    /**
+     * Aylık ÜRETİM cirosu — SADECE category='uretim' müşteriler (taşıma HARİÇ).
+     * Net karlılıkta üretim cirosu taşıma satışını İÇERMEZ (opus-013 kategori ayrımı).
+     */
+    public function monthUretimCiro(string $ay): float
+    {
+        $st = $this->pdo->prepare(
+            "SELECT COALESCE(SUM(p.amount),0)
+             FROM production p JOIN customers c ON c.id = p.customer_id
+             WHERE c.category = 'uretim' AND substr(p.prod_date,1,7) = ?"
         );
         $st->execute([$ay]);
         return (float) $st->fetchColumn();
@@ -1143,7 +1192,7 @@ final class Repo
      */
     public function netKarlilik(string $ay): array
     {
-        $ciro = $this->monthProductionTotal($ay);
+        $ciro = $this->monthUretimCiro($ay); // taşıma HARİÇ (kategori ayrımı)
         $st = $this->pdo->prepare(
             "SELECT COALESCE(SUM(amount),0) FROM transactions
              WHERE type = 'gider' AND substr(tx_date,1,7) = ?
