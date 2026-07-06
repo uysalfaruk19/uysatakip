@@ -280,12 +280,14 @@ CREATE TABLE IF NOT EXISTS `stock_moves` (
 
 -- ── Personel (maaş/prim/gider takibi — opus-009) ──────────────
 CREATE TABLE IF NOT EXISTS `personel` (
-  `id`          INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `ad`          VARCHAR(150) NOT NULL,
-  `gorev`       VARCHAR(120)          DEFAULT NULL,
-  `aylik_ucret` DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'sözleşme aylık ücret TL',
-  `is_active`   TINYINT(1)   NOT NULL DEFAULT 1,
-  `created_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `id`            INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `ad`            VARCHAR(150) NOT NULL,
+  `gorev`         VARCHAR(120)          DEFAULT NULL,
+  `aylik_ucret`   DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'brüt aylık ücret TL',
+  `ise_giris`     DATE                  DEFAULT NULL COMMENT 'kıdem başlangıcı (opus-014)',
+  `diger_maliyet` DECIMAL(12,2)         DEFAULT NULL COMMENT 'override tutar; NULL=ayar oranından (opus-014)',
+  `is_active`     TINYINT(1)   NOT NULL DEFAULT 1,
+  `created_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_personel_active` (`is_active`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -451,5 +453,31 @@ INSERT IGNORE INTO `supply_item` (`ad`, `birim`, `sort_order`) VALUES
   ('Karabiber', 'paket', 80),
   ('Çöp Poşeti', 'paket', 90),
   ('Eldiven', 'kutu', 100);
+
+-- ── Ayar (anahtar-değer): mevzuat oranları, Ömer'ce düzenlenebilir (opus-014) ─
+CREATE TABLE IF NOT EXISTS `ayar` (
+  `anahtar` VARCHAR(60)  NOT NULL,
+  `deger`   VARCHAR(100) NOT NULL,
+  PRIMARY KEY (`anahtar`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+INSERT IGNORE INTO `ayar` (`anahtar`, `deger`) VALUES
+  ('sgk_isveren_orani', '0.225'),
+  ('kidem_tavan', '64948.77'),
+  ('kidem_aylik_bolen', '12'),
+  ('diger_maliyet_oran', '0'),
+  ('sgk_tesvik_orani', '0.175');
+
+-- ── Personel → müşteri dağıtım ataması (opus-014) ─
+CREATE TABLE IF NOT EXISTS `personel_musteri` (
+  `id`          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `personel_id` INT UNSIGNED NOT NULL,
+  `customer_id` INT UNSIGNED          DEFAULT NULL,
+  `genel`       TINYINT(1)   NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_pm` (`personel_id`,`customer_id`),
+  KEY `idx_pm_personel` (`personel_id`),
+  CONSTRAINT `fk_pm_personel` FOREIGN KEY (`personel_id`) REFERENCES `personel` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_pm_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;

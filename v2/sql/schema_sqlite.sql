@@ -204,7 +204,9 @@ CREATE TABLE IF NOT EXISTS personel (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   ad TEXT NOT NULL,
   gorev TEXT,
-  aylik_ucret REAL NOT NULL DEFAULT 0,
+  aylik_ucret REAL NOT NULL DEFAULT 0,     -- brüt aylık ücret TL
+  ise_giris TEXT,                          -- kıdem başlangıcı (YYYY-MM-DD), NULL=bilinmiyor (opus-014)
+  diger_maliyet REAL,                      -- override tutar TL; NULL=ayar diger_maliyet_oran'dan (opus-014)
   is_active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -328,3 +330,27 @@ INSERT OR IGNORE INTO supply_item (ad, birim, sort_order) VALUES
   ('Karabiber', 'paket', 80),
   ('Çöp Poşeti', 'paket', 90),
   ('Eldiven', 'kutu', 100);
+
+-- ── Ayar (anahtar-değer): mevzuat oranları, hepsi Ömer'ce düzenlenebilir (opus-014) ─
+CREATE TABLE IF NOT EXISTS ayar (
+  anahtar TEXT PRIMARY KEY,
+  deger TEXT NOT NULL
+);
+INSERT OR IGNORE INTO ayar (anahtar, deger) VALUES
+  ('sgk_isveren_orani', '0.225'),   -- işveren SGK payı (SGK+kısa vade+işsizlik), teşviksiz
+  ('kidem_tavan', '64948.77'),      -- 2026 H1 kıdem tazminatı aylık tavanı TL
+  ('kidem_aylik_bolen', '12'),      -- yılda 30 gün → aylık tahakkuk = min(brüt,tavan)/12
+  ('diger_maliyet_oran', '0'),      -- yemek/yol/ikramiye default oran (Ömer girer)
+  ('sgk_tesvik_orani', '0.175');    -- %5 teşvikli işveren SGK (bilgi amaçlı)
+
+-- ── Personel → müşteri dağıtım ataması (opus-014) ─
+-- genel=1 → o personelin yüklü maliyeti tüm üretim müşterilerine HACME oranlı dağıtılır (customer_id NULL).
+-- genel=0 → her satır bir müşteri; birden fazla müşteriye EŞİT bölünür.
+CREATE TABLE IF NOT EXISTS personel_musteri (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  personel_id INTEGER NOT NULL REFERENCES personel(id) ON DELETE CASCADE,
+  customer_id INTEGER REFERENCES customers(id) ON DELETE CASCADE,
+  genel INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(personel_id, customer_id)
+);
+CREATE INDEX IF NOT EXISTS idx_pm_personel ON personel_musteri(personel_id);

@@ -99,6 +99,7 @@ function handleInvoiceUpload(array $file, Repo $repo, string $by, string &$flash
 $fin = $repo->monthFinanceTotals($month);
 $tasimaTot = $repo->monthTasimaTotals($month);
 $nk = $repo->netKarlilik($month);
+$kidemTot = $repo->kidemToplamYukumluluk($month);
 $txs = $repo->transactionsForMonth($month);
 $customers = $repo->activeCustomers();
 $suppliers = $repo->activeSuppliers();
@@ -153,11 +154,14 @@ require __DIR__ . '/partials/header.php';
           <tbody>
             <tr><td>Üretim cirosu</td><td class="num">₺ <?= Helpers::money($nk['ciro']) ?></td></tr>
             <tr><td>Hammadde / işletme gideri</td><td class="num">− ₺ <?= Helpers::money($nk['hammadde']) ?></td></tr>
-            <tr><td>Personel gideri</td><td class="num">− ₺ <?= Helpers::money($nk['personel']) ?></td></tr>
+            <tr><td>Personel gideri (yüklü işveren maliyeti, dağıtılmış)</td><td class="num">− ₺ <?= Helpers::money($nk['personel']) ?></td></tr>
             <tr><td>Taşıma net kâr (adet×(satış−alış)−sabit)</td><td class="num" style="color:<?= $nk['tasima_kar'] < 0 ? 'var(--red)' : 'var(--green)' ?>"><?= $nk['tasima_kar'] < 0 ? '− ₺ ' . Helpers::money(abs($nk['tasima_kar'])) : '+ ₺ ' . Helpers::money($nk['tasima_kar']) ?></td></tr>
             <tr class="is-total"><td>Net karlılık</td><td class="num" style="color:<?= $nk['net'] < 0 ? 'var(--red)' : 'var(--green)' ?>">₺ <?= Helpers::money($nk['net']) ?></td></tr>
           </tbody>
         </table>
+        <?php if ($kidemTot['birikim'] > 0): ?>
+        <p class="row-meta" style="margin-top:8px"><i class="bi bi-piggy-bank"></i> Biriken kıdem yükümlülüğü (bilanço dışı borç, fesihte ödenir): <strong>₺ <?= Helpers::money($kidemTot['birikim']) ?></strong> · bu ay tahakkuk +₺ <?= Helpers::money($kidemTot['bu_ay_tahakkuk']) ?></p>
+        <?php endif; ?>
       </div>
       <?php endif; ?>
 

@@ -76,11 +76,13 @@ if ($drill) {
         $rows = $repo->customerDailyGrid($drillId, $month);
         $sumKisi = 0; $sumTutar = 0.0; $barMax = 0;
         foreach ($rows as $r) { $sumKisi += (int) $r['kisi']; $sumTutar += (float) $r['tutar']; $barMax = max($barMax, (int) $r['kisi']); }
+        $personelPayi = (float) ($repo->personelDagitim($month)['per_customer'][$drillId] ?? 0.0);
         ?>
         <a class="btn-action btn-ghost" href="rapor.php?ay=<?= $month ?>"><i class="bi bi-arrow-left"></i> Rapora dön</a>
         <div class="summary-grid">
           <div class="summary-card tint-orange"><p class="label">Ay toplam kişi</p><p class="metric"><?= number_format($sumKisi, 0, ',', '.') ?></p></div>
           <div class="summary-card tint-green"><p class="label">Ay cirosu</p><p class="metric">₺ <?= Helpers::money($sumTutar) ?></p></div>
+          <div class="summary-card tint-blue"><p class="label">Bu müşteriye düşen personel payı</p><p class="metric small">₺ <?= Helpers::money($personelPayi) ?></p></div>
           <div class="summary-card wide"><p class="label">Üretim günü</p><p class="metric small"><?= count($rows) ?> gün</p></div>
         </div>
         <div class="cardx card-pad">
@@ -162,7 +164,7 @@ require __DIR__ . '/partials/header.php';
           <tbody>
             <tr><td>Üretim cirosu</td><td class="num">₺ <?= Helpers::money($nk['ciro']) ?></td></tr>
             <tr><td>Hammadde / işletme gideri</td><td class="num">− ₺ <?= Helpers::money($nk['hammadde']) ?></td></tr>
-            <tr><td>Personel gideri</td><td class="num">− ₺ <?= Helpers::money($nk['personel']) ?></td></tr>
+            <tr><td>Personel gideri (dağıtılmış · yüklü işveren maliyeti)</td><td class="num">− ₺ <?= Helpers::money($nk['personel']) ?></td></tr>
             <tr><td>Taşıma net kâr (adet×(satış−alış)−sabit)</td><td class="num" style="color:<?= $nk['tasima_kar'] < 0 ? 'var(--red)' : 'var(--green)' ?>"><?= $nk['tasima_kar'] < 0 ? '− ₺ ' . Helpers::money(abs($nk['tasima_kar'])) : '+ ₺ ' . Helpers::money($nk['tasima_kar']) ?></td></tr>
             <tr class="is-total"><td>Net karlılık</td><td class="num" style="color:<?= $nk['net'] < 0 ? 'var(--red)' : 'var(--green)' ?>">₺ <?= Helpers::money($nk['net']) ?></td></tr>
           </tbody>

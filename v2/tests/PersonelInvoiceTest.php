@@ -124,15 +124,17 @@ final class PersonelInvoiceTest extends TestCase
         $this->assertSame('CANTAŞ', $list[0]['customer_name']);
     }
 
-    // ── Net karlılık entegrasyonu ─────────────────────────────
+    // ── Net karlılık entegrasyonu (opus-014: personel = yüklü işveren maliyeti) ─
     public function testNetKarlilikIncludesPersonel(): void
     {
         $c = seed_customer($this->pdo, 'CANTAŞ', 328.0);
         $this->repo->upsertProduction($c, '2026-07-01', 100, 328.0, 'ogle'); // ciro 32800
 
         $this->repo->addTransaction('gider', 8000.0, '2026-07-02', 'Et/Tavuk', null);   // hammadde
-        $this->repo->addTransaction('gider', 9999.0, '2026-07-03', 'Personel', null);   // HARİÇ (personel_gider tek kaynak)
-        $this->repo->addPersonelGider(null, '2026-07-05', 'maas', 15000.0);              // personel
+        $this->repo->addTransaction('gider', 9999.0, '2026-07-03', 'Personel', null);   // HARİÇ (çift sayım yok)
+        // Personel brüt 15000, genele atalı → yüklü = 15000 + %22,5 SGK(3375) + kıdem 15000/12(1250) + 0 = 19625
+        $pid = $this->repo->upsertPersonel('Ahmet', 'Aşçı', 15000.0);
+        $this->repo->setPersonelAtama($pid, true);
 
         // Taşıma kartı: satış 120, alış 80, sabit 20000; adet = production 500 (Bugün sayımı)
         $t = $this->repo->upsertCustomer('KARGO', 120.0, 'tasima', null, null, null, null, 80.0, 20000.0);
@@ -142,9 +144,9 @@ final class PersonelInvoiceTest extends TestCase
         $nk = $this->repo->netKarlilik('2026-07');
         $this->assertEqualsWithDelta(32800.0, $nk['ciro'], 0.001, 'üretim cirosu taşımasız (500×120 hariç)');
         $this->assertEqualsWithDelta(8000.0, $nk['hammadde'], 0.001, 'Personel kategorisi hariç');
-        $this->assertEqualsWithDelta(15000.0, $nk['personel'], 0.001, 'personel gideri görünür');
+        $this->assertEqualsWithDelta(19625.0, $nk['personel'], 0.001, 'yüklü işveren maliyeti (brüt+SGK+kıdem)');
         $this->assertEqualsWithDelta(0.0, $nk['tasima_kar'], 0.001, 'taşıma net kâr = brüt 20000 − sabit 20000');
-        // net = 32800 - 8000 - 15000 + 0 = 9800
-        $this->assertEqualsWithDelta(9800.0, $nk['net'], 0.001);
+        // net = 32800 - 8000 - 19625 + 0 = 5175
+        $this->assertEqualsWithDelta(5175.0, $nk['net'], 0.001);
     }
 }

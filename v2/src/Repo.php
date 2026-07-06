@@ -1000,7 +1000,7 @@ final class Repo
     /** @return array<int,array> personel listesi (aktif varsayılan). */
     public function listPersonel(bool $activeOnly = true): array
     {
-        $sql = 'SELECT id, ad, gorev, aylik_ucret, is_active FROM personel';
+        $sql = 'SELECT id, ad, gorev, aylik_ucret, ise_giris, diger_maliyet, is_active FROM personel';
         if ($activeOnly) {
             $sql .= ' WHERE is_active = 1';
         }
@@ -1010,22 +1010,270 @@ final class Repo
 
     public function personel(int $id): ?array
     {
-        $st = $this->pdo->prepare('SELECT id, ad, gorev, aylik_ucret, is_active FROM personel WHERE id = ?');
+        $st = $this->pdo->prepare('SELECT id, ad, gorev, aylik_ucret, ise_giris, diger_maliyet, is_active FROM personel WHERE id = ?');
         $st->execute([$id]);
         return $st->fetch() ?: null;
     }
 
-    /** Personel ekle/düzenle. $id verilirse günceller (ad dahil), yoksa ekler. */
-    public function upsertPersonel(string $ad, ?string $gorev, float $aylikUcret, ?int $id = null): int
-    {
+    /**
+     * Personel ekle/düzenle. $id verilirse günceller (ad dahil), yoksa ekler.
+     * $aylikUcret = BRÜT maaş. $iseGiris = kıdem başlangıcı (YYYY-MM-DD|null).
+     * $digerMaliyet = override tutar (null → ayar diger_maliyet_oran'dan hesaplanır).
+     */
+    public function upsertPersonel(
+        string $ad,
+        ?string $gorev,
+        float $aylikUcret,
+        ?int $id = null,
+        ?string $iseGiris = null,
+        ?float $digerMaliyet = null
+    ): int {
         if ($id !== null) {
-            $this->pdo->prepare('UPDATE personel SET ad = ?, gorev = ?, aylik_ucret = ? WHERE id = ?')
-                ->execute([$ad, $gorev, $aylikUcret, $id]);
+            $this->pdo->prepare(
+                'UPDATE personel SET ad = ?, gorev = ?, aylik_ucret = ?, ise_giris = ?, diger_maliyet = ? WHERE id = ?'
+            )->execute([$ad, $gorev, $aylikUcret, $iseGiris, $digerMaliyet, $id]);
             return $id;
         }
-        $this->pdo->prepare('INSERT INTO personel (ad, gorev, aylik_ucret) VALUES (?, ?, ?)')
-            ->execute([$ad, $gorev, $aylikUcret]);
+        $this->pdo->prepare(
+            'INSERT INTO personel (ad, gorev, aylik_ucret, ise_giris, diger_maliyet) VALUES (?, ?, ?, ?, ?)'
+        )->execute([$ad, $gorev, $aylikUcret, $iseGiris, $digerMaliyet]);
         return (int) $this->pdo->lastInsertId();
+    }
+
+    // ── Ayar (mevzuat KV — SGK/kıdem/diğer oranları, opus-014) ─────
+    /** Tek ayar değeri (string). Yoksa $default döner. */
+    public function ayar(string $anahtar, ?string $default = null): ?string
+    {
+        $st = $this->pdo->prepare('SELECT deger FROM ayar WHERE anahtar = ?');
+        $st->execute([$anahtar]);
+        $v = $st->fetchColumn();
+        return $v !== false ? (string) $v : $default;
+    }
+
+    /** Ayar değerini float olarak oku (mevzuat oranı/tavan). */
+    public function ayarNum(string $anahtar, float $default = 0.0): float
+    {
+        $v = $this->ayar($anahtar, null);
+        return $v === null || $v === '' ? $default : (float) $v;
+    }
+
+    /** Ayar yaz/güncelle (KV upsert). */
+    public function ayarSet(string $anahtar, string $deger): void
+    {
+        $driver = $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+        $onConf = $driver === 'sqlite'
+            ? 'ON CONFLICT(anahtar) DO UPDATE SET deger = excluded.deger'
+            : 'ON DUPLICATE KEY UPDATE deger = VALUES(deger)';
+        $this->pdo->prepare("INSERT INTO ayar (anahtar, deger) VALUES (?, ?) $onConf")
+            ->execute([$anahtar, $deger]);
+    }
+
+    /** @return array<string,string> tüm ayarlar (UI düzenleme için). */
+    public function ayarlar(): array
+    {
+        $out = [];
+        foreach ($this->pdo->query('SELECT anahtar, deger FROM ayar')->fetchAll() as $r) {
+            $out[$r['anahtar']] = $r['deger'];
+        }
+        return $out;
+    }
+
+    // ── Personel gerçek işveren maliyeti (opus-014) ────────────────
+    /**
+     * Bir personelin yüklü aylık işveren maliyeti (bileşen breakdown).
+     * brüt + işveren SGK(oran) + kıdem aylık tahakkuk(min(brüt,tavan)/bölen) + diğer maliyet.
+     * Oranlar ayar'dan (default mevzuat). diger: personel.diger_maliyet override, yoksa brüt×oran.
+     * @return array{brut,sgk_isveren,kidem_aylik,diger,yuklu_toplam,sgk_orani,kidem_tavan,tavan_uygulandi}
+     */
+    public function personelYukluMaliyet(int $personelId): array
+    {
+        $p = $this->personel($personelId);
+        $brut = $p ? (float) $p['aylik_ucret'] : 0.0;
+        $sgkOrani  = $this->ayarNum('sgk_isveren_orani', 0.225);
+        $tavan     = $this->ayarNum('kidem_tavan', 64948.77);
+        $bolen     = $this->ayarNum('kidem_aylik_bolen', 12);
+        $digerOran = $this->ayarNum('diger_maliyet_oran', 0.0);
+
+        $sgkIsveren = $brut * $sgkOrani;
+        $kidemBaz   = min($brut, $tavan);
+        $kidemAylik = $bolen > 0 ? $kidemBaz / $bolen : 0.0;
+        $diger = ($p && $p['diger_maliyet'] !== null)
+            ? (float) $p['diger_maliyet']
+            : $brut * $digerOran;
+
+        return [
+            'brut'            => $brut,
+            'sgk_isveren'     => $sgkIsveren,
+            'kidem_aylik'     => $kidemAylik,
+            'diger'           => $diger,
+            'yuklu_toplam'    => $brut + $sgkIsveren + $kidemAylik + $diger,
+            'sgk_orani'       => $sgkOrani,
+            'kidem_tavan'     => $tavan,
+            'tavan_uygulandi' => $brut > $tavan,
+        ];
+    }
+
+    /**
+     * Biriken kıdem yükümlülüğü (fesihte ödenecek borç) + o ayki tahakkuk.
+     * ise_giris'ten referans aya (son gününe) kadar TAM ay sayısı × aylık kıdem (min(brüt,tavan)/bölen).
+     * $ay null → bugüne kadar. ise_giris yoksa birikim 0 (ay_sayisi 0), aylık tahakkuk yine görünür.
+     * @return array{ay_sayisi:int,aylik:float,birikim:float,bu_ay_tahakkuk:float}
+     */
+    public function kidemBirikim(int $personelId, ?string $ay = null): array
+    {
+        $y = $this->personelYukluMaliyet($personelId);
+        $aylik = $y['kidem_aylik'];
+        $p = $this->personel($personelId);
+        $iseGiris = $p['ise_giris'] ?? null;
+
+        $aySayisi = 0;
+        if ($iseGiris !== null && $iseGiris !== '') {
+            $bitis = $ay !== null && preg_match('/^\d{4}-\d{2}$/', $ay)
+                ? date('Y-m-t', strtotime($ay . '-01'))
+                : date('Y-m-d');
+            // Tamamlanan ay sayısı (tam sayı ay aritmetiği — end-of-month yuvarlaması yok).
+            [$sy, $sm, $sd] = array_map('intval', explode('-', substr($iseGiris, 0, 10)));
+            [$ey, $em, $ed] = array_map('intval', explode('-', $bitis));
+            $aySayisi = ($ey - $sy) * 12 + ($em - $sm);
+            if ($ed < $sd) {
+                $aySayisi--;
+            }
+            $aySayisi = max(0, $aySayisi);
+        }
+        return [
+            'ay_sayisi'      => $aySayisi,
+            'aylik'          => $aylik,
+            'birikim'        => $aySayisi * $aylik,
+            'bu_ay_tahakkuk' => $aylik,
+        ];
+    }
+
+    // ── Personel → müşteri dağıtım ataması (opus-014) ──────────────
+    /**
+     * Bir personelin atamasını döndür.
+     * @return array{genel:bool,customer_ids:array<int,int>}
+     */
+    public function personelAtama(int $personelId): array
+    {
+        $st = $this->pdo->prepare('SELECT customer_id, genel FROM personel_musteri WHERE personel_id = ?');
+        $st->execute([$personelId]);
+        $genel = false;
+        $ids = [];
+        foreach ($st->fetchAll() as $r) {
+            if ((int) $r['genel'] === 1) {
+                $genel = true;
+            } elseif ($r['customer_id'] !== null) {
+                $ids[] = (int) $r['customer_id'];
+            }
+        }
+        return ['genel' => $genel, 'customer_ids' => $ids];
+    }
+
+    /**
+     * Personel atamasını ayarla (önce temizle, sonra yaz). $genel=true → tek "genel" satır;
+     * aksi halde $customerIds her biri bir müşteri (EŞİT böl). Boş → atama yok (dağıtılmamış).
+     */
+    public function setPersonelAtama(int $personelId, bool $genel, array $customerIds = []): void
+    {
+        $own = !$this->pdo->inTransaction();
+        if ($own) {
+            $this->pdo->beginTransaction();
+        }
+        try {
+            $this->pdo->prepare('DELETE FROM personel_musteri WHERE personel_id = ?')->execute([$personelId]);
+            if ($genel) {
+                $this->pdo->prepare('INSERT INTO personel_musteri (personel_id, customer_id, genel) VALUES (?, NULL, 1)')
+                    ->execute([$personelId]);
+            } else {
+                $ins = $this->pdo->prepare('INSERT INTO personel_musteri (personel_id, customer_id, genel) VALUES (?, ?, 0)');
+                foreach (array_unique(array_map('intval', $customerIds)) as $cid) {
+                    if ($cid > 0) {
+                        $ins->execute([$personelId, $cid]);
+                    }
+                }
+            }
+            if ($own) {
+                $this->pdo->commit();
+            }
+        } catch (\Throwable $e) {
+            if ($own) {
+                $this->pdo->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    /**
+     * Aylık personel yüklü maliyetini atanan müşterilere dağıt.
+     *   - açık müşteri(ler): EŞİT böl (yuklu / N).
+     *   - genel: o ay üretim HACMİNE (production.persons) oranlı tüm üretim müşterilerine.
+     *     Hacim 0 ise aktif üretim müşterilerine eşit; üretim müşterisi yoksa dağıtılmamış.
+     *   - atama yok: dağıtılmamış.
+     * @return array{per_customer:array<int,float>,dagitilmamis:float,toplam:float}
+     */
+    public function personelDagitim(string $ay): array
+    {
+        // Üretim hacmi (o ay production.persons) ve toplam
+        $uretimVol = [];
+        $totalVol = 0.0;
+        foreach ($this->monthProductionByCustomer($ay, 'uretim') as $r) {
+            $vol = (float) $r['persons'];
+            $uretimVol[(int) $r['customer_id']] = $vol;
+            $totalVol += $vol;
+        }
+        $uretimCustomers = array_map(static fn($c) => (int) $c['id'], $this->listCustomersByCategory('uretim'));
+
+        $per = [];
+        $dagitilmamis = 0.0;
+        $toplam = 0.0;
+        foreach ($this->listPersonel() as $p) {
+            $pid = (int) $p['id'];
+            $yuklu = $this->personelYukluMaliyet($pid)['yuklu_toplam'];
+            $toplam += $yuklu;
+            if ($yuklu <= 0) {
+                continue;
+            }
+            $atama = $this->personelAtama($pid);
+            if ($atama['genel']) {
+                if ($totalVol > 0) {
+                    foreach ($uretimVol as $cid => $vol) {
+                        $per[$cid] = ($per[$cid] ?? 0.0) + $yuklu * $vol / $totalVol;
+                    }
+                } elseif ($uretimCustomers) {
+                    $n = count($uretimCustomers);
+                    foreach ($uretimCustomers as $cid) {
+                        $per[$cid] = ($per[$cid] ?? 0.0) + $yuklu / $n;
+                    }
+                } else {
+                    $dagitilmamis += $yuklu;
+                }
+            } elseif ($atama['customer_ids']) {
+                $n = count($atama['customer_ids']);
+                foreach ($atama['customer_ids'] as $cid) {
+                    $per[$cid] = ($per[$cid] ?? 0.0) + $yuklu / $n;
+                }
+            } else {
+                $dagitilmamis += $yuklu;
+            }
+        }
+        return ['per_customer' => $per, 'dagitilmamis' => $dagitilmamis, 'toplam' => $toplam];
+    }
+
+    /**
+     * Şirket geneli toplam kıdem yükümlülüğü (aktif personel birikimleri toplamı) +
+     * o ayki toplam tahakkuk. Finans "biriken borç" kartı.
+     * @return array{birikim:float,bu_ay_tahakkuk:float}
+     */
+    public function kidemToplamYukumluluk(?string $ay = null): array
+    {
+        $birikim = 0.0;
+        $tahakkuk = 0.0;
+        foreach ($this->listPersonel() as $p) {
+            $k = $this->kidemBirikim((int) $p['id'], $ay);
+            $birikim += $k['birikim'];
+            $tahakkuk += $k['bu_ay_tahakkuk'];
+        }
+        return ['birikim' => $birikim, 'bu_ay_tahakkuk' => $tahakkuk];
     }
 
     /** Personel pasifleştir (silme YOK — gider geçmişi bütünlüğü). */
@@ -1186,8 +1434,9 @@ final class Repo
      *   üretim cirosu − hammadde/işletme gideri − personel gideri + taşıma net kârı = net.
      * Kalemler AYRI (karıştırma yok — taşıma satışı üretim cirosuna KARIŞMAZ).
      * Taşıma net kârı = Σ adet×(birim_satis−birim_alis) − sabit_gider (kâr merkezi katkısı, − olabilir).
-     * 'Personel' kategorili finans gideri hammaddeden düşülür (çift sayım önlenir);
-     * personel gideri TEK kaynak = personel_gider.
+     * 'Personel' kategorili finans gideri hammaddeden düşülür (çift sayım önlenir).
+     * Personel gideri (opus-014): gerçek işveren YÜKLÜ maliyeti = Σ personelYukluMaliyet
+     * (brüt + SGK + kıdem aylık tahakkuk + diğer); müşterilere dağıtılmış toplam.
      * @return array{ciro:float,hammadde:float,personel:float,tasima_kar:float,net:float}
      */
     public function netKarlilik(string $ay): array
@@ -1200,7 +1449,7 @@ final class Repo
         );
         $st->execute([$ay]);
         $hammadde = (float) $st->fetchColumn();
-        $personel = $this->monthPersonelTotal($ay);
+        $personel = $this->personelDagitim($ay)['toplam']; // yüklü işveren maliyeti (dağıtılmış)
         $tasimaKar = $this->monthTasimaTotals($ay)['net'];
         return [
             'ciro'       => $ciro,
