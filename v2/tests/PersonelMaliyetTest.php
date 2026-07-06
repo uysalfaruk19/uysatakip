@@ -52,6 +52,46 @@ final class PersonelMaliyetTest extends TestCase
         $this->assertFalse($y['tavan_uygulandi']);
     }
 
+    public function testAylikCalismaGunuMaasiOranlar(): void
+    {
+        $pid = $this->repo->upsertPersonel('Izinli', 'Asci', 30000.0);
+
+        $varsayilan = $this->repo->personelMaasAy($pid, '2026-06');
+        $this->assertEqualsWithDelta(30.0, $varsayilan['calisma_gunu'], 0.001);
+        $this->assertEqualsWithDelta(30000.0, $varsayilan['hesaplanan_maas'], 0.001);
+        $this->assertFalse($varsayilan['maas_odendi']);
+
+        $this->repo->setPersonelMaasAy($pid, '2026-06', 27.0, false);
+        $maas = $this->repo->personelMaasAy($pid, '2026-06');
+        $this->assertEqualsWithDelta(27.0, $maas['calisma_gunu'], 0.001);
+        $this->assertEqualsWithDelta(3.0, $maas['eksik_gun'], 0.001);
+        $this->assertEqualsWithDelta(27000.0, $maas['hesaplanan_maas'], 0.001, '30000 x 27/30');
+
+        $y = $this->repo->personelYukluMaliyet($pid, '2026-06');
+        $this->assertEqualsWithDelta(27000.0, $y['brut'], 0.001);
+        $this->assertEqualsWithDelta(6075.0, $y['sgk_isveren'], 0.001, '27000 x 0.225');
+        $this->assertEqualsWithDelta(2250.0, $y['kidem_aylik'], 0.001, '27000 / 12');
+    }
+
+    public function testMaasOdendiOtomatikGiderYazarVeGunceller(): void
+    {
+        $pid = $this->repo->upsertPersonel('Odenecek', 'Asci', 30000.0);
+
+        $this->repo->setPersonelMaasAy($pid, '2026-06', 27.0, true, '2026-07-05');
+        $this->assertEqualsWithDelta(27000.0, $this->repo->monthPersonelByType('2026-07')['maas'] ?? 0.0, 0.001);
+        $this->assertSame(1, (int) $this->pdo->query('SELECT COUNT(*) FROM personel_gider')->fetchColumn());
+        $this->assertStringContainsString('2026-06', (string) $this->pdo->query('SELECT aciklama FROM personel_gider')->fetchColumn());
+
+        $this->repo->setPersonelMaasAy($pid, '2026-06', 24.0, true, '2026-07-06');
+        $this->assertSame(1, (int) $this->pdo->query('SELECT COUNT(*) FROM personel_gider')->fetchColumn(), 'ayni otomatik gider guncellenir');
+        $this->assertEqualsWithDelta(24000.0, (float) $this->pdo->query('SELECT tutar FROM personel_gider')->fetchColumn(), 0.001);
+
+        $this->repo->setPersonelMaasAy($pid, '2026-06', 24.0, false);
+        $this->assertSame(0, (int) $this->pdo->query('SELECT COUNT(*) FROM personel_gider')->fetchColumn(), 'odendi kalkarsa bagli otomatik gider silinir');
+        $maas = $this->repo->personelMaasAy($pid, '2026-06');
+        $this->assertFalse($maas['maas_odendi']);
+        $this->assertNull($maas['gider_id']);
+    }
     public function testKidemTavanKapi(): void
     {
         // brüt 80000 > tavan 64948.77 → kıdem = tavan/12

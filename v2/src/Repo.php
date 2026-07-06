@@ -1728,10 +1728,16 @@ final class Repo
      * Oranlar ayar'dan (default mevzuat). diger: personel.diger_maliyet override, yoksa brüt×oran.
      * @return array{brut,sgk_isveren,kidem_aylik,diger,yuklu_toplam,sgk_orani,kidem_tavan,tavan_uygulandi}
      */
-    public function personelYukluMaliyet(int $personelId): array
+    public function personelYukluMaliyet(int $personelId, ?string $ay = null): array
     {
         $p = $this->personel($personelId);
-        $brut = $p ? (float) $p['aylik_ucret'] : 0.0;
+        $tamBrut = $p ? (float) $p['aylik_ucret'] : 0.0;
+        $calismaGunu = 30.0;
+        if ($ay !== null && $p) {
+            $calismaGunu = (float) $this->personelMaasAy($personelId, $ay)['calisma_gunu'];
+        }
+        $maasOrani = max(0.0, min(1.0, $calismaGunu / 30.0));
+        $brut = $tamBrut * $maasOrani;
         $sgkOrani  = $this->ayarNum('sgk_isveren_orani', 0.225);
         $tavan     = $this->ayarNum('kidem_tavan', 64948.77);
         $bolen     = $this->ayarNum('kidem_aylik_bolen', 12);
@@ -1746,6 +1752,10 @@ final class Repo
 
         return [
             'brut'            => $brut,
+            'tam_brut'        => $tamBrut,
+            'calisma_gunu'    => $calismaGunu,
+            'eksik_gun'       => max(0.0, 30.0 - $calismaGunu),
+            'maas_orani'      => $maasOrani,
             'sgk_isveren'     => $sgkIsveren,
             'kidem_aylik'     => $kidemAylik,
             'diger'           => $diger,
@@ -1756,6 +1766,99 @@ final class Repo
         ];
     }
 
+    private function personelMaasAyRaw(int $personelId, string $ay): ?array
+    {
+        $st = $this->pdo->prepare('SELECT id, personel_id, ay, calisma_gunu, maas_odendi, odeme_tarihi, gider_id FROM personel_maas_ay WHERE personel_id = ? AND ay = ?');
+        $st->execute([$personelId, $ay]);
+        return $st->fetch() ?: null;
+    }
+
+    /** Seçili ay için çalışma günü ve ödeme durumunu döndür; kayıt yoksa 30 gün / ödenmedi varsayılır. */
+    public function personelMaasAy(int $personelId, string $ay): array
+    {
+        if (!preg_match('/^\d{4}-\d{2}$/', $ay)) {
+            throw new \InvalidArgumentException('Geçersiz ay: ' . $ay);
+        }
+        $p = $this->personel($personelId);
+        $row = $this->personelMaasAyRaw($personelId, $ay);
+        $gun = $row ? (float) $row['calisma_gunu'] : 30.0;
+        $gun = max(0.0, min(30.0, $gun));
+        $tamBrut = $p ? (float) $p['aylik_ucret'] : 0.0;
+        $oran = $gun / 30.0;
+        return [
+            'id' => $row ? (int) $row['id'] : null,
+            'personel_id' => $personelId,
+            'ay' => $ay,
+            'calisma_gunu' => $gun,
+            'eksik_gun' => max(0.0, 30.0 - $gun),
+            'maas_orani' => $oran,
+            'hesaplanan_maas' => round($tamBrut * $oran, 2),
+            'maas_odendi' => $row ? ((int) $row['maas_odendi'] === 1) : false,
+            'odeme_tarihi' => $row['odeme_tarihi'] ?? null,
+            'gider_id' => ($row && $row['gider_id'] !== null) ? (int) $row['gider_id'] : null,
+        ];
+    }
+
+    /** Aylık çalışma günü/ödendi bilgisini kaydet; ödendi ise bağlı maaş giderini otomatik yazar. */
+    public function setPersonelMaasAy(int $personelId, string $ay, float $calismaGunu, bool $maasOdendi, ?string $odemeTarihi = null): array
+    {
+        if (!preg_match('/^\d{4}-\d{2}$/', $ay)) {
+            throw new \InvalidArgumentException('Geçersiz ay: ' . $ay);
+        }
+        $p = $this->personel($personelId);
+        if (!$p) {
+            throw new \InvalidArgumentException('Personel bulunamadı: ' . $personelId);
+        }
+        $calismaGunu = max(0.0, min(30.0, $calismaGunu));
+        if ($maasOdendi && (!$odemeTarihi || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $odemeTarihi))) {
+            $odemeTarihi = date('Y-m-t', strtotime($ay . '-01'));
+        }
+        if (!$maasOdendi) {
+            $odemeTarihi = null;
+        }
+        $hesaplananMaas = round(((float) $p['aylik_ucret']) * ($calismaGunu / 30.0), 2);
+        $own = !$this->pdo->inTransaction();
+        if ($own) {
+            $this->pdo->beginTransaction();
+        }
+        try {
+            $row = $this->personelMaasAyRaw($personelId, $ay);
+            $giderId = ($row && $row['gider_id'] !== null) ? (int) $row['gider_id'] : null;
+            $gunText = rtrim(rtrim(number_format($calismaGunu, 2, '.', ''), '0'), '.');
+            $aciklama = $ay . ' maaşı (' . str_replace('.', ',', $gunText) . ' gün)';
+
+            if ($maasOdendi) {
+                if ($giderId) {
+                    $this->pdo->prepare('UPDATE personel_gider SET tarih = ?, tur = ?, tutar = ?, aciklama = ? WHERE id = ?')
+                        ->execute([$odemeTarihi, 'maas', $hesaplananMaas, $aciklama, $giderId]);
+                } else {
+                    $this->pdo->prepare('INSERT INTO personel_gider (personel_id, tarih, tur, tutar, aciklama) VALUES (?, ?, ?, ?, ?)')
+                        ->execute([$personelId, $odemeTarihi, 'maas', $hesaplananMaas, $aciklama]);
+                    $giderId = (int) $this->pdo->lastInsertId();
+                }
+            } elseif ($giderId) {
+                $this->pdo->prepare('DELETE FROM personel_gider WHERE id = ?')->execute([$giderId]);
+                $giderId = null;
+            }
+
+            if ($row) {
+                $this->pdo->prepare('UPDATE personel_maas_ay SET calisma_gunu = ?, maas_odendi = ?, odeme_tarihi = ?, gider_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+                    ->execute([$calismaGunu, $maasOdendi ? 1 : 0, $odemeTarihi, $giderId, (int) $row['id']]);
+            } else {
+                $this->pdo->prepare('INSERT INTO personel_maas_ay (personel_id, ay, calisma_gunu, maas_odendi, odeme_tarihi, gider_id) VALUES (?, ?, ?, ?, ?, ?)')
+                    ->execute([$personelId, $ay, $calismaGunu, $maasOdendi ? 1 : 0, $odemeTarihi, $giderId]);
+            }
+            if ($own) {
+                $this->pdo->commit();
+            }
+        } catch (\Throwable $e) {
+            if ($own) {
+                $this->pdo->rollBack();
+            }
+            throw $e;
+        }
+        return $this->personelMaasAy($personelId, $ay);
+    }
     /**
      * Biriken kıdem yükümlülüğü (fesihte ödenecek borç) + o ayki tahakkuk.
      * ise_giris'ten referans aya (son gününe) kadar TAM ay sayısı × aylık kıdem (min(brüt,tavan)/bölen).
@@ -1871,7 +1974,7 @@ final class Repo
         $toplam = 0.0;
         foreach ($this->listPersonel() as $p) {
             $pid = (int) $p['id'];
-            $yuklu = $this->personelYukluMaliyet($pid)['yuklu_toplam'];
+            $yuklu = $this->personelYukluMaliyet($pid, $ay)['yuklu_toplam'];
             $toplam += $yuklu;
             if ($yuklu <= 0) {
                 continue;

@@ -11,10 +11,13 @@ $u = Auth::requireLogin();
 $pdo = Db::pdo();
 $repo = new Repo($pdo);
 
-$month = (string) ($_GET['ay'] ?? date('Y-m'));
+$defaultMonth = date('Y-m', strtotime('first day of previous month'));
+$month = (string) ($_GET['ay'] ?? $defaultMonth);
 if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
-    $month = date('Y-m');
+    $month = $defaultMonth;
 }
+$prevMonth = date('Y-m', strtotime($month . '-01 -1 month'));
+$nextMonth = date('Y-m', strtotime($month . '-01 +1 month'));
 $flash = '';
 $flashOk = true;
 $editId = (int) ($_GET['duzenle'] ?? 0) ?: null;
@@ -50,6 +53,26 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $repo->setPersonelAtama($newId, $genel, $genel ? [] : $musteriIds);
             uysa_audit('personel_kaydet', $u['username'], (string) $newId, null, client_ip());
             $flash = $pid ? 'Personel güncellendi · ' . $ad : 'Personel eklendi · ' . $ad;
+        }
+    } elseif ($action === 'personel_ay') {
+        $pid = (int) ($_POST['personel_id'] ?? 0);
+        $ay = (string) ($_POST['ay'] ?? $month);
+        if (!preg_match('/^\d{4}-\d{2}$/', $ay)) {
+            $ay = $month;
+        }
+        $gun = Helpers::parseMoney((string) ($_POST['calisma_gunu'] ?? '30'));
+        $odendi = isset($_POST['maas_odendi']);
+        $odemeTarihi = trim((string) ($_POST['odeme_tarihi'] ?? ''));
+        $odemeTarihi = ($odemeTarihi !== '' && Helpers::isDate($odemeTarihi)) ? $odemeTarihi : null;
+        if ($pid <= 0) {
+            $flash = 'Personel seçilemedi.';
+            $flashOk = false;
+        } else {
+            $repo->setPersonelMaasAy($pid, $ay, $gun, $odendi, $odemeTarihi);
+            $p = $repo->personel($pid);
+            uysa_audit('personel_maas_ay', $u['username'], (string) $pid, json_encode(['ay' => $ay, 'gun' => $gun, 'odendi' => $odendi]), client_ip());
+            $flash = ($p['ad'] ?? 'Personel') . ' için ' . ay_label_tr($ay) . ' maaş kaydı güncellendi.';
+            $month = $ay;
         }
     } elseif ($action === 'ayar') {
         // Mevzuat oranları (yüzde girdisi → orana çevrilir; tavan TL). Default mevzuat, Ömer düzenler.
@@ -112,57 +135,68 @@ $yukluToplam = 0.0;
 $pInfo = [];
 foreach ($personeller as $p) {
     $pid = (int) $p['id'];
-    $y = $repo->personelYukluMaliyet($pid);
+    $maas = $repo->personelMaasAy($pid, $month);
+    $y = $repo->personelYukluMaliyet($pid, $month);
     $k = $repo->kidemBirikim($pid, $month);
     $a = $repo->personelAtama($pid);
     $yukluToplam += $y['yuklu_toplam'];
-    $pInfo[$pid] = ['yuklu' => $y, 'kidem' => $k, 'atama' => $a];
+    $pInfo[$pid] = ['yuklu' => $y, 'kidem' => $k, 'atama' => $a, 'maas' => $maas];
 }
 $ucretToplam = 0.0;
+$maasToplam = 0.0;
+$maasOdenen = 0.0;
 foreach ($personeller as $p) {
     $ucretToplam += (float) $p['aylik_ucret'];
+    $mi = $pInfo[(int) $p['id']]['maas'];
+    $maasToplam += (float) $mi['hesaplanan_maas'];
+    if ($mi['maas_odendi']) {
+        $maasOdenen += (float) $mi['hesaplanan_maas'];
+    }
 }
+$maasBekleyen = max(0.0, $maasToplam - $maasOdenen);
 $pct = static fn(float $o): string => number_format($o * 100, 1, ',', '.');
 
 $pageTitle = 'Personel Giderleri';
-$eyebrow = 'Maaş / prim takibi · ' . ay_label_tr($month);
+$eyebrow = 'Maaş / çalışma günü · ' . ay_label_tr($month);
 $active = '';
 require __DIR__ . '/partials/header.php';
 ?>
       <?php if ($flash): ?><div class="flash <?= $flashOk ? 'ok' : 'err' ?>"><?= Helpers::e($flash) ?></div><?php endif; ?>
 
       <form method="get" class="date-row">
+        <a class="btn-action btn-ghost" href="personel.php?ay=<?= Helpers::e($prevMonth) ?>"><i class="bi bi-chevron-left"></i></a>
         <div class="date-pill"><i class="bi bi-calendar2-week"></i>
           <input type="month" name="ay" value="<?= Helpers::e($month) ?>" onchange="this.form.submit()">
         </div>
+        <a class="btn-action btn-ghost" href="personel.php?ay=<?= Helpers::e($nextMonth) ?>"><i class="bi bi-chevron-right"></i></a>
       </form>
 
       <div class="stat-stack">
         <div class="stat-card stat-orange">
           <div class="ico"><i class="bi bi-cash-stack"></i></div>
           <div class="txt">
-            <p class="lbl">Yüklü işveren maliyeti / ay <span style="font-size:11px;font-weight:600">(brüt+SGK+kıdem+diğer)</span></p>
+            <p class="lbl">Seçili ay işveren maliyeti <span style="font-size:11px;font-weight:600">(çalışma gününe göre)</span></p>
             <p class="val">₺ <?= Helpers::money($yukluToplam) ?></p>
           </div>
         </div>
         <div class="stat-card stat-blue">
           <div class="ico"><i class="bi bi-people-fill"></i></div>
           <div class="txt">
-            <p class="lbl">Aktif personel · brüt</p>
-            <p class="val"><?= count($personeller) ?> <span style="font-size:14px;font-weight:600">kişi · ₺ <?= Helpers::money($ucretToplam) ?>/ay</span></p>
+            <p class="lbl">Hesaplanan brüt maaş</p>
+            <p class="val">₺ <?= Helpers::money($maasToplam) ?> <span style="font-size:14px;font-weight:600">· <?= count($personeller) ?> kişi</span></p>
           </div>
         </div>
         <div class="stat-card stat-orange">
           <div class="ico"><i class="bi bi-piggy-bank"></i></div>
           <div class="txt">
-            <p class="lbl">Biriken kıdem yükümlülüğü <span style="font-size:11px;font-weight:600">(fesihte ödenir · bu ay +₺<?= Helpers::money($kidemTot['bu_ay_tahakkuk']) ?>)</span></p>
-            <p class="val">₺ <?= Helpers::money($kidemTot['birikim']) ?></p>
+            <p class="lbl">Maaş ödeme durumu <span style="font-size:11px;font-weight:600">(ödendi / bekleyen)</span></p>
+            <p class="val">₺ <?= Helpers::money($maasOdenen) ?> <span style="font-size:14px;font-weight:600">/ ₺ <?= Helpers::money($maasBekleyen) ?></span></p>
           </div>
         </div>
       </div>
 
       <div class="hint-card" style="margin-bottom:12px">
-        Ödenen (nakit gider) = brüt + işveren SGK + diğer · Tahakkuk (biriken borç) = aylık kıdem.
+        Çalışma günü 30 bazlıdır: 27 gün girersen maaş 27/30 hesaplanır. Ödendi işaretlenince bu aya otomatik maaş gideri yazılır.
         Oranlar mevzuat varsayılanı, <a href="personel.php?ay=<?= $month ?>&ayar=1" style="color:var(--primary);font-weight:700">Mevzuat ayarları</a>'ndan değiştirilir.
       </div>
 
@@ -293,33 +327,58 @@ require __DIR__ . '/partials/header.php';
       <div class="cardx card-pad">
         <?php if (!$personeller): ?>
           <div class="empty-state">Henüz personel yok. <a href="personel.php?ay=<?= $month ?>&yeni=1" style="color:var(--primary);font-weight:700">Personel ekle →</a></div>
-        <?php else: foreach ($personeller as $p): $pid = (int) $p['id']; $info = $pInfo[$pid]; $y = $info['yuklu']; $k = $info['kidem']; $at = $info['atama'];
-          $atamaLbl = $at['genel'] ? 'Genel (hacme oranlı)' : ($at['customer_ids'] ? count($at['customer_ids']) . ' müşteri (eşit)' : 'atanmamış'); ?>
-          <div class="customer-row" style="align-items:flex-start">
-            <div style="min-width:0;flex:1">
-              <div class="row-title"><span class="status-dot"></span><strong><?= Helpers::e($p['ad']) ?></strong></div>
-              <p class="row-meta"><?= $p['gorev'] ? Helpers::e($p['gorev']) . ' · ' : '' ?>brüt ₺ <?= Helpers::money((float) $p['aylik_ucret']) ?>/ay · <?= Helpers::e($atamaLbl) ?></p>
+        <?php else: foreach ($personeller as $p): $pid = (int) $p['id']; $info = $pInfo[$pid]; $y = $info['yuklu']; $k = $info['kidem']; $at = $info['atama']; $maas = $info['maas'];
+          $atamaLbl = $at['genel'] ? 'Genel (hacme oranlı)' : ($at['customer_ids'] ? count($at['customer_ids']) . ' müşteri (eşit)' : 'atanmamış');
+          $paid = (bool) $maas['maas_odendi'];
+          $odemeTarihi = $maas['odeme_tarihi'] ?: date('Y-m-t', strtotime($month . '-01')); ?>
+          <details class="personel-detail" style="border-bottom:1px solid var(--border);padding:8px 0">
+            <summary class="customer-row" style="align-items:center;cursor:pointer;list-style:none">
+              <div style="min-width:0;flex:1">
+                <div class="row-title"><span class="status-dot"></span><strong><?= Helpers::e($p['ad']) ?></strong></div>
+                <p class="row-meta"><?= $p['gorev'] ? Helpers::e($p['gorev']) . ' · ' : '' ?><?= Helpers::e(ay_label_tr($month)) ?> · <?= Helpers::money((float) $maas['calisma_gunu']) ?> gün · maaş ₺ <?= Helpers::money((float) $maas['hesaplanan_maas']) ?> · <?= $paid ? 'ödendi' : 'bekliyor' ?></p>
+              </div>
+              <span class="row-meta" style="font-weight:700;color:var(--primary)">detay</span>
+            </summary>
+            <div style="padding:10px 4px 4px 24px">
+              <form method="post" class="form-grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px">
+                <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
+                <input type="hidden" name="action" value="personel_ay">
+                <input type="hidden" name="personel_id" value="<?= $pid ?>">
+                <input type="hidden" name="ay" value="<?= Helpers::e($month) ?>">
+                <div class="field"><label>Çalışma günü</label>
+                  <input class="inputx" name="calisma_gunu" inputmode="decimal" value="<?= Helpers::money((float) $maas['calisma_gunu']) ?>">
+                </div>
+                <div class="field"><label>Ödeme tarihi</label>
+                  <input class="inputx" type="date" name="odeme_tarihi" value="<?= Helpers::e($odemeTarihi) ?>">
+                </div>
+                <label style="display:flex;align-items:center;gap:8px;font-weight:700;margin-top:22px">
+                  <input type="checkbox" name="maas_odendi" value="1" <?= $paid ? 'checked' : '' ?>> Maaşı ödendi
+                </label>
+                <button class="btn-action btn-primaryx" type="submit" style="align-self:end"><i class="bi bi-check2"></i> Kaydet</button>
+              </form>
+              <p class="row-meta" style="margin-bottom:8px">Brüt aylık ₺ <?= Helpers::money((float) $p['aylik_ucret']) ?> · <?= Helpers::money((float) $maas['eksik_gun']) ?> eksik gün · <?= Helpers::e($atamaLbl) ?></p>
               <table class="tablex" style="margin-top:6px;font-size:12px">
                 <tbody>
-                  <tr><td>Brüt (ödenen)</td><td class="num">₺ <?= Helpers::money($y['brut']) ?></td></tr>
-                  <tr><td>İşveren SGK (%<?= $pct($y['sgk_orani']) ?>, ödenen)</td><td class="num">+ ₺ <?= Helpers::money($y['sgk_isveren']) ?></td></tr>
-                  <tr><td>Kıdem aylık tahakkuk<?= $y['tavan_uygulandi'] ? ' (tavan)' : '' ?> (biriken borç)</td><td class="num">+ ₺ <?= Helpers::money($y['kidem_aylik']) ?></td></tr>
+                  <tr><td>Hesaplanan maaş</td><td class="num">₺ <?= Helpers::money((float) $maas['hesaplanan_maas']) ?></td></tr>
+                  <tr><td>Brüt (çalışma gününe göre)</td><td class="num">₺ <?= Helpers::money($y['brut']) ?></td></tr>
+                  <tr><td>İşveren SGK (%<?= $pct($y['sgk_orani']) ?>)</td><td class="num">+ ₺ <?= Helpers::money($y['sgk_isveren']) ?></td></tr>
+                  <tr><td>Kıdem aylık tahakkuk<?= $y['tavan_uygulandi'] ? ' (tavan)' : '' ?></td><td class="num">+ ₺ <?= Helpers::money($y['kidem_aylik']) ?></td></tr>
                   <tr><td>Diğer maliyet</td><td class="num">+ ₺ <?= Helpers::money($y['diger']) ?></td></tr>
                   <tr class="is-total"><td>Yüklü aylık maliyet</td><td class="num">₺ <?= Helpers::money($y['yuklu_toplam']) ?></td></tr>
                   <tr><td>Biriken kıdem (<?= (int) $k['ay_sayisi'] ?> ay)</td><td class="num">₺ <?= Helpers::money($k['birikim']) ?></td></tr>
                 </tbody>
               </table>
+              <div class="actions-row" style="margin-top:8px">
+                <a class="btn-action btn-ghost flex-fill" href="personel.php?ay=<?= $month ?>&duzenle=<?= $pid ?>"><i class="bi bi-pencil"></i> Düzenle</a>
+                <form method="post" onsubmit="return confirm('Personel pasifleştirilsin mi? (gider geçmişi korunur)')" class="flex-fill">
+                  <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
+                  <input type="hidden" name="action" value="pasif">
+                  <input type="hidden" name="id" value="<?= $pid ?>">
+                  <button class="btn-action btn-ghost" type="submit" style="color:var(--red);width:100%"><i class="bi bi-person-dash"></i> Pasif</button>
+                </form>
+              </div>
             </div>
-            <div style="text-align:right;flex-shrink:0;margin-left:8px">
-              <a class="row-meta" href="personel.php?ay=<?= $month ?>&duzenle=<?= $pid ?>" style="color:var(--primary);font-weight:700;display:inline-block"><i class="bi bi-pencil"></i> düzenle</a>
-              <form method="post" onsubmit="return confirm('Personel pasifleştirilsin mi? (gider geçmişi korunur)')" style="margin-top:4px">
-                <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
-                <input type="hidden" name="action" value="pasif">
-                <input type="hidden" name="id" value="<?= $pid ?>">
-                <button class="row-meta" type="submit" style="color:var(--red);font-weight:700;background:none;border:0;cursor:pointer;padding:0"><i class="bi bi-person-dash"></i> pasif</button>
-              </form>
-            </div>
-          </div>
+          </details>
         <?php endforeach; endif; ?>
       </div>
 

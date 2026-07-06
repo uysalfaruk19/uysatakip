@@ -252,6 +252,20 @@ CREATE TABLE IF NOT EXISTS personel_gider (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS personel_maas_ay (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  personel_id INTEGER NOT NULL REFERENCES personel(id) ON DELETE CASCADE,
+  ay TEXT NOT NULL,
+  calisma_gunu REAL NOT NULL DEFAULT 30,
+  maas_odendi INTEGER NOT NULL DEFAULT 0,
+  odeme_tarihi TEXT,
+  gider_id INTEGER REFERENCES personel_gider(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(personel_id, ay)
+);
+CREATE INDEX IF NOT EXISTS idx_pma_ay ON personel_maas_ay(ay);
+CREATE INDEX IF NOT EXISTS idx_pma_gider ON personel_maas_ay(gider_id);
 CREATE TABLE IF NOT EXISTS fatura (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
