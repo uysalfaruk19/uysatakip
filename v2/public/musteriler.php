@@ -159,7 +159,9 @@ require __DIR__ . '/partials/header.php';
         <?php else: foreach ($uretim as $c): ?>
           <div class="customer-row">
             <div>
-              <div class="row-title"><span class="status-dot"></span><strong><?= Helpers::e($c['name']) ?></strong></div>
+              <div class="row-title"><span class="status-dot"></span><strong><?= Helpers::e($c['name']) ?></strong>
+                <?php if (($c['parasut_bakiye'] ?? null) !== null): ?><span class="badge-soft <?= (float) $c['parasut_bakiye'] < 0 ? 'badge-neg' : 'badge-ok' ?>" title="Paraşüt muhasebe bakiyesi">Paraşüt ₺ <?= Helpers::money((float) $c['parasut_bakiye']) ?></span><?php endif; ?>
+              </div>
               <p class="row-meta">₺ <?= Helpers::money((float) $c['unit_price']) ?> kişi başı</p>
             </div>
             <div class="actions-row" style="justify-content:flex-end">

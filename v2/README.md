@@ -11,6 +11,14 @@ mimari: `vault/projeler/uysa-erp-v2/mimari.md`.
 - **Cari** (M3): müşteri kartı + bakiye + aylık ekstre + tahsilat.
 - **Menü/Rapor**: F2 placeholder (Rapor'da temel ay×müşteri tablosu var).
 - **API** (`/api`): `POST /api/uretim` (fuzzy ad eşleşme, bot), `GET /api/ozet`, `GET /api/rapor` — X-UYSA-Token.
+- **Paraşüt cari (opus-012, SALT-OKUMA)**: Paraşüt (CANLI muhasebe) müşteri bakiyeleri → Kokpit.
+  🔒 Kredensiyaller VPS'e KONMAZ — senkron YEREL çalışır: `php tools/parasut_sync.php` (Ömer'in
+  PC'sinde `secrets/parasut.txt`'ten okur, Paraşüt'ten cari çeker = GET, sonuç bakiyeleri
+  `POST /api/parasut_cari`'ye X-UYSA-Token ile gönderir). Sunucu Paraşüt'e HİÇ çağrı yapmaz.
+  Paraşüt'e yazma YOK (`src/Parasut.php` yalnız `get()`/`contacts()`). Eşleşme: parasut_id >
+  vergi no > ad-normalize; eşleşmeyen RAPORLANIR (oto müşteri oluşturma yok). Gösterim: cari.php +
+  müşteri kartı "Paraşüt bakiyesi (muhasebe)" + admin `parasut.php` (durum + eşleşmeyen raporu,
+  buton çekmez). Şema: `sql/migrate_012.sql` (canlı DB, idempotent).
 - **Migrasyon**: `tools/migrate_v1.php` — v1 `uysa_storage` → ilişkisel tablolar, mojibake onarımı,
   reconciliation raporu. `lafetta_*`/`hikari_*` TAŞINMAZ (DTakip). v1 tablolarına dokunulmaz.
 

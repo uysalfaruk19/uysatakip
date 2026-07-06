@@ -28,7 +28,8 @@ final class Repo
     /** Kategoriye göre müşteri listesi (üretim/taşıma). Müşteri yönetimi ekranı. */
     public function listCustomersByCategory(string $category, bool $activeOnly = true): array
     {
-        $sql = 'SELECT id, name, unit_price, category, contact, phone, is_active
+        $sql = 'SELECT id, name, unit_price, category, contact, phone, is_active,
+                       parasut_bakiye, parasut_sync_at
                 FROM customers WHERE category = ?';
         if ($activeOnly) {
             $sql .= ' AND is_active = 1';
@@ -112,6 +113,104 @@ final class Repo
         )->execute([$name, $unitPrice, $category, $contact, $phone, $note,
             $maliyetBirim ?? 0.0, $tasimaSabitGider ?? 0.0, $tasimaNot]);
         return (int) $this->pdo->lastInsertId();
+    }
+
+    // ── Paraşüt cari (opus-012, SALT-OKUMA) ───────────────────────
+    // Paraşüt (CANLI muhasebe) bakiyeleri YEREL senkron ile çekilir (tools/parasut_sync.php),
+    // sonuç buraya (customers.parasut_*) yazılır. Kokpit'in kendi cari hesabını EZMEZ; yanında
+    // "muhasebe referansı" olarak durur. VPS Paraşüt'e HİÇ çağrı yapmaz (cred yerelde).
+
+    /**
+     * Eşleştirme adayları: aktif (veya tüm) müşteriler + hâlihazır parasut_id.
+     * customers'ta vergi no alanı YOK → tax_number boş gelir; eşleşme parasut_id > ad-normalize
+     * ile yürür. (tax_number sütunu ileride eklenirse matchCustomerByTaxOrName otomatik kullanır.)
+     * @return array<int,array{customer_id:int,name:string,parasut_id:string,tax_number:string}>
+     */
+    public function parasutCandidates(bool $activeOnly = true): array
+    {
+        $sql = 'SELECT id, name, parasut_id FROM customers';
+        if ($activeOnly) {
+            $sql .= ' WHERE is_active = 1';
+        }
+        $out = [];
+        foreach ($this->pdo->query($sql)->fetchAll() as $r) {
+            $out[] = [
+                'customer_id' => (int) $r['id'],
+                'name'        => (string) $r['name'],
+                'parasut_id'  => (string) ($r['parasut_id'] ?? ''),
+                'tax_number'  => '', // customers'ta yok; adaylara dışarıdan verilebilir (test/gelecek)
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * Paraşüt contact'ını Kokpit müşterisiyle eşleştir (PÜR — ağ yok, test edilebilir).
+     * Öncelik: 1) parasut_id (zaten bağlı), 2) vergi no, 3) ad-normalize (Helpers::normalizeName).
+     * Eşleşmezse customer_id null + reason 'eslesmedi' (oto müşteri OLUŞTURMA YOK — çağıran raporlar).
+     * @param array{parasut_id?:string,tax_number?:string,name?:string} $needle
+     * @param array<int,array{customer_id:int,name:string,parasut_id?:string,tax_number?:string}> $candidates
+     * @return array{customer_id:?int,reason:string}
+     */
+    public function matchCustomerByTaxOrName(array $needle, array $candidates): array
+    {
+        $pid = trim((string) ($needle['parasut_id'] ?? ''));
+        $tax = trim((string) ($needle['tax_number'] ?? ''));
+        $nameNorm = Helpers::normalizeName((string) ($needle['name'] ?? ''));
+
+        if ($pid !== '') {
+            foreach ($candidates as $c) {
+                if (trim((string) ($c['parasut_id'] ?? '')) === $pid) {
+                    return ['customer_id' => (int) $c['customer_id'], 'reason' => 'parasut_id'];
+                }
+            }
+        }
+        if ($tax !== '') {
+            foreach ($candidates as $c) {
+                if (trim((string) ($c['tax_number'] ?? '')) === $tax) {
+                    return ['customer_id' => (int) $c['customer_id'], 'reason' => 'tax_number'];
+                }
+            }
+        }
+        if ($nameNorm !== '') {
+            foreach ($candidates as $c) {
+                if (Helpers::normalizeName((string) ($c['name'] ?? '')) === $nameNorm) {
+                    return ['customer_id' => (int) $c['customer_id'], 'reason' => 'name'];
+                }
+            }
+        }
+        return ['customer_id' => null, 'reason' => 'eslesmedi'];
+    }
+
+    /**
+     * Paraşüt cari sonucunu müşteriye yaz (SALT senkron sonucu). parasut_id null verilirse
+     * mevcut korunur (COALESCE). Bakiye + son senkron zamanı her zaman güncellenir.
+     */
+    public function setParasutInfo(int $customerId, ?string $parasutId, float $bakiye, string $syncAt): void
+    {
+        $this->pdo->prepare(
+            'UPDATE customers SET parasut_id = COALESCE(?, parasut_id),
+                 parasut_bakiye = ?, parasut_sync_at = ? WHERE id = ?'
+        )->execute([$parasutId, $bakiye, $syncAt, $customerId]);
+    }
+
+    /** Paraşüt bakiyesi bağlı müşteriler (senkron durumu ekranı). */
+    public function customersWithParasut(): array
+    {
+        return $this->pdo->query(
+            'SELECT id, name, parasut_id, parasut_bakiye, parasut_sync_at
+             FROM customers WHERE parasut_sync_at IS NOT NULL ORDER BY name'
+        )->fetchAll();
+    }
+
+    /** Son Paraşüt senkron audit kaydı (parasut.php durum ekranı). */
+    public function lastParasutSync(): ?array
+    {
+        $r = $this->pdo->query(
+            "SELECT action, actor, detail, created_at FROM audit
+             WHERE action = 'parasut_cari' ORDER BY id DESC LIMIT 1"
+        )->fetch();
+        return $r ?: null;
     }
 
     // ── Taşıma karlılık (opus-013: adet[production] × (satış − alış) − sabit gider) ─

@@ -26,9 +26,13 @@ CREATE TABLE IF NOT EXISTS customers (
   maliyet_birim REAL NOT NULL DEFAULT 0,        -- taşıma: alış birim fiyatı (opus-013)
   tasima_sabit_gider REAL NOT NULL DEFAULT 0,   -- taşıma: aylık sabit gider (opsiyonel)
   tasima_not TEXT,                              -- taşıma: not (opsiyonel)
+  parasut_id TEXT,                              -- Paraşüt contact id (opus-012, eşleşince yazılır)
+  parasut_bakiye REAL,                          -- Paraşüt güncel cari bakiye (SALT-OKUMA muhasebe)
+  parasut_sync_at TEXT,                         -- son Paraşüt senkron zamanı
   is_active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE INDEX IF NOT EXISTS idx_parasut_id ON customers(parasut_id);
 
 -- tasima_aylik: ATIL (opus-013'te terk; taşıma kartı customers'ta, adet production'dan)
 CREATE TABLE IF NOT EXISTS tasima_aylik (

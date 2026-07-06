@@ -65,7 +65,12 @@ require __DIR__ . '/partials/header.php';
       <?php else: ?>
         <div class="summary-grid">
           <div class="summary-card"><p class="label">Birim fiyat</p><p class="metric">₺ <?= Helpers::money((float) $cust['unit_price']) ?></p></div>
-          <div class="summary-card"><p class="label">Bakiye</p><p class="metric <?= $balance < 0 ? 'neg' : '' ?>">₺ <?= Helpers::money($balance) ?></p></div>
+          <div class="summary-card"><p class="label">Kokpit bakiye</p><p class="metric <?= $balance < 0 ? 'neg' : '' ?>">₺ <?= Helpers::money($balance) ?></p></div>
+          <?php if (($cust['parasut_bakiye'] ?? null) !== null): ?>
+          <div class="summary-card tint-blue"><p class="label">Paraşüt bakiyesi (muhasebe)</p>
+            <p class="metric <?= (float) $cust['parasut_bakiye'] < 0 ? 'neg' : '' ?>">₺ <?= Helpers::money((float) $cust['parasut_bakiye']) ?></p>
+            <span class="delta"><i class="bi bi-shield-check"></i> son senkron <?= $cust['parasut_sync_at'] ? Helpers::e(date('d.m.Y H:i', strtotime((string) $cust['parasut_sync_at']))) : '—' ?></span></div>
+          <?php endif; ?>
           <div class="summary-card wide"><p class="label"><?= Helpers::e(ay_label_tr($month)) ?> üretim (faturalanacak)</p>
             <p class="metric"><?= number_format($ayKisi, 0, ',', '.') ?> kişi · ₺ <?= Helpers::money($ayUretim['amount']) ?></p>
             <span class="delta"><i class="bi bi-check2-circle"></i> <?= $balance >= 0 ? 'Alacak (bize borçlu)' : 'Fazla ödeme' ?></span></div>

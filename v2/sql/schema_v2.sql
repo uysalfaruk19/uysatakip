@@ -36,11 +36,15 @@ CREATE TABLE IF NOT EXISTS `customers` (
   `maliyet_birim`      DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'taşıma: alış birim fiyatı TL (opus-013)',
   `tasima_sabit_gider` DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'taşıma: aylık sabit gider TL (opsiyonel)',
   `tasima_not`         VARCHAR(500)          DEFAULT NULL COMMENT 'taşıma: not (opsiyonel)',
+  `parasut_id`         VARCHAR(40)           DEFAULT NULL COMMENT 'Paraşüt contact id (opus-012, eşleşince yazılır)',
+  `parasut_bakiye`     DECIMAL(14,2)         DEFAULT NULL COMMENT 'Paraşüt güncel cari bakiye (SALT-OKUMA muhasebe)',
+  `parasut_sync_at`    DATETIME              DEFAULT NULL COMMENT 'son Paraşüt senkron zamanı',
   `is_active`     TINYINT(1)   NOT NULL DEFAULT 1,
   `created_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_customer_name` (`name`),
-  KEY `idx_active` (`is_active`)
+  KEY `idx_active` (`is_active`),
+  KEY `idx_parasut_id` (`parasut_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ── Taşıma müşterisi aylık karlılık — ATIL (opus-013'te terk edildi) ──────────

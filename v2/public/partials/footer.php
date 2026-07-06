@@ -32,6 +32,7 @@ $tabs = [
   <a href="finans.php"><i class="bi bi-plus-slash-minus"></i> Gider / Gelir ekle</a>
   <a href="cari.php"><i class="bi bi-cash-coin"></i> Tahsilat / Cari</a>
   <a href="musteriler.php?yeni=1"><i class="bi bi-person-plus"></i> Müşteri ekle</a>
+  <a href="parasut.php"><i class="bi bi-shield-check"></i> Paraşüt cari (muhasebe)</a>
 </div>
 
 <script src="assets/app.js"></script>
