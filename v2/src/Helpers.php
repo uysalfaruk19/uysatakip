@@ -164,19 +164,29 @@ final class Helpers
         return date('Y-m-d');
     }
 
-    /**
-     * Sipariş son değişiklik zamanı: order_date'ten bir gün önce saat $hour:00 (müşteri bazlı ayar
-     * ileride). Bu andan sonra müşteri o günün siparişini değiştiremez (üretim planı kilitlenir).
-     */
-    public static function orderDeadline(string $date, int $hour = 16): int
+    /** Sipariş değişiklik son saati (order_date'ten bir gün önce). opus-018: 15:30. */
+    public const ORDER_CUTOFF_HOUR = 15;
+    public const ORDER_CUTOFF_MIN = 30;
+
+    /** İnsan-okur son saat etiketi, ör. "15:30". */
+    public static function orderCutoffLabel(): string
     {
-        $prev = date('Y-m-d', strtotime($date . ' -1 day'));
-        return (int) strtotime($prev . ' ' . sprintf('%02d:00:00', $hour));
+        return sprintf('%02d:%02d', self::ORDER_CUTOFF_HOUR, self::ORDER_CUTOFF_MIN);
     }
 
-    /** Müşteri bu tarihi hâlâ değiştirebilir mi? (bir gün önce $hour:00 geçmedi). */
-    public static function orderEditable(string $date, int $hour = 16, ?int $now = null): bool
+    /**
+     * Sipariş son değişiklik zamanı: order_date'ten bir gün önce saat 15:30 (müşteri bazlı ayar
+     * ileride). Bu andan sonra müşteri o günün siparişini değiştiremez (üretim planı kilitlenir).
+     */
+    public static function orderDeadline(string $date): int
     {
-        return ($now ?? time()) <= self::orderDeadline($date, $hour);
+        $prev = date('Y-m-d', strtotime($date . ' -1 day'));
+        return (int) strtotime($prev . ' ' . sprintf('%02d:%02d:00', self::ORDER_CUTOFF_HOUR, self::ORDER_CUTOFF_MIN));
+    }
+
+    /** Müşteri bu tarihi hâlâ değiştirebilir mi? (bir gün önce 15:30 geçmedi). $now test için. */
+    public static function orderEditable(string $date, ?int $now = null): bool
+    {
+        return ($now ?? time()) <= self::orderDeadline($date);
     }
 }

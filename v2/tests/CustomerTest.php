@@ -153,13 +153,43 @@ final class CustomerTest extends TestCase
         $this->assertSame(0, $cnt, 'reddedilen sipariş üretime yazılmaz');
     }
 
-    // ── Sipariş son değişiklik kuralı (bir gün önce 16:00) ─────
+    // ── Sipariş son değişiklik kuralı (bir gün önce 15:30) ─────
     public function testOrderEditableDeadline(): void
     {
-        // 2026-07-10 siparişi → deadline 2026-07-09 16:00
-        $before = strtotime('2026-07-09 15:59:00');
-        $after = strtotime('2026-07-09 16:01:00');
-        $this->assertTrue(Helpers::orderEditable('2026-07-10', 16, $before), '16:00 öncesi değiştirilebilir');
-        $this->assertFalse(Helpers::orderEditable('2026-07-10', 16, $after), '16:00 sonrası kilitli');
+        // 2026-07-10 siparişi → deadline 2026-07-09 15:30 (opus-018)
+        $before = strtotime('2026-07-09 15:29:00');
+        $after = strtotime('2026-07-09 15:31:00');
+        $this->assertTrue(Helpers::orderEditable('2026-07-10', $before), '15:30 öncesi (15:29) değiştirilebilir');
+        $this->assertFalse(Helpers::orderEditable('2026-07-10', $after), '15:30 sonrası (15:31) kilitli');
+        $this->assertSame(strtotime('2026-07-09 15:30:00'), Helpers::orderDeadline('2026-07-10'), 'deadline bir gün önce 15:30');
+    }
+
+    // ── Admin: müşteri giriş hesabı oluştur (opus-018) ─────────
+    public function testCreateCustomerUserUniqueAndBcrypt(): void
+    {
+        $cid = seed_customer($this->pdo, 'CANTAŞ', 328.0);
+        $id = $this->repo->createCustomerUser($cid, 'cantas', 'sifre123', 'Cantaş A.Ş.');
+        $this->assertGreaterThan(0, $id, 'giriş oluşturuldu');
+
+        $row = $this->pdo->query('SELECT * FROM customer_users WHERE id = ' . $id)->fetch();
+        $this->assertNotSame('sifre123', $row['password_bcrypt'], 'şifre düz metin değil');
+        $this->assertTrue(password_verify('sifre123', $row['password_bcrypt']), 'bcrypt doğrulanır');
+        $this->assertTrue($this->auth->login('cantas', 'sifre123') !== null, 'oluşturulan hesapla giriş yapılır');
+
+        // Aynı kullanıcı adı → çakışma (0 döner, exception değil)
+        $dup = $this->repo->createCustomerUser($cid, 'cantas', 'baska', null);
+        $this->assertSame(0, $dup, 'çakışan kullanıcı adı 0 döner');
+
+        // Liste + reset + pasif
+        $users = $this->repo->listCustomerUsers();
+        $this->assertCount(1, $users);
+        $this->assertSame('CANTAŞ', $users[0]['customer_name'], 'firma adı listede');
+
+        $this->repo->resetCustomerUserPassword($id, 'yenisifre');
+        $this->assertNull($this->auth->login('cantas', 'sifre123'), 'eski şifre artık geçmez');
+        $this->assertNotNull($this->auth->login('cantas', 'yenisifre'), 'yeni şifre geçer');
+
+        $this->repo->setCustomerUserActive($id, false);
+        $this->assertNull($this->auth->login('cantas', 'yenisifre'), 'pasif hesap giriş yapamaz');
     }
 }

@@ -13,7 +13,7 @@ $pdo = Db::pdo();
 $repo = new Repo($pdo);
 
 $meals = ['sabah' => 'Sabah', 'ogle' => 'Öğle', 'aksam' => 'Akşam', 'kumanya' => 'Kumanya'];
-$cutoffHour = 16;
+$cutoff = Helpers::orderCutoffLabel();
 
 $tomorrow = date('Y-m-d', strtotime('+1 day'));
 $date = (string) ($_GET['date'] ?? $tomorrow);
@@ -43,8 +43,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         }
         $date = $pDate;
         $meal = $pMeal;
-        if (!Helpers::orderEditable($pDate, $cutoffHour)) {
-            $flash = 'Değişiklik süresi doldu (bir gün önce saat 16:00).';
+        if (!Helpers::orderEditable($pDate)) {
+            $flash = $pDate === $tomorrow
+                ? "Yarın için değişiklik saati ($cutoff) geçti."
+                : "Değişiklik süresi doldu (bir gün önce saat $cutoff).";
             $flashOk = false;
         } else {
             $persons = max(0, (int) ($_POST['persons'] ?? 0));
@@ -58,9 +60,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 }
 
 $order = $repo->customerOrder($cid, $date, $meal);
-$editable = Helpers::orderEditable($date, $cutoffHour);
+$editable = Helpers::orderEditable($date);
 $current = $order ? (int) $order['persons'] : 0;
-$deadlineTs = Helpers::orderDeadline($date, $cutoffHour);
+$deadlineTs = Helpers::orderDeadline($date);
 $history = $repo->customerOrders($cid, 20);
 
 $statusMap = [
@@ -123,7 +125,9 @@ require __DIR__ . '/partials/header_m.php';
             <p class="row-meta mt-2"><i class="bi bi-info-circle"></i> Son değişiklik: <?= date('d.m.Y H:i', $deadlineTs) ?>'a kadar.</p>
           </form>
         <?php else: ?>
-          <div class="hint-card mt-3"><i class="bi bi-lock"></i> Bu günün siparişi kilitlendi (son değişiklik <?= date('d.m.Y H:i', $deadlineTs) ?> idi). Değişiklik için UYSA ile iletişime geçin.</div>
+          <div class="hint-card mt-3"><i class="bi bi-lock"></i>
+            <?php if ($date === $tomorrow): ?>Yarın için değişiklik saati (<?= Helpers::e($cutoff) ?>) geçti — sipariş kilitlendi.<?php else: ?>Bu günün siparişi kilitlendi (son değişiklik <?= date('d.m.Y H:i', $deadlineTs) ?> idi).<?php endif; ?>
+            Değişiklik için UYSA ile iletişime geçin.</div>
         <?php endif; ?>
       </div>
 

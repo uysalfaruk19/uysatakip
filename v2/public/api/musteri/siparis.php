@@ -25,7 +25,7 @@ if (!in_array($meal, ['sabah', 'ogle', 'aksam', 'gece', 'kumanya'], true)) {
     $meal = 'ogle';
 }
 if (!Helpers::orderEditable($date)) {
-    Helpers::json(['ok' => false, 'error' => 'Değişiklik süresi doldu (bir gün önce 16:00).'], 409);
+    Helpers::json(['ok' => false, 'error' => 'Değişiklik süresi doldu (bir gün önce ' . Helpers::orderCutoffLabel() . ').'], 409);
 }
 $persons = (int) ($body['persons'] ?? 0);
 if ($persons < 0 || $persons > 100000) {

@@ -583,6 +583,54 @@ final class Repo
         return ['persons' => (int) $r['persons'], 'amount' => (float) $r['amount'], 'cnt' => (int) $r['cnt']];
     }
 
+    // ── Müşteri giriş hesapları (customer_users) — admin yönetimi (opus-018) ──
+    /**
+     * Müşteri giriş hesabı oluştur (bcrypt). Kullanıcı adı UNIQUE — çakışırsa exception yerine
+     * 0 döner (çağıran "kullanıcı adı alınmış" gösterir). customerId geçerli olmalı.
+     * @return int yeni id, veya kullanıcı adı çakıştıysa 0.
+     */
+    public function createCustomerUser(int $customerId, string $username, string $password, ?string $displayName = null): int
+    {
+        $username = trim($username);
+        $exists = $this->pdo->prepare('SELECT 1 FROM customer_users WHERE username = ?');
+        $exists->execute([$username]);
+        if ($exists->fetchColumn() !== false) {
+            return 0;
+        }
+        $hash = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
+        $this->pdo->prepare(
+            'INSERT INTO customer_users (customer_id, username, password_bcrypt, display_name, role)
+             VALUES (?, ?, ?, ?, ?)'
+        )->execute([$customerId, $username, $hash, $displayName, 'owner']);
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    /** @return array<int,array> müşteri giriş hesapları + bağlı firma adı/aktifliği (admin listesi). */
+    public function listCustomerUsers(): array
+    {
+        return $this->pdo->query(
+            'SELECT cu.id, cu.username, cu.display_name, cu.is_active, cu.last_login,
+                    cu.customer_id, c.name AS customer_name, c.is_active AS customer_active
+             FROM customer_users cu JOIN customers c ON c.id = cu.customer_id
+             ORDER BY c.name, cu.username'
+        )->fetchAll();
+    }
+
+    /** Şifre sıfırla (bcrypt). */
+    public function resetCustomerUserPassword(int $id, string $password): void
+    {
+        $hash = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
+        $this->pdo->prepare('UPDATE customer_users SET password_bcrypt = ? WHERE id = ?')
+            ->execute([$hash, $id]);
+    }
+
+    /** Giriş hesabını aktif/pasif yap (silme YOK). */
+    public function setCustomerUserActive(int $id, bool $active): void
+    {
+        $this->pdo->prepare('UPDATE customer_users SET is_active = ? WHERE id = ?')
+            ->execute([$active ? 1 : 0, $id]);
+    }
+
     // ── Siparişler (M6 müşteri uygulaması) ────────────────────
     /**
      * Müşteri×gün×öğün sipariş upsert (UNIQUE customer_id,order_date,meal). Sipariş = onay öncesi.

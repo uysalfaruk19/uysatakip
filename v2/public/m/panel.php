@@ -17,6 +17,8 @@ $ay = $repo->customerMonthProduction($cid, $month);
 
 $tomorrow = date('Y-m-d', strtotime('+1 day'));
 $order = $repo->customerOrder($cid, $tomorrow, 'ogle');
+$cutoff = Helpers::orderCutoffLabel();
+$tomorrowEditable = Helpers::orderEditable($tomorrow);
 
 $today = Helpers::today();
 // Bugünün menüsü: SADECE bu müşteriye yayınlanmış menülerden (IDOR scope) öğle kalemi.
@@ -80,6 +82,11 @@ require __DIR__ . '/partials/header_m.php';
             <a class="btn-action btn-primaryx" href="siparis.php"><i class="bi bi-plus"></i> Gir</a>
           <?php endif; ?>
         </div>
+        <?php if ($tomorrowEditable): ?>
+          <p class="row-meta mt-2"><i class="bi bi-clock-history"></i> Değişiklik saati: bugün <?= Helpers::e($cutoff) ?>'a kadar. <a href="siparis.php" style="text-decoration:underline">Sayı gir / değiştir</a></p>
+        <?php else: ?>
+          <p class="row-meta mt-2"><i class="bi bi-lock"></i> Yarın için değişiklik saati (<?= Helpers::e($cutoff) ?>) geçti — sayı kilitlendi.</p>
+        <?php endif; ?>
       </div>
 
       <div class="meal-card">
