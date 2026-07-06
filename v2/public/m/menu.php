@@ -7,13 +7,34 @@ use Uysa\Db;
 use Uysa\Helpers;
 use Uysa\Repo;
 
+use Uysa\MenuPdf;
+
 $cu = CustomerAuth::requireCustomer();
 $cid = (int) $cu['customer_id'];
 $pdo = Db::pdo();
 $repo = new Repo($pdo);
 
+// opus-019: müşteri EN FAZLA 1 AY GERİ görebilir (date_end >= bugün−1 ay).
+$minEnd = date('Y-m-d', strtotime('-1 month'));
+
+// PDF indir (header'dan ÖNCE) — SADECE bu müşteriye görünür + 1 ay sınırı içindeki menü (IDOR scope).
+if (isset($_GET['pdf'])) {
+    $mid = (int) $_GET['pdf'];
+    $m = $repo->menuForCustomer($cid, $mid, $minEnd);
+    if ($m) {
+        $bin = MenuPdf::write((string) $m['title'], $repo->menuItems($mid), (string) $m['date_start'], (string) $m['date_end']);
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: attachment; filename="menu-' . (int) $mid . '.pdf"');
+        header('Content-Length: ' . strlen($bin));
+        echo $bin;
+        exit;
+    }
+    header('Location: menu.php');
+    exit;
+}
+
 // SADECE bu müşteriye yayınlanmış menüler (all-audience VEYA menu_target'ta) — IDOR scope.
-$menus = $repo->menusForCustomer($cid);
+$menus = $repo->menusForCustomer($cid, $minEnd);
 $meals = ['sabah' => 'Sabah', 'ogle' => 'Öğle', 'aksam' => 'Akşam', 'gece' => 'Gece', 'kumanya' => 'Kumanya'];
 
 $eyebrow = Helpers::e($cu['customer_name']) . ' · Menü';
@@ -37,6 +58,7 @@ require __DIR__ . '/partials/header_m.php';
               <span class="badge-soft badge-ok"><i class="bi bi-broadcast"></i> Yayında</span>
             </div>
             <p class="row-meta mb-2"><i class="bi bi-calendar2-week"></i> <?= date('d.m', strtotime($m['date_start'])) ?> – <?= date('d.m.Y', strtotime($m['date_end'])) ?></p>
+            <a class="btn-action btn-secondaryx btn-full mb-2" href="menu.php?pdf=<?= (int) $m['id'] ?>"><i class="bi bi-file-earmark-pdf"></i> PDF İndir</a>
             <?php if (!$items): ?>
               <div class="empty-state">Bu menüde gün eklenmemiş.</div>
             <?php else: ?>

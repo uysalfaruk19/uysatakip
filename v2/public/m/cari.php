@@ -4,6 +4,7 @@ require __DIR__ . '/../../src/bootstrap.php';
 
 use Uysa\CustomerAuth;
 use Uysa\Db;
+use Uysa\Env;
 use Uysa\Helpers;
 use Uysa\Repo;
 
@@ -12,24 +13,43 @@ $cid = (int) $cu['customer_id'];
 $pdo = Db::pdo();
 $repo = new Repo($pdo);
 
+// opus-019: Paraşüt entegrasyonu öncesi gerçek bakiye KAPALI. CARI_LIVE=1 olunca açılır.
+$cariLive = in_array(strtolower((string) Env::get('CARI_LIVE', '0')), ['1', 'true', 'yes', 'on'], true);
+
 $ay = (string) ($_GET['ay'] ?? date('Y-m'));
 if (!preg_match('/^\d{4}-\d{2}$/', $ay)) {
     $ay = date('Y-m');
 }
 
-// SADECE kendi ekstresi (IDOR: $cid oturumdan)
-$rows = $repo->customerLedger($cid, $ay);
-$balance = $repo->customerBalance($cid);
-$month = $repo->customerMonthProduction($cid, $ay);
+$flash = '';
+$flashOk = true;
 
-$prevAy = date('Y-m', strtotime($ay . '-01 -1 month'));
-$nextAy = date('Y-m', strtotime($ay . '-01 +1 month'));
+// "Ekstre Talep Et" → requests kaydı (admin görür). Yalnız talep-modunda.
+if (!$cariLive && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+    if (!Helpers::csrfCheck($_POST['csrf'] ?? null)) {
+        $flash = 'Oturum doğrulaması başarısız.';
+        $flashOk = false;
+    } elseif (($_POST['action'] ?? '') === 'ekstre_talep') {
+        $reqId = $repo->createRequest($cid, $cu['cuid'] ?? null, 'talep', 'Cari ekstre talebi (' . ay_label_tr($ay) . ')');
+        $repo->addRequestMessage($reqId, 'musteri', 'Cari hesap ekstresi talep ediyorum. Dönem: ' . ay_label_tr($ay) . '.');
+        uysa_audit('musteri_ekstre_talep', $cu['username'], (string) $cid, (string) $reqId, client_ip());
+        $flash = 'Ekstre talebiniz alındı — UYSA en kısa sürede iletecek. Taleplerim ekranından takip edebilirsiniz.';
+    }
+}
 
 $eyebrow = Helpers::e($cu['customer_name']) . ' · Cari';
-$pageTitle = 'Cari ekstre';
+$pageTitle = 'Cari hesap';
 $active = 'cari';
-require __DIR__ . '/partials/header_m.php';
-?>
+
+if ($cariLive) {
+    // ── Gerçek bakiye/ekstre (Paraşüt sonrası) ──
+    $rows = $repo->customerLedger($cid, $ay);
+    $balance = $repo->customerBalance($cid);
+    $month = $repo->customerMonthProduction($cid, $ay);
+    $prevAy = date('Y-m', strtotime($ay . '-01 -1 month'));
+    $nextAy = date('Y-m', strtotime($ay . '-01 +1 month'));
+    require __DIR__ . '/partials/header_m.php';
+    ?>
       <div class="date-row">
         <a class="icon-btn" href="cari.php?ay=<?= $prevAy ?>" aria-label="Önceki ay"><i class="bi bi-chevron-left"></i></a>
         <span class="date-pill"><i class="bi bi-calendar3"></i> <?= Helpers::e(ay_label_tr($ay)) ?></span>
@@ -66,4 +86,28 @@ require __DIR__ . '/partials/header_m.php';
         </div>
         <p class="row-meta mt-2"><i class="bi bi-info-circle"></i> "+" borç (üretim), "−" tahsilat.</p>
       <?php endif; ?>
+<?php
+    require __DIR__ . '/partials/footer_m.php';
+    return;
+}
+
+// ── Talep modu (Paraşüt öncesi): bakiye yok, "Ekstre Talep Et" ──
+require __DIR__ . '/partials/header_m.php';
+?>
+      <?php if ($flash): ?><div class="flash <?= $flashOk ? 'ok' : 'err' ?>"><?= Helpers::e($flash) ?></div><?php endif; ?>
+
+      <div class="cardx card-pad">
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <span class="flow-icon"><i class="bi bi-cash-coin"></i></span>
+          <h2 style="margin:0">Cari hesap</h2>
+        </div>
+        <p class="row-meta">Cari hesabınız (bakiye ve ekstre) yakında — <strong>Paraşüt muhasebe entegrasyonu</strong> ile otomatik gelecek. O zamana kadar güncel ekstrenizi buradan talep edebilirsiniz.</p>
+        <form method="post" class="mt-3">
+          <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
+          <input type="hidden" name="action" value="ekstre_talep">
+          <button class="btn-action btn-primaryx btn-full" type="submit"><i class="bi bi-file-earmark-text"></i> Ekstre Talep Et</button>
+        </form>
+      </div>
+
+      <div class="hint-card mt-2"><i class="bi bi-info-circle"></i> Talebiniz UYSA'ya iletilir; ekstreniz hazırlanınca <a href="talep.php" style="text-decoration:underline">Taleplerim</a> ekranından iletilir.</div>
 <?php require __DIR__ . '/partials/footer_m.php'; ?>

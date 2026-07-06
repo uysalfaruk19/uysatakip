@@ -62,6 +62,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 $order = $repo->customerOrder($cid, $date, $meal);
 $editable = Helpers::orderEditable($date);
 $current = $order ? (int) $order['persons'] : 0;
+// opus-019: bu gün için henüz sipariş yoksa, önceki günkü sayı DEFAULT gelir
+// (müşteri dokunmazsa aynen gönderilir). Sipariş varsa onun sayısı gösterilir.
+$lastPersons = $current > 0 ? 0 : $repo->lastPersonsFor($cid, $meal, $date);
+$defaultPersons = $current > 0 ? $current : $lastPersons;
 $deadlineTs = Helpers::orderDeadline($date);
 $history = $repo->customerOrders($cid, 20);
 
@@ -117,10 +121,13 @@ require __DIR__ . '/partials/header_m.php';
             <div class="field"><label>Kişi sayısı</label>
               <div class="counter">
                 <button class="step-btn" type="button" data-step="-5">−</button>
-                <input class="count-input" inputmode="numeric" type="number" min="0" name="persons" value="<?= $current > 0 ? $current : '' ?>" placeholder="0">
+                <input class="count-input" inputmode="numeric" type="number" min="0" name="persons" value="<?= $defaultPersons > 0 ? $defaultPersons : '' ?>" placeholder="0">
                 <button class="step-btn" type="button" data-step="5">+</button>
               </div>
             </div>
+            <?php if ($current === 0 && $lastPersons > 0): ?>
+              <p class="row-meta mt-1"><i class="bi bi-arrow-repeat"></i> Önceki gününüz <strong><?= $lastPersons ?> kişi</strong> — değiştirmezseniz aynı sayı gönderilir.</p>
+            <?php endif; ?>
             <button class="btn-action btn-primaryx btn-full mt-3" type="submit"><i class="bi bi-send"></i> Siparişi gönder</button>
             <p class="row-meta mt-2"><i class="bi bi-info-circle"></i> Son değişiklik: <?= date('d.m.Y H:i', $deadlineTs) ?>'a kadar.</p>
           </form>

@@ -109,7 +109,7 @@ CREATE TABLE IF NOT EXISTS requests (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
   customer_user_id INTEGER,
-  type TEXT NOT NULL DEFAULT 'talep' CHECK(type IN ('talep','sikayet','mesaj')),
+  type TEXT NOT NULL DEFAULT 'talep' CHECK(type IN ('talep','sikayet','mesaj','menu','oneri')),
   subject TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'acik' CHECK(status IN ('acik','cozuldu')),
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -120,6 +120,7 @@ CREATE TABLE IF NOT EXISTS request_messages (
   request_id INTEGER NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
   sender TEXT NOT NULL CHECK(sender IN ('musteri','uysa')),
   body TEXT NOT NULL,
+  file_id INTEGER REFERENCES files(id) ON DELETE SET NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

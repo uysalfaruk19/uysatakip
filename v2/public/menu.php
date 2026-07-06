@@ -5,6 +5,7 @@ require __DIR__ . '/../src/bootstrap.php';
 use Uysa\Auth;
 use Uysa\Db;
 use Uysa\Helpers;
+use Uysa\MenuPdf;
 use Uysa\Repo;
 use Uysa\XlsxMenu;
 
@@ -27,6 +28,22 @@ if (isset($_GET['export'])) {
         $bin = XlsxMenu::write((string) $m['title'], $repo->menuItems($mid));
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         header('Content-Disposition: attachment; filename="menu-' . (int) $mid . '.xlsx"');
+        header('Content-Length: ' . strlen($bin));
+        echo $bin;
+        exit;
+    }
+    header('Location: menu.php');
+    exit;
+}
+
+// ── PDF indir (export): seçili menü → grid PDF (header'dan ÖNCE, opus-019) ──
+if (isset($_GET['pdf'])) {
+    $mid = (int) $_GET['pdf'];
+    $m = $repo->menu($mid);
+    if ($m) {
+        $bin = MenuPdf::write((string) $m['title'], $repo->menuItems($mid), (string) $m['date_start'], (string) $m['date_end']);
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: attachment; filename="menu-' . (int) $mid . '.pdf"');
         header('Content-Length: ' . strlen($bin));
         echo $bin;
         exit;
@@ -283,6 +300,7 @@ require __DIR__ . '/partials/header.php';
       <div class="cardx card-pad">
         <div class="actions-row">
           <a class="btn-action btn-secondaryx flex-fill" href="menu.php?export=<?= (int) $edit['id'] ?>"><i class="bi bi-download"></i> Excel indir</a>
+          <a class="btn-action btn-secondaryx flex-fill" href="menu.php?pdf=<?= (int) $edit['id'] ?>"><i class="bi bi-file-earmark-pdf"></i> PDF indir</a>
           <button class="btn-action btn-secondaryx flex-fill" type="button" onclick="document.getElementById('xlsx-up-edit').style.display=(document.getElementById('xlsx-up-edit').style.display==='none'?'block':'none')"><i class="bi bi-upload"></i> Excel yükle</button>
         </div>
         <form method="post" enctype="multipart/form-data" class="form-grid" id="xlsx-up-edit" style="display:none;margin-top:10px">

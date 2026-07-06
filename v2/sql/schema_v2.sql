@@ -138,12 +138,27 @@ CREATE TABLE IF NOT EXISTS `production` (
   CONSTRAINT `fk_prod_order`    FOREIGN KEY (`order_id`)    REFERENCES `orders` (`id`)    ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ── Dosyalar (fatura foto, talep foto vb.) — request_messages FK'inden ÖNCE tanımlı olmalı ─
+CREATE TABLE IF NOT EXISTS `files` (
+  `id`          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `filename`    VARCHAR(255) NOT NULL COMMENT 'güvenli ad: ts_hex.ext',
+  `original`    VARCHAR(255) NOT NULL,
+  `mime`        VARCHAR(100) NOT NULL,
+  `size_bytes`  INT UNSIGNED NOT NULL DEFAULT 0,
+  `uploaded_by` VARCHAR(100)          DEFAULT NULL,
+  `category`    VARCHAR(100)          DEFAULT NULL,
+  `deleted_at`  DATETIME              DEFAULT NULL,
+  `created_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_files_deleted` (`deleted_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ── Talepler / şikayet / mesaj (M6) ───────────────────────────
 CREATE TABLE IF NOT EXISTS `requests` (
   `id`               INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `customer_id`      INT UNSIGNED NOT NULL,
   `customer_user_id` INT UNSIGNED          DEFAULT NULL,
-  `type`             ENUM('talep','sikayet','mesaj') NOT NULL DEFAULT 'talep',
+  `type`             ENUM('talep','sikayet','mesaj','menu','oneri') NOT NULL DEFAULT 'talep',
   `subject`          VARCHAR(200) NOT NULL,
   `status`           ENUM('acik','cozuldu') NOT NULL DEFAULT 'acik',
   `created_at`       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -158,10 +173,12 @@ CREATE TABLE IF NOT EXISTS `request_messages` (
   `request_id` INT UNSIGNED NOT NULL,
   `sender`     ENUM('musteri','uysa') NOT NULL,
   `body`       TEXT         NOT NULL,
+  `file_id`    INT UNSIGNED          DEFAULT NULL COMMENT 'opus-019: foto eki (files.id)',
   `created_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_rm_request` (`request_id`),
-  CONSTRAINT `fk_rm_request` FOREIGN KEY (`request_id`) REFERENCES `requests` (`id`) ON DELETE CASCADE
+  CONSTRAINT `fk_rm_request` FOREIGN KEY (`request_id`) REFERENCES `requests` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_rm_file`    FOREIGN KEY (`file_id`)    REFERENCES `files` (`id`)    ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ── Duyurular (M6) ────────────────────────────────────────────
@@ -172,21 +189,6 @@ CREATE TABLE IF NOT EXISTS `announcements` (
   `publish_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `audience`   VARCHAR(50)  NOT NULL DEFAULT 'hepsi' COMMENT 'hepsi | customer_id',
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- ── Dosyalar (fatura foto vb.) — v1 deseni ────────────────────
-CREATE TABLE IF NOT EXISTS `files` (
-  `id`          INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `filename`    VARCHAR(255) NOT NULL COMMENT 'güvenli ad: ts_hex.ext',
-  `original`    VARCHAR(255) NOT NULL,
-  `mime`        VARCHAR(100) NOT NULL,
-  `size_bytes`  INT UNSIGNED NOT NULL DEFAULT 0,
-  `uploaded_by` VARCHAR(100)          DEFAULT NULL,
-  `category`    VARCHAR(100)          DEFAULT NULL,
-  `deleted_at`  DATETIME              DEFAULT NULL,
-  `created_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  KEY `idx_files_deleted` (`deleted_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ── Tedarikçiler ──────────────────────────────────────────────

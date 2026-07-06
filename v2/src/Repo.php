@@ -566,6 +566,30 @@ final class Repo
         return (int) $this->pdo->lastInsertId();
     }
 
+    /** Dosya kaydı (silinmemiş). Admin dosya servisi için (scope'suz). */
+    public function fileById(int $id): ?array
+    {
+        $st = $this->pdo->prepare('SELECT * FROM files WHERE id = ? AND deleted_at IS NULL');
+        $st->execute([$id]);
+        return $st->fetch() ?: null;
+    }
+
+    /**
+     * IDOR SCOPE: bir dosya SADECE bu müşterinin kendi talep mesajına ekliyse döner.
+     * Müşteri başka firmanın foto ekini (veya fatura fotosunu) ASLA indiremez.
+     */
+    public function customerFile(int $fileId, int $customerId): ?array
+    {
+        $st = $this->pdo->prepare(
+            'SELECT f.* FROM files f
+             JOIN request_messages rm ON rm.file_id = f.id
+             JOIN requests r ON r.id = rm.request_id
+             WHERE f.id = ? AND r.customer_id = ? AND f.deleted_at IS NULL LIMIT 1'
+        );
+        $st->execute([$fileId, $customerId]);
+        return $st->fetch() ?: null;
+    }
+
     // ── Finans ────────────────────────────────────────────────
     /**
      * Gelir/gider kaydı. opus-015: gider dağıtım hedefi.
@@ -911,21 +935,69 @@ final class Repo
         return true;
     }
 
+    /** Geçerli talep türleri (opus-019: menu + oneri eklendi). */
+    public const REQUEST_TYPES = ['talep', 'sikayet', 'mesaj', 'menu', 'oneri'];
+
     // ── Talepler / mesajlaşma (M6) ────────────────────────────
     public function createRequest(int $customerId, ?int $customerUserId, string $type, string $subject): int
     {
+        if (!in_array($type, self::REQUEST_TYPES, true)) {
+            $type = 'talep';
+        }
         $this->pdo->prepare(
             'INSERT INTO requests (customer_id, customer_user_id, type, subject) VALUES (?, ?, ?, ?)'
         )->execute([$customerId, $customerUserId, $type, $subject]);
         return (int) $this->pdo->lastInsertId();
     }
 
-    public function addRequestMessage(int $requestId, string $sender, string $body): int
+    /** Talebe mesaj ekle (opus-019: opsiyonel foto eki $fileId). */
+    public function addRequestMessage(int $requestId, string $sender, string $body, ?int $fileId = null): int
     {
         $this->pdo->prepare(
-            'INSERT INTO request_messages (request_id, sender, body) VALUES (?, ?, ?)'
-        )->execute([$requestId, $sender, $body]);
+            'INSERT INTO request_messages (request_id, sender, body, file_id) VALUES (?, ?, ?, ?)'
+        )->execute([$requestId, $sender, $body, $fileId]);
         return (int) $this->pdo->lastInsertId();
+    }
+
+    /**
+     * opus-019: sipariş varsayılanı — müşterinin en son (verilen tarihten ÖNCE) girdiği kişi sayısı.
+     * Onaylı production ÖNCELİKLİ; yoksa gönderdiği sipariş. Meal verilirse o öğüne kısıtlar.
+     * Müşteri sayı değiştirmezse "önceki günkü sayı" aynen devam eder. Bulunamazsa 0.
+     */
+    public function lastPersonsFor(int $customerId, ?string $meal = null, ?string $beforeDate = null): int
+    {
+        $params = [$customerId];
+        $prodCond = '';
+        $ordCond = '';
+        if ($meal !== null) {
+            $prodCond .= ' AND meal = ?';
+            $params[] = $meal;
+        }
+        if ($beforeDate !== null) {
+            $prodCond .= ' AND prod_date < ?';
+            $params[] = $beforeDate;
+        }
+        $params2 = [$customerId];
+        if ($meal !== null) {
+            $ordCond .= ' AND meal = ?';
+            $params2[] = $meal;
+        }
+        if ($beforeDate !== null) {
+            $ordCond .= ' AND order_date < ?';
+            $params2[] = $beforeDate;
+        }
+        $sql = 'SELECT persons FROM (
+                  SELECT prod_date AS d, persons, 1 AS pr FROM production WHERE customer_id = ?' . $prodCond . '
+                  UNION ALL
+                  SELECT order_date AS d, persons, 0 AS pr FROM orders
+                    WHERE customer_id = ?' . $ordCond . " AND status <> 'reddedildi'
+                ) t
+                WHERE persons > 0
+                ORDER BY d DESC, pr DESC LIMIT 1";
+        $st = $this->pdo->prepare($sql);
+        $st->execute(array_merge($params, $params2));
+        $val = $st->fetchColumn();
+        return $val === false ? 0 : (int) $val;
     }
 
     /** @return array<int,array> müşteri kapsamlı talep listesi. */
@@ -957,11 +1029,14 @@ final class Repo
         return $st->fetch() ?: null;
     }
 
-    /** @return array<int,array> talep mesajları (eski→yeni). */
+    /** @return array<int,array> talep mesajları (eski→yeni) + foto eki bilgisi (file_name/file_mime/file_orig). */
     public function requestMessages(int $requestId): array
     {
         $st = $this->pdo->prepare(
-            'SELECT * FROM request_messages WHERE request_id = ? ORDER BY created_at ASC, id ASC'
+            'SELECT rm.*, f.filename AS file_name, f.mime AS file_mime, f.original AS file_orig
+             FROM request_messages rm
+             LEFT JOIN files f ON f.id = rm.file_id AND f.deleted_at IS NULL
+             WHERE rm.request_id = ? ORDER BY rm.created_at ASC, rm.id ASC'
         );
         $st->execute([$requestId]);
         return $st->fetchAll();
@@ -985,6 +1060,48 @@ final class Repo
     public function openRequestsCount(): int
     {
         return (int) $this->pdo->query("SELECT COUNT(*) FROM requests WHERE status = 'acik'")->fetchColumn();
+    }
+
+    /**
+     * Admin: tüm talepler — tip/durum/müşteri filtreli (opus-019).
+     * $filter: ['type'=>..., 'status'=>..., 'customer_id'=>int]. Boş → hepsi. Son mesaj sayısı + tarihi dahil.
+     * @return array<int,array>
+     */
+    public function allRequests(array $filter = []): array
+    {
+        $where = [];
+        $params = [];
+        if (!empty($filter['type']) && in_array($filter['type'], self::REQUEST_TYPES, true)) {
+            $where[] = 'r.type = ?';
+            $params[] = $filter['type'];
+        }
+        if (!empty($filter['status']) && in_array($filter['status'], ['acik', 'cozuldu'], true)) {
+            $where[] = 'r.status = ?';
+            $params[] = $filter['status'];
+        }
+        if (!empty($filter['customer_id'])) {
+            $where[] = 'r.customer_id = ?';
+            $params[] = (int) $filter['customer_id'];
+        }
+        $sql = "SELECT r.*, c.name AS customer_name,
+                       (SELECT COUNT(*) FROM request_messages rm WHERE rm.request_id = r.id) AS msg_count,
+                       (SELECT MAX(rm2.created_at) FROM request_messages rm2 WHERE rm2.request_id = r.id) AS last_msg_at
+                FROM requests r JOIN customers c ON c.id = r.customer_id";
+        if ($where) {
+            $sql .= ' WHERE ' . implode(' AND ', $where);
+        }
+        $sql .= ' ORDER BY r.status ASC, r.created_at DESC, r.id DESC';
+        $st = $this->pdo->prepare($sql);
+        $st->execute($params);
+        return $st->fetchAll();
+    }
+
+    /** Admin: talebe UYSA cevabı yaz (+opsiyonel foto) → talebi 'acik' yapar. @return mesaj id */
+    public function replyRequest(int $requestId, string $body, ?int $fileId = null): int
+    {
+        $id = $this->addRequestMessage($requestId, 'uysa', $body, $fileId);
+        $this->setRequestStatus($requestId, 'acik');
+        return $id;
     }
 
     // ── Yayınlanan menü (M6, salt-gösterim) ───────────────────
@@ -2148,19 +2265,36 @@ final class Repo
      * Müşteri A, sadece-B-hedefli menüyü GÖRMEZ; all-audience menüyü görür.
      * @return array<int,array>
      */
-    public function menusForCustomer(int $customerId, ?string $today = null): array
+    public function menusForCustomer(int $customerId, ?string $minEndDate = null): array
     {
-        $today ??= date('Y-m-d');
+        // date_end >= $minEndDate → görünür. Panel için bugün (aktif+gelecek);
+        // müşteri menü sayfası bugün−1 ay geçer (opus-019: en fazla 1 ay geri).
+        $minEndDate ??= date('Y-m-d');
         $st = $this->pdo->prepare(
             "SELECT DISTINCT m.id, m.title, m.date_start, m.date_end, m.audience, m.status
              FROM menu m
              LEFT JOIN menu_target mt ON mt.menu_id = m.id AND mt.customer_id = ?
              WHERE m.status = 'published' AND m.date_end >= ?
                AND (m.audience = 'all' OR mt.customer_id IS NOT NULL)
-             ORDER BY m.date_start ASC, m.id ASC"
+             ORDER BY m.date_start DESC, m.id DESC"
         );
-        $st->execute([$customerId, $today]);
+        $st->execute([$customerId, $minEndDate]);
         return $st->fetchAll();
+    }
+
+    /** IDOR SCOPE: tek menü — SADECE bu müşteriye görünürse döner (PDF indirme için). */
+    public function menuForCustomer(int $customerId, int $menuId, ?string $minEndDate = null): ?array
+    {
+        $minEndDate ??= date('Y-m-d');
+        $st = $this->pdo->prepare(
+            "SELECT DISTINCT m.id, m.title, m.date_start, m.date_end, m.audience, m.status
+             FROM menu m
+             LEFT JOIN menu_target mt ON mt.menu_id = m.id AND mt.customer_id = ?
+             WHERE m.id = ? AND m.status = 'published' AND m.date_end >= ?
+               AND (m.audience = 'all' OR mt.customer_id IS NOT NULL)"
+        );
+        $st->execute([$customerId, $menuId, $minEndDate]);
+        return $st->fetch() ?: null;
     }
 
     // ── Malzeme talebi (opus-010) ───────────────────────────────

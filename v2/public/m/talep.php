@@ -4,6 +4,7 @@ require __DIR__ . '/../../src/bootstrap.php';
 
 use Uysa\CustomerAuth;
 use Uysa\Db;
+use Uysa\Env;
 use Uysa\Helpers;
 use Uysa\Repo;
 
@@ -12,10 +13,58 @@ $cid = (int) $cu['customer_id'];
 $pdo = Db::pdo();
 $repo = new Repo($pdo);
 
-$types = ['talep' => 'Talep', 'sikayet' => 'Şikayet', 'mesaj' => 'Mesaj'];
+// opus-019: menü + öneri türleri eklendi.
+$types = [
+    'talep'   => 'Talep',
+    'sikayet' => 'Şikayet',
+    'oneri'   => 'Öneri',
+    'menu'    => 'Menü',
+    'mesaj'   => 'Mesaj',
+];
 $flash = '';
 $flashOk = true;
 $openId = isset($_GET['r']) ? (int) $_GET['r'] : 0;
+
+/** Talep/mesaj foto eki: finans.php ile aynı whitelist deseni. Hata → $err, null döner. */
+function handleTalepUpload(array $file, Repo $repo, string $by, string &$err): ?int
+{
+    if (empty($file['name']) || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+        return null; // ek yok — sorun değil
+    }
+    if (($file['error'] ?? 1) !== UPLOAD_ERR_OK) {
+        $err = 'Fotoğraf yüklenemedi.';
+        return null;
+    }
+    $maxMb = Env::int('UPLOAD_MAX_MB', 25);
+    if ($file['size'] > $maxMb * 1024 * 1024) {
+        $err = "Dosya $maxMb MB limitini aşıyor.";
+        return null;
+    }
+    $allowedExt = ['jpg', 'jpeg', 'png', 'webp', 'pdf'];
+    $allowedMime = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+    $orig = basename((string) $file['name']);
+    $ext = strtolower(pathinfo($orig, PATHINFO_EXTENSION));
+    if (!in_array($ext, $allowedExt, true)) {
+        $err = "İzin verilmeyen uzantı: .$ext";
+        return null;
+    }
+    $finfo = new finfo(FILEINFO_MIME_TYPE);
+    $mime = (string) $finfo->file($file['tmp_name']);
+    if (!in_array($mime, $allowedMime, true)) {
+        $err = "İzin verilmeyen dosya türü: $mime";
+        return null;
+    }
+    $dir = Env::get('UPLOAD_DIR') ?: dirname(__DIR__) . '/uploads';
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0755, true);
+    }
+    $safe = date('Ymd') . '_' . bin2hex(random_bytes(8)) . '.' . $ext;
+    if (!move_uploaded_file($file['tmp_name'], $dir . '/' . $safe)) {
+        $err = 'Dosya kaydedilemedi.';
+        return null;
+    }
+    return $repo->addFile($safe, $orig, $mime, (int) $file['size'], $by, 'talep');
+}
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     if (!Helpers::csrfCheck($_POST['csrf'] ?? null)) {
@@ -23,18 +72,23 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $flashOk = false;
     } else {
         $action = (string) ($_POST['action'] ?? '');
-        if ($action === 'reply') {
+        $err = '';
+        $fileId = handleTalepUpload($_FILES['photo'] ?? [], $repo, $cu['username'], $err);
+        if ($err !== '') {
+            $flash = $err;
+            $flashOk = false;
+        } elseif ($action === 'reply') {
             $reqId = (int) ($_POST['request_id'] ?? 0);
             $req = $repo->requestForCustomer($reqId, $cid); // IDOR guard
             $msg = trim((string) ($_POST['body'] ?? ''));
             if (!$req) {
                 $flash = 'Talep bulunamadı.';
                 $flashOk = false;
-            } elseif ($msg === '') {
-                $flash = 'Mesaj boş olamaz.';
+            } elseif ($msg === '' && $fileId === null) {
+                $flash = 'Mesaj veya fotoğraf ekleyin.';
                 $flashOk = false;
             } else {
-                $repo->addRequestMessage($reqId, 'musteri', mb_substr($msg, 0, 2000));
+                $repo->addRequestMessage($reqId, 'musteri', mb_substr($msg, 0, 2000), $fileId);
                 if ($req['status'] === 'cozuldu') {
                     $repo->setRequestStatus($reqId, 'acik');
                 }
@@ -54,8 +108,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $flashOk = false;
             } else {
                 $reqId = $repo->createRequest($cid, $cu['cuid'] ?? null, $type, mb_substr($subject, 0, 200));
-                if ($msg !== '') {
-                    $repo->addRequestMessage($reqId, 'musteri', mb_substr($msg, 0, 2000));
+                if ($msg !== '' || $fileId !== null) {
+                    $repo->addRequestMessage($reqId, 'musteri', mb_substr($msg, 0, 2000), $fileId);
                 }
                 uysa_audit('musteri_talep_yeni', $cu['username'], (string) $cid, (string) $reqId, client_ip());
                 $flash = 'Talebiniz açıldı.';
@@ -104,23 +158,33 @@ require __DIR__ . '/partials/header_m.php';
             <?php endif; ?>
             <?php foreach ($messages as $m): $mine = $m['sender'] === 'musteri'; ?>
               <div class="msg <?= $mine ? 'mine' : 'theirs' ?>">
-                <p class="msg-body"><?= nl2br(Helpers::e($m['body'])) ?></p>
+                <?php if (trim((string) $m['body']) !== ''): ?><p class="msg-body"><?= nl2br(Helpers::e($m['body'])) ?></p><?php endif; ?>
+                <?php if (!empty($m['file_id'])): $isImg = str_starts_with((string) $m['file_mime'], 'image/'); ?>
+                  <a class="msg-attach" href="dosya.php?id=<?= (int) $m['file_id'] ?>" target="_blank" rel="noopener">
+                    <?php if ($isImg): ?>
+                      <img src="dosya.php?id=<?= (int) $m['file_id'] ?>" alt="Ek" style="max-width:180px;max-height:180px;border-radius:10px;display:block">
+                    <?php else: ?>
+                      <span class="badge-soft badge-blue"><i class="bi bi-paperclip"></i> <?= Helpers::e($m['file_orig'] ?: 'Ek') ?></span>
+                    <?php endif; ?>
+                  </a>
+                <?php endif; ?>
                 <span class="msg-meta"><?= $mine ? 'Siz' : 'UYSA' ?> · <?= Helpers::e(substr((string) $m['created_at'], 0, 16)) ?></span>
               </div>
             <?php endforeach; ?>
           </div>
-          <form method="post" class="mt-3">
+          <form method="post" enctype="multipart/form-data" class="mt-3">
             <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
             <input type="hidden" name="action" value="reply">
             <input type="hidden" name="request_id" value="<?= (int) $thread['id'] ?>">
-            <div class="field"><textarea class="textareax" name="body" placeholder="Mesajınız..." required></textarea></div>
+            <div class="field"><textarea class="textareax" name="body" placeholder="Mesajınız..."></textarea></div>
+            <div class="field"><label>Fotoğraf ekle (jpg/png/pdf, opsiyonel)</label><input class="inputx" type="file" name="photo" accept="image/*,.pdf"></div>
             <button class="btn-action btn-primaryx btn-full mt-2" type="submit"><i class="bi bi-send"></i> Gönder</button>
           </form>
         </div>
       <?php else: ?>
         <div class="cardx card-pad">
           <h2>Yeni talep</h2>
-          <form method="post" class="form-grid">
+          <form method="post" enctype="multipart/form-data" class="form-grid">
             <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
             <input type="hidden" name="action" value="new">
             <div class="field"><label>Tür</label>
@@ -130,6 +194,7 @@ require __DIR__ . '/partials/header_m.php';
             </div>
             <div class="field"><label>Konu</label><input class="inputx" name="subject" maxlength="200" required></div>
             <div class="field"><label>Mesaj</label><textarea class="textareax" name="body" placeholder="Detay (isteğe bağlı)"></textarea></div>
+            <div class="field"><label>Fotoğraf ekle (özellikle şikayet için, opsiyonel)</label><input class="inputx" type="file" name="photo" accept="image/*,.pdf"></div>
             <button class="btn-action btn-primaryx btn-full" type="submit"><i class="bi bi-plus-circle"></i> Talep aç</button>
           </form>
         </div>
