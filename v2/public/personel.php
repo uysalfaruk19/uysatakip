@@ -330,12 +330,14 @@ require __DIR__ . '/partials/header.php';
         <?php else: foreach ($personeller as $p): $pid = (int) $p['id']; $info = $pInfo[$pid]; $y = $info['yuklu']; $k = $info['kidem']; $at = $info['atama']; $maas = $info['maas'];
           $atamaLbl = $at['genel'] ? 'Genel (hacme oranlı)' : ($at['customer_ids'] ? count($at['customer_ids']) . ' müşteri (eşit)' : 'atanmamış');
           $paid = (bool) $maas['maas_odendi'];
-          $odemeTarihi = $maas['odeme_tarihi'] ?: date('Y-m-t', strtotime($month . '-01')); ?>
+          $odemeTarihi = $maas['odeme_tarihi'] ?: date('Y-m-t', strtotime($month . '-01'));
+          $gunKesinti = max(0.0, (float) $p['aylik_ucret'] - (float) $maas['hesaplanan_maas']);
+          $netOde = max(0.0, (float) $maas['hesaplanan_maas'] - $info['avans']); ?>
           <details class="personel-detail" style="border-bottom:1px solid var(--border);padding:8px 0">
             <summary class="customer-row" style="align-items:center;cursor:pointer;list-style:none">
               <div style="min-width:0;flex:1">
                 <div class="row-title"><span class="status-dot"></span><strong><?= Helpers::e($p['ad']) ?></strong></div>
-                <p class="row-meta"><?= $p['gorev'] ? Helpers::e($p['gorev']) . ' · ' : '' ?><?= Helpers::e(ay_label_tr($month)) ?> · <?= Helpers::money((float) $maas['calisma_gunu']) ?> gün · maaş ₺ <?= Helpers::money((float) $maas['hesaplanan_maas']) ?> · <?= $paid ? 'ödendi' : 'bekliyor' ?></p>
+                <p class="row-meta"><?= $p['gorev'] ? Helpers::e($p['gorev']) . ' · ' : '' ?><?= Helpers::e(ay_label_tr($month)) ?> · <?= Helpers::money((float) $maas['calisma_gunu']) ?> gün · <?= $paid ? 'ödendi' : 'öde ₺ ' . Helpers::money($netOde) ?></p>
               </div>
               <span class="row-meta" style="font-weight:700;color:var(--primary)">detay</span>
             </summary>
@@ -356,21 +358,35 @@ require __DIR__ . '/partials/header.php';
                 </label>
                 <button class="btn-action btn-primaryx" type="submit" style="align-self:end"><i class="bi bi-check2"></i> Kaydet</button>
               </form>
-              <p class="row-meta" style="margin-bottom:8px">Brüt aylık ₺ <?= Helpers::money((float) $p['aylik_ucret']) ?> · <?= Helpers::money((float) $maas['eksik_gun']) ?> eksik gün · <?= Helpers::e($atamaLbl) ?></p>
-              <table class="tablex" style="margin-top:6px;font-size:12px">
+              <table class="tablex" style="margin-top:6px;font-size:13px">
                 <tbody>
-                  <tr><td>Hesaplanan maaş</td><td class="num">₺ <?= Helpers::money((float) $maas['hesaplanan_maas']) ?></td></tr>
-                  <tr><td>Brüt (çalışma gününe göre)</td><td class="num">₺ <?= Helpers::money($y['brut']) ?></td></tr>
-                  <tr><td>İşveren SGK (%<?= $pct($y['sgk_orani']) ?>)</td><td class="num">+ ₺ <?= Helpers::money($y['sgk_isveren']) ?></td></tr>
-                  <tr><td>Kıdem aylık tahakkuk<?= $y['tavan_uygulandi'] ? ' (tavan)' : '' ?></td><td class="num">+ ₺ <?= Helpers::money($y['kidem_aylik']) ?></td></tr>
-                  <tr><td>Diğer maliyet</td><td class="num">+ ₺ <?= Helpers::money($y['diger']) ?></td></tr>
-                  <tr class="is-total"><td>Yüklü aylık maliyet</td><td class="num">₺ <?= Helpers::money($y['yuklu_toplam']) ?></td></tr>
-                  <tr><td>Biriken kıdem (<?= (int) $k['ay_sayisi'] ?> ay)</td><td class="num">₺ <?= Helpers::money($k['birikim']) ?></td></tr>
-                  <?php if ($info['avans'] > 0): ?>
-                  <tr><td>Bu ay verilen avans</td><td class="num" style="color:var(--red)">− ₺ <?= Helpers::money($info['avans']) ?></td></tr>
+                  <tr><td>Aylık maaş</td><td class="num">₺ <?= Helpers::money((float) $p['aylik_ucret']) ?></td></tr>
+                  <?php if ($gunKesinti > 0): ?>
+                  <tr><td>Gün kesintisi (<?= Helpers::money((float) $maas['eksik_gun']) ?> eksik gün)</td><td class="num" style="color:var(--red)">− ₺ <?= Helpers::money($gunKesinti) ?></td></tr>
                   <?php endif; ?>
+                  <?php if ($info['avans'] > 0): ?>
+                  <tr><td>Avans kesintisi</td><td class="num" style="color:var(--red)">− ₺ <?= Helpers::money($info['avans']) ?></td></tr>
+                  <?php endif; ?>
+                  <tr class="is-total"><td><?= Helpers::e(ay_label_tr($month)) ?> ödenecek</td><td class="num">₺ <?= Helpers::money($netOde) ?></td></tr>
                 </tbody>
               </table>
+              <?php if ($info['avans'] > (float) $maas['hesaplanan_maas']): ?>
+              <p class="row-meta" style="color:var(--red);margin-top:4px">Avans maaşı aştı — fark ₺ <?= Helpers::money($info['avans'] - (float) $maas['hesaplanan_maas']) ?> sonraki aya sarkar.</p>
+              <?php endif; ?>
+              <details style="margin-top:10px">
+                <summary style="cursor:pointer;list-style:none;font-weight:700;font-size:12px;color:var(--primary)"><i class="bi bi-calculator"></i> İşveren maliyeti detayı</summary>
+                <p class="row-meta" style="margin:6px 0 0"><?= Helpers::e($atamaLbl) ?></p>
+                <table class="tablex" style="margin-top:6px;font-size:12px">
+                  <tbody>
+                    <tr><td>Brüt (çalışma gününe göre)</td><td class="num">₺ <?= Helpers::money($y['brut']) ?></td></tr>
+                    <tr><td>İşveren SGK (%<?= $pct($y['sgk_orani']) ?>)</td><td class="num">+ ₺ <?= Helpers::money($y['sgk_isveren']) ?></td></tr>
+                    <tr><td>Kıdem aylık tahakkuk<?= $y['tavan_uygulandi'] ? ' (tavan)' : '' ?></td><td class="num">+ ₺ <?= Helpers::money($y['kidem_aylik']) ?></td></tr>
+                    <tr><td>Diğer maliyet</td><td class="num">+ ₺ <?= Helpers::money($y['diger']) ?></td></tr>
+                    <tr class="is-total"><td>Yüklü aylık maliyet</td><td class="num">₺ <?= Helpers::money($y['yuklu_toplam']) ?></td></tr>
+                    <tr><td>Biriken kıdem (<?= (int) $k['ay_sayisi'] ?> ay)</td><td class="num">₺ <?= Helpers::money($k['birikim']) ?></td></tr>
+                  </tbody>
+                </table>
+              </details>
               <form method="post" style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-top:10px;padding:10px;border:1px solid var(--border);border-radius:10px">
                 <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
                 <input type="hidden" name="action" value="gider">
