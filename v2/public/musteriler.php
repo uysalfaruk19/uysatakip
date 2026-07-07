@@ -90,8 +90,25 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     $tnot = trim((string) ($_POST['note'] ?? ''));
                 }
                 $cid = $repo->upsertCustomer($name, $unitPrice, $category, $id, null, null, null, $maliyet, $gider, $tnot);
+                // Reaktif ilke: karttaki fiyat da seçili aydan itibaren AY-BAZLI uygulanır.
+                // Yoksa ay kaydı olan müşteride carry-forward current default'u her zaman
+                // ezdiğinden karttan girilen fiyat hiçbir hesaba yansımaz (ölü alan tuzağı).
+                $fiyatNotu = '';
+                if ($unitPrice > 0) {
+                    $cur = $repo->priceFor($cid, $postMonth);
+                    $degisti = abs($cur['unit_price'] - $unitPrice) > 0.009
+                        || ($category === 'tasima'
+                            && (abs($cur['maliyet_birim'] - (float) $maliyet) > 0.009
+                                || abs($cur['tasima_sabit_gider'] - (float) $gider) > 0.009));
+                    if ($degisti) {
+                        $repo->setCustomerPrice($cid, $postMonth, $unitPrice, $maliyet, $gider);
+                        uysa_audit('musteri_aylik_fiyat', $u['username'], (string) $cid,
+                            json_encode(['ay' => $postMonth, 'fiyat' => $unitPrice, 'kaynak' => 'kart']), client_ip());
+                        $fiyatNotu = ' · ' . ay_label_tr($postMonth) . ' fiyatı güncellendi (bu aydan itibaren geçerli)';
+                    }
+                }
                 uysa_audit('musteri_kaydet', $u['username'], (string) $cid, json_encode(['cat' => $category]), client_ip());
-                $flash = 'Müşteri kaydedildi · ' . $name;
+                $flash = 'Müşteri kaydedildi · ' . $name . $fiyatNotu;
                 $month = $postMonth;
             } catch (\Throwable $e) {
                 if ($pdo->inTransaction()) {
@@ -108,19 +125,20 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 $uretim = $repo->listCustomersByCategory('uretim');
 $tasima = $repo->listCustomersByCategory('tasima');
 
-// Düzenlenen müşteri (form ön-dolum) — taşıma kart değerleri customers'ta (standing)
+// Düzenlenen müşteri (form ön-dolum)
 $edit = $editId ? $repo->customer($editId) : null;
 $fName = $edit['name'] ?? '';
 $fCat = $edit['category'] ?? 'uretim';
-$fPrice = $edit ? (float) $edit['unit_price'] : 0.0;                 // satış
-$fAlis = $edit ? (float) ($edit['maliyet_birim'] ?? 0) : 0.0;        // alış
-$fGider = $edit ? (float) ($edit['tasima_sabit_gider'] ?? 0) : 0.0;  // sabit gider
+// opus-017: seçilen ayın ay-bazlı fiyatı (o ay > carry-forward > current default).
+// Kart da bu değeri gösterir — ekranda görünen fiyat = hesaplarda geçerli fiyat.
+$ayFiyat = $edit ? $repo->priceFor($editId, $month) : null;
+$fPrice = $ayFiyat ? (float) $ayFiyat['unit_price'] : 0.0;           // satış
+$fAlis = $ayFiyat ? (float) $ayFiyat['maliyet_birim'] : 0.0;         // alış
+$fGider = $ayFiyat ? (float) $ayFiyat['tasima_sabit_gider'] : 0.0;   // sabit gider
 $fNote = $edit['tasima_not'] ?? '';
 $fBirimKar = $fPrice - $fAlis;
 // Bu ayki adet + net kâr (production'dan, bilgi amaçlı)
 $fProfit = ($edit && $edit['category'] === 'tasima') ? $repo->tasimaProfit($editId, $month) : null;
-// opus-017: seçilen ayın ay-bazlı fiyatı (o ay > carry-forward > current default)
-$ayFiyat = $edit ? $repo->priceFor($editId, $month) : null;
 
 $eyebrow = 'Müşteri yönetimi';
 $pageTitle = 'Müşteriler';
@@ -154,6 +172,7 @@ require __DIR__ . '/partials/header.php';
 
           <div class="field"><label id="lbl-price"><span id="lbl-price-txt"><?= $fCat === 'tasima' ? 'Birim fiyat — SATIŞ (₺ / adet)' : 'Birim fiyat (₺ / kişi)' ?></span></label>
             <input class="inputx" name="unit_price" id="f-satis" inputmode="decimal" value="<?= $fPrice > 0 ? Helpers::money($fPrice) : '' ?>" placeholder="0,00" oninput="calcKar()">
+            <p class="text-muted" style="font-size:11px;margin:4px 0 0"><strong><?= Helpers::e(ay_label_tr($month)) ?></strong> fiyatı — değiştirirsen bu aydan itibaren geçerli olur; geçmiş ayları aşağıdaki <em>Aylık fiyat</em> bölümünden düzelt.</p>
           </div>
 
           <div id="tasima-fields" style="<?= $fCat === 'tasima' ? '' : 'display:none' ?>; display:grid; gap:11px;">
@@ -237,7 +256,7 @@ require __DIR__ . '/partials/header.php';
               <div class="row-title"><span class="status-dot"></span><strong><?= Helpers::e($c['name']) ?></strong>
                 <?php if (($c['parasut_bakiye'] ?? null) !== null): ?><span class="badge-soft <?= (float) $c['parasut_bakiye'] < 0 ? 'badge-neg' : 'badge-ok' ?>" title="Paraşüt muhasebe bakiyesi">Paraşüt ₺ <?= Helpers::money((float) $c['parasut_bakiye']) ?></span><?php endif; ?>
               </div>
-              <p class="row-meta">₺ <?= Helpers::money((float) $c['unit_price']) ?> kişi başı</p>
+              <p class="row-meta">₺ <?= Helpers::money($repo->priceFor((int) $c['id'], $month)['unit_price']) ?> kişi başı · <?= Helpers::e(ay_label_tr($month)) ?></p>
             </div>
             <div class="actions-row" style="justify-content:flex-end">
               <a class="icon-btn" href="musteriler.php?edit=<?= (int) $c['id'] ?>" aria-label="Düzenle"><i class="bi bi-pencil"></i></a>
