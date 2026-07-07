@@ -54,6 +54,24 @@ final class Auth
         return $user;
     }
 
+    /** Kalıcı giriş (remember token) doğrulanınca şifresiz oturum aç — login() ile aynı oturum alanları. */
+    public function loginById(int $uid): ?array
+    {
+        $st = $this->pdo->prepare('SELECT * FROM users WHERE id = ? AND is_active = 1');
+        $st->execute([$uid]);
+        $user = $st->fetch();
+        if (!$user) {
+            return null;
+        }
+        $this->pdo->prepare('UPDATE users SET last_login = ' . $this->now() . ' WHERE id = ?')
+            ->execute([$user['id']]);
+        $_SESSION['uid'] = (int) $user['id'];
+        $_SESSION['username'] = $user['username'];
+        $_SESSION['role'] = $user['role'];
+        $_SESSION['display_name'] = $user['display_name'];
+        return $user;
+    }
+
     private function now(): string
     {
         return $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite'
@@ -78,6 +96,17 @@ final class Auth
         self::startSession();
         $u = self::user();
         if (!$u) {
+            try {
+                $pdo = Db::pdo();
+                $uid = Remember::forAdmin($pdo)->consume();
+                if ($uid !== null && (new self($pdo))->loginById($uid)) {
+                    $u = self::user();
+                }
+            } catch (\Throwable) {
+                // DB erişilemezse sessizce login'e düş
+            }
+        }
+        if (!$u) {
             header('Location: login.php');
             exit;
         }
@@ -87,6 +116,10 @@ final class Auth
     public static function logout(): void
     {
         self::startSession();
+        try {
+            Remember::forAdmin(Db::pdo())->clear();
+        } catch (\Throwable) {
+        }
         $_SESSION = [];
         if (ini_get('session.use_cookies')) {
             $p = session_get_cookie_params();

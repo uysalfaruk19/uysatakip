@@ -6,8 +6,20 @@ use Uysa\CustomerAuth;
 use Uysa\Db;
 use Uysa\Helpers;
 use Uysa\RateLimiter;
+use Uysa\Remember;
 
 CustomerAuth::startSession();
+if (!CustomerAuth::customer()) {
+    // Kalıcı giriş (app): remember cookie geçerliyse şifresiz devam
+    try {
+        $pdoR = Db::pdo();
+        $cuidR = Remember::forCustomer($pdoR)->consume();
+        if ($cuidR !== null) {
+            (new CustomerAuth($pdoR))->loginById($cuidR);
+        }
+    } catch (\Throwable) {
+    }
+}
 if (CustomerAuth::customer()) {
     header('Location: panel.php');
     exit;
@@ -31,6 +43,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $cu = $auth->login($username, (string) ($_POST['password'] ?? ''));
             if ($cu) {
                 $rl->reset($key);
+                Remember::forCustomer($pdo)->issue((int) $cu['id']);
                 uysa_audit('musteri_login', $username, (string) $cu['customer_id'], null, $ip);
                 header('Location: panel.php');
                 exit;

@@ -62,6 +62,30 @@ final class CustomerAuth
         return $cu;
     }
 
+    /** Kalıcı giriş (remember token) doğrulanınca şifresiz oturum aç — login() ile aynı oturum alanları. */
+    public function loginById(int $cuid): ?array
+    {
+        $st = $this->pdo->prepare(
+            'SELECT cu.*, c.name AS customer_name, c.is_active AS customer_active
+             FROM customer_users cu
+             JOIN customers c ON c.id = cu.customer_id
+             WHERE cu.id = ? AND cu.is_active = 1'
+        );
+        $st->execute([$cuid]);
+        $cu = $st->fetch();
+        if (!$cu || (int) $cu['customer_active'] !== 1) {
+            return null;
+        }
+        $this->pdo->prepare('UPDATE customer_users SET last_login = ' . $this->now() . ' WHERE id = ?')
+            ->execute([$cu['id']]);
+        $_SESSION['cuid'] = (int) $cu['id'];
+        $_SESSION['customer_id'] = (int) $cu['customer_id'];
+        $_SESSION['cu_username'] = $cu['username'];
+        $_SESSION['cu_display'] = $cu['display_name'];
+        $_SESSION['cu_customer_name'] = $cu['customer_name'];
+        return $cu;
+    }
+
     private function now(): string
     {
         return $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite'
@@ -83,11 +107,22 @@ final class CustomerAuth
         ];
     }
 
-    /** Sayfa guard: giriş yoksa müşteri login'e yönlendir. Döndürdüğü bağlamda customer_id var. */
+    /** Sayfa guard: giriş yoksa önce kalıcı giriş (remember) dene, o da yoksa müşteri login'e yönlendir. */
     public static function requireCustomer(): array
     {
         self::startSession();
         $c = self::customer();
+        if (!$c) {
+            try {
+                $pdo = Db::pdo();
+                $cuid = Remember::forCustomer($pdo)->consume();
+                if ($cuid !== null && (new self($pdo))->loginById($cuid)) {
+                    $c = self::customer();
+                }
+            } catch (\Throwable) {
+                // DB erişilemezse sessizce login'e düş
+            }
+        }
         if (!$c) {
             header('Location: login.php');
             exit;
@@ -98,6 +133,10 @@ final class CustomerAuth
     public static function logout(): void
     {
         self::startSession();
+        try {
+            Remember::forCustomer(Db::pdo())->clear();
+        } catch (\Throwable) {
+        }
         $_SESSION = [];
         if (ini_get('session.use_cookies')) {
             $p = session_get_cookie_params();

@@ -5,7 +5,8 @@ namespace Uysa;
 
 /**
  * APNs HTTP/2 push gönderici — FCM'siz, doğrudan Apple (token-based auth, .p8 anahtar).
- * Env: APNS_TEAM_ID, APNS_KEY_ID, APNS_KEY_FILE (.p8 yolu), APNS_TOPIC (bundle id), APNS_ENV (production|sandbox).
+ * Env: APNS_TEAM_ID, APNS_KEY_ID, APNS_KEY_FILE (.p8 yolu) VEYA APNS_KEY_B64 (PEM'in base64'ü —
+ * container'a dosya sokmadan .env ile vermek için), APNS_TOPIC (bundle id), APNS_ENV (production|sandbox).
  * JWT ~50 dk cache'lenir (Apple kuralı: 20-60 dk arası yenile).
  */
 final class Apns
@@ -13,6 +14,7 @@ final class Apns
     private string $teamId;
     private string $keyId;
     private string $keyFile;
+    private string $keyPem;
     private string $topic;
     private string $host;
 
@@ -21,6 +23,7 @@ final class Apns
         $this->teamId  = (string) Env::get('APNS_TEAM_ID', '');
         $this->keyId   = (string) Env::get('APNS_KEY_ID', '');
         $this->keyFile = (string) Env::get('APNS_KEY_FILE', '');
+        $this->keyPem  = trim((string) base64_decode((string) Env::get('APNS_KEY_B64', ''), true) ?: '');
         $this->topic   = (string) Env::get('APNS_TOPIC', 'com.uysa.kokpit');
         $this->host    = Env::get('APNS_ENV', 'production') === 'sandbox'
             ? 'https://api.sandbox.push.apple.com'
@@ -29,7 +32,8 @@ final class Apns
 
     public function configured(): bool
     {
-        return $this->teamId !== '' && $this->keyId !== '' && $this->keyFile !== '' && is_readable($this->keyFile);
+        return $this->teamId !== '' && $this->keyId !== ''
+            && ($this->keyPem !== '' || ($this->keyFile !== '' && is_readable($this->keyFile)));
     }
 
     /**
@@ -89,9 +93,11 @@ final class Apns
         $claims = $b64(json_encode(['iss' => $this->teamId, 'iat' => time()]));
         $input = $header . '.' . $claims;
 
-        $key = openssl_pkey_get_private('file://' . $this->keyFile);
+        $key = $this->keyPem !== ''
+            ? openssl_pkey_get_private($this->keyPem)
+            : openssl_pkey_get_private('file://' . $this->keyFile);
         if ($key === false) {
-            throw new \RuntimeException('APNs .p8 anahtarı okunamadı: ' . $this->keyFile);
+            throw new \RuntimeException('APNs .p8 anahtarı okunamadı');
         }
         if (!openssl_sign($input, $der, $key, OPENSSL_ALGO_SHA256)) {
             throw new \RuntimeException('APNs JWT imzalanamadı');

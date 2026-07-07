@@ -6,8 +6,20 @@ use Uysa\Auth;
 use Uysa\Db;
 use Uysa\Helpers;
 use Uysa\RateLimiter;
+use Uysa\Remember;
 
 Auth::startSession();
+if (!Auth::user()) {
+    // Kalıcı giriş (app): remember cookie geçerliyse şifresiz devam
+    try {
+        $pdoR = Db::pdo();
+        $uidR = Remember::forAdmin($pdoR)->consume();
+        if ($uidR !== null) {
+            (new Auth($pdoR))->loginById($uidR);
+        }
+    } catch (\Throwable) {
+    }
+}
 if (Auth::user()) {
     header('Location: bugun.php');
     exit;
@@ -31,6 +43,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $user = $auth->login($username, (string) ($_POST['password'] ?? ''));
             if ($user) {
                 $rl->reset($key);
+                Remember::forAdmin($pdo)->issue((int) $user['id']);
                 uysa_audit('login', $username, null, null, $ip);
                 header('Location: bugun.php');
                 exit;
