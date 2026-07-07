@@ -1,0 +1,18 @@
+services:
+  app-v2:
+    build:
+      context: .
+      dockerfile: Dockerfile.v2
+    image: uysatakip-v2:latest
+    container_name: uysatakip-v2
+    restart: unless-stopped
+    env_file: .env.v2
+    depends_on: []
+    ports:
+      - "127.0.0.1:8093:8080"
+    networks: [uysanet]
+
+networks:
+  uysanet:
+    external: true
+    name: uysatakip_uysanet
