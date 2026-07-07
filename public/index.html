@@ -3,6 +3,7 @@
 <head>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23005fcc'/><text x='16' y='23' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='18' fill='white'>U</text></svg>">
   <meta charset="utf-8"/>
+  <meta name="robots" content="noindex,nofollow"/>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -831,7 +832,7 @@
 
   const CFG = {
     apiUrl   : '/uysa_api.php',
-    token    : atob('VXlzYUVSUDIwMjZ4UHJvZEtleTNmN2E5YzFi'),
+    token    : '',
     syncDelay: 1500,
     syncInt  : 5 * 60 * 1000,
     bkpInt   : 30 * 60 * 1000,
@@ -868,15 +869,25 @@
   window.addEventListener('offline', () => { _isOnline = false; });
 
   // ── API yardımcısı ──────────────────────────────────────────
+  function _accessToken() {
+    try { return sessionStorage.getItem('uysa_access_token') || ''; }
+    catch(e) { return ''; }
+  }
+
   async function api(action, body = {}) {
     if (!_isOnline) return { ok: false, error: 'offline' };
+    const publicActions = new Set(['ping', 'health', 'getToken', 'userAuth', 'fileDownload']);
+    const accessToken = _accessToken();
+    if (!accessToken && !publicActions.has(action)) {
+      return { ok: false, error: 'auth_required' };
+    }
     try {
+      const headers = { 'Content-Type' : 'application/json' };
+      if (accessToken) headers.Authorization = 'Bearer ' + accessToken;
+      if (CFG.token) headers['X-UYSA-Token'] = CFG.token;
       const res = await fetch(`${CFG.apiUrl}?action=${action}`, {
         method : 'POST',
-        headers: {
-          'Content-Type' : 'application/json',
-          'X-UYSA-Token' : CFG.token,
-        },
+        headers,
         body: JSON.stringify(body),
       });
       return await res.json();
@@ -904,6 +915,7 @@
   // ── Exponential backoff retry ────────────────────────────────
   const _retryState = { count: 0, timer: null };
   function _scheduleRetry(items) {
+    if (!_accessToken()) return;
     const delays = [5000, 15000, 60000, 300000];
     const delay = delays[Math.min(_retryState.count, delays.length - 1)];
     _retryState.count++;
@@ -927,6 +939,7 @@
 
   function flushQueue() {
     if (!Object.keys(_queue).length) return;
+    if (!_accessToken()) return;
     const items = Object.assign({}, _queue);
     // ATOMIC: kuyrugu temizleme, önce gönder
     api('setBulk', { items }).then(r => {
@@ -945,6 +958,7 @@
   }
 
   function queueWrite(key, value) {
+    if (!_accessToken()) return;
     _queue[key] = value;
     clearTimeout(_timer);
     _timer = setTimeout(flushQueue, CFG.syncDelay);
@@ -968,7 +982,7 @@
   localStorage.removeItem = function (key) {
     _orig.removeItem(key);
     // Auth/kullanıcı anahtarlarını sunucudan SILME — güvenlik
-    if (key.startsWith(CFG.prefix) && !/^uysa_(users_|migrated_|session|audit_logs)/.test(key)) api('delete', { key });
+    if (_accessToken() && key.startsWith(CFG.prefix) && !/^uysa_(users_|migrated_|session|audit_logs)/.test(key)) api('delete', { key });
   };
 
   // ── Sayfa açılışında sunucudan yükle ───────────────────────
@@ -979,10 +993,11 @@
     try {
       // Sunucudan tüm verileri çek
       const CFG_URL = '/uysa_api.php';
-      const CFG_TK  = atob('VXlzYUVSUDIwMjZ4UHJvZEtleTNmN2E5YzFi');
+      const accessToken = _accessToken();
+      if (!accessToken) throw new Error('Oturum gerekli');
       const resp = await fetch(CFG_URL + '?action=getAll', {
         method: 'POST',
-        headers: {'Content-Type':'application/json','X-UYSA-Token': CFG_TK},
+        headers: {'Content-Type':'application/json','Authorization':'Bearer ' + accessToken},
         body: JSON.stringify({})
       });
       const result = await resp.json();
@@ -1012,6 +1027,7 @@
 
     const result = await api('getAll');
     if (!result.ok) {
+      if (result.error === 'auth_required') return;
       toast('⚠️ Sunucu bağlanamadı — yerel veri aktif', 5000);
       return;
     }
@@ -1186,6 +1202,7 @@
   // Fix3: _uysaFullSync — AUTH anahtarları sunucuya GİTMEZ
   const FULL_SYNC_SKIP = /^uysa_(users_|migrated_|session|audit_logs)/;
   window._uysaFullSync = function () {
+    if (!_accessToken()) return;
     const items = {};
     let skipped = 0;
     for (let i = 0; i < localStorage.length; i++) {
@@ -1847,7 +1864,7 @@
     <div class="login-error" id="loginError">Kullanıcı adı veya şifre hatalı!</div>
     <div class="login-field">
       <label>Kullanıcı Adı</label>
-      <input type="text" id="loginUser" placeholder="Kullanıcı adınız" autocomplete="username" value="uysa"
+      <input type="text" id="loginUser" placeholder="Kullanıcı adınız" autocomplete="username"
         onkeydown="if(event.key==='Enter') document.getElementById('loginPass').focus()"/>
     </div>
     <div class="login-field">
@@ -2087,6 +2104,7 @@
             <span style="display:flex;gap:8px;align-items:center;margin-left:auto;font-weight:400;flex-wrap:wrap">
               <select id="hag-musteri" style="width:auto;padding:5px 8px;font-size:12px" onchange="renderHomeAylikGrid()"><option value="">👥 Tüm Müşteriler</option></select>
               <input type="month" id="hag-ay" style="width:auto;padding:5px 8px;font-size:12px" onchange="renderHomeAylikGrid()"/>
+              <button class="btn" id="syncPullBtn" onclick="_uysaForcePull()" title="Bottan veya başka cihazdan gelen verileri sunucudan çek (sayfa yenilenir)" style="padding:4px 10px !important;font-size:11px !important;background:#dbeafe;border-color:#93c5fd">🔄 Sunucudan Çek</button>
               <button class="btn ghost" onclick="hagExcel()" style="padding:4px 10px !important;font-size:11px !important">📥 Excel (CSV)</button>
               <button class="btn ghost" onclick="hagYazdir()" style="padding:4px 10px !important;font-size:11px !important">🖨️ Yazdır / Mutabakat</button>
             </span>
@@ -8811,32 +8829,7 @@ function _uysaHash(str) {
 }
 
 // ── Sabit kullanıcılar (ilk kurulum) ─────────────────────
-const UYSA_DEFAULT_USERS = [
-  {
-    id: 1,
-    username: 'OFU',
-    phone: '05321608119',
-    passwordHash: 'uysa_b9394741_OTExODA2MTIzNTA',
-    role: 'superadmin',
-    displayName: 'OFU',
-    active: true,
-    createdAt: '2025-03-01',
-    createdBy: 'system',
-    permissions: ['all']
-  },
-  {
-    id: 2,
-    username: 'Azim',
-    phone: '',
-    passwordHash: 'uysa_ee9ee51b_ITQyMDJtaXpB',
-    role: 'user',
-    displayName: 'Azim',
-    active: true,
-    createdAt: '2025-03-01',
-    createdBy: 'OFU',
-    permissions: ['read', 'write']
-  }
-];
+const UYSA_DEFAULT_USERS = [];
 
 // ── Kullanıcı listesi (localStorage) ─────────────────────
 function _getUsers() {
@@ -8867,8 +8860,7 @@ function _getUsers() {
     }
   } catch(e) {}
   // Varsayılan kullanıcıları yaz
-  try { localStorage.setItem(USER_KEY, JSON.stringify(UYSA_DEFAULT_USERS)); } catch(e){}
-  return UYSA_DEFAULT_USERS;
+  return [];
 }
 function _saveUsers(users) {
   localStorage.setItem('uysa_users_v6', JSON.stringify(users));
@@ -8897,41 +8889,26 @@ function uysaDoLogin() {
   // ── ACIL BYPASS: Sadece OFU (superadmin) için sabit geçiş ──────────
   // Azim ve diğer kullanıcılar localStorage hash sistemi ile girer
   // (v_bypass_2026)
-  const CREDS = [
-    { user: 'OFU',  pass: '05321608119', data: UYSA_DEFAULT_USERS[0] },
-  ];
   let matchedUser = null;
   const uLow = u.toLowerCase();
-  for (const c of CREDS) {
-    if (c.user.toLowerCase() === uLow && c.pass === p && c.data && c.data.active) {
-      matchedUser = c.data;
-      break;
-    }
-  }
 
   // ── Hash tabanlı kontrol (yedek yol) ─────────────────────────────
   if (!matchedUser) {
     const computedHash = _uysaHash(p);
-    matchedUser = UYSA_DEFAULT_USERS.find(
-      x => x.username.toLowerCase() === uLow && x.active && x.passwordHash === computedHash
-    );
-    if (!matchedUser) {
-      try {
-        const stored = _getUsers();
-        matchedUser = stored.find(
-          x => x.username.toLowerCase() === uLow && x.active && x.passwordHash === computedHash
-        );
-      } catch(e) {}
-    }
+    matchedUser = null;
     // Fix2: JS hash eşleşmediyse sunucu bcrypt ile dene (userAuth API)
     if (!matchedUser) {
       // Sync userAuth — await kullanamayız, Promise zinciri kuruyoruz
-      fetch('/uysa_api.php?action=userAuth', {
+      fetch('/uysa_api.php?action=getToken', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-UYSA-Token': atob('VXlzYUVSUDIwMjZ4UHJvZEtleTNmN2E5YzFi') },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: u, password: p })
       }).then(r => r.json()).then(res => {
         if (res && res.ok && res.user) {
+          try {
+            if (res.access_token) sessionStorage.setItem('uysa_access_token', res.access_token);
+            if (res.refresh_token) sessionStorage.setItem('uysa_refresh_token', res.refresh_token);
+          } catch(e) {}
           // Sunucu doğruladı → kullanıcıyı localStorage'a güncelle (hash ile)
           const su = res.user;
           try {
@@ -9221,7 +9198,7 @@ function toggleUserActive(userId) {
   const u = users[idx];
   fetch('/uysa_api.php?action=userSave', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-UYSA-Token': 'UysaERP2026xProdKey3f7a9c1b' },
+    headers: { 'Content-Type': 'application/json', 'X-UYSA-Token': '' },
     body: JSON.stringify({ id: typeof u.id==='number'&&u.id<1e10?u.id:0,
       username: u.username, phone: u.phone||'', display_name: u.displayName,
       role: u.role, active: u.active?1:0, created_by: sess?.username||'admin' })
@@ -9243,7 +9220,7 @@ function editUser(userId) {
     // Fix4: MySQL'e de yeni şifre gönder (PHP bcrypt ile saklar)
     fetch('/uysa_api.php?action=userSave', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-UYSA-Token': 'UysaERP2026xProdKey3f7a9c1b' },
+      headers: { 'Content-Type': 'application/json', 'X-UYSA-Token': '' },
       body: JSON.stringify({ id: typeof u.id==='number'&&u.id<1e10?u.id:0,
         username: u.username, password: newPass.trim(),
         phone: u.phone||'', display_name: u.displayName,
@@ -9308,7 +9285,7 @@ function _getAuditLogs() {
 
 function _sendAuditToServer(log) {
   // Fix6: window.UYSA_API_CFG üzerinden doğru token al
-  const CFG_obj = window.UYSA_API_CFG || { apiUrl: '/uysa_api.php', token: 'UysaERP2026xProdKey3f7a9c1b' };
+  const CFG_obj = window.UYSA_API_CFG || { apiUrl: '/uysa_api.php', token: '' };
   if (!CFG_obj.apiUrl) return;
   fetch(CFG_obj.apiUrl + '?action=auditLog', {
     method: 'POST',
@@ -11981,10 +11958,7 @@ if (typeof window.UYSA_JS_V61_LOADED === 'undefined') {
 // ─────────────────────────────────────────
 // A. GİRİŞ SİSTEMİ & KULLANICI YÖNETİMİ
 // ─────────────────────────────────────────
-const USERS = {
-  'Azim': { hash: btoa('Azim2024!'), role: 'editor', display: 'Azim' },
-  'OFU':  { hash: btoa('05321608119'), role: 'admin', display: 'OFU Admin' }
-};
+const USERS = {};
 let currentUser = null;
 let currentRole  = null;
 
@@ -19918,7 +19892,7 @@ window.renderAnasayfa = function(){
 // ════════════════════════════════════════════════════════════
 (function() {
   'use strict';
-  const DAPI_TOKEN = 'UysaERP2026xProdKey3f7a9c1b';
+  const DAPI_TOKEN = '';
   const DAPI_URL   = '/uysa_api.php';
   const _log = [];
   const MAX_LOG = 50;
@@ -20302,10 +20276,13 @@ window.renderAnasayfa = function(){
     if (typeof url === 'string' && url.includes('uysa_api.php')) {
       opts = opts || {};
       opts.headers = opts.headers || {};
+      const accessToken = sessionStorage.getItem('uysa_access_token') || '';
       if (opts.headers instanceof Headers) {
         opts.headers.set('X-UYSA-CSRF', uysaGetCSRFToken());
+        if (accessToken) opts.headers.set('Authorization', 'Bearer ' + accessToken);
       } else {
         opts.headers['X-UYSA-CSRF'] = uysaGetCSRFToken();
+        if (accessToken) opts.headers['Authorization'] = 'Bearer ' + accessToken;
       }
     }
     return _origFetch.call(this, url, opts);
@@ -21515,13 +21492,14 @@ window.renderAnasayfa = function(){
 'use strict';
 
 const BRIDGE_URL = 'https://srv1516979.hstgr.cloud/ai-bridge';
-const BRIDGE_SECRET = 'c11a3f1069ef86290a14d6213410c58084c2e164af5ba684b8f45926d49e9dad';
+const BRIDGE_SECRET = '';
 const POLL_INTERVAL = 5000;
 const SESSION_KEY = 'uysa_ai_bridge_session';
 
 let _sid = null, _poll = null, _authed = false, _sending = false;
 
 async function api(path, method, body) {
+  if (!BRIDGE_SECRET) return { error: 'AI bridge server-side proxy bekliyor' };
   const o = { method: method||'GET', headers:{'Content-Type':'application/json','X-Bridge-Secret':BRIDGE_SECRET} };
   if (body) o.body = JSON.stringify(body);
   try { const r = await fetch(BRIDGE_URL+path, o); return await r.json(); }
@@ -21532,7 +21510,7 @@ function erpOk() { try { return !!JSON.parse(sessionStorage.getItem('uysa_sessio
 
 function fabCheck() {
   const f = document.getElementById('uysa-ai-fab');
-  if (f) f.style.display = erpOk() ? 'flex' : 'none';
+  if (f) f.style.display = (BRIDGE_SECRET && erpOk()) ? 'flex' : 'none';
 }
 setInterval(fabCheck, 2000);
 document.readyState==='loading' ? document.addEventListener('DOMContentLoaded',fabCheck) : fabCheck();

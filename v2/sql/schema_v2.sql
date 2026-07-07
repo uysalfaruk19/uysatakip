@@ -1,0 +1,538 @@
+-- ═══════════════════════════════════════════════════════════════
+-- UYSA Kokpit (ERP v2) — İlişkisel Şema  (Faz 1, M6 tabloları dahil)
+-- MySQL 8 / MariaDB 10.4+ · utf8mb4 · DECIMAL(12,2) · prepared-statement uyumlu
+-- İş emri: opus-004 · Mimari: vault/projeler/uysa-erp-v2/mimari.md (rev-2)
+--
+-- Not: v1 (uysa_storage key-value) tablolarına DOKUNULMAZ; readonly arşiv.
+-- Bu şema aynı veritabanında (uysa_db) yeni tablolar olarak yaşar.
+-- ═══════════════════════════════════════════════════════════════
+
+SET NAMES utf8mb4;
+SET FOREIGN_KEY_CHECKS = 0;
+
+-- ── Kullanıcılar (iç: UYSA personeli) — v1 deseni devralınır ───
+CREATE TABLE IF NOT EXISTS `users` (
+  `id`           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `username`     VARCHAR(50)  NOT NULL,
+  `password`     VARCHAR(255) NOT NULL COMMENT 'bcrypt (cost=12)',
+  `role`         ENUM('superadmin','editor','user','viewer') NOT NULL DEFAULT 'user',
+  `display_name` VARCHAR(100)          DEFAULT NULL,
+  `last_login`   DATETIME              DEFAULT NULL,
+  `is_active`    TINYINT(1)   NOT NULL DEFAULT 1,
+  `created_at`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_username` (`username`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── Müşteriler (catering firmaları) ───────────────────────────
+CREATE TABLE IF NOT EXISTS `customers` (
+  `id`            INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `name`          VARCHAR(150) NOT NULL,
+  `unit_price`    DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'kişi başı TL',
+  `category`      ENUM('uretim','tasima') NOT NULL DEFAULT 'uretim' COMMENT 'üretim (yemek) / taşıma müşterisi',
+  `contact`       VARCHAR(255)          DEFAULT NULL,
+  `phone`         VARCHAR(40)           DEFAULT NULL,
+  `contract_note` VARCHAR(500)          DEFAULT NULL,
+  `maliyet_birim`      DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'taşıma: alış birim fiyatı TL (opus-013)',
+  `tasima_sabit_gider` DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'taşıma: aylık sabit gider TL (opsiyonel)',
+  `tasima_not`         VARCHAR(500)          DEFAULT NULL COMMENT 'taşıma: not (opsiyonel)',
+  `parasut_id`         VARCHAR(40)           DEFAULT NULL COMMENT 'Paraşüt contact id (opus-012, eşleşince yazılır)',
+  `parasut_bakiye`     DECIMAL(14,2)         DEFAULT NULL COMMENT 'Paraşüt güncel cari bakiye (SALT-OKUMA muhasebe)',
+  `parasut_sync_at`    DATETIME              DEFAULT NULL COMMENT 'son Paraşüt senkron zamanı',
+  `is_active`     TINYINT(1)   NOT NULL DEFAULT 1,
+  `created_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_customer_name` (`name`),
+  KEY `idx_active` (`is_active`),
+  KEY `idx_parasut_id` (`parasut_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── Müşteri AY-BAZLI fiyat (opus-017) ─────────────────────────
+-- Bir ayın fiyatını değiştirince o ay her yerde güncellenir; tarihsel doğruluk korunur.
+-- priceFor(cid, ay) = o ay > carry-forward (önceki ay) > customers current default.
+CREATE TABLE IF NOT EXISTS `customer_price` (
+  `id`                 INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `customer_id`        INT UNSIGNED NOT NULL,
+  `ay`                 CHAR(7)      NOT NULL COMMENT 'YYYY-MM',
+  `unit_price`         DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'üretim: kişi başı; taşıma: satış birim',
+  `maliyet_birim`      DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'taşıma: alış birim (üretimde 0)',
+  `tasima_sabit_gider` DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'taşıma: aylık sabit gider (üretimde 0)',
+  `created_at`         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_customer_price` (`customer_id`,`ay`),
+  KEY `idx_cp_cust_ay` (`customer_id`,`ay`),
+  CONSTRAINT `fk_cp_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── Taşıma müşterisi aylık karlılık — ATIL (opus-013'te terk edildi) ──────────
+-- ARTIK KULLANILMIYOR: taşıma kartı customers'ta (unit_price/maliyet_birim/
+-- tasima_sabit_gider/tasima_not), adet = production.persons toplamı.
+-- Tablo DÜŞÜRÜLMEDİ (veri kaybı riski) ama kod ondan okumaz/yazmaz.
+CREATE TABLE IF NOT EXISTS `tasima_aylik` (
+  `id`           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `customer_id`  INT UNSIGNED NOT NULL,
+  `ay`           CHAR(7)      NOT NULL COMMENT 'YYYY-MM',
+  `adet`         DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'o ay satılan yemek adedi',
+  `birim_alis`   DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'adet başı alış/tedarik TL',
+  `birim_satis`  DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'adet başı satış TL',
+  `sabit_gider`  DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'opsiyonel aylık sabit gider TL',
+  `note`         VARCHAR(500)          DEFAULT NULL,
+  `created_at`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_tasima_ay` (`customer_id`,`ay`),
+  CONSTRAINT `fk_tasima_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── Müşteri uygulaması kullanıcıları (M6, dış) — F1'de sadece şema ─
+CREATE TABLE IF NOT EXISTS `customer_users` (
+  `id`               INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `customer_id`      INT UNSIGNED NOT NULL,
+  `username`         VARCHAR(60)  NOT NULL,
+  `password_bcrypt`  VARCHAR(255) NOT NULL,
+  `display_name`     VARCHAR(100)          DEFAULT NULL,
+  `phone`            VARCHAR(40)           DEFAULT NULL,
+  `role`             ENUM('owner','staff') NOT NULL DEFAULT 'owner',
+  `is_active`        TINYINT(1)   NOT NULL DEFAULT 1,
+  `last_login`       DATETIME              DEFAULT NULL,
+  `created_at`       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_cu_username` (`username`),
+  KEY `idx_cu_customer` (`customer_id`),
+  CONSTRAINT `fk_cu_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── Siparişler (M6 onay kuyruğu kaynağı) — F1'de bot/elle giriş de buradan akabilir ─
+CREATE TABLE IF NOT EXISTS `orders` (
+  `id`          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `customer_id` INT UNSIGNED NOT NULL,
+  `order_date`  DATE         NOT NULL,
+  `meal`        ENUM('sabah','ogle','aksam','gece','kumanya') NOT NULL DEFAULT 'ogle',
+  `persons`     INT UNSIGNED NOT NULL DEFAULT 0,
+  `menu_type`   VARCHAR(40)           DEFAULT NULL,
+  `status`      ENUM('taslak','gonderildi','onaylandi','reddedildi') NOT NULL DEFAULT 'gonderildi',
+  `entered_by`  ENUM('musteri','uysa','bot') NOT NULL DEFAULT 'uysa',
+  `note`        VARCHAR(500)          DEFAULT NULL,
+  `created_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_order` (`customer_id`,`order_date`,`meal`),
+  CONSTRAINT `fk_order_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── Üretim (tek gerçek kaynak: fatura/rapor buradan) ──────────
+CREATE TABLE IF NOT EXISTS `production` (
+  `id`               INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `customer_id`      INT UNSIGNED NOT NULL,
+  `prod_date`        DATE         NOT NULL,
+  `meal`             ENUM('sabah','ogle','aksam','gece','kumanya') NOT NULL DEFAULT 'ogle',
+  `persons`          INT UNSIGNED NOT NULL DEFAULT 0,
+  `unit_price_snap`  DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `amount`           DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `order_id`         INT UNSIGNED          DEFAULT NULL,
+  `note`             VARCHAR(500)          DEFAULT NULL,
+  `entered_by`       ENUM('musteri','uysa','bot') NOT NULL DEFAULT 'uysa',
+  `created_at`       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_production` (`customer_id`,`prod_date`,`meal`),
+  KEY `idx_prod_date` (`prod_date`),
+  CONSTRAINT `fk_prod_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_prod_order`    FOREIGN KEY (`order_id`)    REFERENCES `orders` (`id`)    ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── Dosyalar (fatura foto, talep foto vb.) — request_messages FK'inden ÖNCE tanımlı olmalı ─
+CREATE TABLE IF NOT EXISTS `files` (
+  `id`          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `filename`    VARCHAR(255) NOT NULL COMMENT 'güvenli ad: ts_hex.ext',
+  `original`    VARCHAR(255) NOT NULL,
+  `mime`        VARCHAR(100) NOT NULL,
+  `size_bytes`  INT UNSIGNED NOT NULL DEFAULT 0,
+  `uploaded_by` VARCHAR(100)          DEFAULT NULL,
+  `category`    VARCHAR(100)          DEFAULT NULL,
+  `deleted_at`  DATETIME              DEFAULT NULL,
+  `created_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_files_deleted` (`deleted_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── Talepler / şikayet / mesaj (M6) ───────────────────────────
+CREATE TABLE IF NOT EXISTS `requests` (
+  `id`               INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `customer_id`      INT UNSIGNED NOT NULL,
+  `customer_user_id` INT UNSIGNED          DEFAULT NULL,
+  `type`             ENUM('talep','sikayet','mesaj','menu','oneri') NOT NULL DEFAULT 'talep',
+  `subject`          VARCHAR(200) NOT NULL,
+  `status`           ENUM('acik','cozuldu') NOT NULL DEFAULT 'acik',
+  `created_at`       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_req_customer` (`customer_id`),
+  KEY `idx_req_status` (`status`),
+  CONSTRAINT `fk_req_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `request_messages` (
+  `id`         INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `request_id` INT UNSIGNED NOT NULL,
+  `sender`     ENUM('musteri','uysa') NOT NULL,
+  `body`       TEXT         NOT NULL,
+  `file_id`    INT UNSIGNED          DEFAULT NULL COMMENT 'opus-019: foto eki (files.id)',
+  `created_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_rm_request` (`request_id`),
+  CONSTRAINT `fk_rm_request` FOREIGN KEY (`request_id`) REFERENCES `requests` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_rm_file`    FOREIGN KEY (`file_id`)    REFERENCES `files` (`id`)    ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── Duyurular (M6) ────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS `announcements` (
+  `id`         INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `title`      VARCHAR(200) NOT NULL,
+  `body`       TEXT         NOT NULL,
+  `publish_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `audience`   VARCHAR(50)  NOT NULL DEFAULT 'hepsi' COMMENT 'hepsi | customer_id',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── Tedarikçiler ──────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS `suppliers` (
+  `id`         INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `name`       VARCHAR(200) NOT NULL,
+  `contact`    VARCHAR(255)          DEFAULT NULL,
+  `is_active`  TINYINT(1)   NOT NULL DEFAULT 1,
+  `created_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_supplier_name` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── Finans: gelir/gider ───────────────────────────────────────
+CREATE TABLE IF NOT EXISTS `transactions` (
+  `id`          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `type`        ENUM('gelir','gider') NOT NULL,
+  `category`    VARCHAR(80)           DEFAULT NULL,
+  `tx_date`     DATE         NOT NULL,
+  `amount`      DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `customer_id` INT UNSIGNED          DEFAULT NULL,
+  `supplier_id` INT UNSIGNED          DEFAULT NULL,
+  `description` VARCHAR(500)          DEFAULT NULL,
+  `file_id`     INT UNSIGNED          DEFAULT NULL,
+  -- TODO (Paraşüt): dış-kaynak senkron alanı. Bu turda kullanılmıyor; 'manuel'/'parasut'.
+  `source`      VARCHAR(20)  NOT NULL DEFAULT 'manuel',
+  -- opus-015: gider dağıtım hedefi. 'genel'=tüm müşterilere ciro oranlı; 'musteri'=transaction_customer hedefleri.
+  `alloc_type`  VARCHAR(10)  NOT NULL DEFAULT 'genel',
+  `created_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_tx_date` (`tx_date`),
+  KEY `idx_tx_type` (`type`),
+  CONSTRAINT `fk_tx_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_tx_supplier` FOREIGN KEY (`supplier_id`) REFERENCES `suppliers` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_tx_file`     FOREIGN KEY (`file_id`)     REFERENCES `files` (`id`)     ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── Gider → müşteri dağıtım hedefi (opus-015, alloc_type='musteri' iken) ──
+CREATE TABLE IF NOT EXISTS `transaction_customer` (
+  `id`             INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `transaction_id` INT UNSIGNED NOT NULL,
+  `customer_id`    INT UNSIGNED NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_tc` (`transaction_id`,`customer_id`),
+  KEY `idx_tc_tx` (`transaction_id`),
+  CONSTRAINT `fk_tc_tx`       FOREIGN KEY (`transaction_id`) REFERENCES `transactions` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_tc_customer` FOREIGN KEY (`customer_id`)    REFERENCES `customers` (`id`)    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── Cari hareketler (alacak/borç, tahsilat) ───────────────────
+-- direction: borc = tarafın bize borcu artar (üretim) · alacak = tahsilat/ödeme
+CREATE TABLE IF NOT EXISTS `cari_entries` (
+  `id`         INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `party_type` ENUM('customer','supplier') NOT NULL,
+  `party_id`   INT UNSIGNED NOT NULL,
+  `entry_date` DATE         NOT NULL,
+  `direction`  ENUM('borc','alacak') NOT NULL,
+  `amount`     DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `note`       VARCHAR(500)          DEFAULT NULL,
+  `created_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_cari_party` (`party_type`,`party_id`),
+  KEY `idx_cari_date` (`entry_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── Menü & Maliyet (M4, F2) — şema F1'de hazır ────────────────
+CREATE TABLE IF NOT EXISTS `ingredients` (
+  `id`             INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `name`           VARCHAR(150) NOT NULL,
+  `unit`           VARCHAR(20)  NOT NULL DEFAULT 'kg',
+  `price_per_unit` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `min_stok`       DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'kritik stok eşiği (0 = uyarı yok)',
+  `updated_at`     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_ingredient` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `recipes` (
+  `id`          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `name`        VARCHAR(200) NOT NULL,
+  `category`    VARCHAR(80)           DEFAULT NULL,
+  `portion_note` VARCHAR(200)         DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_recipe` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `recipe_items` (
+  `id`            INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `recipe_id`     INT UNSIGNED NOT NULL,
+  `ingredient_id` INT UNSIGNED NOT NULL,
+  `grams`         DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  PRIMARY KEY (`id`),
+  KEY `idx_ri_recipe` (`recipe_id`),
+  CONSTRAINT `fk_ri_recipe`     FOREIGN KEY (`recipe_id`)     REFERENCES `recipes` (`id`)     ON DELETE CASCADE,
+  CONSTRAINT `fk_ri_ingredient` FOREIGN KEY (`ingredient_id`) REFERENCES `ingredients` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `menu_days` (
+  `id`           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `menu_date`    DATE         NOT NULL,
+  `meal`         ENUM('sabah','ogle','aksam','gece','kumanya') NOT NULL DEFAULT 'ogle',
+  `menu_type`    VARCHAR(40)  NOT NULL DEFAULT 'standart',
+  `recipe_id`    INT UNSIGNED          DEFAULT NULL,
+  `is_published` TINYINT(1)   NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `idx_menu_date` (`menu_date`),
+  CONSTRAINT `fk_md_recipe` FOREIGN KEY (`recipe_id`) REFERENCES `recipes` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── Stok hareketleri (M4 — Stok Durumu) ───────────────────────
+-- Mevcut stok = Σ(giris) − Σ(cikis) malzeme başına. Kritik = stok < ingredients.min_stok (>0).
+CREATE TABLE IF NOT EXISTS `stock_moves` (
+  `id`            INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `ingredient_id` INT UNSIGNED NOT NULL,
+  `move_date`     DATE         NOT NULL,
+  `direction`     ENUM('giris','cikis') NOT NULL,
+  `quantity`      DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `unit`          VARCHAR(20)  NOT NULL DEFAULT 'kg',
+  `note`          VARCHAR(500)          DEFAULT NULL,
+  `created_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_sm_ingredient` (`ingredient_id`),
+  KEY `idx_sm_date` (`move_date`),
+  CONSTRAINT `fk_sm_ingredient` FOREIGN KEY (`ingredient_id`) REFERENCES `ingredients` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── Personel (maaş/prim/gider takibi — opus-009) ──────────────
+CREATE TABLE IF NOT EXISTS `personel` (
+  `id`            INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `ad`            VARCHAR(150) NOT NULL,
+  `gorev`         VARCHAR(120)          DEFAULT NULL,
+  `aylik_ucret`   DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'brüt aylık ücret TL',
+  `ise_giris`     DATE                  DEFAULT NULL COMMENT 'kıdem başlangıcı (opus-014)',
+  `diger_maliyet` DECIMAL(12,2)         DEFAULT NULL COMMENT 'override tutar; NULL=ayar oranından (opus-014)',
+  `is_active`     TINYINT(1)   NOT NULL DEFAULT 1,
+  `created_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_personel_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Personel gider kayıtları (maaş/prim/avans/sgk/diğer). personel_id NULL = kişiye
+-- bağlı olmayan toplu gider (ör. toplu SGK). Aylık toplam finans net karlılığa yansır.
+CREATE TABLE IF NOT EXISTS `personel_gider` (
+  `id`          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `personel_id` INT UNSIGNED          DEFAULT NULL,
+  `tarih`       DATE         NOT NULL,
+  `tur`         ENUM('maas','prim','avans','sgk','diger') NOT NULL DEFAULT 'maas',
+  `tutar`       DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `aciklama`    VARCHAR(500)          DEFAULT NULL,
+  `created_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_pg_personel` (`personel_id`),
+  KEY `idx_pg_tarih` (`tarih`),
+  CONSTRAINT `fk_pg_personel` FOREIGN KEY (`personel_id`) REFERENCES `personel` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── Faturalar (aylık müşteri faturası — production'dan üretilir) ─
+-- Üret+kaydet: ara_toplam (o ay üretim tutarı) + KDV opsiyonel = genel_toplam.
+-- source: 'manuel' | 'parasut' (e-fatura entegrasyonu F-sonra; alan hazır).
+-- Personel aylik maas plani: calisilan gun, otomatik hesaplanan maas ve odendi durumu.
+CREATE TABLE IF NOT EXISTS `personel_maas_ay` (
+  `id`             INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `personel_id`    INT UNSIGNED NOT NULL,
+  `ay`             CHAR(7)      NOT NULL COMMENT 'YYYY-MM',
+  `calisma_gunu`   DECIMAL(5,2) NOT NULL DEFAULT 30.00,
+  `maas_odendi`    TINYINT(1)   NOT NULL DEFAULT 0,
+  `odeme_tarihi`   DATE                  DEFAULT NULL,
+  `gider_id`       INT UNSIGNED          DEFAULT NULL,
+  `created_at`     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_personel_maas_ay` (`personel_id`,`ay`),
+  KEY `idx_pma_ay` (`ay`),
+  KEY `idx_pma_gider` (`gider_id`),
+  CONSTRAINT `fk_pma_personel` FOREIGN KEY (`personel_id`) REFERENCES `personel` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_pma_gider` FOREIGN KEY (`gider_id`) REFERENCES `personel_gider` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS `fatura` (
+  `id`           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `customer_id`  INT UNSIGNED NOT NULL,
+  `ay`           CHAR(7)      NOT NULL COMMENT 'YYYY-MM',
+  `ara_toplam`   DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `kdv_oran`     DECIMAL(5,2)  NOT NULL DEFAULT 0.00 COMMENT 'KDV %; 0 = KDV yok',
+  `genel_toplam` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `durum`        ENUM('taslak','kesildi') NOT NULL DEFAULT 'taslak',
+  `source`       VARCHAR(20)  NOT NULL DEFAULT 'manuel',
+  `created_at`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_fatura` (`customer_id`,`ay`),
+  CONSTRAINT `fk_fatura_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── Denetim + oran sınırlama (v1 güvenlik desenleri) ──────────
+CREATE TABLE IF NOT EXISTS `audit` (
+  `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `action`     VARCHAR(100)    NOT NULL,
+  `actor`      VARCHAR(100)             DEFAULT NULL,
+  `target_key` VARCHAR(255)             DEFAULT NULL,
+  `detail`     TEXT                     DEFAULT NULL,
+  `ip_addr`    VARCHAR(45)     NOT NULL DEFAULT '',
+  `created_at` DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_audit_action` (`action`),
+  KEY `idx_audit_created` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `rate_limits` (
+  `id`           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `rl_key`       VARCHAR(255)    NOT NULL,
+  `attempted_at` INT UNSIGNED    NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_rl_key_time` (`rl_key`,`attempted_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `rate_locks` (
+  `rl_key`       VARCHAR(255) NOT NULL,
+  `locked_until` INT UNSIGNED NOT NULL,
+  PRIMARY KEY (`rl_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── Yayınlanan menü (opus-010, müşteri-yüzü; menu_days'ten AYRI) ─
+-- Admin menü oluşturur, hedef (tümü / seçili müşteriler) seçer, yayınlar.
+-- Müşteri SADECE kendine yayınlanan menüyü görür (menusForCustomer scope).
+CREATE TABLE IF NOT EXISTS `menu` (
+  `id`         INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `title`      VARCHAR(150) NOT NULL,
+  `date_start` DATE         NOT NULL,
+  `date_end`   DATE         NOT NULL,
+  `audience`   ENUM('all','selected') NOT NULL DEFAULT 'all',
+  `status`     ENUM('draft','published') NOT NULL DEFAULT 'draft',
+  `created_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_menu_status` (`status`,`date_end`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `menu_item` (
+  `id`        INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `menu_id`   INT UNSIGNED NOT NULL,
+  `item_date` DATE         NOT NULL,
+  `meal`      ENUM('sabah','ogle','aksam','gece','kumanya') NOT NULL DEFAULT 'ogle',
+  `dishes`    TEXT                  DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_menu_item` (`menu_id`,`item_date`,`meal`),
+  CONSTRAINT `fk_menu_item_menu` FOREIGN KEY (`menu_id`) REFERENCES `menu` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `menu_target` (
+  `id`          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `menu_id`     INT UNSIGNED NOT NULL,
+  `customer_id` INT UNSIGNED NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_menu_target` (`menu_id`,`customer_id`),
+  KEY `idx_mt_customer` (`customer_id`),
+  CONSTRAINT `fk_mt_menu` FOREIGN KEY (`menu_id`) REFERENCES `menu` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_mt_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── Malzeme talebi (sarf malzeme; katalog + müşteri talebi) ─────
+CREATE TABLE IF NOT EXISTS `supply_item` (
+  `id`         INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `ad`         VARCHAR(120) NOT NULL,
+  `birim`      VARCHAR(20)  NOT NULL DEFAULT 'adet',
+  `is_active`  TINYINT(1)   NOT NULL DEFAULT 1,
+  `sort_order` INT          NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_supply_ad` (`ad`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `supply_request` (
+  `id`               INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `customer_id`      INT UNSIGNED NOT NULL,
+  `customer_user_id` INT UNSIGNED          DEFAULT NULL,
+  `request_date`     DATE         NOT NULL,
+  `status`           ENUM('acik','hazirlandi','teslim') NOT NULL DEFAULT 'acik',
+  `note`             VARCHAR(500)          DEFAULT NULL,
+  `created_at`       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_sr_customer` (`customer_id`),
+  KEY `idx_sr_status` (`status`),
+  CONSTRAINT `fk_sr_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `supply_request_item` (
+  `id`             INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `request_id`     INT UNSIGNED NOT NULL,
+  `supply_item_id` INT UNSIGNED NOT NULL,
+  `miktar`         DECIMAL(10,2) NOT NULL DEFAULT 1.00,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_sri` (`request_id`,`supply_item_id`),
+  KEY `idx_sri_item` (`supply_item_id`),
+  CONSTRAINT `fk_sri_request` FOREIGN KEY (`request_id`) REFERENCES `supply_request` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_sri_item` FOREIGN KEY (`supply_item_id`) REFERENCES `supply_item` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Müşteri × malzeme standing hakediş (her müşterinin her kalemden hakkı; müşteri talepte referans görür).
+CREATE TABLE IF NOT EXISTS `supply_entitlement` (
+  `id`             INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `customer_id`    INT UNSIGNED NOT NULL,
+  `supply_item_id` INT UNSIGNED NOT NULL,
+  `miktar`         DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_entitlement` (`customer_id`,`supply_item_id`),
+  KEY `idx_se_item` (`supply_item_id`),
+  CONSTRAINT `fk_se_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_se_item` FOREIGN KEY (`supply_item_id`) REFERENCES `supply_item` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Sarf malzeme başlangıç kataloğu (Ömer düzenler). UNIQUE(ad) → INSERT IGNORE idempotent.
+INSERT IGNORE INTO `supply_item` (`ad`, `birim`, `sort_order`) VALUES
+  ('Ayçiçek Yağı', 'litre', 10),
+  ('Sirke', 'litre', 20),
+  ('Ketçap', 'adet', 30),
+  ('Mayonez', 'adet', 40),
+  ('Bulaşık Deterjanı', 'litre', 50),
+  ('Peçete', 'paket', 60),
+  ('Tuz', 'kg', 70),
+  ('Karabiber', 'paket', 80),
+  ('Çöp Poşeti', 'paket', 90),
+  ('Eldiven', 'kutu', 100);
+
+-- ── Ayar (anahtar-değer): mevzuat oranları, Ömer'ce düzenlenebilir (opus-014) ─
+CREATE TABLE IF NOT EXISTS `ayar` (
+  `anahtar` VARCHAR(60)  NOT NULL,
+  `deger`   VARCHAR(100) NOT NULL,
+  PRIMARY KEY (`anahtar`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+INSERT IGNORE INTO `ayar` (`anahtar`, `deger`) VALUES
+  ('sgk_isveren_orani', '0.225'),
+  ('kidem_tavan', '64948.77'),
+  ('kidem_aylik_bolen', '12'),
+  ('diger_maliyet_oran', '0'),
+  ('sgk_tesvik_orani', '0.175');
+
+-- ── Personel → müşteri dağıtım ataması (opus-014) ─
+CREATE TABLE IF NOT EXISTS `personel_musteri` (
+  `id`          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `personel_id` INT UNSIGNED NOT NULL,
+  `customer_id` INT UNSIGNED          DEFAULT NULL,
+  `genel`       TINYINT(1)   NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_pm` (`personel_id`,`customer_id`),
+  KEY `idx_pm_personel` (`personel_id`),
+  CONSTRAINT `fk_pm_personel` FOREIGN KEY (`personel_id`) REFERENCES `personel` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_pm_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+SET FOREIGN_KEY_CHECKS = 1;

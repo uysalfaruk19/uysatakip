@@ -1,0 +1,29 @@
+# UYSA Kokpit v2 — üretim (Apache) web kökü = public/
+# Pretty API URL: /api/uretim → /api/uretim.php  (router.php ile aynı mantık)
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # /api/musteri/<ad> → /api/musteri/<ad>.php  (oturumlu müşteri API)
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteRule ^api/musteri/([a-z_]+)/?$ api/musteri/$1.php [L,QSA]
+
+  # /api/<ad> → /api/<ad>.php  (zaten .php ise dokunma)
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteRule ^api/([a-z_]+)/?$ api/$1.php [L,QSA]
+</IfModule>
+
+# Güvenlik başlıkları
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "DENY"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+# Dizin listelemesini kapat
+Options -Indexes
+
+# Gizli/hassas dosyalara erişim yok
+<FilesMatch "^\.(env|git)">
+  Require all denied
+</FilesMatch>

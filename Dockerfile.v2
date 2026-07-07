@@ -1,0 +1,32 @@
+# UYSA Kokpit v2 — üretim imajı.
+# Build context = repo kökü:  docker build -f Dockerfile.v2 -t uysatakip-v2 .
+# v2 uygulaması kökte (public/ web kökü), v1 SPA /eski arşivinde (salt-okunur, router korur).
+FROM php:8.2-cli
+
+# pdo_mysql (üretim DB) + zip (opus-016 Menü Excel import/export; SimpleXML/libxml zaten gömülü).
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends libzip-dev \
+ && rm -rf /var/lib/apt/lists/* \
+ && docker-php-ext-install pdo pdo_mysql zip
+
+RUN printf "upload_max_filesize=30M\npost_max_size=32M\nmemory_limit=256M\nmax_execution_time=120\nexpose_php=Off\n" \
+    > /usr/local/etc/php/conf.d/uysa.ini
+
+WORKDIR /var/www/html
+
+# v2 uygulama
+COPY v2/src ./src
+COPY v2/sql ./sql
+COPY v2/tools ./tools
+COPY v2/router.php ./router.php
+COPY v2/public ./public
+
+# v1 arşiv → /var/www/html/eski (router __DIR__/eski okur; docroot dışı, yalnız /eski/ handler'ından erişilir)
+COPY public/ ./eski/
+
+RUN mkdir -p public/uploads && chmod 777 public/uploads
+
+EXPOSE 8080
+
+# v1 ile aynı php -S deseni + router (pretty /api + /eski)
+CMD ["sh", "-c", "php -S 0.0.0.0:${PORT:-8080} -t /var/www/html/public /var/www/html/router.php"]

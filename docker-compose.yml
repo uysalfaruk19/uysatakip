@@ -1,0 +1,45 @@
+services:
+  db:
+    image: mariadb:11
+    container_name: uysatakip-db
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: uysa_db
+      MARIADB_USER: uysa
+      MARIADB_PASSWORD: ${DB_PW}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PW}
+    command: ["--innodb-buffer-pool-size=64M","--performance-schema=OFF","--max-connections=50"]
+    volumes:
+      - uysatakip-db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD","healthcheck.sh","--connect","--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+    networks: [uysanet]
+
+  app:
+    build: .
+    container_name: uysatakip-app
+    restart: unless-stopped
+    environment:
+      PORT: "8080"
+      DB_HOST: db
+      DB_PORT: "3306"
+      DB_NAME: uysa_db
+      DB_USER: uysa
+      DB_PASS: ${DB_PW}
+      API_TOKEN: UysaERP2026xProdKey3f7a9c1b
+      CORS_ORIGINS: "https://uysatakip.uysa019.cloud,http://localhost,http://127.0.0.1"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8090:8080"
+    networks: [uysanet]
+
+volumes:
+  uysatakip-db:
+
+networks:
+  uysanet:
