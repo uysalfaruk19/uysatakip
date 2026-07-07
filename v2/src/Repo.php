@@ -2041,6 +2041,17 @@ final class Repo
         return (int) $this->pdo->lastInsertId();
     }
 
+    /** Kişinin o ay aldığı toplam avans. */
+    public function personelAvansAy(int $personelId, string $ay): float
+    {
+        $st = $this->pdo->prepare(
+            "SELECT COALESCE(SUM(tutar),0) FROM personel_gider
+             WHERE personel_id = ? AND tur = 'avans' AND substr(tarih,1,7) = ?"
+        );
+        $st->execute([$personelId, $ay]);
+        return (float) $st->fetchColumn();
+    }
+
     /** Aylık toplam personel gideri (tüm türler). */
     public function monthPersonelTotal(string $ay): float
     {

@@ -140,7 +140,7 @@ foreach ($personeller as $p) {
     $k = $repo->kidemBirikim($pid, $month);
     $a = $repo->personelAtama($pid);
     $yukluToplam += $y['yuklu_toplam'];
-    $pInfo[$pid] = ['yuklu' => $y, 'kidem' => $k, 'atama' => $a, 'maas' => $maas];
+    $pInfo[$pid] = ['yuklu' => $y, 'kidem' => $k, 'atama' => $a, 'maas' => $maas, 'avans' => $repo->personelAvansAy($pid, $month)];
 }
 $ucretToplam = 0.0;
 $maasToplam = 0.0;
@@ -366,8 +366,24 @@ require __DIR__ . '/partials/header.php';
                   <tr><td>Diğer maliyet</td><td class="num">+ ₺ <?= Helpers::money($y['diger']) ?></td></tr>
                   <tr class="is-total"><td>Yüklü aylık maliyet</td><td class="num">₺ <?= Helpers::money($y['yuklu_toplam']) ?></td></tr>
                   <tr><td>Biriken kıdem (<?= (int) $k['ay_sayisi'] ?> ay)</td><td class="num">₺ <?= Helpers::money($k['birikim']) ?></td></tr>
+                  <?php if ($info['avans'] > 0): ?>
+                  <tr><td>Bu ay verilen avans</td><td class="num" style="color:var(--red)">− ₺ <?= Helpers::money($info['avans']) ?></td></tr>
+                  <?php endif; ?>
                 </tbody>
               </table>
+              <form method="post" style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-top:10px;padding:10px;border:1px solid var(--border);border-radius:10px">
+                <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
+                <input type="hidden" name="action" value="gider">
+                <input type="hidden" name="personel_id" value="<?= $pid ?>">
+                <input type="hidden" name="tur" value="avans">
+                <div class="field" style="flex:1;min-width:110px;margin:0"><label>Avans (₺)</label>
+                  <input class="inputx" name="tutar" inputmode="decimal" placeholder="0,00" required>
+                </div>
+                <div class="field" style="flex:1;min-width:130px;margin:0"><label>Tarih</label>
+                  <input class="inputx" type="date" name="tarih" value="<?= Helpers::e(Helpers::today()) ?>">
+                </div>
+                <button class="btn-action btn-primaryx" type="submit"><i class="bi bi-cash-coin"></i> Avans ekle</button>
+              </form>
               <div class="actions-row" style="margin-top:8px">
                 <a class="btn-action btn-ghost flex-fill" href="personel.php?ay=<?= $month ?>&duzenle=<?= $pid ?>"><i class="bi bi-pencil"></i> Düzenle</a>
                 <form method="post" onsubmit="return confirm('Personel pasifleştirilsin mi? (gider geçmişi korunur)')" class="flex-fill">

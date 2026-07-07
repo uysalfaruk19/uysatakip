@@ -220,4 +220,22 @@ final class PersonelMaliyetTest extends TestCase
         $this->assertEqualsWithDelta($exp, $t['birikim'], 0.5);
         $this->assertEqualsWithDelta((40000.0 / 12) + (24000.0 / 12), $t['bu_ay_tahakkuk'], 0.01);
     }
+
+    public function testPersonelAvansAySadeceKisiTurVeAyToplar(): void
+    {
+        $pid = $this->repo->upsertPersonel('Avansli', 'Asci', 30000.0);
+        $diger = $this->repo->upsertPersonel('Baska', 'Garson', 25000.0);
+
+        $this->repo->addPersonelGider($pid, '2026-07-05', 'avans', 2000.0);
+        $this->repo->addPersonelGider($pid, '2026-07-20', 'avans', 1500.0);
+        $this->repo->addPersonelGider($pid, '2026-06-15', 'avans', 999.0);   // başka ay
+        $this->repo->addPersonelGider($pid, '2026-07-10', 'prim', 500.0);    // başka tür
+        $this->repo->addPersonelGider($diger, '2026-07-11', 'avans', 700.0); // başka kişi
+        $this->repo->addPersonelGider(null, '2026-07-12', 'avans', 300.0);   // toplu (kişisiz)
+
+        $this->assertEqualsWithDelta(3500.0, $this->repo->personelAvansAy($pid, '2026-07'), 0.001);
+        $this->assertEqualsWithDelta(700.0, $this->repo->personelAvansAy($diger, '2026-07'), 0.001);
+        $this->assertEqualsWithDelta(999.0, $this->repo->personelAvansAy($pid, '2026-06'), 0.001);
+        $this->assertEqualsWithDelta(0.0, $this->repo->personelAvansAy($pid, '2026-05'), 0.001);
+    }
 }
