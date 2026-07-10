@@ -96,5 +96,27 @@
     }, 120);
   });
 
+  // Ağ durumu: çevrimdışı kalınca üstte şerit (app/WebView beyaz ekran yerine geri bildirim)
+  function netBanner(show) {
+    var el = document.getElementById("net-banner");
+    if (show && !el) {
+      el = document.createElement("div");
+      el.id = "net-banner";
+      el.className = "net-banner";
+      el.textContent =
+        "Bağlantı yok — internete bağlanınca kaldığınız yerden devam edin.";
+      document.body.appendChild(el);
+    } else if (!show && el) {
+      el.remove();
+    }
+  }
+  window.addEventListener("offline", function () {
+    netBanner(true);
+  });
+  window.addEventListener("online", function () {
+    netBanner(false);
+  });
+  if (navigator.onLine === false) netBanner(true);
+
   document.addEventListener("DOMContentLoaded", recalc);
 })();

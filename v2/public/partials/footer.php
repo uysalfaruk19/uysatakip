@@ -38,6 +38,6 @@ $tabs = [
   <a href="parasut.php"><i class="bi bi-shield-check"></i> Paraşüt cari (muhasebe)</a>
 </div>
 
-<script src="assets/app.js?v=20260711"></script>
+<script src="assets/app.js?v=<?= filemtime(__DIR__ . '/../assets/app.js') ?>"></script>
 </body>
 </html>

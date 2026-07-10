@@ -138,6 +138,11 @@ require __DIR__ . '/partials/header.php';
                 <p class="row-meta"><?= Helpers::e($cu['customer_name']) ?><?php if ($cu['last_login']): ?> · son giriş <?= Helpers::e((string) $cu['last_login']) ?><?php endif; ?></p>
               </div>
               <div class="actions-row" style="justify-content:flex-end">
+                <?php
+                  // Davet: App Store linki + kullanıcı adı hazır mesajla WhatsApp paylaşımı (şifre MESAJA GİRMEZ).
+                  $davet = rawurlencode("UYSA Kokpit uygulamamız yayında 📱\n\niPhone: https://apps.apple.com/app/id6788477737\nWeb: https://app.yemekhaneci.com.tr/m\n\nKullanıcı adınız: {$cu['username']}\n(Şifreniz ayrıca iletilecektir.)");
+                ?>
+                <a class="icon-btn" href="https://wa.me/?text=<?= $davet ?>" target="_blank" rel="noopener" aria-label="WhatsApp ile davet gönder"><i class="bi bi-whatsapp"></i></a>
                 <button class="icon-btn" type="button" aria-label="Şifre sıfırla" onclick="toggleReset(<?= (int) $cu['id'] ?>)"><i class="bi bi-key"></i></button>
                 <form method="post" onsubmit="return confirm('<?= $on ? 'Bu giriş pasifleştirilsin mi?' : 'Bu giriş yeniden aktifleştirilsin mi?' ?>');" style="display:inline">
                   <input type="hidden" name="csrf" value="<?= Helpers::e($csrf) ?>">
