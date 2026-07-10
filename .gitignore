@@ -32,3 +32,4 @@ build/
 # v2 canli env + codex yedekleri
 .env.*
 *.bak-codex-*
+.claude/worktrees/
