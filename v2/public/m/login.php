@@ -62,7 +62,7 @@ $csrf = Helpers::csrfToken();
 <meta name="theme-color" content="#eff8f4">
 <title>UYSA Müşteri · Giriş</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
-<link href="/assets/app.css" rel="stylesheet">
+<link href="/assets/app.css?v=20260711" rel="stylesheet">
 </head>
 <body class="customer-page">
 <main class="login-shell">

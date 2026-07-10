@@ -19,7 +19,7 @@ $tabs = [
   </a>
 <?php endforeach; ?>
 </nav>
-<script src="/assets/app.js"></script>
+<script src="/assets/app.js?v=20260711"></script>
 <script src="/assets/push.js"></script>
 </body>
 </html>
