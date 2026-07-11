@@ -6,6 +6,7 @@ use Uysa\Auth;
 use Uysa\Db;
 use Uysa\Env;
 use Uysa\Helpers;
+use Uysa\Push;
 use Uysa\Repo;
 
 $u = Auth::requireLogin();
@@ -89,6 +90,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $repo->replyRequest($reqId, mb_substr($body, 0, 2000), $fileId);
                 uysa_audit('admin_talep_cevap', $u['username'], (string) $reqId, null, client_ip());
                 $flash = 'Cevabınız gönderildi.';
+                // opus-021: müşteriye push — hata cevabı KIRMAZ
+                try {
+                    (new Push($pdo))->toCustomer((int) $req['customer_id'], 'Talebinize cevap geldi', (string) $req['subject'], ['url' => '/m/talep.php'], 'talep_cevap');
+                } catch (\Throwable) {
+                }
             }
             $openId = $reqId;
         } elseif ($action === 'status') {
@@ -96,6 +102,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $repo->setRequestStatus($reqId, $status);
             uysa_audit('admin_talep_durum', $u['username'], (string) $reqId, $status, client_ip());
             $flash = $status === 'cozuldu' ? 'Talep çözüldü olarak işaretlendi.' : 'Talep yeniden açıldı.';
+            // opus-021: durum değişikliği de müşteriye bildirilir
+            try {
+                (new Push($pdo))->toCustomer((int) $req['customer_id'], 'Talebinize cevap geldi', (string) $req['subject'], ['url' => '/m/talep.php'], 'talep_cevap');
+            } catch (\Throwable) {
+            }
             $openId = $reqId;
         }
     }

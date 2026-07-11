@@ -535,4 +535,42 @@ CREATE TABLE IF NOT EXISTS `personel_musteri` (
   CONSTRAINT `fk_pm_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ── Push cihaz token'ları (migrate_021 + opus-021 user_id): müşteri app + admin ─
+CREATE TABLE IF NOT EXISTS `push_tokens` (
+  `id`           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `platform`     VARCHAR(16)  NOT NULL DEFAULT 'ios',
+  `token`        VARCHAR(255) NOT NULL,
+  `customer_id`  INT UNSIGNED          DEFAULT NULL,
+  `cuid`         INT UNSIGNED          DEFAULT NULL COMMENT 'customer_users.id',
+  `user_id`      INT UNSIGNED          DEFAULT NULL COMMENT 'admin users.id (opus-021)',
+  `created_at`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `last_seen`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_push_token` (`token`),
+  KEY `idx_push_customer` (`customer_id`),
+  KEY `idx_push_user` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── Push gönderim geçmişi (opus-021): olay/manuel/hatırlatma; mükerrer koruması ref'ten ─
+CREATE TABLE IF NOT EXISTS `push_log` (
+  `id`          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `kind`        VARCHAR(20)  NOT NULL COMMENT 'menu|talep_cevap|talep_yeni|siparis|reminder|manuel',
+  `customer_id` INT UNSIGNED          DEFAULT NULL,
+  `user_id`     INT UNSIGNED          DEFAULT NULL,
+  `ref`         VARCHAR(64)           DEFAULT NULL COMMENT 'mükerrer anahtarı, ör. menu:12',
+  `title`       VARCHAR(120) NOT NULL,
+  `body`        VARCHAR(500) NOT NULL,
+  `sent`        INT          NOT NULL DEFAULT 0,
+  `dead`        INT          NOT NULL DEFAULT 0,
+  `suppressed`  TINYINT(1)   NOT NULL DEFAULT 0,
+  `created_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_pl_kind_cust` (`kind`, `customer_id`, `created_at`),
+  KEY `idx_pl_ref` (`ref`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT IGNORE INTO `ayar` (`anahtar`, `deger`) VALUES
+  ('push_quiet_start', '21:00'),
+  ('push_quiet_end', '07:00');
+
 SET FOREIGN_KEY_CHECKS = 1;

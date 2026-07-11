@@ -47,6 +47,20 @@ bu ay kişi/ciro/net + cari/Paraşüt bakiye) · `GET /api/personel?ay=` (yükl�
 üretim+gider (yıkıcı/silme YOK). Bot skill taslağı: `bot/kokpit-skill.md` (🔒 körü körüne yapma, eksik/belirsiz→Ömer'e SOR).
 FAZ 2 (tool+2 bota deploy) = Fable. İş emri: `is-emirleri/opus-020-kokpit-bot-api.md`.
 
+**Push otomasyonu (opus-021):** `src/Push.php` = TEK KAPI (Apns enjekte edilebilir, testte stub —
+gerçek APNs'e istek yok). Olay kancaları: menü yayını → hedef müşterilere "Menünüz yayınlandı"
+(mükerrer koruması: aynı menü+müşteri `push_log.ref='menu:ID'` varsa atlanır) · talebe admin
+cevabı/durum → müşteriye "Talebinize cevap geldi" · yeni talep → adminlere "Yeni talep: müşteri — konu" ·
+sipariş girişi → adminlere "müşteri yarın n kişi" · 14:30 hatırlatma `tools/push_reminder.php`
+(cron `30 14 * * 1-5`, idempotent: cihazlı + yarına sayı girmemiş + bugün hatırlatılmamış).
+Sessiz saat `ayar.push_quiet_start/push_quiet_end` (default 21:00–07:00): olay push'ları bastırılır
+(`push_log.suppressed=1`), elle `bildirim.php` MUAF. Ölü token (BadDeviceToken/Unregistered) her
+gönderimde silinir; her gönderim `push_log`'a yazılır → `bildirim.php` "Son gönderimler" (son 50).
+Admin push kaydı: `public/push-register.php` (admin oturumu) + `push_tokens.user_id`; `assets/push.js`
+admin footer'da `window.UYSA_PUSH_ENDPOINT` ile admin endpoint'ine kaydeder. APNs yapılandırılmamışsa
+tüm push'lar sessiz no-op (akış kırılmaz). Şema: `sql/migrate_023.sql` (idempotent).
+İş emri: `is-emirleri/opus-021-kokpit-push-otomasyon.md`.
+
 ## Kurulum
 
 ```bash

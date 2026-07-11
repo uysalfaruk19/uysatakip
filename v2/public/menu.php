@@ -6,6 +6,7 @@ use Uysa\Auth;
 use Uysa\Db;
 use Uysa\Helpers;
 use Uysa\MenuPdf;
+use Uysa\Push;
 use Uysa\Repo;
 use Uysa\XlsxMenu;
 
@@ -149,6 +150,21 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $repo->publishMenu($menuId, true);
             uysa_audit('menu_yayinla', $u['username'], (string) $menuId, null, client_ip());
             $flash = 'Menü yayınlandı — hedef müşteriler görebilir.';
+            // opus-021: hedef müşterilere push — mükerrer koruması Push içinde; hata yayını KIRMAZ
+            try {
+                $m = $repo->menu($menuId);
+                if ($m) {
+                    $targets = $m['audience'] === 'selected'
+                        ? $repo->menuTargets($menuId)
+                        : array_map(static fn (array $c): int => (int) $c['id'], $repo->activeCustomers());
+                    $pr = (new Push($pdo))->menuYayinlandi($menuId, (string) $m['title'], $targets);
+                    if ($pr['pushed'] > 0) {
+                        $flash .= " · {$pr['pushed']} müşteriye bildirim gitti.";
+                    }
+                }
+            } catch (\Throwable) {
+                // push hatası menü yayınını engellemez
+            }
             $editId = $menuId;
         } elseif ($action === 'unpublish' && $menuId) {
             $repo->publishMenu($menuId, false);
