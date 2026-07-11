@@ -39,7 +39,7 @@ $tabs = [
 </div>
 
 <script src="assets/app.js?v=<?= filemtime(__DIR__ . '/../assets/app.js') ?>"></script>
-<script>window.UYSA_PUSH_ENDPOINT = '/push-register.php';</script><!-- opus-021: admin guard push kaydı -->
+<script>window.UYSA_NATIVE_CONTEXT = {authenticated: true, guard: 'admin', pushEndpoint: '/push-register.php'};</script>
 <script src="assets/push.js?v=<?= filemtime(__DIR__ . '/../assets/push.js') ?>"></script>
 </body>
 </html>

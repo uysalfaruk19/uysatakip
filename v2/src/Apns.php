@@ -41,15 +41,9 @@ class Apns
      * Tek cihaza alert push. Dönen: ['ok'=>bool, 'status'=>int, 'reason'=>string]
      * reason 'BadDeviceToken'/'Unregistered' ise token DB'den silinmeli (çağıran yapar).
      */
-    public function send(string $deviceToken, string $title, string $body, array $data = []): array
+    public function send(string $deviceToken, string $title, string $body, array $data = [], ?int $badge = 1): array
     {
-        $payload = [
-            'aps' => [
-                'alert' => ['title' => $title, 'body' => $body],
-                'sound' => 'default',
-                'badge' => 1,
-            ],
-        ] + $data;
+        $payload = $this->buildPayload($title, $body, $data, $badge);
 
         $ch = curl_init($this->host . '/3/device/' . $deviceToken);
         curl_setopt_array($ch, [
@@ -80,6 +74,19 @@ class Apns
             $reason = is_array($j) ? (string) ($j['reason'] ?? '') : (string) $resp;
         }
         return ['ok' => $status === 200, 'status' => $status, 'reason' => $reason];
+    }
+
+    /** @return array<string,mixed> */
+    protected function buildPayload(string $title, string $body, array $data, ?int $badge): array
+    {
+        $aps = [
+            'alert' => ['title' => $title, 'body' => $body],
+            'sound' => 'default',
+        ];
+        if ($badge !== null) {
+            $aps['badge'] = max(0, $badge);
+        }
+        return ['aps' => $aps] + $data;
     }
 
     /** ES256 JWT — süreç içi cache (~50 dk). */

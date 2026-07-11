@@ -29,13 +29,13 @@ if (!preg_match('/^[0-9a-f]{32,200}$/i', $token) || !in_array($platform, ['ios',
 
 $pdo = Db::pdo();
 $sqlite = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite';
-$now = $sqlite ? "datetime('now')" : 'NOW()';
+$seenAt = date('Y-m-d H:i:s'); // push_log ile aynı Europe/Istanbul saat ekseni
 // Token sahipliği admin'e geçer: customer_id/cuid temizlenir (aynı cihaz iki guard'a kayıtlıysa çift push olmasın)
 $onConf = $sqlite
-    ? "ON CONFLICT(token) DO UPDATE SET user_id = excluded.user_id, customer_id = NULL, cuid = NULL, last_seen = $now"
-    : "ON DUPLICATE KEY UPDATE user_id = VALUES(user_id), customer_id = NULL, cuid = NULL, last_seen = $now";
+    ? 'ON CONFLICT(token) DO UPDATE SET user_id = excluded.user_id, customer_id = NULL, cuid = NULL, last_seen = excluded.last_seen'
+    : 'ON DUPLICATE KEY UPDATE user_id = VALUES(user_id), customer_id = NULL, cuid = NULL, last_seen = VALUES(last_seen)';
 $pdo->prepare(
-    "INSERT INTO push_tokens (platform, token, user_id) VALUES (?, ?, ?) $onConf"
-)->execute([$platform, strtolower($token), (int) $u['uid']]);
+    "INSERT INTO push_tokens (platform, token, user_id, last_seen) VALUES (?, ?, ?, ?) $onConf"
+)->execute([$platform, strtolower($token), (int) $u['uid'], $seenAt]);
 
 Helpers::json(['ok' => true]);

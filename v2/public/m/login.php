@@ -70,6 +70,9 @@ $csrf = Helpers::csrfToken();
   <div class="login-logo">U</div>
   <h1>UYSA Müşteri</h1>
   <p class="eyebrow mb-4">Firmanız için sipariş, menü, cari ekstre ve talep tek ekranda.</p>
+  <div class="hint-card native-login-note mb-3" data-native-login-note hidden>
+    <i class="bi bi-phone"></i><span></span>
+  </div>
   <?php if ($error): ?><div class="flash err mb-3"><?= Helpers::e($error) ?></div><?php endif; ?>
   <section class="cardx card-pad">
     <form method="post" autocomplete="off" class="form-grid">
@@ -83,5 +86,19 @@ $csrf = Helpers::csrfToken();
     UYSA personeli misiniz? <a href="/login.php" style="text-decoration:underline">Kokpit girişi</a>.
   </div>
 </main>
+<script>
+(function () {
+  var C = window.Capacitor;
+  if (!C || typeof C.isNativePlatform !== 'function' || !C.isNativePlatform()) return;
+  document.documentElement.classList.add('native-app');
+  document.body.classList.add('native-app');
+  var note = document.querySelector('[data-native-login-note]');
+  if (!note) return;
+  note.hidden = false;
+  note.querySelector('span').textContent = localStorage.getItem('uysaNativeSeen:customer')
+    ? 'Oturumunuzu yenileyip kaldığınız yerden devam edin.'
+    : 'UYSA Kokpit\'e hoş geldiniz. Firma hesabınızla giriş yapın.';
+})();
+</script>
 </body>
 </html>

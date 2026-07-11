@@ -46,7 +46,12 @@ class Push
         $st = $this->pdo->prepare('SELECT token FROM push_tokens WHERE customer_id = ?');
         $st->execute([$customerId]);
         $tokens = $st->fetchAll(PDO::FETCH_COLUMN);
-        return $this->dispatch($tokens, $title, $body, $data, $kind, $customerId, null, $ref);
+        $badge = (new Repo($this->pdo))->badgeCountFor($customerId);
+        if (in_array($kind, ['menu', 'talep_cevap'], true)) {
+            // Bu olay henüz push_log'a yazılmadı; gönderilen badge'e mevcut olayı da kat.
+            $badge = min(99, $badge + 1);
+        }
+        return $this->dispatch($tokens, $title, $body, $data, $kind, $customerId, null, $ref, $badge);
     }
 
     /**
@@ -174,7 +179,7 @@ class Push
     }
 
     /** Ortak gönderim: sessiz saat → suppressed log; APNs yoksa no-op log; yoksa gönder+temizle+log. */
-    private function dispatch(array $tokens, string $title, string $body, array $data, string $kind, ?int $customerId, ?int $userId, ?string $ref): array
+    private function dispatch(array $tokens, string $title, string $body, array $data, string $kind, ?int $customerId, ?int $userId, ?string $ref, ?int $badge = 1): array
     {
         $res = ['sent' => 0, 'dead' => 0, 'failed' => 0, 'devices' => count($tokens), 'suppressed' => false];
 
@@ -188,7 +193,7 @@ class Push
         if ($this->apns->configured()) {
             $del = $this->pdo->prepare('DELETE FROM push_tokens WHERE token = ?');
             foreach ($tokens as $t) {
-                $r = $this->apns->send((string) $t, $title, $body, $data);
+                $r = $this->apns->send((string) $t, $title, $body, $data, $badge);
                 if ($r['ok']) {
                     $res['sent']++;
                 } elseif (in_array($r['reason'], self::DEAD_REASONS, true) || $r['status'] === 410) {

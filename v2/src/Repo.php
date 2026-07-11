@@ -935,6 +935,33 @@ final class Repo
         return true;
     }
 
+    /**
+     * Native app rozeti: app'in son token kaydından sonraki talep cevapları + yalnız bugünkü menüler.
+     * push_tokens.last_seen her app açılışında push-register ile yenilenir; ayrı okundu tablosu gerekmez.
+     */
+    public function badgeCountFor(int $customerId): int
+    {
+        $seen = $this->pdo->prepare('SELECT MAX(last_seen) FROM push_tokens WHERE customer_id = ?');
+        $seen->execute([$customerId]);
+        $lastSeen = $seen->fetchColumn();
+        if ($lastSeen === false || $lastSeen === null || $lastSeen === '') {
+            return 0;
+        }
+
+        $today = date('Y-m-d 00:00:00');
+        $tomorrow = date('Y-m-d 00:00:00', strtotime('+1 day'));
+        $st = $this->pdo->prepare(
+            "SELECT COUNT(*) FROM push_log
+             WHERE customer_id = ?
+               AND sent > 0
+               AND suppressed = 0
+               AND created_at > ?
+               AND (kind = 'talep_cevap' OR (kind = 'menu' AND created_at >= ? AND created_at < ?))"
+        );
+        $st->execute([$customerId, (string) $lastSeen, $today, $tomorrow]);
+        return min(99, (int) $st->fetchColumn());
+    }
+
     /** Geçerli talep türleri (opus-019: menu + oneri eklendi). */
     public const REQUEST_TYPES = ['talep', 'sikayet', 'mesaj', 'menu', 'oneri'];
 

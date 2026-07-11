@@ -69,7 +69,10 @@ $csrf = Helpers::csrfToken();
 <main class="login-shell">
   <div class="login-logo">U</div>
   <h1>UYSA Kokpit</h1>
-  <p class="eyebrow mb-4">Personel ve müşteri aynı ekrandan giriş yapar; rolüne göre yönlendirilir.</p>
+  <p class="eyebrow mb-4">UYSA operasyon ekibi için güvenli giriş.</p>
+  <div class="hint-card native-login-note mb-3" data-native-login-note hidden>
+    <i class="bi bi-phone"></i><span></span>
+  </div>
   <?php if ($error): ?><div class="flash err mb-3"><?= Helpers::e($error) ?></div><?php endif; ?>
   <section class="cardx card-pad">
     <form method="post" autocomplete="off" class="form-grid">
@@ -80,8 +83,22 @@ $csrf = Helpers::csrfToken();
     </form>
   </section>
   <div class="hint-card mt-3">
-    Müşteri kullanıcısı girerse müşteri uygulamasına, UYSA personeli girerse iç kokpite gider.
+    Müşteri hesabınız mı var? <a href="/m/login.php" style="text-decoration:underline">Müşteri girişi</a>.
   </div>
 </main>
+<script>
+(function () {
+  var C = window.Capacitor;
+  if (!C || typeof C.isNativePlatform !== 'function' || !C.isNativePlatform()) return;
+  document.documentElement.classList.add('native-app');
+  document.body.classList.add('native-app');
+  var note = document.querySelector('[data-native-login-note]');
+  if (!note) return;
+  note.hidden = false;
+  note.querySelector('span').textContent = localStorage.getItem('uysaNativeSeen:admin')
+    ? 'Oturumunuzu yenileyip kaldığınız yerden devam edin.'
+    : 'UYSA Kokpit\'e hoş geldiniz. Personel hesabınızla giriş yapın.';
+})();
+</script>
 </body>
 </html>

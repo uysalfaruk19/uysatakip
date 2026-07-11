@@ -116,7 +116,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $flash = 'Talebiniz açıldı.';
                 // opus-021: adminlere push ("Yeni talep: <müşteri> — <konu>") — hata talebi KIRMAZ
                 try {
-                    (new Push($pdo))->toAdmins('Yeni talep: ' . $cu['customer_name'], mb_substr($subject, 0, 200), ['url' => '/talepler.php'], 'talep_yeni');
+                    (new Push($pdo))->toAdmins('Yeni talep: ' . $cu['customer_name'], mb_substr($subject, 0, 200), ['url' => '/talepler.php?r=' . $reqId], 'talep_yeni');
                 } catch (\Throwable) {
                 }
                 $openId = $reqId;

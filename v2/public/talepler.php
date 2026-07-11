@@ -92,7 +92,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $flash = 'Cevabınız gönderildi.';
                 // opus-021: müşteriye push — hata cevabı KIRMAZ
                 try {
-                    (new Push($pdo))->toCustomer((int) $req['customer_id'], 'Talebinize cevap geldi', (string) $req['subject'], ['url' => '/m/talep.php'], 'talep_cevap');
+                    (new Push($pdo))->toCustomer((int) $req['customer_id'], 'Talebinize cevap geldi', (string) $req['subject'], ['url' => '/m/talep.php?r=' . $reqId], 'talep_cevap');
                 } catch (\Throwable) {
                 }
             }
@@ -104,7 +104,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $flash = $status === 'cozuldu' ? 'Talep çözüldü olarak işaretlendi.' : 'Talep yeniden açıldı.';
             // opus-021: durum değişikliği de müşteriye bildirilir
             try {
-                (new Push($pdo))->toCustomer((int) $req['customer_id'], 'Talebinize cevap geldi', (string) $req['subject'], ['url' => '/m/talep.php'], 'talep_cevap');
+                (new Push($pdo))->toCustomer((int) $req['customer_id'], 'Talebinize cevap geldi', (string) $req['subject'], ['url' => '/m/talep.php?r=' . $reqId], 'talep_cevap');
             } catch (\Throwable) {
             }
             $openId = $reqId;

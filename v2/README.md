@@ -4,6 +4,18 @@ Mobil-öncelikli, ilişkisel catering operasyon paneli. v1'in (14 modül, 21k sa
 key-value JSON) yerine sıfırdan yazıldı. İş emri: `is-emirleri/opus-004-uysa-erp-v2.md`,
 mimari: `vault/projeler/uysa-erp-v2/mimari.md`.
 
+## Mobil uygulama köprüsü (ios-001)
+
+- `assets/push.js`: Capacitor native tespiti, aynı-origin güvenli push deep-link'i,
+  foreground bildirim şeridi, app açılışında bildirim/badge temizleme ve pull-to-refresh.
+- Gerçek müşteri badge sayısı `Repo::badgeCountFor`: token'ın son `last_seen` zamanından sonraki
+  talep cevapları + yalnız bugünkü menü push'ları. Yeni olay, APNs payload'ına log öncesi `+1` eklenir.
+- Müşteri/admin footer'ları `UYSA_NATIVE_CONTEXT` verir; müşteri `push.js` include'u filemtime ile
+  cache-bust edilir. Login ekranları native ilk giriş / oturum yenileme tonunu ayırır.
+- Talep push'ları doğrudan kayda gider: `/m/talep.php?r=<id>` ve `/talepler.php?r=<id>`.
+- Native repo/build değişmedi; kurulu `@capacitor/push-notifications` 7.0.7 yeterli.
+- Test: `phpunit ... v2/tests` + `node v2/tests/push-js-smoke.mjs`.
+
 ## Kapsam (F1)
 
 - **Bugün** (M1): günlük üretim girişi — müşteri × kişi → tutar otomatik (birim fiyat snapshot),

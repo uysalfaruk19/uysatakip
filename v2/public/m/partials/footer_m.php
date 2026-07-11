@@ -20,6 +20,7 @@ $tabs = [
 <?php endforeach; ?>
 </nav>
 <script src="/assets/app.js?v=<?= filemtime(__DIR__ . '/../../assets/app.js') ?>"></script>
-<script src="/assets/push.js"></script>
+<script>window.UYSA_NATIVE_CONTEXT = {authenticated: true, guard: 'customer', pushEndpoint: '/m/push-register.php'};</script>
+<script src="/assets/push.js?v=<?= filemtime(__DIR__ . '/../../assets/push.js') ?>"></script>
 </body>
 </html>
