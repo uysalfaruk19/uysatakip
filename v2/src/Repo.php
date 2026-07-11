@@ -953,8 +953,6 @@ final class Repo
         $st = $this->pdo->prepare(
             "SELECT COUNT(*) FROM push_log
              WHERE customer_id = ?
-               AND sent > 0
-               AND suppressed = 0
                AND created_at > ?
                AND (kind = 'talep_cevap' OR (kind = 'menu' AND created_at >= ? AND created_at < ?))"
         );

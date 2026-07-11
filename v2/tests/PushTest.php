@@ -269,11 +269,11 @@ final class PushTest extends TestCase
         $this->addLog($a, 'menu', $today . ' 11:00:00');        // bugünkü menü → sayılır
         $this->addLog($a, 'menu', $yesterday . ' 23:00:00');    // eski menü → sayılmaz
         $this->addLog($a, 'manuel', $today . ' 11:30:00');      // badge türü değil
-        $this->addLog($a, 'talep_cevap', $today . ' 12:00:00', 0);    // gönderilmedi
-        $this->addLog($a, 'talep_cevap', $today . ' 12:05:00', 1, 1); // bastırıldı
+        $this->addLog($a, 'talep_cevap', $today . ' 12:00:00', 0);    // içerik var; APNs gönderilemedi
+        $this->addLog($a, 'talep_cevap', $today . ' 12:05:00', 0, 1); // sessiz saatte bastırıldı
 
         $repo = new Repo($this->pdo);
-        $this->assertSame(2, $repo->badgeCountFor($a));
+        $this->assertSame(4, $repo->badgeCountFor($a), 'teslim edilemeyen ama görülmemiş içerik de sayılır');
 
         $this->pdo->prepare('UPDATE push_tokens SET last_seen = ? WHERE token = ?')
             ->execute([$today . ' 12:30:00', $token]);

@@ -50,6 +50,7 @@
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
+      keepalive: true,
       body: JSON.stringify({ token: token, platform: C.getPlatform() }),
     }).then(function (response) {
       if (!response.ok) throw new Error("push-register:" + response.status);
@@ -107,7 +108,7 @@
   }
 
   function installPullToRefresh() {
-    if (!authenticated || !document.body) return;
+    if (!authenticated || guard !== "customer" || !document.body) return;
 
     var indicator = document.createElement("div");
     indicator.className = "pull-refresh";
@@ -193,17 +194,26 @@
   installPullToRefresh();
   if (!PN) return;
 
+  function markSeen() {
+    var token = localStorage.getItem(tokenKey);
+    if (token) registerToken(token).catch(function () {});
+  }
+
   PN.addListener("pushNotificationActionPerformed", function (event) {
     clearDelivered();
+    markSeen();
     routeNotification(event && event.notification && event.notification.data);
   });
 
   PN.addListener("pushNotificationReceived", function (notification) {
     clearDelivered();
+    markSeen();
     showPushToast(notification || {});
   });
 
   PN.addListener("registration", function (token) {
+    // iOS plugin'i soğuk açılışta bu callback'ten önce badge temizlemeyi reddeder.
+    clearDelivered();
     registerToken(token && token.value).catch(function () {});
   });
 

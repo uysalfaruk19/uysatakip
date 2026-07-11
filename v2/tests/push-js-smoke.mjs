@@ -74,6 +74,7 @@ const storage = new Map();
 const fetchCalls = [];
 const assigned = [];
 let cleared = 0;
+let clearAttempts = 0;
 let registered = 0;
 let reloaded = 0;
 const PushNotifications = {
@@ -82,6 +83,8 @@ const PushNotifications = {
     return Promise.resolve();
   },
   removeAllDeliveredNotifications() {
+    clearAttempts++;
+    if (registered === 0) return Promise.reject(new Error("registration pending"));
     cleared++;
     return Promise.resolve();
   },
@@ -141,9 +144,15 @@ await new Promise((resolve) => setTimeout(resolve, 0));
 
 assert.equal(documentElement.classList.contains("native-app"), true);
 assert.equal(body.classList.contains("native-app"), true);
-assert.equal(cleared, 1, "app açılışında bildirimler ve badge temizlenir");
+assert.equal(clearAttempts, 1, "soğuk açılışta ilk badge temizliği denenir");
 assert.equal(registered, 1, "izin varsa APNs kaydı yenilenir");
 assert.equal(typeof pluginListeners.pushNotificationActionPerformed, "function");
+
+pluginListeners.registration({ value: "token-123" });
+await new Promise((resolve) => setTimeout(resolve, 0));
+assert.equal(cleared, 1, "native registration tamamlanınca badge temizliği tekrarlanır");
+assert.equal(fetchCalls.at(-1)[0], "/m/push-register.php");
+assert.match(fetchCalls.at(-1)[1].body, /token-123/);
 
 pluginListeners.pushNotificationActionPerformed({
   notification: { data: { url: "/m/menu.php?ay=2026-07#bugun" } },
@@ -156,17 +165,15 @@ for (const unsafe of ["//evil.example/x", "https://evil.example/x", "javascript:
   assert.equal(assigned.length, before, `güvensiz deep-link reddedildi: ${unsafe}`);
 }
 
-pluginListeners.registration({ value: "token-123" });
-await new Promise((resolve) => setTimeout(resolve, 0));
-assert.equal(fetchCalls.at(-1)[0], "/m/push-register.php");
-assert.match(fetchCalls.at(-1)[1].body, /token-123/);
-
+const postsBeforeForeground = fetchCalls.length;
 pluginListeners.pushNotificationReceived({
   title: "Menünüz yayınlandı",
   body: "Temmuz Menüsü",
   data: { url: "/m/menu.php" },
 });
+await new Promise((resolve) => setTimeout(resolve, 0));
 assert.ok(body.children.some((item) => item.className === "native-push-toast"));
+assert.equal(fetchCalls.length, postsBeforeForeground + 1, "foreground push server tarafında da görüldü işaretlenir");
 
 const touchTarget = element("main");
 documentListeners.touchstart({ target: touchTarget, touches: [{ clientX: 20, clientY: 0 }] });
@@ -181,5 +188,6 @@ documentListeners.touchend();
 await new Promise((resolve) => setTimeout(resolve, 150));
 assert.equal(prevented, true, "dikey çekme native bounce yerine app yenilemeyi kullanır");
 assert.equal(reloaded, 1, "eşik aşılınca sayfa bir kez yenilenir");
+assert.match(source, /guard !== "customer"/, "pull-to-refresh yalnız müşteri ekranlarında kurulur");
 
 console.log("push-js smoke ok");
