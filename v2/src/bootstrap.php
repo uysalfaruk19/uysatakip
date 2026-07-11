@@ -6,6 +6,10 @@ declare(strict_types=1);
  * PSR-4-benzeri basit autoloader + .env + PDO. Her giriş noktası bunu include eder.
  */
 
+// İş saatleri TR'ye göre (sipariş kesimi 15:30, push sessiz saati, "bugün" hesabı).
+// Container UTC — set edilmezse kesim fiilen 18:30 TR'de işler, gece 00-03 arası gün kayar.
+date_default_timezone_set('Europe/Istanbul');
+
 spl_autoload_register(static function (string $class): void {
     if (!str_starts_with($class, 'Uysa\\')) {
         return;
