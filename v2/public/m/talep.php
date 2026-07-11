@@ -6,6 +6,7 @@ use Uysa\CustomerAuth;
 use Uysa\Db;
 use Uysa\Env;
 use Uysa\Helpers;
+use Uysa\Push;
 use Uysa\Repo;
 
 $cu = CustomerAuth::requireCustomer();
@@ -113,6 +114,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 }
                 uysa_audit('musteri_talep_yeni', $cu['username'], (string) $cid, (string) $reqId, client_ip());
                 $flash = 'Talebiniz açıldı.';
+                // opus-021: adminlere push ("Yeni talep: <müşteri> — <konu>") — hata talebi KIRMAZ
+                try {
+                    (new Push($pdo))->toAdmins('Yeni talep: ' . $cu['customer_name'], mb_substr($subject, 0, 200), ['url' => '/talepler.php'], 'talep_yeni');
+                } catch (\Throwable) {
+                }
                 $openId = $reqId;
             }
         }

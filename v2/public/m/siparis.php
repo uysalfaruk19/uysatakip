@@ -5,6 +5,7 @@ require __DIR__ . '/../../src/bootstrap.php';
 use Uysa\CustomerAuth;
 use Uysa\Db;
 use Uysa\Helpers;
+use Uysa\Push;
 use Uysa\Repo;
 
 $cu = CustomerAuth::requireCustomer();
@@ -55,6 +56,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $flash = $persons > 0
                 ? "Siparişiniz alındı: $persons kişi · onay bekliyor."
                 : 'Sipariş sıfırlandı (0 kişi).';
+            // opus-021: adminlere push ("<müşteri> yarın <n> kişi") — hata siparişi KIRMAZ
+            try {
+                $gunTxt = $pDate === $tomorrow ? 'yarın' : gun_label_tr($pDate);
+                (new Push($pdo))->toAdmins('Yeni sipariş', "{$cu['customer_name']} $gunTxt $persons kişi", ['url' => '/siparisler.php'], 'siparis');
+            } catch (\Throwable) {
+            }
         }
     }
 }

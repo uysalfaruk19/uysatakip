@@ -8,8 +8,9 @@ namespace Uysa;
  * Env: APNS_TEAM_ID, APNS_KEY_ID, APNS_KEY_FILE (.p8 yolu) VEYA APNS_KEY_B64 (PEM'in base64'ü —
  * container'a dosya sokmadan .env ile vermek için), APNS_TOPIC (bundle id), APNS_ENV (production|sandbox).
  * JWT ~50 dk cache'lenir (Apple kuralı: 20-60 dk arası yenile).
+ * Not (opus-021): final DEĞİL — testlerde stub ile genişletilir, gerçek APNs'e istek atılmaz.
  */
-final class Apns
+class Apns
 {
     private string $teamId;
     private string $keyId;

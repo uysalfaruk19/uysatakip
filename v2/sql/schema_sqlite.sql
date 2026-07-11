@@ -399,3 +399,38 @@ CREATE TABLE IF NOT EXISTS personel_musteri (
   UNIQUE(personel_id, customer_id)
 );
 CREATE INDEX IF NOT EXISTS idx_pm_personel ON personel_musteri(personel_id);
+
+-- ── Push cihaz token'ları (migrate_021 + opus-021 user_id): müşteri app + admin ─
+CREATE TABLE IF NOT EXISTS push_tokens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  platform TEXT NOT NULL DEFAULT 'ios',
+  token TEXT NOT NULL UNIQUE,
+  customer_id INTEGER DEFAULT NULL,
+  cuid INTEGER DEFAULT NULL,          -- customer_users.id
+  user_id INTEGER DEFAULT NULL,       -- admin users.id (opus-021)
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_seen TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_push_customer ON push_tokens(customer_id);
+CREATE INDEX IF NOT EXISTS idx_push_user ON push_tokens(user_id);
+
+-- ── Push gönderim geçmişi (opus-021): olay/manuel/hatırlatma; mükerrer koruması ref'ten ─
+CREATE TABLE IF NOT EXISTS push_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind TEXT NOT NULL,                 -- menu|talep_cevap|talep_yeni|siparis|reminder|manuel
+  customer_id INTEGER DEFAULT NULL,
+  user_id INTEGER DEFAULT NULL,
+  ref TEXT DEFAULT NULL,              -- mükerrer anahtarı, ör. menu:12
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  sent INTEGER NOT NULL DEFAULT 0,
+  dead INTEGER NOT NULL DEFAULT 0,
+  suppressed INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_pl_kind_cust ON push_log(kind, customer_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_pl_ref ON push_log(ref);
+
+INSERT OR IGNORE INTO ayar (anahtar, deger) VALUES
+  ('push_quiet_start', '21:00'),
+  ('push_quiet_end', '07:00');
