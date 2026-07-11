@@ -59,7 +59,7 @@ require __DIR__ . '/partials/header_m.php';
 
       <div class="cardx card-pad">
         <h2>Malzeme iste</h2>
-        <p class="row-meta mb-2">İhtiyaç duyduğunuz kalemlere miktar girin. "Hakkın" standing hakedişinizdir.</p>
+        <p class="row-meta mb-2">İhtiyaç duyduğunuz kalemlere miktar girin. "Hakkın" etiketi tanımlı hakediş miktarınızı gösterir.</p>
         <?php if (!$catalog): ?>
           <div class="empty-state">Katalog boş.</div>
         <?php else: ?>

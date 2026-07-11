@@ -777,10 +777,10 @@ h3 {
   font-weight: 700;
 }
 
-/* Müşteri alt-nav 5 sekme (FAB yok) */
+/* Müşteri alt-nav 6 sekme (FAB yok) */
 .customer .bottom-tabs,
 body.customer-page .bottom-tabs {
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
 /* ── Modül grid'i (broşür alt kartları: Stok, Reçete, Faturalar…) ─ */
@@ -888,6 +888,7 @@ body.customer-page .bottom-tabs {
   box-shadow: 0 -6px 20px rgba(20, 40, 80, 0.06);
 }
 .tab-item {
+  min-width: 0;
   border-radius: 12px;
   display: grid;
   place-items: center;
@@ -896,6 +897,7 @@ body.customer-page .bottom-tabs {
   font-size: 11px;
   font-weight: 700;
   padding: 6px 2px;
+  white-space: nowrap;
 }
 .tab-item i {
   font-size: 19px;
@@ -1085,6 +1087,10 @@ body.customer-page .bottom-tabs {
   }
 }
 @media (max-width: 400px) {
+  body.customer-page .tab-item {
+    font-size: 10px;
+    padding-inline: 0;
+  }
   .summary-card.wide {
     grid-column: auto;
   }

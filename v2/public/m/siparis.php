@@ -136,6 +136,7 @@ require __DIR__ . '/partials/header_m.php';
               <p class="row-meta mt-1"><i class="bi bi-arrow-repeat"></i> Önceki gününüz <strong><?= $lastPersons ?> kişi</strong> — değiştirmezseniz aynı sayı gönderilir.</p>
             <?php endif; ?>
             <button class="btn-action btn-primaryx btn-full mt-3" type="submit"><i class="bi bi-send"></i> Siparişi gönder</button>
+            <p class="row-meta mt-2"><i class="bi bi-arrow-counterclockwise"></i> 0 kişi gönderirseniz bu öğünün siparişi sıfırlanır.</p>
             <p class="row-meta mt-2"><i class="bi bi-info-circle"></i> Son değişiklik: <?= date('d.m.Y H:i', $deadlineTs) ?>'a kadar.</p>
           </form>
         <?php else: ?>

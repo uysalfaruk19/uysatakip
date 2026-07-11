@@ -79,7 +79,7 @@ require __DIR__ . '/partials/header_m.php';
           <?php if ($order): ?>
             <span class="badge-soft <?= $bc ?>"><i class="bi <?= $bi ?>"></i> <?= Helpers::e($bt) ?></span>
           <?php else: ?>
-            <a class="btn-action btn-primaryx" href="siparis.php"><i class="bi bi-plus"></i> Gir</a>
+            <a class="btn-action btn-primaryx" href="siparis.php"><i class="bi bi-plus"></i> Sipariş gir</a>
           <?php endif; ?>
         </div>
         <?php if ($tomorrowEditable): ?>
@@ -116,7 +116,7 @@ require __DIR__ . '/partials/header_m.php';
       <a class="cardx card-pad" href="malzeme.php" style="display:block">
         <div class="d-flex align-items-center justify-content-between gap-2">
           <div><p class="label">Sarf malzeme</p><h2 style="margin:0"><?= $openSupply > 0 ? $openSupply . ' talep sürüyor' : 'Malzeme iste' ?></h2></div>
-          <span class="badge-soft <?= $openSupply > 0 ? 'badge-warn' : 'badge-blue' ?>"><i class="bi bi-box-seam"></i> <?= $openSupply > 0 ? 'Görüntüle' : 'Talep aç' ?></span>
+          <span class="badge-soft <?= $openSupply > 0 ? 'badge-warn' : 'badge-blue' ?>"><i class="bi bi-box-seam"></i> <?= $openSupply > 0 ? 'Görüntüle' : 'Malzeme talebi' ?></span>
         </div>
       </a>
 <?php require __DIR__ . '/partials/footer_m.php'; ?>
