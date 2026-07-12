@@ -320,8 +320,8 @@ require __DIR__ . '/partials/header.php';
       <!-- Excel indir / bu menüye yükle -->
       <div class="cardx card-pad">
         <div class="actions-row">
-          <a class="btn-action btn-secondaryx flex-fill" href="menu.php?export=<?= (int) $edit['id'] ?>"><i class="bi bi-download"></i> Excel indir</a>
-          <a class="btn-action btn-secondaryx flex-fill" href="menu.php?pdf=<?= (int) $edit['id'] ?>"><i class="bi bi-file-earmark-pdf"></i> PDF indir</a>
+          <a class="btn-action btn-secondaryx flex-fill" href="menu.php?export=<?= (int) $edit['id'] ?>" target="_blank" rel="noopener" download><i class="bi bi-download"></i> Excel indir</a>
+          <a class="btn-action btn-secondaryx flex-fill" href="menu.php?pdf=<?= (int) $edit['id'] ?>" target="_blank" rel="noopener" download><i class="bi bi-file-earmark-pdf"></i> PDF indir</a>
           <button class="btn-action btn-secondaryx flex-fill" type="button" onclick="document.getElementById('xlsx-up-edit').style.display=(document.getElementById('xlsx-up-edit').style.display==='none'?'block':'none')"><i class="bi bi-upload"></i> Excel yükle</button>
         </div>
         <form method="post" enctype="multipart/form-data" class="form-grid" id="xlsx-up-edit" style="display:none;margin-top:10px">

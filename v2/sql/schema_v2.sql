@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS `customers` (
   `category`      ENUM('uretim','tasima') NOT NULL DEFAULT 'uretim' COMMENT 'üretim (yemek) / taşıma müşterisi',
   `contact`       VARCHAR(255)          DEFAULT NULL,
   `phone`         VARCHAR(40)           DEFAULT NULL,
+  `email`         VARCHAR(120)          DEFAULT NULL,
   `contract_note` VARCHAR(500)          DEFAULT NULL,
   `maliyet_birim`      DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'taşıma: alış birim fiyatı TL (opus-013)',
   `tasima_sabit_gider` DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'taşıma: aylık sabit gider TL (opsiyonel)',

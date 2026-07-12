@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS customers (
   category TEXT NOT NULL DEFAULT 'uretim' CHECK(category IN ('uretim','tasima')),
   contact TEXT,
   phone TEXT,
+  email TEXT,
   contract_note TEXT,
   maliyet_birim REAL NOT NULL DEFAULT 0,        -- taşıma: alış birim fiyatı (opus-013)
   tasima_sabit_gider REAL NOT NULL DEFAULT 0,   -- taşıma: aylık sabit gider (opsiyonel)

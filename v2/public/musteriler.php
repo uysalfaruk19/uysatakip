@@ -89,7 +89,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     $gider = Helpers::parseMoney((string) ($_POST['sabit_gider'] ?? '0'));
                     $tnot = trim((string) ($_POST['note'] ?? ''));
                 }
-                $cid = $repo->upsertCustomer($name, $unitPrice, $category, $id, null, null, null, $maliyet, $gider, $tnot);
+                $contact = trim((string) ($_POST['contact'] ?? '')) ?: null;
+                $phone = trim((string) ($_POST['phone'] ?? '')) ?: null;
+                $email = trim((string) ($_POST['email'] ?? '')) ?: null;
+                $cid = $repo->upsertCustomer($name, $unitPrice, $category, $id, $contact, $phone, null, $maliyet, $gider, $tnot, $email);
                 // Reaktif ilke: karttaki fiyat da seçili aydan itibaren AY-BAZLI uygulanır.
                 // Yoksa ay kaydı olan müşteride carry-forward current default'u her zaman
                 // ezdiğinden karttan girilen fiyat hiçbir hesaba yansımaz (ölü alan tuzağı).
@@ -129,6 +132,9 @@ $tasima = $repo->listCustomersByCategory('tasima');
 $edit = $editId ? $repo->customer($editId) : null;
 $fName = $edit['name'] ?? '';
 $fCat = $edit['category'] ?? 'uretim';
+$fContact = $edit['contact'] ?? '';
+$fPhone = $edit['phone'] ?? '';
+$fEmail = $edit['email'] ?? '';
 // opus-017: seçilen ayın ay-bazlı fiyatı (o ay > carry-forward > current default).
 // Kart da bu değeri gösterir — ekranda görünen fiyat = hesaplarda geçerli fiyat.
 $ayFiyat = $edit ? $repo->priceFor($editId, $month) : null;
@@ -160,6 +166,16 @@ require __DIR__ . '/partials/header.php';
 
           <div class="field"><label>Müşteri adı</label>
             <input class="inputx" name="name" value="<?= Helpers::e($fName) ?>" required autocapitalize="words">
+          </div>
+
+          <div class="field"><label>Yetkili kişi</label>
+            <input class="inputx" name="contact" value="<?= Helpers::e($fContact) ?>" autocapitalize="words" placeholder="ör. Ahmet Yılmaz">
+          </div>
+          <div class="field"><label>Telefon</label>
+            <input class="inputx" type="tel" name="phone" value="<?= Helpers::e($fPhone) ?>" inputmode="tel" placeholder="05xx xxx xx xx">
+          </div>
+          <div class="field"><label>E-posta</label>
+            <input class="inputx" type="email" name="email" value="<?= Helpers::e($fEmail) ?>" inputmode="email" autocapitalize="none" placeholder="ornek@firma.com">
           </div>
 
           <div class="field"><label>Kategori</label>

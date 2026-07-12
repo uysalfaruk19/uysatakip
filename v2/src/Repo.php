@@ -83,7 +83,8 @@ final class Repo
         ?string $note = null,
         ?float $maliyetBirim = null,
         ?float $tasimaSabitGider = null,
-        ?string $tasimaNot = null
+        ?string $tasimaNot = null,
+        ?string $email = null
     ): int {
         if (!in_array($category, ['uretim', 'tasima'], true)) {
             $category = 'uretim';
@@ -97,20 +98,20 @@ final class Repo
         if ($id !== null) {
             $this->pdo->prepare(
                 'UPDATE customers SET name = ?, unit_price = ?, category = ?,
-                 contact = COALESCE(?, contact), phone = COALESCE(?, phone),
+                 contact = COALESCE(?, contact), phone = COALESCE(?, phone), email = COALESCE(?, email),
                  contract_note = COALESCE(?, contract_note),
                  maliyet_birim = COALESCE(?, maliyet_birim),
                  tasima_sabit_gider = COALESCE(?, tasima_sabit_gider),
                  tasima_not = COALESCE(?, tasima_not) WHERE id = ?'
-            )->execute([$name, $unitPrice, $category, $contact, $phone, $note,
+            )->execute([$name, $unitPrice, $category, $contact, $phone, $email, $note,
                 $maliyetBirim, $tasimaSabitGider, $tasimaNot, $id]);
             return $id;
         }
         $this->pdo->prepare(
-            'INSERT INTO customers (name, unit_price, category, contact, phone, contract_note,
+            'INSERT INTO customers (name, unit_price, category, contact, phone, email, contract_note,
                  maliyet_birim, tasima_sabit_gider, tasima_not)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-        )->execute([$name, $unitPrice, $category, $contact, $phone, $note,
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        )->execute([$name, $unitPrice, $category, $contact, $phone, $email, $note,
             $maliyetBirim ?? 0.0, $tasimaSabitGider ?? 0.0, $tasimaNot]);
         return (int) $this->pdo->lastInsertId();
     }

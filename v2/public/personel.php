@@ -11,7 +11,7 @@ $u = Auth::requireLogin();
 $pdo = Db::pdo();
 $repo = new Repo($pdo);
 
-$defaultMonth = date('Y-m', strtotime('first day of previous month'));
+$defaultMonth = date('Y-m'); // içinde bulunduğumuz ay
 $month = (string) ($_GET['ay'] ?? $defaultMonth);
 if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
     $month = $defaultMonth;
