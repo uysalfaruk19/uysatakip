@@ -37,6 +37,7 @@
 html {
   min-height: 100%;
   background: var(--bg);
+  scroll-behavior: smooth;
 }
 body {
   min-height: 100%;
@@ -956,6 +957,17 @@ body.customer-page .bottom-tabs {
 .fab-menu.open {
   display: grid;
   gap: 2px;
+}
+.fab-menu .fab-label {
+  margin: 12px 6px 2px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.fab-menu .fab-label:first-child {
+  margin-top: 2px;
 }
 .fab-menu a {
   display: flex;

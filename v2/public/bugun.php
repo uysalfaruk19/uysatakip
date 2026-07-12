@@ -134,13 +134,13 @@ require __DIR__ . '/partials/header.php';
             <p class="val" id="sum-persons"><?= number_format($sumP, 0, ',', '.') ?></p>
           </div>
         </div>
-        <div class="stat-card stat-blue">
+        <a class="stat-card stat-blue" href="#musteri-sayilari" aria-label="Müşteri sayılarına git">
           <div class="ico"><i class="bi bi-shop"></i></div>
           <div class="txt">
             <p class="lbl">Giriş yapılan müşteri</p>
             <p class="val"><span id="sum-filled"><?= $filled ?>/<?= $total ?></span></p>
           </div>
-        </div>
+        </a>
       </div>
 
       <div class="section-head"><h2>Bölümler</h2></div>
@@ -226,14 +226,10 @@ require __DIR__ . '/partials/header.php';
       </div>
       <?php endif; ?>
 
-      <div class="hint-card">
-        Bu veriler WhatsApp'tan da girilebilir: OFUclaw'a <strong>"cantaş 450 opak 280"</strong> yaz.
-      </div>
-
       <form method="post" id="bugun-form">
         <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
         <input type="hidden" name="date" value="<?= Helpers::e($date) ?>">
-        <div class="cardx card-pad">
+        <div class="cardx card-pad" id="musteri-sayilari" style="scroll-margin-top: 14px">
           <h2>Müşteri sayıları</h2>
           <?php if (!$rowsData): ?>
             <div class="empty-state">Aktif müşteri yok.</div>
