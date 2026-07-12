@@ -133,7 +133,10 @@ require __DIR__ . '/partials/header_m.php';
               </div>
             </div>
             <?php if ($current === 0 && $lastPersons > 0): ?>
-              <p class="row-meta mt-1"><i class="bi bi-arrow-repeat"></i> Önceki gününüz <strong><?= $lastPersons ?> kişi</strong> — değiştirmezseniz aynı sayı gönderilir.</p>
+              <button type="button" class="chip chip-fill mt-2" onclick="var i=this.closest('form').querySelector('.count-input'); i.value=<?= $lastPersons ?>;">
+                <i class="bi bi-arrow-repeat"></i> Dünkü ile aynı: <?= $lastPersons ?> kişi
+              </button>
+              <p class="row-meta mt-1">Dokunmazsanız da bu sayı gönderilir.</p>
             <?php endif; ?>
             <button class="btn-action btn-primaryx btn-full mt-3" type="submit"><i class="bi bi-send"></i> Siparişi gönder</button>
             <p class="row-meta mt-2"><i class="bi bi-arrow-counterclockwise"></i> 0 kişi gönderirseniz bu öğünün siparişi sıfırlanır.</p>

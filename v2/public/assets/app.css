@@ -352,6 +352,13 @@ h3 {
   color: #fff;
   box-shadow: 0 4px 12px rgba(242, 107, 33, 0.28);
 }
+/* Tek-dokunuş "dünkü ile aynı" — sayı alanını doldurur (ios-011) */
+.chip-fill {
+  gap: 6px;
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--surface);
+}
 
 /* ── Bölüm başlığı (kart dışı) ─────────────────────────────── */
 .section-head {
