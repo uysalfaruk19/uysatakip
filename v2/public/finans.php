@@ -124,6 +124,11 @@ require __DIR__ . '/partials/header.php';
 ?>
       <?php if ($flash): ?><div class="flash <?= $flashOk ? 'ok' : 'err' ?>"><?= Helpers::e($flash) ?></div><?php endif; ?>
 
+      <div class="quick-tiles">
+        <a class="q-tile" href="faturalar.php"><i class="bi bi-receipt"></i> Faturalar</a>
+        <a class="q-tile" href="cari.php"><i class="bi bi-cash-coin"></i> Cari & tahsilat</a>
+      </div>
+
       <form method="get" class="date-row">
         <div class="date-pill"><i class="bi bi-calendar2-week"></i>
           <input type="month" name="ay" value="<?= Helpers::e($month) ?>" onchange="this.form.submit()">

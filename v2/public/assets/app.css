@@ -958,6 +958,42 @@ body.customer-page .bottom-tabs {
   display: grid;
   gap: 2px;
 }
+.quick-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 13px;
+}
+.q-tile {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 13px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  box-shadow: var(--shadow-sm);
+  font-weight: 750;
+  font-size: 13.5px;
+  min-height: 44px;
+}
+.q-tile i {
+  font-size: 19px;
+  color: var(--primary);
+  flex: 0 0 auto;
+}
+.q-tile:active {
+  background: var(--surface-2);
+}
+.q-tile .q-badge {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--red-tint);
+  color: var(--red);
+}
 .fab-menu .fab-label {
   margin: 12px 6px 2px;
   font-size: 11px;

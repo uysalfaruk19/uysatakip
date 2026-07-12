@@ -146,6 +146,12 @@ require __DIR__ . '/partials/header.php';
 ?>
       <?php if ($flash): ?><div class="flash <?= $flashOk ? 'ok' : 'err' ?>"><?= Helpers::e($flash) ?></div><?php endif; ?>
 
+      <?php if (!$detail): ?>
+      <div class="quick-tiles">
+        <a class="q-tile" href="malzeme.php"><i class="bi bi-box-seam"></i> Malzeme talepleri</a>
+      </div>
+      <?php endif; ?>
+
       <?php if ($detail): ?>
         <a class="btn-action btn-secondaryx mb-2" href="talepler.php"><i class="bi bi-arrow-left"></i> Tüm talepler</a>
         <div class="cardx card-pad">

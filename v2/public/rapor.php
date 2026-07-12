@@ -148,6 +148,10 @@ foreach ($rows as $r) {
 
 require __DIR__ . '/partials/header.php';
 ?>
+      <div class="quick-tiles">
+        <a class="q-tile" href="kar-analizi.php"><i class="bi bi-pie-chart"></i> Kâr analizi (üretim/taşıma marj)</a>
+      </div>
+
       <form method="get" class="date-row">
         <div class="date-pill"><i class="bi bi-calendar2-week"></i>
           <input type="month" name="ay" value="<?= Helpers::e($month) ?>" onchange="this.form.submit()">

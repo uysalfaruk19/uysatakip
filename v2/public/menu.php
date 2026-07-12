@@ -265,6 +265,11 @@ require __DIR__ . '/partials/header.php';
 ?>
       <?php if ($flash): ?><div class="flash <?= $flashOk ? 'ok' : 'err' ?>"><?= Helpers::e($flash) ?></div><?php endif; ?>
 
+      <div class="quick-tiles">
+        <a class="q-tile" href="recete.php"><i class="bi bi-clipboard2-data"></i> Reçete & maliyet</a>
+        <a class="q-tile" href="stok.php"><i class="bi bi-box-seam"></i> Stok durumu</a>
+      </div>
+
 <?php if ($preview): ?>
       <div class="cardx card-pad">
         <h2><i class="bi bi-file-earmark-excel"></i> Excel önizleme</h2>

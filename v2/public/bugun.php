@@ -150,42 +150,11 @@ require __DIR__ . '/partials/header.php';
           <div class="mt">Müşteriler</div>
           <div class="md">Üretim / taşıma, birim fiyat, kâr</div>
         </a>
-        <a class="mod-card i-blue" href="rapor.php">
-          <div class="mico"><i class="bi bi-graph-up-arrow"></i></div>
-          <div class="mt">Kâr / Zarar</div>
-          <div class="md">Aylık rapor + müşteri drill-down</div>
-        </a>
-        <a class="mod-card i-green" href="kar-analizi.php">
-          <div class="mico"><i class="bi bi-pie-chart"></i></div>
-          <div class="mt">Kâr Analizi</div>
-          <div class="md">Üretim / taşıma P&amp;L + marj</div>
-        </a>
-        <a class="mod-card" href="faturalar.php">
-          <div class="mico"><i class="bi bi-receipt"></i></div>
-          <div class="mt">Faturalar</div>
-          <div class="md">Aylık müşteri faturası oluştur</div>
-        </a>
-        <a class="mod-card i-green" href="cari.php">
-          <div class="mico"><i class="bi bi-cash-coin"></i></div>
-          <div class="mt">Cari</div>
-          <div class="md">Bakiye ve tahsilat</div>
-        </a>
         <a class="mod-card i-amber" href="siparisler.php">
           <?php if ($pendingCount > 0): ?><span class="soon-chip" style="background:var(--red-tint);color:var(--red)"><?= $pendingCount ?> yeni</span><?php endif; ?>
           <div class="mico"><i class="bi bi-basket"></i></div>
           <div class="mt">Siparişler</div>
           <div class="md">Müşteri onay kuyruğu</div>
-        </a>
-        <a class="mod-card i-blue" href="stok.php">
-          <?php if ($critCount > 0): ?><span class="soon-chip" style="background:var(--red-tint);color:var(--red)"><?= $critCount ?> kritik</span><?php endif; ?>
-          <div class="mico"><i class="bi bi-box-seam"></i></div>
-          <div class="mt">Stok Durumu</div>
-          <div class="md">Malzeme giriş/çıkış</div>
-        </a>
-        <a class="mod-card" href="recete.php">
-          <div class="mico"><i class="bi bi-clipboard2-data"></i></div>
-          <div class="mt">Reçete & Maliyet</div>
-          <div class="md">Porsiyon maliyeti</div>
         </a>
         <a class="mod-card i-amber" href="personel.php">
           <div class="mico"><i class="bi bi-person-badge"></i></div>
@@ -196,12 +165,6 @@ require __DIR__ . '/partials/header.php';
           <div class="mico"><i class="bi bi-card-list"></i></div>
           <div class="mt">Menü</div>
           <div class="md">Menü oluştur + hedefli yayınla</div>
-        </a>
-        <a class="mod-card i-amber" href="malzeme.php">
-          <?php if ($supplyCount > 0): ?><span class="soon-chip" style="background:var(--red-tint);color:var(--red)"><?= $supplyCount ?> yeni</span><?php endif; ?>
-          <div class="mico"><i class="bi bi-box-seam"></i></div>
-          <div class="mt">Malzeme Talepleri</div>
-          <div class="md">Katalog · hakediş · talep kuyruğu</div>
         </a>
         <a class="mod-card i-blue" href="talepler.php">
           <?php if ($openReqCount > 0): ?><span class="soon-chip" style="background:var(--red-tint);color:var(--red)"><?= $openReqCount ?> açık</span><?php endif; ?>
