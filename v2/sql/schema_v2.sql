@@ -308,12 +308,56 @@ CREATE TABLE IF NOT EXISTS `stock_moves` (
   `direction`     ENUM('giris','cikis') NOT NULL,
   `quantity`      DECIMAL(12,2) NOT NULL DEFAULT 0.00,
   `unit`          VARCHAR(20)  NOT NULL DEFAULT 'kg',
+  `skt`           DATE                  DEFAULT NULL,
+  `supplier_id`   INT UNSIGNED          DEFAULT NULL,
   `note`          VARCHAR(500)          DEFAULT NULL,
   `created_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_sm_ingredient` (`ingredient_id`),
   KEY `idx_sm_date` (`move_date`),
-  CONSTRAINT `fk_sm_ingredient` FOREIGN KEY (`ingredient_id`) REFERENCES `ingredients` (`id`) ON DELETE CASCADE
+  CONSTRAINT `fk_sm_ingredient` FOREIGN KEY (`ingredient_id`) REFERENCES `ingredients` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_sm_supplier` FOREIGN KEY (`supplier_id`) REFERENCES `suppliers` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── fable-003: HACCP günlük kontrol / teklif / teslimat ─────────
+CREATE TABLE IF NOT EXISTS `haccp_log` (
+  `id`         INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `log_date`   DATE         NOT NULL,
+  `kind`       ENUM('sicaklik','hijyen','numune','malkabul') NOT NULL,
+  `nokta`      VARCHAR(80)  NOT NULL,
+  `deger`      VARCHAR(40)           DEFAULT NULL,
+  `uygun`      TINYINT(1)            DEFAULT NULL,
+  `note`       VARCHAR(300)          DEFAULT NULL,
+  `imha_at`    DATETIME              DEFAULT NULL,
+  `created_by` VARCHAR(40)           DEFAULT NULL,
+  `created_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_haccp_date` (`log_date`),
+  KEY `idx_haccp_kind` (`kind`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `teklif` (
+  `id`          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `firma`       VARCHAR(120) NOT NULL,
+  `kisi`        INT                   DEFAULT NULL,
+  `birim_fiyat` DECIMAL(10,2)         DEFAULT NULL,
+  `note`        VARCHAR(500)          DEFAULT NULL,
+  `durum`       ENUM('taslak','gonderildi','kabul','red') NOT NULL DEFAULT 'taslak',
+  `created_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_teklif_durum` (`durum`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `teslimat` (
+  `id`          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `teslim_date` DATE         NOT NULL,
+  `customer_id` INT UNSIGNED NOT NULL,
+  `status`      ENUM('bekliyor','yolda','teslim') NOT NULL DEFAULT 'bekliyor',
+  `updated_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_teslimat` (`teslim_date`,`customer_id`),
+  CONSTRAINT `fk_teslimat_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ── Personel (maaş/prim/gider takibi — opus-009) ──────────────

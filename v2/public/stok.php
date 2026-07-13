@@ -32,8 +32,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $date = Helpers::today();
         }
         $note = trim((string) ($_POST['note'] ?? '')) ?: null;
+        // fable-003: girişe opsiyonel SKT + tedarikçi (SKT riski ve "son tedarikçi" için)
+        $skt = (string) ($_POST['skt'] ?? '');
+        $skt = Helpers::isDate($skt) ? $skt : null;
+        $supplierId = (int) ($_POST['supplier_id'] ?? 0) ?: null;
         if ($iid > 0 && $qty > 0) {
-            $repo->addStockMove($iid, $date, $dir, $qty, null, $note);
+            $repo->addStockMove($iid, $date, $dir, $qty, null, $note, $skt, $supplierId);
             uysa_audit('stok_hareket', $u['username'], (string) $iid, json_encode(['d' => $dir, 'q' => $qty]), client_ip());
             $flash = ($dir === 'giris' ? 'Giriş' : 'Çıkış') . ' kaydedildi — stok güncellendi.';
         } else {
@@ -56,6 +60,10 @@ $levels = $repo->stockLevels($search ?: null);
 $critical = $repo->criticalStock();
 $ingredients = $repo->listIngredients();
 $moves = $repo->recentStockMoves(12);
+// fable-003: sipariş ihtiyacı (eksik + son alış/tedarikçi) + SKT riski + tedarikçi listesi
+$needList = $repo->orderNeedList();
+$sktRisk = $repo->sktRisk(30);
+$suppliers = $repo->listSuppliers(true);
 
 $totalIng = count($ingredients);
 $critCount = count($critical);
@@ -84,23 +92,48 @@ require __DIR__ . '/partials/header.php';
         </div>
       </div>
 
-      <?php if ($critical): ?>
+      <?php /* fable-003: kritik uyarı → sipariş ihtiyaç listesi (eksik + son alış + kopyala) */ ?>
+      <?php if ($needList): ?>
       <div class="cardx card-pad" style="border-color:var(--red-tint);background:var(--red-tint)">
-        <h2 style="color:#b42318"><i class="bi bi-exclamation-triangle-fill"></i> Kritik stok uyarısı</h2>
+        <h2 style="color:#b42318"><i class="bi bi-cart-plus"></i> Sipariş ihtiyacı</h2>
+        <p class="row-meta mb-2">Eşik altındaki malzemeler — eksik miktar sipariş önerisidir.</p>
         <div style="overflow-x:auto">
         <table class="tablex">
-          <thead><tr><th>Malzeme</th><th class="num">Stok</th><th class="num">Eşik</th></tr></thead>
+          <thead><tr><th>Malzeme</th><th class="num">Eksik</th><th class="num">Stok/Eşik</th><th>Son alış</th></tr></thead>
           <tbody>
-          <?php foreach ($critical as $c): ?>
+          <?php $copyLines = []; foreach ($needList as $c):
+              $copyLines[] = $c['name'] . ': ' . rtrim(rtrim(number_format($c['eksik'], 2, ',', '.'), '0'), ',') . ' ' . $c['unit']; ?>
             <tr>
               <td><strong><?= Helpers::e($c['name']) ?></strong></td>
-              <td class="num" style="color:var(--red);font-weight:850"><?= Helpers::money((float) $c['stok']) ?> <?= Helpers::e($c['unit']) ?></td>
-              <td class="num"><?= Helpers::money((float) $c['min_stok']) ?></td>
+              <td class="num" style="color:var(--red);font-weight:850"><?= Helpers::money($c['eksik']) ?> <?= Helpers::e($c['unit']) ?></td>
+              <td class="num"><?= Helpers::money($c['stok']) ?> / <?= Helpers::money($c['min_stok']) ?></td>
+              <td style="font-size:11.5px"><?= $c['son_alis'] ? Helpers::e(date('d.m', strtotime($c['son_alis']))) : '—' ?><?= $c['son_tedarikci'] ? '<br>' . Helpers::e($c['son_tedarikci']) : '' ?></td>
             </tr>
           <?php endforeach; ?>
           </tbody>
         </table>
         </div>
+        <button class="btn-action btn-secondaryx btn-full mt-2" type="button"
+          onclick="navigator.clipboard.writeText(<?= Helpers::e(json_encode("UYSA sipariş listesi (" . date('d.m.Y') . "):\n" . implode("\n", $copyLines), JSON_UNESCAPED_UNICODE)) ?>).then(()=>{this.innerHTML='<i class=\'bi bi-check2\'></i> Kopyalandı — WhatsApp\'a yapıştırın';});">
+          <i class="bi bi-clipboard"></i> Sipariş listesini kopyala
+        </button>
+      </div>
+      <?php endif; ?>
+
+      <?php /* fable-003: SKT riski — 30 gün içinde dolacak girişler */ ?>
+      <?php if ($sktRisk): ?>
+      <div class="cardx card-pad">
+        <h2><i class="bi bi-calendar-x" style="color:var(--amber)"></i> SKT yaklaşan / geçen</h2>
+        <?php foreach ($sktRisk as $r): $gecti = $r['skt'] < date('Y-m-d'); ?>
+          <div class="supply-row">
+            <div>
+              <div class="s-name"><?= Helpers::e($r['ingredient_name']) ?></div>
+              <div class="s-meta">Giriş: <?= Helpers::e(date('d.m.Y', strtotime((string) $r['move_date']))) ?> · <?= Helpers::money((float) $r['quantity']) ?> <?= Helpers::e((string) $r['unit']) ?><?= $r['supplier_name'] ? ' · ' . Helpers::e((string) $r['supplier_name']) : '' ?></div>
+            </div>
+            <span class="badge-soft <?= $gecti ? 'badge-neg' : 'badge-warn' ?>"><i class="bi bi-calendar-x"></i> <?= Helpers::e(date('d.m.Y', strtotime((string) $r['skt']))) ?></span>
+          </div>
+        <?php endforeach; ?>
+        <p class="row-meta mt-2"><i class="bi bi-info-circle"></i> Liste giriş kayıtlarına dayanır — fiziksel kontrolle teyit edin, tükettiyseniz çıkış girin.</p>
       </div>
       <?php endif; ?>
 
@@ -130,6 +163,20 @@ require __DIR__ . '/partials/header.php';
           </div>
           <div class="field"><label>Tarih</label>
             <input class="inputx" type="date" name="move_date" value="<?= Helpers::e(Helpers::today()) ?>">
+          </div>
+          <?php /* fable-003: girişte SKT + tedarikçi (çıkışta sunucu tarafı yok sayılır) */ ?>
+          <div class="actions-row" id="giris-extra">
+            <div class="field flex-fill"><label>SKT (girişte, ops.)</label>
+              <input class="inputx" type="date" name="skt">
+            </div>
+            <div class="field flex-fill"><label>Tedarikçi (ops.)</label>
+              <select class="selectx" name="supplier_id">
+                <option value="0">—</option>
+                <?php foreach ($suppliers as $s): ?>
+                  <option value="<?= (int) $s['id'] ?>"><?= Helpers::e($s['name']) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </div>
           </div>
           <div class="field"><label>Not (opsiyonel)</label>
             <input class="inputx" name="note" placeholder="ör. tedarikçi teslimatı">
@@ -205,6 +252,8 @@ require __DIR__ . '/partials/header.php';
           document.getElementById('dir-input').value = dir;
           btn.parentNode.querySelectorAll('.chip').forEach(function(c){c.classList.remove('active');});
           btn.classList.add('active');
+          var ex = document.getElementById('giris-extra');
+          if (ex) ex.style.display = dir === 'giris' ? '' : 'none'; // SKT/tedarikçi sadece girişte
         }
       </script>
 <?php require __DIR__ . '/partials/footer.php'; ?>

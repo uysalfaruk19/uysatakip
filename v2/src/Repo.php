@@ -1620,7 +1620,9 @@ final class Repo
         string $direction,
         float $quantity,
         ?string $unit = null,
-        ?string $note = null
+        ?string $note = null,
+        ?string $skt = null,
+        ?int $supplierId = null
     ): int {
         if (!in_array($direction, ['giris', 'cikis'], true)) {
             throw new \InvalidArgumentException('direction giris|cikis olmalı');
@@ -1629,10 +1631,15 @@ final class Repo
             $ing = $this->ingredient($ingredientId);
             $unit = $ing['unit'] ?? 'kg';
         }
+        // fable-003: SKT/tedarikçi sadece GİRİŞ hareketinde anlamlı
+        if ($direction !== 'giris') {
+            $skt = null;
+            $supplierId = null;
+        }
         $this->pdo->prepare(
-            'INSERT INTO stock_moves (ingredient_id, move_date, direction, quantity, unit, note)
-             VALUES (?, ?, ?, ?, ?, ?)'
-        )->execute([$ingredientId, $moveDate, $direction, $quantity, $unit, $note]);
+            'INSERT INTO stock_moves (ingredient_id, move_date, direction, quantity, unit, skt, supplier_id, note)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        )->execute([$ingredientId, $moveDate, $direction, $quantity, $unit, $skt, $supplierId ?: null, $note]);
         return (int) $this->pdo->lastInsertId();
     }
 
@@ -1660,6 +1667,282 @@ final class Repo
              FROM stock_moves sm JOIN ingredients i ON i.id = sm.ingredient_id
              ORDER BY sm.move_date DESC, sm.id DESC LIMIT ' . (int) $limit
         )->fetchAll();
+    }
+
+    // ── fable-003: Sipariş ihtiyacı · SKT · tedarikçi · HACCP · teklif · teslimat ──
+
+    /**
+     * Sipariş ihtiyaç listesi (cateringkolay esinli): eşik altındaki malzemeler +
+     * eksik miktar + son alış (tarih & tedarikçi, son 'giris' hareketinden).
+     * @return array<int,array{id:int,name:string,unit:string,min_stok:float,stok:float,eksik:float,son_alis:?string,son_tedarikci:?string}>
+     */
+    public function orderNeedList(): array
+    {
+        $out = [];
+        foreach ($this->criticalStock() as $r) {
+            $st = $this->pdo->prepare(
+                "SELECT sm.move_date, s.name AS supplier_name
+                 FROM stock_moves sm LEFT JOIN suppliers s ON s.id = sm.supplier_id
+                 WHERE sm.ingredient_id = ? AND sm.direction = 'giris'
+                 ORDER BY sm.move_date DESC, sm.id DESC LIMIT 1"
+            );
+            $st->execute([(int) $r['id']]);
+            $last = $st->fetch() ?: null;
+            $out[] = [
+                'id' => (int) $r['id'],
+                'name' => (string) $r['name'],
+                'unit' => (string) $r['unit'],
+                'min_stok' => (float) $r['min_stok'],
+                'stok' => (float) $r['stok'],
+                'eksik' => (float) $r['min_stok'] - (float) $r['stok'],
+                'son_alis' => $last['move_date'] ?? null,
+                'son_tedarikci' => $last['supplier_name'] ?? null,
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * SKT riski: önümüzdeki $days gün içinde (veya geçmişte) SKT'si dolan GİRİŞ kayıtları.
+     * Not: parti bazlı tüketim takibi yok — liste bilgilendirme amaçlı (fiziksel kontrol şart).
+     */
+    public function sktRisk(int $days = 30): array
+    {
+        $limit = date('Y-m-d', strtotime("+$days day"));
+        $st = $this->pdo->prepare(
+            "SELECT sm.id, sm.move_date, sm.skt, sm.quantity, sm.unit, i.name AS ingredient_name,
+                    s.name AS supplier_name
+             FROM stock_moves sm
+             JOIN ingredients i ON i.id = sm.ingredient_id
+             LEFT JOIN suppliers s ON s.id = sm.supplier_id
+             WHERE sm.direction = 'giris' AND sm.skt IS NOT NULL AND sm.skt <= ?
+             ORDER BY sm.skt ASC, sm.id DESC"
+        );
+        $st->execute([$limit]);
+        return $st->fetchAll();
+    }
+
+    /** Tedarikçi listesi (aktif varsayılan, ada göre). */
+    public function listSuppliers(bool $activeOnly = true): array
+    {
+        $sql = 'SELECT id, name, contact, is_active FROM suppliers';
+        if ($activeOnly) {
+            $sql .= ' WHERE is_active = 1';
+        }
+        return $this->pdo->query($sql . ' ORDER BY name ASC')->fetchAll();
+    }
+
+    public function supplierById(int $id): ?array
+    {
+        $st = $this->pdo->prepare('SELECT id, name, contact, is_active FROM suppliers WHERE id = ?');
+        $st->execute([$id]);
+        return $st->fetch() ?: null;
+    }
+
+    /** Tedarikçi ekle/düzenle (ad UNIQUE — çakışmada mevcut günceller). @return id */
+    public function upsertSupplier(string $name, ?string $contact = null, ?int $id = null): int
+    {
+        if ($id === null) {
+            $st = $this->pdo->prepare('SELECT id FROM suppliers WHERE name = ?');
+            $st->execute([$name]);
+            $found = $st->fetchColumn();
+            $id = $found !== false ? (int) $found : null;
+        }
+        if ($id !== null) {
+            $this->pdo->prepare('UPDATE suppliers SET name = ?, contact = ? WHERE id = ?')
+                ->execute([$name, $contact, $id]);
+            return $id;
+        }
+        $this->pdo->prepare('INSERT INTO suppliers (name, contact) VALUES (?, ?)')->execute([$name, $contact]);
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    public function setSupplierActive(int $id, bool $active): void
+    {
+        $this->pdo->prepare('UPDATE suppliers SET is_active = ? WHERE id = ?')->execute([$active ? 1 : 0, $id]);
+    }
+
+    /** Tedarikçinin son alışları: stok girişleri + finans giderleri (birleşik, yeni→eski). */
+    public function supplierHistory(int $supplierId, int $limit = 10): array
+    {
+        $st = $this->pdo->prepare(
+            "SELECT sm.move_date AS d, i.name AS what, sm.quantity, sm.unit, NULL AS amount
+             FROM stock_moves sm JOIN ingredients i ON i.id = sm.ingredient_id
+             WHERE sm.supplier_id = ? AND sm.direction = 'giris'
+             UNION ALL
+             SELECT t.tx_date AS d, COALESCE(t.description,'Gider') AS what, NULL, NULL, t.amount
+             FROM transactions t WHERE t.supplier_id = ? AND t.type = 'gider'
+             ORDER BY d DESC LIMIT " . (int) $limit
+        );
+        $st->execute([$supplierId, $supplierId]);
+        return $st->fetchAll();
+    }
+
+    // ── HACCP (fable-003) ──────────────────────────────────────
+    public const HACCP_KINDS = ['sicaklik', 'hijyen', 'numune', 'malkabul'];
+
+    public function addHaccpLog(
+        string $logDate,
+        string $kind,
+        string $nokta,
+        ?string $deger = null,
+        ?bool $uygun = null,
+        ?string $note = null,
+        ?string $createdBy = null
+    ): int {
+        if (!in_array($kind, self::HACCP_KINDS, true)) {
+            throw new \InvalidArgumentException('Geçersiz HACCP kaydı türü: ' . $kind);
+        }
+        $this->pdo->prepare(
+            'INSERT INTO haccp_log (log_date, kind, nokta, deger, uygun, note, created_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?)'
+        )->execute([$logDate, $kind, $nokta, $deger, $uygun === null ? null : ($uygun ? 1 : 0), $note, $createdBy]);
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    /** Bir günün HACCP kayıtları (tür filtresi opsiyonel), eski→yeni. */
+    public function haccpLogsForDate(string $logDate, ?string $kind = null): array
+    {
+        $sql = 'SELECT * FROM haccp_log WHERE log_date = ?';
+        $params = [$logDate];
+        if ($kind !== null) {
+            $sql .= ' AND kind = ?';
+            $params[] = $kind;
+        }
+        $st = $this->pdo->prepare($sql . ' ORDER BY id ASC');
+        $st->execute($params);
+        return $st->fetchAll();
+    }
+
+    /** İmha edilmemiş şahit numuneler (eski→yeni; 72 saat kuralını çağıran değerlendirir). */
+    public function haccpActiveSamples(): array
+    {
+        return $this->pdo->query(
+            "SELECT * FROM haccp_log WHERE kind = 'numune' AND imha_at IS NULL ORDER BY log_date ASC, id ASC"
+        )->fetchAll();
+    }
+
+    /** Şahit numuneyi imha olarak işaretle. @return bool bulundu mu */
+    public function haccpDisposeSample(int $id): bool
+    {
+        $st = $this->pdo->prepare(
+            "UPDATE haccp_log SET imha_at = CURRENT_TIMESTAMP WHERE id = ? AND kind = 'numune' AND imha_at IS NULL"
+        );
+        $st->execute([$id]);
+        return $st->rowCount() > 0;
+    }
+
+    // ── Teklifler (fable-003) ──────────────────────────────────
+    public const TEKLIF_DURUM = ['taslak', 'gonderildi', 'kabul', 'red'];
+
+    public function listTeklif(): array
+    {
+        return $this->pdo->query(
+            'SELECT * FROM teklif ORDER BY created_at DESC, id DESC'
+        )->fetchAll();
+    }
+
+    public function createTeklif(string $firma, ?int $kisi, ?float $birimFiyat, ?string $note): int
+    {
+        $this->pdo->prepare(
+            'INSERT INTO teklif (firma, kisi, birim_fiyat, note) VALUES (?, ?, ?, ?)'
+        )->execute([$firma, $kisi, $birimFiyat, $note]);
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    public function setTeklifDurum(int $id, string $durum): bool
+    {
+        if (!in_array($durum, self::TEKLIF_DURUM, true)) {
+            throw new \InvalidArgumentException('Geçersiz teklif durumu: ' . $durum);
+        }
+        // Var olma kontrolü rowCount yerine açık SELECT ile: MariaDB rowCount() değişmeyen
+        // satırda (aynı duruma set) 0 döndürür; bu "bulunamadı" yanılgısı yaratır (SQLite'ta matched döner).
+        $ex = $this->pdo->prepare('SELECT 1 FROM teklif WHERE id = ?');
+        $ex->execute([$id]);
+        if ($ex->fetchColumn() === false) {
+            return false;
+        }
+        $this->pdo->prepare('UPDATE teklif SET durum = ? WHERE id = ?')->execute([$durum, $id]);
+        return true;
+    }
+
+    // ── Teslimat / sevkiyat (fable-003) ────────────────────────
+    /**
+     * Günün sevkiyat listesi: o gün üretimi olan müşteriler (kişi toplamı) + teslimat durumu.
+     * @return array<int,array{customer_id:int,name:string,persons:int,status:string}>
+     */
+    public function deliveriesForDate(string $date): array
+    {
+        $st = $this->pdo->prepare(
+            "SELECT p.customer_id, c.name, SUM(p.persons) AS persons,
+                    COALESCE(t.status, 'bekliyor') AS status
+             FROM production p
+             JOIN customers c ON c.id = p.customer_id
+             LEFT JOIN teslimat t ON t.customer_id = p.customer_id AND t.teslim_date = p.prod_date
+             WHERE p.prod_date = ?
+             GROUP BY p.customer_id, c.name, t.status
+             ORDER BY c.name ASC"
+        );
+        $st->execute([$date]);
+        return array_map(static fn ($r) => [
+            'customer_id' => (int) $r['customer_id'],
+            'name' => (string) $r['name'],
+            'persons' => (int) $r['persons'],
+            'status' => (string) $r['status'],
+        ], $st->fetchAll());
+    }
+
+    /**
+     * Mutfak görünümü (fable-003): bir günün öğün bazlı üretim dökümü.
+     * @return array<string,array{customers:array<int,array{name:string,persons:int}>,total:int}>
+     */
+    public function kitchenDay(string $date): array
+    {
+        $st = $this->pdo->prepare(
+            'SELECT p.meal, c.name, p.persons FROM production p
+             JOIN customers c ON c.id = p.customer_id
+             WHERE p.prod_date = ? AND p.persons > 0
+             ORDER BY p.meal ASC, c.name ASC'
+        );
+        $st->execute([$date]);
+        $out = [];
+        foreach ($st->fetchAll() as $r) {
+            $meal = (string) $r['meal'];
+            $out[$meal]['customers'][] = ['name' => (string) $r['name'], 'persons' => (int) $r['persons']];
+            $out[$meal]['total'] = ($out[$meal]['total'] ?? 0) + (int) $r['persons'];
+        }
+        return $out;
+    }
+
+    /** Teslimat durumunu güne+müşteriye yaz (upsert). */
+    public function setDeliveryStatus(string $date, int $customerId, string $status): void
+    {
+        if (!in_array($status, ['bekliyor', 'yolda', 'teslim'], true)) {
+            throw new \InvalidArgumentException('Geçersiz teslimat durumu: ' . $status);
+        }
+        $driver = $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+        $onConf = $driver === 'sqlite'
+            ? 'ON CONFLICT(teslim_date, customer_id) DO UPDATE SET status = excluded.status'
+            : 'ON DUPLICATE KEY UPDATE status = VALUES(status)';
+        $this->pdo->prepare(
+            'INSERT INTO teslimat (teslim_date, customer_id, status) VALUES (?, ?, ?) ' . $onConf
+        )->execute([$date, $customerId, $status]);
+    }
+
+    // ── İşlem kaydı (audit UI — fable-003) ─────────────────────
+    /** Son denetim kayıtları; $q actor/action içinde arar. */
+    public function auditRecent(int $limit = 100, ?string $q = null): array
+    {
+        $sql = 'SELECT id, action, actor, target_key, detail, ip_addr, created_at FROM audit';
+        $params = [];
+        if ($q !== null && $q !== '') {
+            $sql .= ' WHERE action LIKE ? OR actor LIKE ?';
+            $params[] = '%' . $q . '%';
+            $params[] = '%' . $q . '%';
+        }
+        $st = $this->pdo->prepare($sql . ' ORDER BY id DESC LIMIT ' . (int) $limit);
+        $st->execute($params);
+        return $st->fetchAll();
     }
 
     // ── Personel Giderleri (opus-009) ─────────────────────────
