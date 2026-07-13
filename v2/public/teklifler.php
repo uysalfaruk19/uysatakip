@@ -145,7 +145,9 @@ $durumMap = [
     'red'        => ['badge-neg', 'bi-x-circle', 'Red'],
 ];
 $segmentOpts = ['' => '—', 'ekonomik' => 'Ekonomik', 'genel' => 'Genel', 'premium' => 'Premium'];
-$icecekOpts = ['' => '—', 'ayran' => 'Ayran', 'yogurt' => 'Yoğurt/kefir', 'donusumlu' => 'Dönüşümlü', 'ikisi' => 'İkisi'];
+// fable-006 (Ömer): kefir kalktı; seçenekler Ayran · Yoğurt · Yoğurt/Ayran (dönüşümlü).
+// 'ikisi' formdan kalktı ama eski kayıtlar için geçerli değer olarak kabul edilmeye devam eder.
+$icecekOpts = ['' => '—', 'ayran' => 'Ayran', 'yogurt' => 'Yoğurt', 'donusumlu' => 'Yoğurt/Ayran (dönüşümlü)'];
 
 $pageTitle = 'Teklifler';
 $eyebrow = 'Müşteri adayı takibi';
@@ -227,7 +229,7 @@ require __DIR__ . '/partials/header.php';
                 </select></div>
               <div class="field flex-fill" style="justify-content:flex-end">
                 <label class="chk-row" style="display:flex;align-items:center;gap:6px;margin-top:6px">
-                  <input type="checkbox" name="menu_tatli" value="1" <?= !empty($emenu['tatli']) ? 'checked' : '' ?>> Tatlı</label>
+                  <input type="checkbox" name="menu_tatli" value="1" <?= !empty($emenu['tatli']) ? 'checked' : '' ?>> Tatlı/Meyve/Meşrubat</label>
                 <label class="chk-row" style="display:flex;align-items:center;gap:6px;margin-top:4px">
                   <input type="checkbox" name="menu_ekmek" value="1" <?= !empty($emenu['ekmek']) ? 'checked' : '' ?>> Ekmek</label>
               </div>

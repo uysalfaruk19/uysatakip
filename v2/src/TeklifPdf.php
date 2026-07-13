@@ -23,11 +23,22 @@ final class TeklifPdf
     private const MARGIN = 15.0;
 
     private const SEGMENT_LABELS = ['ekonomik' => 'Ekonomik', 'genel' => 'Genel', 'premium' => 'Premium'];
+    // fable-006 (Ömer): kefir kalktı; yogurt=Yoğurt, donusumlu=Yoğurt/Ayran. 'ikisi' eski kayıt uyumluluğu.
     private const ICECEK_LABELS = [
         'ayran'      => 'ayran',
-        'yogurt'     => 'yogurt / kefir donusumlu',
-        'donusumlu'  => 'ayran / yogurt donusumlu',
-        'ikisi'      => 'ayran + yogurt',
+        'yogurt'     => 'yogurt',
+        'donusumlu'  => 'yogurt / ayran donusumlu',
+        'ikisi'      => 'yogurt + ayran',
+    ];
+    // Site (yemekhaneci.com.tr) güven şeridi + teklif-sonuç "UYSA güvencesiyle" blokları
+    private const TRUST_STRIP = 'ISO 22000 / HACCP   ·   Diyetisyen onayli menu   ·   Sahit numune saklama   ·   Sicak zincir lojistik   ·   Seffaf kisi basi fiyat';
+    private const GUARANTEES = [
+        'ISO 22000 / HACCP gida guvenligi',
+        'Diyetisyen onayli menu planlamasi',
+        'Yerinde uretim; taze, sicak ve hijyenik servis',
+        'Gunluk sahit numune saklama (72 saat)',
+        'Seffaf, kisi basi net fiyat',
+        'Kesintisiz hizmet - 7/24 vardiya destegi',
     ];
 
     /**
@@ -46,8 +57,21 @@ final class TeklifPdf
 
         self::band($pdf, $id, (string) ($t['created_at'] ?? ''));
 
+        // ── Güven şeridi (sitedeki üst şerit) ──────────────────
+        $pw = $pdf->GetPageWidth();
+        $pdf->SetFillColor(244, 246, 249);
+        $pdf->Rect(0, 34, $pw, 8, 'F');
+        $pdf->SetXY(0, 35.4);
+        $pdf->SetFont('Helvetica', 'B', 7.3);
+        $pdf->SetTextColor(...self::NAVY);
+        $pdf->Cell($pw, 5, self::conv(self::TRUST_STRIP), 0, 0, 'C');
+
         // ── Firma bloğu ────────────────────────────────────────
-        $pdf->SetY(44);
+        $pdf->SetY(50);
+        $pdf->SetX(self::MARGIN);
+        $pdf->SetFont('Helvetica', '', 8.5);
+        $pdf->SetTextColor(110, 116, 124);
+        $pdf->Cell(0, 5, self::conv('Sayin,'), 0, 1, 'L');
         $pdf->SetX(self::MARGIN);
         $pdf->SetFont('Helvetica', 'B', 15);
         $pdf->SetTextColor(...self::NAVY);
@@ -61,6 +85,17 @@ final class TeklifPdf
             trim((string) ($t['ilce'] ?? '')),
         ], static fn ($x) => $x !== '')));
         self::kv($pdf, 'Lokasyon', $loc);
+
+        // ── Hizmet tanımı (yemekhaneci gıda teklifi dili) ──────
+        $pdf->Ln(1.5);
+        $pdf->SetX(self::MARGIN);
+        $pdf->SetFont('Helvetica', '', 9.5);
+        $pdf->SetTextColor(...self::INK);
+        $pdf->MultiCell(0, 5.4, self::conv(
+            'Kurumunuzun toplu yemek ihtiyaci icin hazirladigimiz teklifimizi bilgilerinize sunariz. '
+            . 'Yemekler diyetisyen onayli menulerle, ISO 22000 / HACCP gida guvenligi standartlarinda; '
+            . 'taze, sicak ve hijyenik olarak hazirlanip servis edilir.'
+        ), 0, 'L');
 
         // ── Hizmet kapsamı ─────────────────────────────────────
         self::heading($pdf, 'Hizmet kapsami');
@@ -112,6 +147,30 @@ final class TeklifPdf
             $pdf->SetFont('Helvetica', '', 9.5);
             $pdf->SetTextColor(...self::INK);
             $pdf->MultiCell(0, 5.6, self::conv($note), 0, 'L');
+        }
+
+        // ── UYSA güvencesiyle (teklif-sonuç sayfasındaki blok, 2 sütun ✓) ──
+        self::heading($pdf, 'UYSA guvencesiyle');
+        $colW = ($pdf->GetPageWidth() - 2 * self::MARGIN) / 2;
+        $pdf->SetFont('Helvetica', '', 9);
+        $pdf->SetTextColor(...self::INK);
+        foreach (array_chunk(self::GUARANTEES, 2) as $pair) {
+            $pdf->SetX(self::MARGIN);
+            $pdf->SetTextColor(...self::ORANGE);
+            $pdf->SetFont('Helvetica', 'B', 9);
+            $pdf->Cell(5, 5.6, self::conv('+'), 0, 0, 'L');
+            $pdf->SetTextColor(...self::INK);
+            $pdf->SetFont('Helvetica', '', 9);
+            $pdf->Cell($colW - 5, 5.6, self::conv($pair[0]), 0, 0, 'L');
+            if (isset($pair[1])) {
+                $pdf->SetTextColor(...self::ORANGE);
+                $pdf->SetFont('Helvetica', 'B', 9);
+                $pdf->Cell(5, 5.6, self::conv('+'), 0, 0, 'L');
+                $pdf->SetTextColor(...self::INK);
+                $pdf->SetFont('Helvetica', '', 9);
+                $pdf->Cell($colW - 5, 5.6, self::conv($pair[1]), 0, 0, 'L');
+            }
+            $pdf->Ln(5.6);
         }
 
         self::footer($pdf);
@@ -266,7 +325,8 @@ final class TeklifPdf
             $parts[] = 'Salata bar: ' . $salata . ' cesit';
         }
         if (!empty($m['tatli'])) {
-            $parts[] = 'Tatli: donusumlu';
+            // fable-006 (Ömer): tatlı üçlü dönüşüm — tatlı / meyve / meşrubat
+            $parts[] = 'Tatli / meyve / mesrubat (donusumlu)';
         }
         $icecek = strtolower(trim((string) ($m['icecek'] ?? '')));
         if (isset(self::ICECEK_LABELS[$icecek])) {
