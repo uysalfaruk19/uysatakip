@@ -465,6 +465,7 @@ CREATE TABLE IF NOT EXISTS `supply_request` (
   `request_date`     DATE         NOT NULL,
   `status`           ENUM('acik','hazirlandi','teslim') NOT NULL DEFAULT 'acik',
   `note`             VARCHAR(500)          DEFAULT NULL,
+  `free_text`        VARCHAR(1000)         DEFAULT NULL,
   `created_at`       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_sr_customer` (`customer_id`),

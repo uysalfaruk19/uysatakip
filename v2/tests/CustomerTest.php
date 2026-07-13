@@ -153,15 +153,15 @@ final class CustomerTest extends TestCase
         $this->assertSame(0, $cnt, 'reddedilen sipariş üretime yazılmaz');
     }
 
-    // ── Sipariş son değişiklik kuralı (bir gün önce 15:30) ─────
+    // ── Sipariş son değişiklik kuralı (bir gün önce 16:00) ─────
     public function testOrderEditableDeadline(): void
     {
-        // 2026-07-10 siparişi → deadline 2026-07-09 15:30 (opus-018)
-        $before = strtotime('2026-07-09 15:29:00');
-        $after = strtotime('2026-07-09 15:31:00');
-        $this->assertTrue(Helpers::orderEditable('2026-07-10', $before), '15:30 öncesi (15:29) değiştirilebilir');
-        $this->assertFalse(Helpers::orderEditable('2026-07-10', $after), '15:30 sonrası (15:31) kilitli');
-        $this->assertSame(strtotime('2026-07-09 15:30:00'), Helpers::orderDeadline('2026-07-10'), 'deadline bir gün önce 15:30');
+        // 2026-07-10 siparişi → deadline 2026-07-09 16:00 (fable-001)
+        $before = strtotime('2026-07-09 15:59:00');
+        $after = strtotime('2026-07-09 16:01:00');
+        $this->assertTrue(Helpers::orderEditable('2026-07-10', $before), '16:00 öncesi (15:59) değiştirilebilir');
+        $this->assertFalse(Helpers::orderEditable('2026-07-10', $after), '16:00 sonrası (16:01) kilitli');
+        $this->assertSame(strtotime('2026-07-09 16:00:00'), Helpers::orderDeadline('2026-07-10'), 'deadline bir gün önce 16:00');
     }
 
     // ── Admin: müşteri giriş hesabı oluştur (opus-018) ─────────

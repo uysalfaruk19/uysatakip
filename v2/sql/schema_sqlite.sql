@@ -344,6 +344,7 @@ CREATE TABLE IF NOT EXISTS supply_request (
   request_date TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'acik' CHECK(status IN ('acik','hazirlandi','teslim')),
   note TEXT,
+  free_text TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

@@ -16,6 +16,7 @@ $repo = new Repo($pdo);
 $meals = ['sabah' => 'Sabah', 'ogle' => 'Öğle', 'aksam' => 'Akşam', 'kumanya' => 'Kumanya'];
 $cutoff = Helpers::orderCutoffLabel();
 
+$today = Helpers::today();
 $tomorrow = date('Y-m-d', strtotime('+1 day'));
 $date = (string) ($_GET['date'] ?? $tomorrow);
 if (!Helpers::isDate($date)) {
@@ -54,8 +55,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $repo->upsertOrder($cid, $pDate, $pMeal, $persons, 'gonderildi', 'musteri');
             uysa_audit('musteri_siparis', $cu['username'], (string) $cid, "$pDate $pMeal $persons", client_ip());
             $flash = $persons > 0
-                ? "Siparişiniz alındı: $persons kişi · onay bekliyor."
-                : 'Sipariş sıfırlandı (0 kişi).';
+                ? "Sayınız alındı: $persons kişi · onay bekliyor."
+                : 'Sayı sıfırlandı (0 kişi).';
             // opus-021: adminlere push ("<müşteri> yarın <n> kişi") — hata siparişi KIRMAZ
             try {
                 $gunTxt = $pDate === $tomorrow ? 'yarın' : gun_label_tr($pDate);
@@ -76,6 +77,22 @@ $defaultPersons = $current > 0 ? $current : $lastPersons;
 $deadlineTs = Helpers::orderDeadline($date);
 $history = $repo->customerOrders($cid, 20);
 
+// fable-001: Pzt–Cmt haftalık şerit — seçili tarihin haftası, kendi sayıları (tüm öğün toplamı).
+// (strtotime('monday', ts) hafta ortasında SONRAKİ pazartesiyi verir — N ile geri sar.)
+$dow = (int) date('N', strtotime($date)); // 1=Pzt..7=Paz
+$weekStart = date('Y-m-d', strtotime($date . ' -' . ($dow - 1) . ' day'));
+$weekEnd = date('Y-m-d', strtotime($weekStart . ' +5 day'));
+$byDay = [];
+foreach ($repo->customerOrdersRange($cid, $weekStart, $weekEnd) as $o) {
+    if ($o['status'] === 'reddedildi') {
+        continue; // reddedilen sayı şeritte görünmesin
+    }
+    $byDay[$o['order_date']] = ($byDay[$o['order_date']] ?? 0) + (int) $o['persons'];
+}
+$gunKisa = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
+$prevWeek = date('Y-m-d', strtotime($weekStart . ' -7 day'));
+$nextWeek = date('Y-m-d', strtotime($weekStart . ' +7 day'));
+
 $statusMap = [
     'gonderildi' => ['badge-warn', 'bi-clock', 'Onay bekliyor'],
     'onaylandi'  => ['badge-ok', 'bi-check2-circle', 'Onaylandı'],
@@ -83,22 +100,30 @@ $statusMap = [
     'taslak'     => ['badge-blue', 'bi-pencil', 'Taslak'],
 ];
 
-$prevDay = date('Y-m-d', strtotime($date . ' -1 day'));
-$nextDay = date('Y-m-d', strtotime($date . ' +1 day'));
-
-$eyebrow = Helpers::e($cu['customer_name']) . ' · Sipariş';
-$pageTitle = 'Sipariş ver';
+$eyebrow = Helpers::e($cu['customer_name']) . ' · Sayı Bildir';
+$pageTitle = 'Yemek sayısı bildir';
 $active = 'siparis';
 require __DIR__ . '/partials/header_m.php';
 ?>
-      <div class="date-row">
-        <a class="icon-btn" href="siparis.php?date=<?= $prevDay ?>&meal=<?= $meal ?>" aria-label="Önceki gün"><i class="bi bi-chevron-left"></i></a>
-        <form method="get" class="date-pill">
-          <i class="bi bi-calendar2-week"></i>
-          <input type="date" name="date" value="<?= Helpers::e($date) ?>" min="<?= $tomorrow ?>" onchange="this.form.submit()">
-          <input type="hidden" name="meal" value="<?= Helpers::e($meal) ?>">
-        </form>
-        <a class="icon-btn" href="siparis.php?date=<?= $nextDay ?>&meal=<?= $meal ?>" aria-label="Sonraki gün"><i class="bi bi-chevron-right"></i></a>
+      <?php /* fable-001: haftalık görünüm — müşteri Pzt–Cmt kendi sayısını görür, güne dokunup seçer */ ?>
+      <div class="cardx card-pad">
+        <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+          <a class="icon-btn" href="siparis.php?date=<?= $prevWeek ?>&meal=<?= $meal ?>" aria-label="Önceki hafta"><i class="bi bi-chevron-left"></i></a>
+          <p class="label" style="margin:0"><?= date('d.m', strtotime($weekStart)) ?> – <?= date('d.m.Y', strtotime($weekEnd)) ?></p>
+          <a class="icon-btn" href="siparis.php?date=<?= $nextWeek ?>&meal=<?= $meal ?>" aria-label="Sonraki hafta"><i class="bi bi-chevron-right"></i></a>
+        </div>
+        <div class="week-strip">
+          <?php for ($i = 0; $i < 6; $i++): $d = date('Y-m-d', strtotime($weekStart . " +$i day"));
+              $locked = !Helpers::orderEditable($d); ?>
+            <a class="week-day <?= $d === $date ? 'selected' : '' ?> <?= $d === $today ? 'today' : '' ?> <?= $locked ? 'locked' : '' ?>"
+               href="siparis.php?date=<?= $d ?>&meal=<?= $meal ?>">
+              <span class="wd-name"><?= $gunKisa[$i] ?></span>
+              <span class="wd-date"><?= date('d.m', strtotime($d)) ?></span>
+              <span class="wd-count"><?= isset($byDay[$d]) ? number_format($byDay[$d], 0, ',', '.') : '·' ?></span>
+            </a>
+          <?php endfor; ?>
+        </div>
+        <p class="row-meta mt-2"><i class="bi bi-info-circle"></i> Güne dokunup sayı bildirin. Ertesi günün sayısı için son saat: <?= Helpers::e($cutoff) ?>.</p>
       </div>
 
       <div class="segmented mt-2">
@@ -138,20 +163,28 @@ require __DIR__ . '/partials/header_m.php';
               </button>
               <p class="row-meta mt-1">Dokunmazsanız da bu sayı gönderilir.</p>
             <?php endif; ?>
-            <button class="btn-action btn-primaryx btn-full mt-3" type="submit"><i class="bi bi-send"></i> Siparişi gönder</button>
-            <p class="row-meta mt-2"><i class="bi bi-arrow-counterclockwise"></i> 0 kişi gönderirseniz bu öğünün siparişi sıfırlanır.</p>
+            <button class="btn-action btn-primaryx btn-full mt-3" type="submit"><i class="bi bi-send"></i> Talep gönder</button>
+            <p class="row-meta mt-2"><i class="bi bi-arrow-counterclockwise"></i> 0 kişi gönderirseniz bu öğünün sayısı sıfırlanır.</p>
             <p class="row-meta mt-2"><i class="bi bi-info-circle"></i> Son değişiklik: <?= date('d.m.Y H:i', $deadlineTs) ?>'a kadar.</p>
           </form>
         <?php else: ?>
           <div class="hint-card mt-3"><i class="bi bi-lock"></i>
-            <?php if ($date === $tomorrow): ?>Yarın için değişiklik saati (<?= Helpers::e($cutoff) ?>) geçti — sipariş kilitlendi.<?php else: ?>Bu günün siparişi kilitlendi (son değişiklik <?= date('d.m.Y H:i', $deadlineTs) ?> idi).<?php endif; ?>
+            <?php if ($date === $tomorrow): ?>Yarın için değişiklik saati (<?= Helpers::e($cutoff) ?>) geçti — sayı kilitlendi.<?php else: ?>Bu günün sayısı kilitlendi (son değişiklik <?= date('d.m.Y H:i', $deadlineTs) ?> idi).<?php endif; ?>
             Değişiklik için UYSA ile iletişime geçin.</div>
         <?php endif; ?>
       </div>
 
-      <div class="section-head mt-3"><h2>Geçmiş siparişler</h2></div>
+      <div class="date-row mt-2">
+        <form method="get" class="date-pill">
+          <i class="bi bi-calendar2-week"></i>
+          <input type="date" name="date" value="<?= Helpers::e($date) ?>" min="<?= $tomorrow ?>" onchange="this.form.submit()">
+          <input type="hidden" name="meal" value="<?= Helpers::e($meal) ?>">
+        </form>
+      </div>
+
+      <div class="section-head mt-3"><h2>Geçmiş bildirimler</h2></div>
       <?php if (!$history): ?>
-        <div class="empty-state">Henüz sipariş girmediniz.</div>
+        <div class="empty-state">Henüz sayı bildirmediniz.</div>
       <?php else: ?>
         <div class="list-groupx">
           <?php foreach ($history as $h): [$bc, $bi, $bt] = $statusMap[$h['status']] ?? ['badge-blue', 'bi-clock', $h['status']]; ?>

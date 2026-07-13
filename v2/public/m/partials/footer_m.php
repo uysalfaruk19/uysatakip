@@ -1,12 +1,13 @@
 <?php
 /** @var string $active */
 $active = $active ?? '';
+// fable-001: "Sipariş" → "Sayı Bildir" (Ömer: açıklayıcı değildi); Cari bardan kalktı
+// (muhasebesel bilgi idari işlerin gözünden uzak — sayfa hâlâ /m/cari.php'de erişilebilir).
 $tabs = [
   'panel'   => ['Panel', 'bi-house-check'],
-  'siparis' => ['Sipariş', 'bi-plus-square'],
+  'siparis' => ['Sayı Bildir', 'bi-plus-square'],
   'menu'    => ['Menü', 'bi-card-list'],
   'malzeme' => ['Malzeme', 'bi-box-seam'],
-  'cari'    => ['Cari', 'bi-receipt'],
   'talep'   => ['Talep', 'bi-chat-left-text'],
 ];
 ?>

@@ -196,7 +196,7 @@ final class PushTest extends TestCase
         $this->assertSame(1, $r1['skipped_entered'], 'yarına siparişi olan atlandı');
         $this->assertCount(1, $fake->sentCalls);
         $this->assertStringContainsString('Yarının kişi sayısını girmeyi unutmayın', $fake->sentCalls[0]['body']);
-        $this->assertStringContainsString('15:30', $fake->sentCalls[0]['body']);
+        $this->assertStringContainsString(\Uysa\Helpers::orderCutoffLabel(), $fake->sentCalls[0]['body']);
 
         // İkinci çağrı aynı gün → kimseye tekrar atmaz (cron çifte çalışsa da güvenli)
         $r2 = $push->gunlukHatirlatma();

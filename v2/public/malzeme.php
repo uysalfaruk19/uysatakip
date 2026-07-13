@@ -115,12 +115,15 @@ require __DIR__ . '/partials/header.php';
           <div class="d-flex align-items-center justify-between gap-2">
             <div style="min-width:0">
               <div class="row-title"><strong><?= Helpers::e($r['customer_name']) ?></strong></div>
-              <p class="row-meta"><?= Helpers::e(gun_label_tr($r['request_date'])) ?> · <?= (int) $r['item_count'] ?> kalem</p>
+              <p class="row-meta"><?= Helpers::e(gun_label_tr($r['request_date'])) ?> · <?= (int) $r['item_count'] > 0 ? (int) $r['item_count'] . ' kalem' : 'serbest liste' ?></p>
             </div>
             <?php [$bc, $bi, $bt] = $statusMap[$r['status']]; ?>
             <span class="badge-soft <?= $bc ?>"><i class="bi <?= $bi ?>"></i> <?= $bt ?></span>
           </div>
           <div class="mt-2">
+            <?php if (!empty($r['free_text'])): /* fable-001: müşteri app serbest metin talebi */ ?>
+              <p class="row-meta" style="white-space:pre-line"><?= Helpers::e($r['free_text']) ?></p>
+            <?php endif; ?>
             <?php foreach ($repo->supplyRequestItems((int) $r['id']) as $it): ?>
               <div class="supply-row"><div class="s-name"><?= Helpers::e($it['ad']) ?></div><div style="text-align:right"><strong><?= Helpers::money((float) $it['miktar']) ?></strong> <span class="s-meta"><?= Helpers::e($it['birim']) ?></span></div></div>
             <?php endforeach; ?>
@@ -143,7 +146,8 @@ require __DIR__ . '/partials/header.php';
             <div class="d-flex align-items-center justify-between gap-2">
               <div style="min-width:0">
                 <div class="row-title"><strong><?= Helpers::e($r['customer_name']) ?></strong></div>
-                <p class="row-meta"><?= (int) $r['item_count'] ?> kalem · <?= Helpers::e(gun_label_tr($r['request_date'])) ?></p>
+                <p class="row-meta"><?= (int) $r['item_count'] > 0 ? (int) $r['item_count'] . ' kalem' : 'serbest liste' ?> · <?= Helpers::e(gun_label_tr($r['request_date'])) ?></p>
+                <?php if (!empty($r['free_text'])): ?><p class="row-meta" style="white-space:pre-line"><?= Helpers::e($r['free_text']) ?></p><?php endif; ?>
               </div>
               <form method="post">
                 <input type="hidden" name="csrf" value="<?= Helpers::e($csrf) ?>">

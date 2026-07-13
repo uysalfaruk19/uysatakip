@@ -2699,7 +2699,7 @@ final class Repo
      * $items: [supply_item_id => miktar]. miktar<=0 kalemler atlanır. customerId ZORUNLU (IDOR).
      * @return int request id (kalem yoksa 0 — talep açılmaz)
      */
-    public function createSupplyRequest(int $customerId, array $items, ?int $customerUserId = null, ?string $note = null, ?string $requestDate = null): int
+    public function createSupplyRequest(int $customerId, array $items, ?int $customerUserId = null, ?string $note = null, ?string $requestDate = null, ?string $freeText = null): int
     {
         $requestDate ??= date('Y-m-d');
         // Geçerli kalemleri süz (miktar > 0)
@@ -2711,7 +2711,12 @@ final class Repo
                 $valid[$itemId] = $qty;
             }
         }
-        if (!$valid) {
+        // fable-001: serbest metin varsa kalemsiz talep de geçerli (müşteri app "yazı kutucuğu").
+        $freeText = $freeText !== null ? trim($freeText) : null;
+        if ($freeText === '') {
+            $freeText = null;
+        }
+        if (!$valid && $freeText === null) {
             return 0;
         }
         $own = !$this->pdo->inTransaction();
@@ -2720,8 +2725,8 @@ final class Repo
         }
         try {
             $this->pdo->prepare(
-                'INSERT INTO supply_request (customer_id, customer_user_id, request_date, note) VALUES (?, ?, ?, ?)'
-            )->execute([$customerId, $customerUserId, $requestDate, $note]);
+                'INSERT INTO supply_request (customer_id, customer_user_id, request_date, note, free_text) VALUES (?, ?, ?, ?, ?)'
+            )->execute([$customerId, $customerUserId, $requestDate, $note, $freeText]);
             $reqId = (int) $this->pdo->lastInsertId();
             $ins = $this->pdo->prepare(
                 'INSERT INTO supply_request_item (request_id, supply_item_id, miktar) VALUES (?, ?, ?)'
@@ -2745,12 +2750,63 @@ final class Repo
     public function supplyRequestsForCustomer(int $customerId): array
     {
         $st = $this->pdo->prepare(
-            'SELECT sr.id, sr.request_date, sr.status, sr.note, sr.created_at,
+            'SELECT sr.id, sr.request_date, sr.status, sr.note, sr.free_text, sr.created_at,
                     (SELECT COUNT(*) FROM supply_request_item i WHERE i.request_id = sr.id) AS item_count
              FROM supply_request sr WHERE sr.customer_id = ?
              ORDER BY sr.created_at DESC, sr.id DESC'
         );
         $st->execute([$customerId]);
+        return $st->fetchAll();
+    }
+
+    /**
+     * fable-001: müşterinin bir aydaki malzeme talepleri (yeni→eski, kalem sayısıyla).
+     * "Bu ay gönderilenler" görünümü — $month 'YYYY-MM'. IDOR scope: customer_id zorunlu.
+     */
+    public function supplyRequestsForCustomerMonth(int $customerId, string $month): array
+    {
+        $st = $this->pdo->prepare(
+            "SELECT sr.id, sr.request_date, sr.status, sr.note, sr.free_text, sr.created_at,
+                    (SELECT COUNT(*) FROM supply_request_item i WHERE i.request_id = sr.id) AS item_count
+             FROM supply_request sr
+             WHERE sr.customer_id = ? AND substr(sr.request_date,1,7) = ?
+             ORDER BY sr.request_date DESC, sr.id DESC"
+        );
+        $st->execute([$customerId, $month]);
+        return $st->fetchAll();
+    }
+
+    /**
+     * fable-001 (cateringkolay cetvel esinli): TÜM müşterilerin bir aralıktaki sipariş
+     * toplamları — admin haftalık cetvel (müşteri × gün matrisi). Reddedilenler hariç.
+     * @return array<int,array{customer_id:int,customer_name:string,order_date:string,persons:int}>
+     */
+    public function ordersMatrix(string $start, string $end): array
+    {
+        $st = $this->pdo->prepare(
+            "SELECT o.customer_id, c.name AS customer_name, o.order_date,
+                    SUM(o.persons) AS persons
+             FROM orders o JOIN customers c ON c.id = o.customer_id
+             WHERE o.order_date BETWEEN ? AND ? AND o.status <> 'reddedildi'
+             GROUP BY o.customer_id, c.name, o.order_date
+             ORDER BY c.name ASC, o.order_date ASC"
+        );
+        $st->execute([$start, $end]);
+        return $st->fetchAll();
+    }
+
+    /**
+     * fable-001: müşterinin bir tarih aralığındaki siparişleri (haftalık şerit görünümü).
+     * Dönüş: order_date+meal anahtarsız düz liste; çağıran gruplayabilir. IDOR scope'lu.
+     */
+    public function customerOrdersRange(int $customerId, string $start, string $end): array
+    {
+        $st = $this->pdo->prepare(
+            'SELECT order_date, meal, persons, status FROM orders
+             WHERE customer_id = ? AND order_date BETWEEN ? AND ?
+             ORDER BY order_date ASC, meal ASC'
+        );
+        $st->execute([$customerId, $start, $end]);
         return $st->fetchAll();
     }
 
@@ -2777,7 +2833,7 @@ final class Repo
     /** Admin: talep kuyruğu (müşteri adıyla). $status null = hepsi, aksi belirli durum. */
     public function openSupplyRequests(?string $status = 'acik'): array
     {
-        $sql = 'SELECT sr.id, sr.customer_id, sr.request_date, sr.status, sr.note, sr.created_at,
+        $sql = 'SELECT sr.id, sr.customer_id, sr.request_date, sr.status, sr.note, sr.free_text, sr.created_at,
                        c.name AS customer_name,
                        (SELECT COUNT(*) FROM supply_request_item i WHERE i.request_id = sr.id) AS item_count
                 FROM supply_request sr JOIN customers c ON c.id = sr.customer_id';

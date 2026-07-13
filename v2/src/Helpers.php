@@ -164,9 +164,9 @@ final class Helpers
         return date('Y-m-d');
     }
 
-    /** Sipariş değişiklik son saati (order_date'ten bir gün önce). opus-018: 15:30. */
-    public const ORDER_CUTOFF_HOUR = 15;
-    public const ORDER_CUTOFF_MIN = 30;
+    /** Sipariş değişiklik son saati (order_date'ten bir gün önce). fable-001: 16:00 (Ömer istedi). */
+    public const ORDER_CUTOFF_HOUR = 16;
+    public const ORDER_CUTOFF_MIN = 0;
 
     /** İnsan-okur son saat etiketi, ör. "15:30". */
     public static function orderCutoffLabel(): string

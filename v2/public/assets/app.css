@@ -1371,3 +1371,106 @@ html.native-app [data-web-only] {
     animation: none;
   }
 }
+
+/* ── fable-001: haftalık şerit (Pzt–Cmt kendi sayıları) — müşteri panel + sayı bildir ── */
+.week-strip {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+}
+.week-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 2px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--line-2);
+  min-width: 0;
+}
+.week-day .wd-name {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.week-day .wd-date {
+  font-size: 10px;
+  color: var(--muted);
+}
+.week-day .wd-count {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.week-day.today {
+  background: var(--primary-tint);
+  border-color: var(--primary-tint-2);
+}
+.week-day.today .wd-name {
+  color: var(--primary);
+}
+a.week-day.selected {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+a.week-day.selected .wd-name,
+a.week-day.selected .wd-date,
+a.week-day.selected .wd-count {
+  color: #fff;
+}
+a.week-day.locked {
+  opacity: 0.55;
+}
+/* Menü akışında bugün kartı vurgusu */
+.meal-card.today-card {
+  outline: 2px solid var(--primary);
+  outline-offset: -1px;
+}
+
+/* ── fable-001: admin haftalık cetvel (müşteri × gün) ── */
+.cetvel-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.cetvel-table th,
+.cetvel-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line-2);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.cetvel-table th:first-child,
+.cetvel-table td:first-child {
+  text-align: left;
+  position: sticky;
+  left: 0;
+  background: var(--surface);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cetvel-table thead th {
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.cetvel-table thead th span {
+  font-weight: 500;
+  font-size: 10px;
+}
+.cetvel-table th.today,
+.cetvel-table td.today {
+  background: var(--primary-tint);
+}
+.cetvel-table .total-row td {
+  border-top: 2px solid var(--line);
+  font-weight: 700;
+}
