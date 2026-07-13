@@ -16,18 +16,13 @@ $today = Helpers::today();
 $tomorrow = date('Y-m-d', strtotime('+1 day'));
 
 // fable-001: aylık kişi/tutar kaldırıldı (tutar = muhasebe, idari işler görmesin).
-// Yerine GÜNLÜK sayılar: bugün + yarın (kendi bildirdiği, tüm öğünler toplamı).
+// fable-002: sayı kaynağı birleşik (production + orders) — UYSA'nın girdiği sayı da görünür.
 $weekStart = date('Y-m-d', strtotime('monday this week'));
 $weekEnd = date('Y-m-d', strtotime($weekStart . ' +5 day')); // Pzt–Cmt
-$weekOrders = $repo->customerOrdersRange($cid, $weekStart, $weekEnd);
-$byDay = [];
-foreach ($weekOrders as $o) {
-    if ($o['status'] === 'reddedildi') {
-        continue; // reddedilen sayı şeritte görünmesin
-    }
-    $byDay[$o['order_date']] = ($byDay[$o['order_date']] ?? 0) + (int) $o['persons'];
-}
+$rangeEnd = max($weekEnd, $tomorrow); // yarın haftaya taşarsa (Cmt/Paz) da kapsansın
+$byDay = $repo->customerDailyCounts($cid, $weekStart, $rangeEnd);
 $todayPersons = $byDay[$today] ?? 0;
+$tomorrowPersons = $byDay[$tomorrow] ?? null;
 $tomorrowRow = $repo->customerOrder($cid, $tomorrow, 'ogle');
 
 $order = $tomorrowRow;
@@ -95,19 +90,21 @@ require __DIR__ . '/partials/header_m.php';
 
       <div class="summary-grid">
         <div class="summary-card"><p class="label">Bugün · kişi</p><p class="metric"><?= number_format($todayPersons, 0, ',', '.') ?></p></div>
-        <div class="summary-card"><p class="label">Yarın · kişi</p><p class="metric"><?= $order ? number_format((int) $order['persons'], 0, ',', '.') : '—' ?></p></div>
+        <div class="summary-card"><p class="label">Yarın · kişi</p><p class="metric"><?= $tomorrowPersons !== null ? number_format($tomorrowPersons, 0, ',', '.') : '—' ?></p></div>
       </div>
 
       <?php /* fable-001: Pzt–Cmt haftalık şerit — müşteri kendi sayısını görür */ ?>
       <div class="cardx card-pad">
-        <p class="label">Bu hafta (Pzt–Cmt) · bildirdiğiniz sayılar</p>
+        <p class="label">Bu hafta (Pzt–Cmt) · yemek sayılarınız</p>
+        <?php /* fable-002: şerit tıklanabilir — güne dokununca Sayı Bildir'de o gün açılır */ ?>
         <div class="week-strip">
-          <?php for ($i = 0; $i < 6; $i++): $d = date('Y-m-d', strtotime($weekStart . " +$i day")); ?>
-            <div class="week-day <?= $d === $today ? 'today' : '' ?>">
+          <?php for ($i = 0; $i < 6; $i++): $d = date('Y-m-d', strtotime($weekStart . " +$i day"));
+              $locked = !Helpers::orderEditable($d); ?>
+            <a class="week-day <?= $d === $today ? 'today' : '' ?> <?= $locked ? 'locked' : '' ?>" href="siparis.php?date=<?= $d ?>">
               <span class="wd-name"><?= $gunKisa[$i] ?></span>
               <span class="wd-date"><?= date('d.m', strtotime($d)) ?></span>
               <span class="wd-count"><?= isset($byDay[$d]) ? number_format($byDay[$d], 0, ',', '.') : '·' ?></span>
-            </div>
+            </a>
           <?php endfor; ?>
         </div>
         <a class="btn-action btn-primaryx btn-full mt-3" href="siparis.php"><i class="bi bi-plus-square"></i> Yemek sayısı bildir</a>

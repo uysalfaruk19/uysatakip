@@ -2796,19 +2796,39 @@ final class Repo
     }
 
     /**
-     * fable-001: müşterinin bir tarih aralığındaki siparişleri (haftalık şerit görünümü).
-     * Dönüş: order_date+meal anahtarsız düz liste; çağıran gruplayabilir. IDOR scope'lu.
+     * fable-002: müşterinin gün bazlı KİŞİ sayıları [date => persons] — haftalık şerit.
+     * Kaynak birleşik: production (kesinleşen, UYSA girişi dahil) ÖNCELİKLİ; production'da
+     * olmayan güne reddedilmemiş sipariş toplamı. Müşteri app'ten girmese de UYSA'nın
+     * girdiği sayı görünür ("Bomi boş görünüyor" fix'i). IDOR scope'lu.
+     * @return array<string,int>
      */
-    public function customerOrdersRange(int $customerId, string $start, string $end): array
+    public function customerDailyCounts(int $customerId, string $start, string $end): array
     {
+        $out = [];
         $st = $this->pdo->prepare(
-            'SELECT order_date, meal, persons, status FROM orders
-             WHERE customer_id = ? AND order_date BETWEEN ? AND ?
-             ORDER BY order_date ASC, meal ASC'
+            "SELECT order_date AS d, SUM(persons) AS p FROM orders
+             WHERE customer_id = ? AND order_date BETWEEN ? AND ? AND status <> 'reddedildi'
+             GROUP BY order_date"
         );
         $st->execute([$customerId, $start, $end]);
-        return $st->fetchAll();
+        foreach ($st->fetchAll() as $r) {
+            $out[(string) $r['d']] = (int) $r['p'];
+        }
+        $st = $this->pdo->prepare(
+            'SELECT prod_date AS d, SUM(persons) AS p FROM production
+             WHERE customer_id = ? AND prod_date BETWEEN ? AND ?
+             GROUP BY prod_date'
+        );
+        $st->execute([$customerId, $start, $end]);
+        foreach ($st->fetchAll() as $r) {
+            $p = (int) $r['p'];
+            if ($p > 0 || !isset($out[(string) $r['d']])) {
+                $out[(string) $r['d']] = $p; // kesinleşen sayı sipariş sayısını ezer
+            }
+        }
+        return $out;
     }
+
 
     /** Bir talebin kalemleri (ad + birim + miktar). */
     public function supplyRequestItems(int $requestId): array

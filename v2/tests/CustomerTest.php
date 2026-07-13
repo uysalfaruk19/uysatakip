@@ -164,6 +164,40 @@ final class CustomerTest extends TestCase
         $this->assertSame(strtotime('2026-07-09 16:00:00'), Helpers::orderDeadline('2026-07-10'), 'deadline bir gün önce 16:00');
     }
 
+    // ── Haftalık şerit sayı kaynağı (fable-002) ────────────────
+    public function testCustomerDailyCountsMergesProductionOverOrders(): void
+    {
+        $cid = seed_customer($this->pdo, 'BOMİ', 300.0);
+        $other = seed_customer($this->pdo, 'BAŞKASI', 200.0);
+        $insOrder = $this->pdo->prepare(
+            "INSERT INTO orders (customer_id, order_date, meal, persons, status, entered_by)
+             VALUES (?, ?, ?, ?, ?, 'musteri')"
+        );
+        $insProd = $this->pdo->prepare(
+            "INSERT INTO production (customer_id, prod_date, meal, persons, entered_by)
+             VALUES (?, ?, ?, ?, 'uysa')"
+        );
+        // Pzt: sipariş 50 + onay sonrası production 55 → production EZER
+        $insOrder->execute([$cid, '2026-07-13', 'ogle', 50, 'onaylandi']);
+        $insProd->execute([$cid, '2026-07-13', 'ogle', 55]);
+        // Sal: SADECE production (UYSA girdi, müşteri app'ten hiç girmedi) → yine görünür
+        $insProd->execute([$cid, '2026-07-14', 'ogle', 40]);
+        // Çar: sadece sipariş (henüz onaysız) → sipariş sayısı
+        $insOrder->execute([$cid, '2026-07-15', 'ogle', 30, 'gonderildi']);
+        // Per: reddedilen sipariş → GÖRÜNMEZ
+        $insOrder->execute([$cid, '2026-07-16', 'ogle', 99, 'reddedildi']);
+        // Sal: iki öğün toplanır (production 40 + akşam 10 = 50)
+        $insProd->execute([$cid, '2026-07-14', 'aksam', 10]);
+        // Başka müşterinin verisi sızmaz (IDOR)
+        $insProd->execute([$other, '2026-07-13', 'ogle', 500]);
+
+        $counts = $this->repo->customerDailyCounts($cid, '2026-07-13', '2026-07-19');
+        $this->assertSame(55, $counts['2026-07-13'], 'production sipariş sayısını ezer');
+        $this->assertSame(50, $counts['2026-07-14'], 'sadece UYSA girişi de görünür, öğünler toplanır');
+        $this->assertSame(30, $counts['2026-07-15'], 'onaysız sipariş görünür');
+        $this->assertArrayNotHasKey('2026-07-16', $counts, 'reddedilen görünmez');
+    }
+
     // ── Admin: müşteri giriş hesabı oluştur (opus-018) ─────────
     public function testCreateCustomerUserUniqueAndBcrypt(): void
     {

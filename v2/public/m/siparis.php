@@ -82,13 +82,8 @@ $history = $repo->customerOrders($cid, 20);
 $dow = (int) date('N', strtotime($date)); // 1=Pzt..7=Paz
 $weekStart = date('Y-m-d', strtotime($date . ' -' . ($dow - 1) . ' day'));
 $weekEnd = date('Y-m-d', strtotime($weekStart . ' +5 day'));
-$byDay = [];
-foreach ($repo->customerOrdersRange($cid, $weekStart, $weekEnd) as $o) {
-    if ($o['status'] === 'reddedildi') {
-        continue; // reddedilen sayı şeritte görünmesin
-    }
-    $byDay[$o['order_date']] = ($byDay[$o['order_date']] ?? 0) + (int) $o['persons'];
-}
+// fable-002: birleşik kaynak (production öncelikli) — UYSA'nın girdiği sayı da görünsün
+$byDay = $repo->customerDailyCounts($cid, $weekStart, $weekEnd);
 $gunKisa = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
 $prevWeek = date('Y-m-d', strtotime($weekStart . ' -7 day'));
 $nextWeek = date('Y-m-d', strtotime($weekStart . ' +7 day'));
