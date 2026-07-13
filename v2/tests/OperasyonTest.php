@@ -100,6 +100,76 @@ final class OperasyonTest extends TestCase
         $this->repo->setTeklifDurum($id, 'yanlis');
     }
 
+    // ── fable-005: teklif motoru alanları — update round-trip + teklifById ──
+    public function testTeklifUpdateRoundTrip(): void
+    {
+        $id = $this->repo->createTeklif('Gebze Metal', 120, 340.0, null, [
+            'yetkili'   => 'Ayşe Hanım',
+            'telefon'   => '0532 000 00 00',
+            'cumartesi' => 1,
+            'segment'   => 'genel',
+            'menu_json' => json_encode(['corba' => 1, 'ana' => 1, 'ekmek' => 1]),
+        ]);
+        $this->assertGreaterThan(0, $id);
+
+        $t = $this->repo->teklifById($id);
+        $this->assertNotNull($t);
+        $this->assertSame('Gebze Metal', $t['firma']);
+        $this->assertSame('Ayşe Hanım', $t['yetkili']);
+        $this->assertSame(1, (int) $t['cumartesi']);
+        $this->assertSame('genel', $t['segment']);
+
+        $ok = $this->repo->updateTeklif($id, [
+            'firma'       => 'Gebze Metal A.Ş.',
+            'kisi'        => 150,
+            'birim_fiyat' => 360.0,
+            'ilce'        => 'Gebze',
+            'ekipman'     => 'benmari, çelik masa',
+            'durum'       => 'kabul', // whitelist dışı — sessizce atlanmalı
+        ]);
+        $this->assertTrue($ok);
+
+        $t = $this->repo->teklifById($id);
+        $this->assertSame('Gebze Metal A.Ş.', $t['firma']);
+        $this->assertSame(150, (int) $t['kisi']);
+        $this->assertEqualsWithDelta(360.0, (float) $t['birim_fiyat'], 0.001);
+        $this->assertSame('Gebze', $t['ilce']);
+        $this->assertSame('benmari, çelik masa', $t['ekipman']);
+        $this->assertSame('taslak', $t['durum'], 'durum updateTeklif ile değişmez (whitelist dışı)');
+
+        $this->assertNull($this->repo->teklifById(99999));
+        $this->assertFalse($this->repo->updateTeklif(99999, ['firma' => 'Yok']));
+        $this->assertFalse($this->repo->updateTeklif($id, ['bilinmeyen' => 'x']), 'bilinen kolon yoksa false');
+    }
+
+    // ── fable-005: TeklifPdf geçerli PDF üretir (dolu + boş alanlarla) ──
+    public function testTeklifPdfRenders(): void
+    {
+        $id = $this->repo->createTeklif('Dolu Firma', 100, 320.0, 'Servis dahil', [
+            'yetkili'       => 'Ömer Bey',
+            'telefon'       => '0532',
+            'email'         => 'a@b.com',
+            'sehir'         => 'Kocaeli',
+            'ilce'          => 'Gebze',
+            'cumartesi'     => 1,
+            'ogun_sayisi'   => 2,
+            'segment'       => 'premium',
+            'menu_json'     => json_encode(['corba' => 1, 'ana' => 1, 'yan' => 1, 'salata' => 4, 'tatli' => 1, 'icecek' => 'donusumlu', 'ekmek' => 1]),
+            'personel_json' => json_encode(['asci' => 2, 'servis' => 3, 'temizlik' => 1]),
+            'ekipman'       => 'benmari, çelik masa',
+        ]);
+        $full = \Uysa\TeklifPdf::render($this->repo->teklifById($id));
+        $this->assertStringStartsWith('%PDF-', $full);
+
+        // Boş/minimum alanlar (sadece firma) — patlamamalı, yine geçerli PDF.
+        $id2 = $this->repo->createTeklif('Bos Firma', null, null, null);
+        $bin = \Uysa\TeklifPdf::render($this->repo->teklifById($id2));
+        $this->assertStringStartsWith('%PDF-', $bin);
+
+        // Tamamen boş dizi (defansif) da patlamamalı.
+        $this->assertStringStartsWith('%PDF-', \Uysa\TeklifPdf::render([]));
+    }
+
     // ── Teslimat ───────────────────────────────────────────────
     public function testDeliveriesFollowProductionAndStatusUpsert(): void
     {

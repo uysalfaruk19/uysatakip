@@ -1832,8 +1832,14 @@ final class Repo
         return $st->rowCount() > 0;
     }
 
-    // ── Teklifler (fable-003) ──────────────────────────────────
+    // ── Teklifler (fable-003, fable-005 yemekhaneci teklif motoru) ──
     public const TEKLIF_DURUM = ['taslak', 'gonderildi', 'kabul', 'red'];
+
+    /** fable-005: create/update ile yazılabilen bilinen kolonlar (durum hariç — kendi akışı var). */
+    private const TEKLIF_FIELDS = [
+        'firma', 'yetkili', 'telefon', 'email', 'kisi', 'ogun_sayisi', 'cumartesi',
+        'sehir', 'ilce', 'segment', 'menu_json', 'personel_json', 'ekipman', 'birim_fiyat', 'note',
+    ];
 
     public function listTeklif(): array
     {
@@ -1842,12 +1848,63 @@ final class Repo
         )->fetchAll();
     }
 
-    public function createTeklif(string $firma, ?int $kisi, ?float $birimFiyat, ?string $note): int
+    /** Tek teklif (düzenleme + PDF için). Yoksa null. */
+    public function teklifById(int $id): ?array
     {
+        $st = $this->pdo->prepare('SELECT * FROM teklif WHERE id = ?');
+        $st->execute([$id]);
+        return $st->fetch() ?: null;
+    }
+
+    /**
+     * Teklif oluştur. İmza geriye uyumlu (mevcut 4 parametre korunur); yemekhaneci
+     * teklif motoru alanları $extra ile geçilir (whitelist TEKLIF_FIELDS ile prepared).
+     * @param array<string,mixed> $extra
+     */
+    public function createTeklif(string $firma, ?int $kisi, ?float $birimFiyat, ?string $note, array $extra = []): int
+    {
+        $cols = ['firma', 'kisi', 'birim_fiyat', 'note'];
+        $vals = [$firma, $kisi, $birimFiyat, $note];
+        foreach ($extra as $k => $v) {
+            if (in_array($k, self::TEKLIF_FIELDS, true) && !in_array($k, $cols, true)) {
+                $cols[] = $k;
+                $vals[] = $v;
+            }
+        }
+        $ph = implode(', ', array_fill(0, count($cols), '?'));
         $this->pdo->prepare(
-            'INSERT INTO teklif (firma, kisi, birim_fiyat, note) VALUES (?, ?, ?, ?)'
-        )->execute([$firma, $kisi, $birimFiyat, $note]);
+            'INSERT INTO teklif (' . implode(', ', $cols) . ') VALUES (' . $ph . ')'
+        )->execute($vals);
         return (int) $this->pdo->lastInsertId();
+    }
+
+    /**
+     * Teklif alanlarını güncelle (SADECE bilinen kolonlar, prepared). Bilinmeyen anahtarlar
+     * atlanır. Teklif yoksa false. (durum güncellemesi setTeklifDurum ile — kendi doğrulaması var.)
+     * @param array<string,mixed> $fields
+     */
+    public function updateTeklif(int $id, array $fields): bool
+    {
+        $set = [];
+        $vals = [];
+        foreach ($fields as $k => $v) {
+            if (in_array($k, self::TEKLIF_FIELDS, true)) {
+                $set[] = "$k = ?";
+                $vals[] = $v;
+            }
+        }
+        if (!$set) {
+            return false;
+        }
+        // MariaDB rowCount() değişmeyen satırda 0 döner → açık SELECT ile var olma kontrolü.
+        $ex = $this->pdo->prepare('SELECT 1 FROM teklif WHERE id = ?');
+        $ex->execute([$id]);
+        if ($ex->fetchColumn() === false) {
+            return false;
+        }
+        $vals[] = $id;
+        $this->pdo->prepare('UPDATE teklif SET ' . implode(', ', $set) . ' WHERE id = ?')->execute($vals);
+        return true;
     }
 
     public function setTeklifDurum(int $id, string $durum): bool
