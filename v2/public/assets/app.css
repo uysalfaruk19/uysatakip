@@ -953,6 +953,12 @@ body.customer-page .bottom-tabs {
   box-shadow: var(--shadow);
   padding: 8px;
   display: none;
+  /* fable-004: menü uzadı (Operasyon grubu) — ekrana sığmazsa içi kaydırılır */
+  max-height: calc(100vh - 84px - env(safe-area-inset-bottom) - env(safe-area-inset-top) - 24px);
+  max-height: calc(100dvh - 84px - env(safe-area-inset-bottom) - env(safe-area-inset-top) - 24px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 .fab-menu.open {
   display: grid;
