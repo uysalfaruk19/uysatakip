@@ -1838,7 +1838,8 @@ final class Repo
     /** fable-005: create/update ile yazılabilen bilinen kolonlar (durum hariç — kendi akışı var). */
     private const TEKLIF_FIELDS = [
         'firma', 'yetkili', 'telefon', 'email', 'kisi', 'ogun_sayisi', 'cumartesi',
-        'sehir', 'ilce', 'segment', 'menu_json', 'personel_json', 'ekipman', 'birim_fiyat', 'note',
+        'sehir', 'ilce', 'segment', 'menu_json', 'personel_json', 'ekipman', 'birim_fiyat',
+        'fiyat_json', 'giris_metni', 'note',
     ];
 
     public function listTeklif(): array

@@ -265,6 +265,8 @@ CREATE TABLE IF NOT EXISTS teklif (
   personel_json TEXT,
   ekipman TEXT,
   birim_fiyat REAL,
+  fiyat_json TEXT,
+  giris_metni TEXT,
   note TEXT,
   durum TEXT NOT NULL DEFAULT 'taslak' CHECK(durum IN ('taslak','gonderildi','kabul','red')),
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -1,0 +1,4 @@
+# tFPDF runtime font cache (AddFont ile üretilir) — commit'lenmez
+*.mtx.php
+*.cw.dat
+*.cw127.php

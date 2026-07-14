@@ -352,6 +352,8 @@ CREATE TABLE IF NOT EXISTS `teklif` (
   `personel_json` VARCHAR(300)          DEFAULT NULL,
   `ekipman`       VARCHAR(500)          DEFAULT NULL,
   `birim_fiyat`   DECIMAL(10,2)         DEFAULT NULL,
+  `fiyat_json`    VARCHAR(500)          DEFAULT NULL,
+  `giris_metni`   VARCHAR(1500)         DEFAULT NULL,
   `note`          VARCHAR(500)          DEFAULT NULL,
   `durum`         ENUM('taslak','gonderildi','kabul','red') NOT NULL DEFAULT 'taslak',
   `created_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -104,11 +104,13 @@ final class OperasyonTest extends TestCase
     public function testTeklifUpdateRoundTrip(): void
     {
         $id = $this->repo->createTeklif('Gebze Metal', 120, 340.0, null, [
-            'yetkili'   => 'Ayşe Hanım',
-            'telefon'   => '0532 000 00 00',
-            'cumartesi' => 1,
-            'segment'   => 'genel',
-            'menu_json' => json_encode(['corba' => 1, 'ana' => 1, 'ekmek' => 1]),
+            'yetkili'     => 'Ayşe Hanım',
+            'telefon'     => '0532 000 00 00',
+            'cumartesi'   => 1,
+            'segment'     => 'genel',
+            'menu_json'   => json_encode(['corba' => 1, 'ana' => 1, 'ekmek' => 1]),
+            'fiyat_json'  => json_encode(['kahvalti' => 135, 'ogle' => 235]),
+            'giris_metni' => 'Kuruma özel giriş metni.',
         ]);
         $this->assertGreaterThan(0, $id);
 
@@ -118,6 +120,9 @@ final class OperasyonTest extends TestCase
         $this->assertSame('Ayşe Hanım', $t['yetkili']);
         $this->assertSame(1, (int) $t['cumartesi']);
         $this->assertSame('genel', $t['segment']);
+        // fable-007: fiyat_json / giris_metni round-trip
+        $this->assertSame('Kuruma özel giriş metni.', $t['giris_metni']);
+        $this->assertSame(['kahvalti' => 135, 'ogle' => 235], json_decode((string) $t['fiyat_json'], true));
 
         $ok = $this->repo->updateTeklif($id, [
             'firma'       => 'Gebze Metal A.Ş.',
@@ -125,6 +130,8 @@ final class OperasyonTest extends TestCase
             'birim_fiyat' => 360.0,
             'ilce'        => 'Gebze',
             'ekipman'     => 'benmari, çelik masa',
+            'fiyat_json'  => json_encode(['ogle' => 250, 'aksam' => 250]),
+            'giris_metni' => 'Güncel giriş metni.',
             'durum'       => 'kabul', // whitelist dışı — sessizce atlanmalı
         ]);
         $this->assertTrue($ok);
@@ -135,6 +142,8 @@ final class OperasyonTest extends TestCase
         $this->assertEqualsWithDelta(360.0, (float) $t['birim_fiyat'], 0.001);
         $this->assertSame('Gebze', $t['ilce']);
         $this->assertSame('benmari, çelik masa', $t['ekipman']);
+        $this->assertSame(['ogle' => 250, 'aksam' => 250], json_decode((string) $t['fiyat_json'], true));
+        $this->assertSame('Güncel giriş metni.', $t['giris_metni']);
         $this->assertSame('taslak', $t['durum'], 'durum updateTeklif ile değişmez (whitelist dışı)');
 
         $this->assertNull($this->repo->teklifById(99999));
@@ -145,7 +154,7 @@ final class OperasyonTest extends TestCase
     // ── fable-005: TeklifPdf geçerli PDF üretir (dolu + boş alanlarla) ──
     public function testTeklifPdfRenders(): void
     {
-        $id = $this->repo->createTeklif('Dolu Firma', 100, 320.0, 'Servis dahil', [
+        $id = $this->repo->createTeklif('Şahinler Tekstil Sanayi A.Ş.', 100, null, 'Servis dahil', [
             'yetkili'       => 'Ömer Bey',
             'telefon'       => '0532',
             'email'         => 'a@b.com',
@@ -157,14 +166,21 @@ final class OperasyonTest extends TestCase
             'menu_json'     => json_encode(['corba' => 1, 'ana' => 1, 'yan' => 1, 'salata' => 4, 'tatli' => 1, 'icecek' => 'donusumlu', 'ekmek' => 1]),
             'personel_json' => json_encode(['asci' => 2, 'servis' => 3, 'temizlik' => 1]),
             'ekipman'       => 'benmari, çelik masa',
+            // fable-007: öğün fiyat cetveli + kuruma özel giriş metni
+            'fiyat_json'    => json_encode(['kahvalti' => 135, 'ogle' => 235, 'aksam' => 235, 'ara' => 55]),
+            'giris_metni'   => 'Kurumunuzun personeline yerinde üretim ile üç öğün hizmet sunmak isteriz.',
         ]);
         $full = \Uysa\TeklifPdf::render($this->repo->teklifById($id));
         $this->assertStringStartsWith('%PDF-', $full);
 
-        // Boş/minimum alanlar (sadece firma) — patlamamalı, yine geçerli PDF.
-        $id2 = $this->repo->createTeklif('Bos Firma', null, null, null);
+        // Minimum (sadece firma + tek fiyat, fiyat_json yok) — birim_fiyat tek satıra düşer.
+        $id2 = $this->repo->createTeklif('Boş Firma', null, 320.0, null);
         $bin = \Uysa\TeklifPdf::render($this->repo->teklifById($id2));
         $this->assertStringStartsWith('%PDF-', $bin);
+
+        // Hiç fiyat yok (sadece firma) da patlamamalı.
+        $id3 = $this->repo->createTeklif('Fiyatsız Firma', null, null, null);
+        $this->assertStringStartsWith('%PDF-', \Uysa\TeklifPdf::render($this->repo->teklifById($id3)));
 
         // Tamamen boş dizi (defansif) da patlamamalı.
         $this->assertStringStartsWith('%PDF-', \Uysa\TeklifPdf::render([]));

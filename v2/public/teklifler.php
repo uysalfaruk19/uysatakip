@@ -60,7 +60,26 @@ $buildFields = static function (array $p): array {
     ];
     $persHas = $pers['asci'] || $pers['servis'] || $pers['temizlik'];
 
+    // fable-007: öğün bazlı fiyat cetveli (opsiyonel, KDV hariç) → fiyat_json
+    $fv = static function (string $k) use ($p): ?float {
+        $x = trim((string) ($p[$k] ?? ''));
+        if ($x === '') {
+            return null;
+        }
+        $n = Helpers::parseMoney($x);
+        return $n > 0 ? $n : null;
+    };
+    $fiyat = [];
+    foreach (['kahvalti', 'ogle', 'aksam', 'ara'] as $ogunKey) {
+        $val = $fv('fiyat_' . $ogunKey);
+        if ($val !== null) {
+            $fiyat[$ogunKey] = $val;
+        }
+    }
+
     return [
+        'fiyat_json'    => $fiyat !== [] ? json_encode($fiyat, JSON_UNESCAPED_UNICODE) : null,
+        'giris_metni'   => $sv('giris_metni', 1500),
         'yetkili'       => $sv('yetkili', 120),
         'telefon'       => $sv('telefon', 40),
         'email'         => $sv('email', 120),
@@ -130,9 +149,11 @@ $editId = (int) ($_GET['edit'] ?? 0) ?: null;
 $ed = $editId ? $repo->teklifById($editId) : null;
 $emenu = $ed && $ed['menu_json'] ? (json_decode((string) $ed['menu_json'], true) ?: []) : [];
 $epers = $ed && $ed['personel_json'] ? (json_decode((string) $ed['personel_json'], true) ?: []) : [];
+$efiyat = $ed && ($ed['fiyat_json'] ?? '') !== '' ? (json_decode((string) $ed['fiyat_json'], true) ?: []) : [];
 $fv = static fn (string $k, string $def = ''): string => $ed !== null && isset($ed[$k]) && $ed[$k] !== null ? (string) $ed[$k] : $def;
 $mv = static fn (string $k): string => isset($emenu[$k]) && (int) $emenu[$k] > 0 ? (string) (int) $emenu[$k] : '';
 $pv = static fn (string $k): string => isset($epers[$k]) && (int) $epers[$k] > 0 ? (string) (int) $epers[$k] : '';
+$fyv = static fn (string $k): string => isset($efiyat[$k]) && (float) $efiyat[$k] > 0 ? Helpers::money((float) $efiyat[$k]) : '';
 
 $list = $repo->listTeklif();
 $open = count(array_filter($list, static fn ($t) => in_array($t['durum'], ['taslak', 'gonderildi'], true)));
@@ -174,9 +195,26 @@ require __DIR__ . '/partials/header.php';
           <div class="actions-row">
             <div class="field flex-fill"><label>Kişi / gün</label>
               <input class="inputx" name="kisi" type="number" inputmode="numeric" min="0" placeholder="ör. 80" value="<?= Helpers::e($fv('kisi')) ?>"></div>
-            <div class="field flex-fill"><label>Birim fiyat ₺ (ops.)</label>
+            <div class="field flex-fill"><label>Tek fiyat ₺ (öğün fiyatları boşsa)</label>
               <input class="inputx" name="birim_fiyat" inputmode="decimal" placeholder="ör. 320" value="<?= $ed && $ed['birim_fiyat'] !== null ? Helpers::e(Helpers::money((float) $ed['birim_fiyat'])) : '' ?>"></div>
           </div>
+
+          <details class="teklif-detay" <?= $ed && $efiyat ? 'open' : '' ?>>
+            <summary style="cursor:pointer;font-weight:600;padding:6px 0"><i class="bi bi-cash-stack"></i> Fiyat cetveli &amp; giriş metni</summary>
+            <p class="label mt-2" style="font-weight:600;font-size:13px">Öğün fiyatları (₺, KDV hariç · opsiyonel)</p>
+            <div class="actions-row">
+              <div class="field flex-fill"><label>Kahvaltı</label>
+                <input class="inputx" name="fiyat_kahvalti" inputmode="decimal" placeholder="ör. 135" value="<?= Helpers::e($fyv('kahvalti')) ?>"></div>
+              <div class="field flex-fill"><label>Öğle</label>
+                <input class="inputx" name="fiyat_ogle" inputmode="decimal" placeholder="ör. 235" value="<?= Helpers::e($fyv('ogle')) ?>"></div>
+              <div class="field flex-fill"><label>Akşam</label>
+                <input class="inputx" name="fiyat_aksam" inputmode="decimal" placeholder="ör. 235" value="<?= Helpers::e($fyv('aksam')) ?>"></div>
+              <div class="field flex-fill"><label>Ara Öğün</label>
+                <input class="inputx" name="fiyat_ara" inputmode="decimal" placeholder="ör. 55" value="<?= Helpers::e($fyv('ara')) ?>"></div>
+            </div>
+            <div class="field"><label>Giriş metni (boşsa matbu genel metin kullanılır)</label>
+              <textarea class="inputx" name="giris_metni" rows="3" maxlength="1500" placeholder="Kuruma özel giriş paragrafı — boş bırakılırsa standart metin yazılır."><?= Helpers::e($fv('giris_metni')) ?></textarea></div>
+          </details>
 
           <details class="teklif-detay" <?= $ed ? 'open' : '' ?>>
             <summary style="cursor:pointer;font-weight:600;padding:6px 0"><i class="bi bi-sliders"></i> Detaylar (menü, personel, lokasyon)</summary>
