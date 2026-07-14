@@ -143,16 +143,39 @@ require __DIR__ . '/partials/header.php';
       $giderTop = $nk['personel'] + $nk['hammadde'] + $tasimaTot['alis'] + $tasimaTot['gider'];
       $netTop = $gelirTop - $giderTop;
       ?>
+      <?php /* fable-012: Gelir/Gider kartlarına dokununca kısa özet açılır (kalemler). */ ?>
       <div class="summary-grid">
-        <div class="summary-card tint-green"><p class="label">Gelir (satışlar)</p><p class="metric">₺ <?= Helpers::money($gelirTop) ?></p></div>
-        <div class="summary-card tint-orange"><p class="label">Gider (personel+işletme)</p><p class="metric">₺ <?= Helpers::money($giderTop) ?></p></div>
+        <div class="summary-card tint-green tap-card" role="button" tabindex="0" onclick="toggleFin('fin-gelir')">
+          <p class="label">Gelir (satışlar) <i class="bi bi-chevron-down chev"></i></p><p class="metric">₺ <?= Helpers::money($gelirTop) ?></p>
+        </div>
+        <div class="summary-card tint-orange tap-card" role="button" tabindex="0" onclick="toggleFin('fin-gider')">
+          <p class="label">Gider (personel+işletme) <i class="bi bi-chevron-down chev"></i></p><p class="metric">₺ <?= Helpers::money($giderTop) ?></p>
+        </div>
         <div class="summary-card wide"><p class="label">Net kâr</p><p class="metric <?= $netTop < 0 ? 'neg' : '' ?>">₺ <?= Helpers::money($netTop) ?></p></div>
       </div>
-      <p class="row-meta" style="margin:-4px 2px 4px">
-        <i class="bi bi-info-circle"></i>
-        Gelir = üretim satışları ₺<?= Helpers::money($nk['ciro']) ?><?= $tasimaTot['satis'] > 0 ? ' + taşıma ₺' . Helpers::money($tasimaTot['satis']) : '' ?><?= $fin['gelir'] > 0 ? ' + elle ₺' . Helpers::money($fin['gelir']) : '' ?>.
-        Gider = personel ₺<?= Helpers::money($nk['personel']) ?><?= $nk['hammadde'] > 0 ? ' + işletme ₺' . Helpers::money($nk['hammadde']) : '' ?>. Elle gider ekledikçe artar.
-      </p>
+
+      <div class="cardx card-pad fin-detay" id="fin-gelir" style="display:none">
+        <h2>Gelir özeti</h2>
+        <table class="tablex"><tbody>
+          <tr><td>Üretim satışları (işlenmiş)</td><td class="num">₺ <?= Helpers::money($nk['ciro']) ?></td></tr>
+          <?php if ($tasimaTot['satis'] > 0): ?><tr><td>Taşıma satış</td><td class="num">₺ <?= Helpers::money($tasimaTot['satis']) ?></td></tr><?php endif; ?>
+          <?php if ($fin['gelir'] > 0): ?><tr><td>Elle girilen gelir</td><td class="num">₺ <?= Helpers::money($fin['gelir']) ?></td></tr><?php endif; ?>
+          <tr class="is-total"><td>Toplam gelir</td><td class="num">₺ <?= Helpers::money($gelirTop) ?></td></tr>
+        </tbody></table>
+        <p class="row-meta" style="margin-top:6px"><i class="bi bi-info-circle"></i> Üretim satışları o ay onaylanan/işlenen sayılardan otomatik gelir. <a href="rapor.php?ay=<?= $month ?>" style="text-decoration:underline">Firma bazlı detay</a></p>
+      </div>
+
+      <div class="cardx card-pad fin-detay" id="fin-gider" style="display:none">
+        <h2>Gider özeti</h2>
+        <table class="tablex"><tbody>
+          <tr><td>Personel (yüklü işveren maliyeti)</td><td class="num">₺ <?= Helpers::money($nk['personel']) ?></td></tr>
+          <?php if ($nk['hammadde'] > 0): ?><tr><td>İşletme / hammadde giderleri</td><td class="num">₺ <?= Helpers::money($nk['hammadde']) ?></td></tr><?php endif; ?>
+          <?php if ($tasimaTot['alis'] > 0): ?><tr><td>Taşıma alış</td><td class="num">₺ <?= Helpers::money($tasimaTot['alis']) ?></td></tr><?php endif; ?>
+          <?php if ($tasimaTot['gider'] > 0): ?><tr><td>Taşıma sabit gider</td><td class="num">₺ <?= Helpers::money($tasimaTot['gider']) ?></td></tr><?php endif; ?>
+          <tr class="is-total"><td>Toplam gider</td><td class="num">₺ <?= Helpers::money($giderTop) ?></td></tr>
+        </tbody></table>
+        <p class="row-meta" style="margin-top:6px"><i class="bi bi-info-circle"></i> Personel = tüm aktif personelin bu ayki yüklü maliyeti. Yeni gider eklemek için aşağıdaki <strong>+</strong> ile "Gider ekle".</p>
+      </div>
 
       <?php if ($tasimaTot['satis'] > 0 || $tasimaTot['alis'] > 0 || $tasimaTot['gider'] > 0): ?>
       <div class="cardx card-pad">
@@ -277,6 +300,19 @@ require __DIR__ . '/partials/header.php';
       </div>
 
       <script>
+        // fable-012: Gelir/Gider kartı → kısa özet aç/kapat (akordeon)
+        function toggleFin(id){
+          var el = document.getElementById(id);
+          if (!el) return;
+          var other = document.getElementById(id === 'fin-gelir' ? 'fin-gider' : 'fin-gelir');
+          if (other) other.style.display = 'none';
+          el.style.display = el.style.display === 'none' ? '' : 'none';
+          document.querySelectorAll('.tap-card').forEach(function(c){ c.classList.remove('open'); });
+          if (el.style.display !== 'none') {
+            var card = document.querySelector('[onclick="toggleFin(\'' + id + '\')"]');
+            if (card) card.classList.add('open');
+          }
+        }
         function setType(btn, v){
           document.getElementById('tx-type').value = v;
           btn.parentNode.querySelectorAll('.chip').forEach(function(c){c.classList.remove('active');});

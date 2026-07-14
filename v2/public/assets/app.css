@@ -1487,3 +1487,10 @@ a.week-day.locked {
   border-top: 2px solid var(--line);
   font-weight: 700;
 }
+
+/* ── fable-012: dokunulabilir Gelir/Gider özet kartları ── */
+.tap-card { cursor: pointer; position: relative; }
+.tap-card .chev { font-size: 11px; opacity: .6; transition: transform .18s ease; }
+.tap-card.open .chev { transform: rotate(180deg); }
+.tap-card:active { transform: translateY(1px); }
+.fin-detay { margin-top: -4px; }
