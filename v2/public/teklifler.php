@@ -57,8 +57,12 @@ if (isset($_GET['goruntule'])) {
   .pdf-bar a,.pdf-bar button{display:flex;align-items:center;gap:6px;background:none;border:0;color:#fff;
     font-size:15px;font-weight:700;padding:12px 16px;text-decoration:none;cursor:pointer}
   .pdf-bar .ttl{font-size:14px;font-weight:600;opacity:.9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .pdf-frame{position:fixed;top:calc(52px + env(safe-area-inset-top));left:0;right:0;bottom:0;width:100%;border:0;
-    height:calc(100% - 52px - env(safe-area-inset-top))}
+  .pdf-pages{position:fixed;top:calc(52px + env(safe-area-inset-top));left:0;right:0;bottom:0;
+    overflow-y:auto;-webkit-overflow-scrolling:touch;padding:10px 6px calc(10px + env(safe-area-inset-bottom))}
+  .pdf-pages canvas{display:block;width:100%;height:auto;margin:0 auto 10px;background:#fff;
+    border-radius:4px;box-shadow:0 2px 10px rgba(0,0,0,.35)}
+  .pdf-err{color:#fff;text-align:center;padding:40px 20px;font-size:15px}
+  .pdf-err a{color:#8fe3e0}
 </style>
 </head>
 <body>
@@ -67,20 +71,40 @@ if (isset($_GET['goruntule'])) {
     <span class="ttl">Teklif #T-<?= $tid ?></span>
     <button type="button" onclick="paylas()"><i class="bi bi-share"></i> Paylaş</button>
   </div>
-  <iframe class="pdf-frame" src="<?= $pdfUrl ?>&inline=1"></iframe>
+  <?php /* fable-009: iframe PDF iOS WKWebView'de BOŞ çiziliyordu → PDF.js ile canvas render */ ?>
+  <div class="pdf-pages" id="pdf-pages"></div>
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <script>
+    var PDF_URL = <?= json_encode($pdfUrl . '&inline=1') ?>;
+    var PDF_NAME = <?= json_encode('teklif-T' . $tid . '.pdf') ?>;
+    (function(){
+      var host = document.getElementById('pdf-pages');
+      function fail(){ host.innerHTML = '<div class="pdf-err">Önizleme yüklenemedi.<br><a href="' + PDF_URL.replace('&inline=1','') + '">PDF’i indir</a></div>'; }
+      if (!window.pdfjsLib) { fail(); return; }
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+      pdfjsLib.getDocument(PDF_URL).promise.then(async function(pdf){
+        var w = host.clientWidth - 12, dpr = Math.min(window.devicePixelRatio || 1, 2);
+        for (var i = 1; i <= pdf.numPages; i++) {
+          var page = await pdf.getPage(i);
+          var scale = w / page.getViewport({scale: 1}).width;
+          var vp = page.getViewport({scale: scale * dpr});
+          var c = document.createElement('canvas');
+          c.width = vp.width; c.height = vp.height;
+          host.appendChild(c);
+          await page.render({canvasContext: c.getContext('2d'), viewport: vp}).promise;
+        }
+      }).catch(fail);
+    })();
     async function paylas(){
-      var url = <?= json_encode($pdfUrl . '&inline=1') ?>;
-      var fname = <?= json_encode('teklif-T' . $tid . '.pdf') ?>;
       try {
-        var r = await fetch(url); var b = await r.blob();
-        var f = new File([b], fname, {type: 'application/pdf'});
+        var r = await fetch(PDF_URL); var b = await r.blob();
+        var f = new File([b], PDF_NAME, {type: 'application/pdf'});
         if (navigator.canShare && navigator.canShare({files: [f]})) {
-          await navigator.share({files: [f], title: fname});
+          await navigator.share({files: [f], title: PDF_NAME});
           return;
         }
       } catch (e) { /* iptal veya desteksiz → indirmeye düş */ }
-      location.href = <?= json_encode($pdfUrl) ?>; // fallback: indir
+      location.href = PDF_URL.replace('&inline=1', ''); // fallback: indir
     }
   </script>
 </body>

@@ -786,7 +786,8 @@ h3 {
 /* Müşteri alt-nav 6 sekme (FAB yok) */
 .customer .bottom-tabs,
 body.customer-page .bottom-tabs {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  /* fable-009: Cari bardan kalktı (fable-001) → 5 sekme; 6 sütun kalınca bar kayık duruyordu */
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 /* ── Modül grid'i (broşür alt kartları: Stok, Reçete, Faturalar…) ─ */
