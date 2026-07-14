@@ -878,8 +878,12 @@ body.customer-page .bottom-tabs {
 /* ── Alt navigasyon + ortada turuncu (+) FAB ──────────────── */
 .bottom-tabs {
   position: fixed;
-  left: 50%;
-  transform: translateX(-50%);
+  /* fable-011: transform'lu ortalama (translateX -50%) + blur, iOS'ta kaydırırken barı
+     yatayda titretiyordu ("oynak"). Transformsuz margin-ortalama + kendi katmanı (translateZ)
+     ile sabitlendi. */
+  left: 0;
+  right: 0;
+  margin: 0 auto;
   bottom: 0;
   z-index: 20;
   width: 100%;
@@ -893,6 +897,8 @@ body.customer-page .bottom-tabs {
   background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(14px);
   box-shadow: 0 -6px 20px rgba(20, 40, 80, 0.06);
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 .tab-item {
   min-width: 0;

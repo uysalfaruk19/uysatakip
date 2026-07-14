@@ -135,11 +135,24 @@ require __DIR__ . '/partials/header.php';
         </div>
       </form>
 
+      <?php
+      // fable-011: üst kartlar artık OPERASYONEL aylık kâr (Ömer isteği: işlenmiş satışlar
+      // gelirde, personel + girilen giderler giderde). Sadece transactions'a bakan eski
+      // "nakit" görünümü boş kalıyordu. Kaynak: üretim cirosu + taşıma + elle işlemler.
+      $gelirTop = $nk['ciro'] + $tasimaTot['satis'] + $fin['gelir'];
+      $giderTop = $nk['personel'] + $nk['hammadde'] + $tasimaTot['alis'] + $tasimaTot['gider'];
+      $netTop = $gelirTop - $giderTop;
+      ?>
       <div class="summary-grid">
-        <div class="summary-card tint-green"><p class="label">Gelir</p><p class="metric">₺ <?= Helpers::money($fin['gelir']) ?></p></div>
-        <div class="summary-card tint-orange"><p class="label">Gider</p><p class="metric">₺ <?= Helpers::money($fin['gider']) ?></p></div>
-        <div class="summary-card wide"><p class="label">Net nakit</p><p class="metric <?= $fin['net'] < 0 ? 'neg' : '' ?>">₺ <?= Helpers::money($fin['net']) ?></p></div>
+        <div class="summary-card tint-green"><p class="label">Gelir (satışlar)</p><p class="metric">₺ <?= Helpers::money($gelirTop) ?></p></div>
+        <div class="summary-card tint-orange"><p class="label">Gider (personel+işletme)</p><p class="metric">₺ <?= Helpers::money($giderTop) ?></p></div>
+        <div class="summary-card wide"><p class="label">Net kâr</p><p class="metric <?= $netTop < 0 ? 'neg' : '' ?>">₺ <?= Helpers::money($netTop) ?></p></div>
       </div>
+      <p class="row-meta" style="margin:-4px 2px 4px">
+        <i class="bi bi-info-circle"></i>
+        Gelir = üretim satışları ₺<?= Helpers::money($nk['ciro']) ?><?= $tasimaTot['satis'] > 0 ? ' + taşıma ₺' . Helpers::money($tasimaTot['satis']) : '' ?><?= $fin['gelir'] > 0 ? ' + elle ₺' . Helpers::money($fin['gelir']) : '' ?>.
+        Gider = personel ₺<?= Helpers::money($nk['personel']) ?><?= $nk['hammadde'] > 0 ? ' + işletme ₺' . Helpers::money($nk['hammadde']) : '' ?>. Elle gider ekledikçe artar.
+      </p>
 
       <?php if ($tasimaTot['satis'] > 0 || $tasimaTot['alis'] > 0 || $tasimaTot['gider'] > 0): ?>
       <div class="cardx card-pad">
@@ -158,7 +171,7 @@ require __DIR__ . '/partials/header.php';
 
       <?php if ($nk['ciro'] > 0 || $nk['personel'] > 0 || $nk['hammadde'] > 0 || $nk['tasima_kar'] != 0): ?>
       <div class="cardx card-pad">
-        <h2>Net karlılık <span class="text-muted" style="font-size:12px;font-weight:600">(tahakkuk — nakit akışından ayrı)</span></h2>
+        <h2>Kâr dökümü <span class="text-muted" style="font-size:12px;font-weight:600">(üstteki net kârın kalemleri)</span></h2>
         <table class="tablex">
           <tbody>
             <tr><td>Üretim cirosu</td><td class="num">₺ <?= Helpers::money($nk['ciro']) ?></td></tr>
