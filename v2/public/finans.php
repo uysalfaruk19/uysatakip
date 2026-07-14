@@ -103,7 +103,6 @@ function handleInvoiceUpload(array $file, Repo $repo, string $by, string &$flash
 $fin = $repo->monthFinanceTotals($month);
 $tasimaTot = $repo->monthTasimaTotals($month);
 $nk = $repo->netKarlilik($month);
-$kidemTot = $repo->kidemToplamYukumluluk($month);
 $txs = $repo->transactionsForMonth($month);
 $customers = $repo->activeCustomers();
 $suppliers = $repo->activeSuppliers();
@@ -177,38 +176,12 @@ require __DIR__ . '/partials/header.php';
         <p class="row-meta" style="margin-top:6px"><i class="bi bi-info-circle"></i> Personel = tüm aktif personelin bu ayki yüklü maliyeti. Yeni gider eklemek için aşağıdaki <strong>+</strong> ile "Gider ekle".</p>
       </div>
 
-      <?php if ($tasimaTot['satis'] > 0 || $tasimaTot['alis'] > 0 || $tasimaTot['gider'] > 0): ?>
-      <div class="cardx card-pad">
-        <h2>Taşıma karlılığı <span class="text-muted" style="font-size:12px;font-weight:600">(adet×(satış−alış), üretim cirosundan ayrı)</span></h2>
-        <table class="tablex">
-          <tbody>
-            <tr><td>Taşıma toplam satış</td><td class="num">₺ <?= Helpers::money($tasimaTot['satis']) ?></td></tr>
-            <tr><td>Taşıma toplam alış</td><td class="num">− ₺ <?= Helpers::money($tasimaTot['alis']) ?></td></tr>
-            <tr><td>Brüt kâr</td><td class="num">₺ <?= Helpers::money($tasimaTot['brut']) ?></td></tr>
-            <tr><td>Sabit gider</td><td class="num">− ₺ <?= Helpers::money($tasimaTot['gider']) ?></td></tr>
-            <tr class="is-total"><td>Taşıma net kâr</td><td class="num" style="color:<?= $tasimaTot['net'] < 0 ? 'var(--red)' : 'var(--green)' ?>">₺ <?= Helpers::money($tasimaTot['net']) ?></td></tr>
-          </tbody>
-        </table>
-      </div>
-      <?php endif; ?>
-
-      <?php if ($nk['ciro'] > 0 || $nk['personel'] > 0 || $nk['hammadde'] > 0 || $nk['tasima_kar'] != 0): ?>
-      <div class="cardx card-pad">
-        <h2>Kâr dökümü <span class="text-muted" style="font-size:12px;font-weight:600">(üstteki net kârın kalemleri)</span></h2>
-        <table class="tablex">
-          <tbody>
-            <tr><td>Üretim cirosu</td><td class="num">₺ <?= Helpers::money($nk['ciro']) ?></td></tr>
-            <tr><td>Hammadde / işletme gideri</td><td class="num">− ₺ <?= Helpers::money($nk['hammadde']) ?></td></tr>
-            <tr><td>Personel gideri (yüklü işveren maliyeti, dağıtılmış)</td><td class="num">− ₺ <?= Helpers::money($nk['personel']) ?></td></tr>
-            <tr><td>Taşıma net kâr (adet×(satış−alış)−sabit)</td><td class="num" style="color:<?= $nk['tasima_kar'] < 0 ? 'var(--red)' : 'var(--green)' ?>"><?= $nk['tasima_kar'] < 0 ? '− ₺ ' . Helpers::money(abs($nk['tasima_kar'])) : '+ ₺ ' . Helpers::money($nk['tasima_kar']) ?></td></tr>
-            <tr class="is-total"><td>Net karlılık</td><td class="num" style="color:<?= $nk['net'] < 0 ? 'var(--red)' : 'var(--green)' ?>">₺ <?= Helpers::money($nk['net']) ?></td></tr>
-          </tbody>
-        </table>
-        <?php if ($kidemTot['birikim'] > 0): ?>
-        <p class="row-meta" style="margin-top:8px"><i class="bi bi-piggy-bank"></i> Biriken kıdem yükümlülüğü (bilanço dışı borç, fesihte ödenir): <strong>₺ <?= Helpers::money($kidemTot['birikim']) ?></strong> · bu ay tahakkuk +₺ <?= Helpers::money($kidemTot['bu_ay_tahakkuk']) ?></p>
-        <?php endif; ?>
-      </div>
-      <?php endif; ?>
+      <?php /* fable-013: Taşıma karlılığı + Kâr dökümü kartları Finans'tan kaldırıldı;
+         detay Kâr/Zarar'da (rapor.php). Finans = özet sayfası. */ ?>
+      <a class="cardx card-pad" href="rapor.php?ay=<?= $month ?>" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <div><h2 style="margin:0">Kâr / Zarar detayı</h2><p class="row-meta" style="margin:2px 0 0">Firma bazlı ciro, taşıma kâr/zarar, net karlılık dökümü</p></div>
+        <i class="bi bi-chevron-right" style="font-size:18px;color:var(--primary)"></i>
+      </a>
 
       <div class="segmented">
         <a class="chip <?= $filter === 'all' ? 'active' : '' ?>" href="finans.php?ay=<?= $month ?>&tur=all">Tümü</a>

@@ -139,6 +139,7 @@ $rows = $repo->monthProductionByCustomer($month, 'uretim'); // taşıma HARİÇ 
 $fin = $repo->monthFinanceTotals($month);
 $tasimaTot = $repo->monthTasimaTotals($month);
 $nk = $repo->netKarlilik($month);
+$kidemTot = $repo->kidemToplamYukumluluk($month); // fable-013: kıdem notu Finans'tan buraya taşındı
 $tasimaList = $repo->listCustomersByCategory('tasima');
 $toplamCiro = 0.0; $toplamKisi = 0;
 foreach ($rows as $r) {
@@ -175,6 +176,9 @@ require __DIR__ . '/partials/header.php';
             <tr class="is-total"><td>Net karlılık</td><td class="num" style="color:<?= $nk['net'] < 0 ? 'var(--red)' : 'var(--green)' ?>">₺ <?= Helpers::money($nk['net']) ?></td></tr>
           </tbody>
         </table>
+        <?php if ($kidemTot['birikim'] > 0): ?>
+        <p class="row-meta" style="margin-top:8px"><i class="bi bi-piggy-bank"></i> Biriken kıdem yükümlülüğü (bilanço dışı borç, fesihte ödenir): <strong>₺ <?= Helpers::money($kidemTot['birikim']) ?></strong> · bu ay tahakkuk +₺ <?= Helpers::money($kidemTot['bu_ay_tahakkuk']) ?></p>
+        <?php endif; ?>
       </div>
 
       <div class="section-head"><h2>Üretim müşterileri</h2><span class="text-muted" style="font-size:12px">adına tıkla → gün gün</span></div>
