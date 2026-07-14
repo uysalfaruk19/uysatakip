@@ -17,19 +17,75 @@ $repo = new Repo($pdo);
 // opus-019: müşteri EN FAZLA 1 AY GERİ görebilir (date_end >= bugün−1 ay).
 $minEnd = date('Y-m-d', strtotime('-1 month'));
 
-// PDF indir (header'dan ÖNCE) — SADECE bu müşteriye görünür + 1 ay sınırı içindeki menü (IDOR scope).
+// PDF (header'dan ÖNCE) — SADECE bu müşteriye görünür + 1 ay sınırı içindeki menü (IDOR scope).
+// fable-008: inline=1 → görüntüleyici iframe'i için (attachment yerine).
 if (isset($_GET['pdf'])) {
     $mid = (int) $_GET['pdf'];
     $m = $repo->menuForCustomer($cid, $mid, $minEnd);
     if ($m) {
         $bin = MenuPdf::write((string) $m['title'], $repo->menuItems($mid), (string) $m['date_start'], (string) $m['date_end']);
+        $disp = isset($_GET['inline']) ? 'inline' : 'attachment';
         header('Content-Type: application/pdf');
-        header('Content-Disposition: attachment; filename="menu-' . (int) $mid . '.pdf"');
+        header('Content-Disposition: ' . $disp . '; filename="menu-' . (int) $mid . '.pdf"');
         header('Content-Length: ' . strlen($bin));
         echo $bin;
         exit;
     }
     header('Location: menu.php');
+    exit;
+}
+
+// ── fable-008: app-içi PDF görüntüleyici — üstte X (kapat) + Paylaş barı ──
+// (WKWebView PDF'i sayfa YERİNE açıp geri yolu bırakmıyordu — "X yok" şikâyetinin kalıcı çözümü.)
+if (isset($_GET['goster'])) {
+    $mid = (int) $_GET['goster'];
+    if (!$repo->menuForCustomer($cid, $mid, $minEnd)) { // IDOR guard görüntüleyicide de
+        header('Location: menu.php');
+        exit;
+    }
+    $pdfUrl = 'menu.php?pdf=' . $mid;
+    ?><!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Menü PDF</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+<style>
+  html,body{margin:0;height:100%;background:#33373d;font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif}
+  .pdf-bar{position:fixed;top:0;left:0;right:0;height:calc(52px + env(safe-area-inset-top));padding-top:env(safe-area-inset-top);
+    background:#0e6e74;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:8px;z-index:5}
+  .pdf-bar a,.pdf-bar button{display:flex;align-items:center;gap:6px;background:none;border:0;color:#fff;
+    font-size:15px;font-weight:700;padding:12px 16px;text-decoration:none;cursor:pointer}
+  .pdf-bar .ttl{font-size:14px;font-weight:600;opacity:.9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pdf-frame{position:fixed;top:calc(52px + env(safe-area-inset-top));left:0;right:0;bottom:0;width:100%;border:0;
+    height:calc(100% - 52px - env(safe-area-inset-top))}
+</style>
+</head>
+<body>
+  <div class="pdf-bar">
+    <a href="menu.php" aria-label="Kapat"><i class="bi bi-x-lg"></i> Kapat</a>
+    <span class="ttl">Menü PDF</span>
+    <button type="button" onclick="paylas()"><i class="bi bi-share"></i> Paylaş</button>
+  </div>
+  <iframe class="pdf-frame" src="<?= $pdfUrl ?>&inline=1"></iframe>
+  <script>
+    async function paylas(){
+      var url = <?= json_encode($pdfUrl . '&inline=1') ?>;
+      var fname = <?= json_encode('menu-' . $mid . '.pdf') ?>;
+      try {
+        var r = await fetch(url); var b = await r.blob();
+        var f = new File([b], fname, {type: 'application/pdf'});
+        if (navigator.canShare && navigator.canShare({files: [f]})) {
+          await navigator.share({files: [f], title: fname});
+          return;
+        }
+      } catch (e) { /* iptal veya desteksiz → indirmeye düş */ }
+      location.href = <?= json_encode($pdfUrl) ?>; // fallback: indir
+    }
+  </script>
+</body>
+</html><?php
     exit;
 }
 
@@ -146,7 +202,7 @@ require __DIR__ . '/partials/header_m.php';
         <div class="cardx card-pad">
           <p class="label mb-2">Menü PDF (takvim düzeni)</p>
           <?php foreach ($menus as $m): ?>
-            <a class="btn-action btn-secondaryx btn-full mb-2" href="menu.php?pdf=<?= (int) $m['id'] ?>" target="_blank" download="menu-<?= (int) $m['id'] ?>.pdf">
+            <a class="btn-action btn-secondaryx btn-full mb-2" href="menu.php?goster=<?= (int) $m['id'] ?>">
               <i class="bi bi-file-earmark-pdf"></i> <?= Helpers::e($m['title']) ?> · <?= date('d.m', strtotime($m['date_start'])) ?>–<?= date('d.m.Y', strtotime($m['date_end'])) ?>
             </a>
           <?php endforeach; ?>

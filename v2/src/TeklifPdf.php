@@ -67,11 +67,8 @@ final class TeklifPdf
             . 'ürünler verilmez.'],
     ];
 
-    /** Hizmet kapsamı bullet'ları — [kalın etiket, metin] (referanstan HARFİYEN). */
+    /** Hizmet kapsamı bullet'ları — [kalın etiket, metin] (referanstan; fable-008: "Yerinde Üretim" maddesi Ömer isteğiyle kaldırıldı). */
     private const KAPSAM = [
-        ['Yerinde Üretim',
-            'Hizmet, kurum mutfağında tarafımızca üretilip servis edilir; 3 ana + 3 ara öğün, '
-            . '07:00–22:00 arası kesintisiz sürdürülür.'],
         ['Menü',
             'Diyetisyen onaylı aylık menü; her öğünde 4 çeşit yemek + en az 4 çeşit salatabar '
             . '(biri zeytinyağlı), yoğurt ve meyve/tatlı dahil; porsiyon gramajları şartnameye uygundur.'],

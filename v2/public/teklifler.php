@@ -15,19 +15,76 @@ $u = Auth::requireLogin();
 $pdo = Db::pdo();
 $repo = new Repo($pdo);
 
-// ── PDF indir (header'dan ÖNCE) — teklif → yemekhaneci formatı PDF ──
+// ── PDF (header'dan ÖNCE) — teklif → yemekhaneci formatı PDF ──
+// fable-008: inline=1 → görüntüleyici iframe'i içinde açılır (attachment yerine).
 if (isset($_GET['pdf'])) {
     $tid = (int) $_GET['pdf'];
     $t = $repo->teklifById($tid);
     if ($t) {
         $bin = TeklifPdf::render($t);
+        $disp = isset($_GET['inline']) ? 'inline' : 'attachment';
         header('Content-Type: application/pdf');
-        header('Content-Disposition: attachment; filename="teklif-T' . $tid . '.pdf"');
+        header('Content-Disposition: ' . $disp . '; filename="teklif-T' . $tid . '.pdf"');
         header('Content-Length: ' . strlen($bin));
         echo $bin;
         exit;
     }
     header('Location: teklifler.php');
+    exit;
+}
+
+// ── fable-008: app-içi PDF görüntüleyici — üstte X (kapat) + Paylaş barı ──
+// (WKWebView PDF'i sayfanın YERİNE açıp geri yolu bırakmıyordu; Ömer app'i kapatmak
+// zorunda kalıyordu. iframe + kendi barımızla çözüldü; Paylaş = Web Share API, dosyayla.)
+if (isset($_GET['goruntule'])) {
+    $tid = (int) $_GET['goruntule'];
+    if (!$repo->teklifById($tid)) {
+        header('Location: teklifler.php');
+        exit;
+    }
+    $pdfUrl = 'teklifler.php?pdf=' . $tid;
+    ?><!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Teklif #T-<?= $tid ?> · PDF</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+<style>
+  html,body{margin:0;height:100%;background:#33373d;font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif}
+  .pdf-bar{position:fixed;top:0;left:0;right:0;height:calc(52px + env(safe-area-inset-top));padding-top:env(safe-area-inset-top);
+    background:#0e6e74;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:8px;z-index:5}
+  .pdf-bar a,.pdf-bar button{display:flex;align-items:center;gap:6px;background:none;border:0;color:#fff;
+    font-size:15px;font-weight:700;padding:12px 16px;text-decoration:none;cursor:pointer}
+  .pdf-bar .ttl{font-size:14px;font-weight:600;opacity:.9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pdf-frame{position:fixed;top:calc(52px + env(safe-area-inset-top));left:0;right:0;bottom:0;width:100%;border:0;
+    height:calc(100% - 52px - env(safe-area-inset-top))}
+</style>
+</head>
+<body>
+  <div class="pdf-bar">
+    <a href="teklifler.php" aria-label="Kapat"><i class="bi bi-x-lg"></i> Kapat</a>
+    <span class="ttl">Teklif #T-<?= $tid ?></span>
+    <button type="button" onclick="paylas()"><i class="bi bi-share"></i> Paylaş</button>
+  </div>
+  <iframe class="pdf-frame" src="<?= $pdfUrl ?>&inline=1"></iframe>
+  <script>
+    async function paylas(){
+      var url = <?= json_encode($pdfUrl . '&inline=1') ?>;
+      var fname = <?= json_encode('teklif-T' . $tid . '.pdf') ?>;
+      try {
+        var r = await fetch(url); var b = await r.blob();
+        var f = new File([b], fname, {type: 'application/pdf'});
+        if (navigator.canShare && navigator.canShare({files: [f]})) {
+          await navigator.share({files: [f], title: fname});
+          return;
+        }
+      } catch (e) { /* iptal veya desteksiz → indirmeye düş */ }
+      location.href = <?= json_encode($pdfUrl) ?>; // fallback: indir
+    }
+  </script>
+</body>
+</html><?php
     exit;
 }
 
@@ -317,7 +374,7 @@ require __DIR__ . '/partials/header.php';
 
               <div class="actions-row mt-2">
                 <a class="btn-action btn-ghost flex-fill" href="teklifler.php?edit=<?= (int) $t['id'] ?>"><i class="bi bi-pencil"></i> Düzenle</a>
-                <a class="btn-action btn-secondaryx flex-fill" href="teklifler.php?pdf=<?= (int) $t['id'] ?>" target="_blank" download="teklif-T<?= (int) $t['id'] ?>.pdf"><i class="bi bi-file-earmark-pdf"></i> PDF (Yemekhaneci)</a>
+                <a class="btn-action btn-secondaryx flex-fill" href="teklifler.php?goruntule=<?= (int) $t['id'] ?>"><i class="bi bi-file-earmark-pdf"></i> PDF (Yemekhaneci)</a>
               </div>
 
               <?php
