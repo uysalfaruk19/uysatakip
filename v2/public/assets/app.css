@@ -38,6 +38,14 @@ html {
   min-height: 100%;
   background: var(--bg);
   scroll-behavior: smooth;
+  /* fable-016: yatay taşma koruması BODY'de değil BURADA olmalı. CSS'te overflow'un bir ekseni
+     visible değilse diğeri otomatik auto olur → body{overflow-x:hidden} body'yi SCROLL KABINA
+     çevirir; iOS momentum scroll'unda içindeki position:fixed alt bar geride kalıp yerine
+     oturur ("bar oynuyor"). html scroll kabı zaten viewport olduğu için burada yan etki yok. */
+  overflow-x: hidden;
+  /* Kısa sayfada kaydırma çubuğu yok, uzun sayfada var → sayfa geçişinde içerik+bar 15px yana
+     zıplıyordu (masaüstü). Yeri hep rezerve: geçişte kayma olmaz. Mobilde çubuk overlay, etkisiz. */
+  scrollbar-gutter: stable;
 }
 body {
   min-height: 100%;
@@ -55,7 +63,7 @@ body {
     "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  overflow-x: hidden;
+  /* overflow-x: hidden BİLEREK YOK — html'e taşındı (fable-016; sebep yukarıda). */
   -webkit-tap-highlight-color: transparent;
 }
 a {
