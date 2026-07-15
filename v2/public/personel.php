@@ -108,6 +108,42 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $flash = ($TUR_ETIKET[$tur] ?? $tur) . ' gideri eklendi · ₺ ' . Helpers::money($tutar);
             $month = substr($tarih, 0, 7);
         }
+    } elseif ($action === 'gider_duzelt' || $action === 'gider_sil') {
+        // fable-017: yanlış girilen avans/gider kaydını düzelt veya sil (önceden imkânsızdı).
+        $gid = (int) ($_POST['gider_id'] ?? 0);
+        if ($action === 'gider_sil') {
+            $r = $repo->deletePersonelGider($gid);
+            if (!$r) {
+                $flash = 'Kayıt bulunamadı.';
+                $flashOk = false;
+            } else {
+                uysa_audit('personel_gider_sil', $u['username'], (string) $gid,
+                    json_encode(['ad' => $r['ad'], 'tur' => $r['tur'], 'tutar' => $r['tutar']]), client_ip());
+                $flash = ($TUR_ETIKET[$r['tur']] ?? $r['tur']) . ' kaydı silindi · ₺ ' . Helpers::money($r['tutar']);
+            }
+        } else {
+            $tutar = Helpers::parseMoney((string) ($_POST['tutar'] ?? '0'));
+            $tarih = (string) ($_POST['tarih'] ?? '');
+            $tarih = Helpers::isDate($tarih) ? $tarih : Helpers::today();
+            $aciklama = trim((string) ($_POST['aciklama'] ?? '')) ?: null;
+            if ($tutar <= 0) {
+                $flash = 'Tutar sıfırdan büyük olmalı.';
+                $flashOk = false;
+            } else {
+                $r = $repo->updatePersonelGider($gid, $tutar, $tarih, $aciklama);
+                if (!$r) {
+                    $flash = 'Kayıt bulunamadı.';
+                    $flashOk = false;
+                } else {
+                    uysa_audit('personel_gider_duzelt', $u['username'], (string) $gid,
+                        json_encode(['ad' => $r['ad'], 'eski' => $r['eski'], 'yeni' => $r['yeni']]), client_ip());
+                    $flash = sprintf('%s düzeltildi%s: ₺ %s → ₺ %s',
+                        $TUR_ETIKET[$r['tur']] ?? $r['tur'], $r['ad'] ? ' · ' . $r['ad'] : '',
+                        Helpers::money($r['eski']), Helpers::money($r['yeni']));
+                    $month = substr($tarih, 0, 7);
+                }
+            }
+        }
     } elseif ($action === 'cikis') {
         // fable-015: işten çıkış — tarih + pasife düşür; o ayın maaşı kıst, kıdem donar.
         $pid = (int) ($_POST['personel_id'] ?? 0);
@@ -195,9 +231,12 @@ foreach ($personeller as $p) {
     $ucretToplam += (float) $p['aylik_ucret'];
     $mi = $pInfo[(int) $p['id']]['maas'];
     $maasToplam += (float) $mi['hesaplanan_maas'];
-    if ($mi['maas_odendi']) {
-        $maasOdenen += (float) $mi['hesaplanan_maas'];
-    }
+    // fable-017: Ödenen = maaş ödendiyse TAMAMI (avans zaten netten düşülerek verildi);
+    // ödenmediyse verilen AVANS kadarı — o para kişinin eline geçti, bekleyenden düşmeli.
+    // min(): avans maaşı aşarsa fazlası bu ayın ödemesi değil (sonraki aya sarkar).
+    $maasOdenen += $mi['maas_odendi']
+        ? (float) $mi['hesaplanan_maas']
+        : min((float) $pInfo[(int) $p['id']]['avans'], (float) $mi['hesaplanan_maas']);
 }
 $maasBekleyen = max(0.0, $maasToplam - $maasOdenen);
 $pct = static fn(float $o): string => number_format($o * 100, 1, ',', '.');
@@ -235,7 +274,7 @@ require __DIR__ . '/partials/header.php';
         <div class="stat-card stat-orange">
           <div class="ico"><i class="bi bi-piggy-bank"></i></div>
           <div class="txt">
-            <p class="lbl">Maaş ödeme durumu <span style="font-size:11px;font-weight:600">(ödendi / bekleyen)</span></p>
+            <p class="lbl">Maaş ödeme durumu <span style="font-size:11px;font-weight:600">(ödendi / bekleyen · avans dahil)</span></p>
             <p class="val">₺ <?= Helpers::money($maasOdenen) ?> <span style="font-size:14px;font-weight:600">/ ₺ <?= Helpers::money($maasBekleyen) ?></span></p>
           </div>
         </div>
@@ -509,6 +548,31 @@ require __DIR__ . '/partials/header.php';
               </div>
               <span class="amount out">₺ <?= Helpers::money((float) $g['tutar']) ?></span>
             </div>
+            <!-- fable-017: yanlış tutar girildiyse silip yeniden girme — buradan düzelt -->
+            <details style="margin:-4px 0 8px 38px">
+              <summary style="cursor:pointer;list-style:none;font-size:12px;font-weight:700;color:var(--primary)">düzelt / sil</summary>
+              <form method="post" style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-top:6px">
+                <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
+                <input type="hidden" name="action" value="gider_duzelt">
+                <input type="hidden" name="gider_id" value="<?= (int) $g['id'] ?>">
+                <div class="field" style="flex:1;min-width:100px;margin:0"><label>Tutar (₺)</label>
+                  <input class="inputx" name="tutar" inputmode="decimal" value="<?= Helpers::e(Helpers::money((float) $g['tutar'])) ?>" required>
+                </div>
+                <div class="field" style="flex:1;min-width:130px;margin:0"><label>Tarih</label>
+                  <input class="inputx" type="date" name="tarih" value="<?= Helpers::e(substr((string) $g['tarih'], 0, 10)) ?>">
+                </div>
+                <div class="field" style="flex:1;min-width:120px;margin:0"><label>Açıklama</label>
+                  <input class="inputx" name="aciklama" value="<?= Helpers::e((string) ($g['aciklama'] ?? '')) ?>">
+                </div>
+                <button class="btn-action btn-primaryx" type="submit"><i class="bi bi-check2"></i> Kaydet</button>
+              </form>
+              <form method="post" style="margin-top:6px" onsubmit="return confirm('Bu kayıt silinsin mi? (geri alınamaz)')">
+                <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
+                <input type="hidden" name="action" value="gider_sil">
+                <input type="hidden" name="gider_id" value="<?= (int) $g['id'] ?>">
+                <button class="btn-action btn-ghost" type="submit" style="color:var(--red)"><i class="bi bi-trash3"></i> Sil</button>
+              </form>
+            </details>
           <?php endforeach; ?>
         </div>
       </div>

@@ -2461,6 +2461,47 @@ final class Repo
     }
 
     /** Personel gider kaydı ekle. $personelId NULL = kişiye bağlı olmayan toplu gider. */
+    /**
+     * fable-017: personel gider kaydını düzelt (yanlış tutar/tarih girildiyse). Silip yeniden
+     * girmeye gerek yok; kayıt aynı kalır, audit "eski → yeni" tutar.
+     * @return array{ad:?string,tur:string,eski:float,yeni:float}|null kayıt yoksa null
+     */
+    public function updatePersonelGider(int $id, float $tutar, string $tarih, ?string $aciklama = null): ?array
+    {
+        $st = $this->pdo->prepare(
+            'SELECT g.id, g.tutar, g.tur, p.ad FROM personel_gider g
+               LEFT JOIN personel p ON p.id = g.personel_id WHERE g.id = ?'
+        );
+        $st->execute([$id]);
+        $cur = $st->fetch();
+        if (!$cur || $tutar <= 0) {
+            return null;
+        }
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $tarih)) {
+            $tarih = date('Y-m-d');
+        }
+        $this->pdo->prepare('UPDATE personel_gider SET tutar = ?, tarih = ?, aciklama = ? WHERE id = ?')
+            ->execute([$tutar, $tarih, $aciklama, $id]);
+        return ['ad' => $cur['ad'] ?? null, 'tur' => (string) $cur['tur'], 'eski' => (float) $cur['tutar'], 'yeni' => $tutar];
+    }
+
+    /** fable-017: personel gider kaydını sil (yanlış kayıt; maaş gideri ise ay kaydının bağı kopar). */
+    public function deletePersonelGider(int $id): ?array
+    {
+        $st = $this->pdo->prepare(
+            'SELECT g.id, g.tutar, g.tur, p.ad FROM personel_gider g
+               LEFT JOIN personel p ON p.id = g.personel_id WHERE g.id = ?'
+        );
+        $st->execute([$id]);
+        $cur = $st->fetch();
+        if (!$cur) {
+            return null;
+        }
+        $this->pdo->prepare('UPDATE personel_maas_ay SET gider_id = NULL WHERE gider_id = ?')->execute([$id]);
+        $this->pdo->prepare('DELETE FROM personel_gider WHERE id = ?')->execute([$id]);
+        return ['ad' => $cur['ad'] ?? null, 'tur' => (string) $cur['tur'], 'tutar' => (float) $cur['tutar']];
+    }
+
     public function addPersonelGider(?int $personelId, string $tarih, string $tur, float $tutar, ?string $aciklama = null): int
     {
         if (!in_array($tur, self::PERSONEL_GIDER_TUR, true)) {
