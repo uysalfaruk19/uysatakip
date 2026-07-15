@@ -108,6 +108,35 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $flash = ($TUR_ETIKET[$tur] ?? $tur) . ' gideri eklendi · ₺ ' . Helpers::money($tutar);
             $month = substr($tarih, 0, 7);
         }
+    } elseif ($action === 'cikis') {
+        // fable-015: işten çıkış — tarih + pasife düşür; o ayın maaşı kıst, kıdem donar.
+        $pid = (int) ($_POST['personel_id'] ?? 0);
+        $tarih = trim((string) ($_POST['cikis_tarihi'] ?? ''));
+        $geriAl = isset($_POST['geri_al']);
+        $p = $pid > 0 ? $repo->personel($pid) : null;
+        if (!$p) {
+            $flash = 'Personel bulunamadı.';
+            $flashOk = false;
+        } elseif (!$geriAl && !Helpers::isDate($tarih)) {
+            $flash = 'Çıkış tarihi geçerli olmalı.';
+            $flashOk = false;
+        } elseif (!$geriAl && ($p['ise_giris'] ?? null) && $tarih < substr((string) $p['ise_giris'], 0, 10)) {
+            $flash = 'Çıkış tarihi işe giriş tarihinden önce olamaz.';
+            $flashOk = false;
+        } else {
+            $r = $repo->setPersonelCikis($pid, $geriAl ? null : $tarih);
+            uysa_audit($geriAl ? 'personel_cikis_geri' : 'personel_cikis', $u['username'], (string) $pid,
+                json_encode(['cikis' => $r['cikis'], 'kist_gun' => $r['kist_gun'], 'kidem' => $r['kidem']]), client_ip());
+            $flash = $geriAl
+                ? $r['ad'] . ' çıkışı geri alındı — yeniden aktif.'
+                : sprintf('%s çıkış verildi (%s): pasife düştü · %s kıst maaşı %s gün = ₺ %s · biriken kıdem ₺ %s (fesihte ödenecek).',
+                    $r['ad'], $tarih, ay_label_tr(substr($tarih, 0, 7)),
+                    rtrim(rtrim(number_format($r['kist_gun'], 2, ',', '.'), '0'), ','),
+                    Helpers::money($r['kist_maas']), Helpers::money($r['kidem']));
+            if (!$geriAl) {
+                $month = substr($tarih, 0, 7);
+            }
+        }
     } elseif ($action === 'pasif') {
         $pid = (int) ($_POST['id'] ?? 0);
         if ($pid > 0) {
@@ -117,7 +146,24 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     }
 }
 
-$personeller = $repo->listPersonel();
+// fable-015: seçili ayda kadroda olanlar. Çıkış verilen kişi PASİF olur ama çıkış ayının kıst
+// maaşını hak eder → o ay listede kalmalı; sonraki aylarda düşer. Girişi sonraki ayda olan görünmez.
+$ayBas = $month . '-01';
+$ayBitis = date('Y-m-t', strtotime($ayBas));
+$personeller = array_values(array_filter(
+    $repo->listPersonel(false),
+    static function (array $p) use ($ayBas, $ayBitis): bool {
+        $g = (string) ($p['ise_giris'] ?? '');
+        $c = (string) ($p['ise_cikis'] ?? '');
+        if ($g !== '' && substr($g, 0, 10) > $ayBitis) {
+            return false;                                   // henüz işe girmemiş
+        }
+        if ($c !== '') {
+            return substr($c, 0, 10) >= $ayBas;             // çıkmış → yalnız çıkış ayına kadar
+        }
+        return (int) $p['is_active'] === 1;                 // çıkışsız pasifler gizli (eski davranış)
+    }
+));
 $editP = $editId ? $repo->personel($editId) : null;
 $editAtama = $editId ? $repo->personelAtama($editId) : ['genel' => false, 'customer_ids' => []];
 $aylikToplam = $repo->monthPersonelTotal($month);
@@ -336,7 +382,8 @@ require __DIR__ . '/partials/header.php';
           <details class="personel-detail" style="border-bottom:1px solid var(--border);padding:8px 0">
             <summary class="customer-row" style="align-items:center;cursor:pointer;list-style:none">
               <div style="min-width:0;flex:1">
-                <div class="row-title"><span class="status-dot"></span><strong><?= Helpers::e($p['ad']) ?></strong></div>
+                <div class="row-title"><span class="status-dot"></span><strong><?= Helpers::e($p['ad']) ?></strong><?php
+                  if (($p['ise_cikis'] ?? null) !== null): ?> <span class="row-meta" style="color:var(--red);font-weight:700"><i class="bi bi-box-arrow-right"></i> çıkış <?= Helpers::e(substr((string) $p['ise_cikis'], 0, 10)) ?></span><?php endif; ?></div>
                 <p class="row-meta"><?= $p['gorev'] ? Helpers::e($p['gorev']) . ' · ' : '' ?><?= Helpers::e(ay_label_tr($month)) ?> · <?= Helpers::money((float) $maas['calisma_gunu']) ?> gün · <?= $paid ? 'ödendi' : 'öde ₺ ' . Helpers::money($netOde) ?></p>
               </div>
               <span class="row-meta" style="font-weight:700;color:var(--primary)">detay</span>
@@ -400,13 +447,48 @@ require __DIR__ . '/partials/header.php';
                 </div>
                 <button class="btn-action btn-primaryx" type="submit"><i class="bi bi-cash-coin"></i> Avans ekle</button>
               </form>
+              <?php $cikisT = ($p['ise_cikis'] ?? null) !== null ? substr((string) $p['ise_cikis'], 0, 10) : null; ?>
+              <?php if ($cikisT === null): ?>
+                <!-- fable-015: Çıkış bildir — tarih + pasife düşür; o ayın maaşı kıst, kıdem donar -->
+                <details style="margin-top:10px">
+                  <summary style="cursor:pointer;list-style:none;font-weight:700;font-size:12px;color:var(--red)"><i class="bi bi-box-arrow-right"></i> Çıkış bildir</summary>
+                  <form method="post" style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-top:8px;padding:10px;border:1px solid var(--border);border-radius:10px"
+                        onsubmit="return confirm('<?= Helpers::e($p['ad']) ?> için çıkış veriliyor: pasife düşecek, o ayın maaşı çıkış gününe göre hesaplanacak. Onaylıyor musun?')">
+                    <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
+                    <input type="hidden" name="action" value="cikis">
+                    <input type="hidden" name="personel_id" value="<?= $pid ?>">
+                    <div class="field" style="flex:1;min-width:130px;margin:0"><label>Çıkış tarihi</label>
+                      <input class="inputx" type="date" name="cikis_tarihi" value="<?= Helpers::e(Helpers::today()) ?>"
+                             <?= ($p['ise_giris'] ?? null) ? 'min="' . Helpers::e(substr((string) $p['ise_giris'], 0, 10)) . '"' : '' ?> required>
+                    </div>
+                    <button class="btn-action btn-ghost" type="submit" style="color:var(--red)"><i class="bi bi-box-arrow-right"></i> Çıkışı kaydet</button>
+                  </form>
+                  <p class="row-meta" style="margin-top:6px">Çıkışta: <strong>aktif → pasif</strong>, çıkış ayının maaşı
+                    <strong>çıkış gününe kadar</strong> hesaplanır (15'inde çıkarsa 15/30), biriken kıdem o tarihte donar
+                    (₺ <?= Helpers::money($k['birikim']) ?> fesihte ödenecek).</p>
+                </details>
+              <?php else: ?>
+                <p class="row-meta" style="margin-top:10px;color:var(--red)"><i class="bi bi-box-arrow-right"></i>
+                  <strong>Çıkış verildi: <?= Helpers::e($cikisT) ?></strong> · <?= Helpers::e(ay_label_tr(substr($cikisT, 0, 7))) ?>
+                  kıst maaşı ₺ <?= Helpers::money((float) $maas['hesaplanan_maas']) ?> · fesih kıdemi ₺ <?= Helpers::money($k['birikim']) ?>
+                  (<?= (int) $k['ay_sayisi'] ?> ay).</p>
+              <?php endif; ?>
               <div class="actions-row" style="margin-top:8px">
                 <a class="btn-action btn-ghost flex-fill" href="personel.php?ay=<?= $month ?>&duzenle=<?= $pid ?>"><i class="bi bi-pencil"></i> Düzenle</a>
+                <?php if ($cikisT !== null): ?>
+                <form method="post" onsubmit="return confirm('<?= Helpers::e($p['ad']) ?> çıkışı geri alınsın mı? (yeniden aktif olur)')" class="flex-fill">
+                  <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
+                  <input type="hidden" name="action" value="cikis">
+                  <input type="hidden" name="personel_id" value="<?= $pid ?>">
+                  <input type="hidden" name="geri_al" value="1">
+                  <button class="btn-action btn-ghost" type="submit" style="width:100%"><i class="bi bi-arrow-counterclockwise"></i> Çıkışı geri al</button>
+                <?php else: ?>
                 <form method="post" onsubmit="return confirm('Personel pasifleştirilsin mi? (gider geçmişi korunur)')" class="flex-fill">
                   <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
                   <input type="hidden" name="action" value="pasif">
                   <input type="hidden" name="id" value="<?= $pid ?>">
                   <button class="btn-action btn-ghost" type="submit" style="color:var(--red);width:100%"><i class="bi bi-person-dash"></i> Pasif</button>
+                <?php endif; ?>
                 </form>
               </div>
             </div>

@@ -2010,7 +2010,7 @@ final class Repo
     /** @return array<int,array> personel listesi (aktif varsayılan). */
     public function listPersonel(bool $activeOnly = true): array
     {
-        $sql = 'SELECT id, ad, gorev, aylik_ucret, ise_giris, diger_maliyet, is_active FROM personel';
+        $sql = 'SELECT id, ad, gorev, aylik_ucret, ise_giris, ise_cikis, diger_maliyet, is_active FROM personel';
         if ($activeOnly) {
             $sql .= ' WHERE is_active = 1';
         }
@@ -2020,7 +2020,7 @@ final class Repo
 
     public function personel(int $id): ?array
     {
-        $st = $this->pdo->prepare('SELECT id, ad, gorev, aylik_ucret, ise_giris, diger_maliyet, is_active FROM personel WHERE id = ?');
+        $st = $this->pdo->prepare('SELECT id, ad, gorev, aylik_ucret, ise_giris, ise_cikis, diger_maliyet, is_active FROM personel WHERE id = ?');
         $st->execute([$id]);
         return $st->fetch() ?: null;
     }
@@ -2140,7 +2140,64 @@ final class Repo
         return $st->fetch() ?: null;
     }
 
-    /** Seçili ay için çalışma günü ve ödeme durumunu döndür; kayıt yoksa 30 gün / ödenmedi varsayılır. */
+    /**
+     * fable-015: giriş/çıkış tarihine göre o ayın ÇALIŞILABİLİR gün sayısı (SGK 30-gün mantığı):
+     *   ay içinde giriş  → 30 − (giriş günü − 1)   (12 Tem giriş → 19 gün)
+     *   ay içinde çıkış  → çıkış günü               (15 Tem çıkış → 15 gün)
+     *   ikisi de aynı ay → çıkış − giriş + 1
+     *   çıkıştan sonraki / girişten önceki ay → 0
+     * Elle girilen çalışma günü bunu EZER ama tavan olarak kullanılır (çıkana 30 gün yazılamaz).
+     */
+    public static function takvimCalismaGunu(?string $iseGiris, ?string $iseCikis, string $ay): float
+    {
+        $giris = ($iseGiris !== null && $iseGiris !== '') ? substr((string) $iseGiris, 0, 10) : null;
+        $cikis = ($iseCikis !== null && $iseCikis !== '') ? substr((string) $iseCikis, 0, 10) : null;
+        if ($giris !== null && substr($giris, 0, 7) > $ay) {
+            return 0.0;
+        }
+        if ($cikis !== null && substr($cikis, 0, 7) < $ay) {
+            return 0.0;
+        }
+        $gun = 30.0;
+        $girisAyda = $giris !== null && substr($giris, 0, 7) === $ay;
+        $cikisAyda = $cikis !== null && substr($cikis, 0, 7) === $ay;
+        $girisGun = $girisAyda ? (int) substr($giris, 8, 2) : 1;
+        $cikisGun = $cikisAyda ? min(30, (int) substr($cikis, 8, 2)) : 30;
+        if ($girisAyda && $cikisAyda) {
+            $gun = max(0, $cikisGun - $girisGun + 1);
+        } elseif ($girisAyda) {
+            $gun = 30 - ($girisGun - 1);
+        } elseif ($cikisAyda) {
+            $gun = $cikisGun;
+        }
+        return max(0.0, min(30.0, (float) $gun));
+    }
+
+    /**
+     * İşten çıkış ver: tarih + pasife düşür (geri alma: $tarih = null).
+     * Çıkış ayında maaş kıst hesaplanır, kıdem o tarihte donar.
+     */
+    public function setPersonelCikis(int $personelId, ?string $tarih): array
+    {
+        $p = $this->personel($personelId);
+        if (!$p) {
+            throw new \InvalidArgumentException('Personel bulunamadı: ' . $personelId);
+        }
+        $tarih = ($tarih !== null && preg_match('/^\d{4}-\d{2}-\d{2}$/', $tarih)) ? $tarih : null;
+        $this->pdo->prepare('UPDATE personel SET ise_cikis = ?, is_active = ? WHERE id = ?')
+            ->execute([$tarih, $tarih === null ? 1 : 0, $personelId]);
+        $ay = $tarih !== null ? substr($tarih, 0, 7) : date('Y-m');
+        $maas = $this->personelMaasAy($personelId, $ay);
+        return [
+            'ad'        => (string) $p['ad'],
+            'cikis'     => $tarih,
+            'kist_gun'  => (float) $maas['calisma_gunu'],
+            'kist_maas' => (float) $maas['hesaplanan_maas'],
+            'kidem'     => $this->kidemBirikim($personelId, $ay)['birikim'],
+        ];
+    }
+
+    /** Seçili ay için çalışma günü ve ödeme durumunu döndür; kayıt yoksa giriş/çıkış takviminden hesaplanır. */
     public function personelMaasAy(int $personelId, string $ay): array
     {
         if (!preg_match('/^\d{4}-\d{2}$/', $ay)) {
@@ -2148,7 +2205,9 @@ final class Repo
         }
         $p = $this->personel($personelId);
         $row = $this->personelMaasAyRaw($personelId, $ay);
-        $gun = $row ? (float) $row['calisma_gunu'] : 30.0;
+        // fable-015: kayıt yoksa takvimden (giriş/çıkış ayında kıst); kayıt varsa takvim tavanını aşamaz.
+        $takvim = $p ? self::takvimCalismaGunu($p['ise_giris'] ?? null, $p['ise_cikis'] ?? null, $ay) : 30.0;
+        $gun = $row ? min((float) $row['calisma_gunu'], $takvim) : $takvim;
         $gun = max(0.0, min(30.0, $gun));
         $tamBrut = $p ? (float) $p['aylik_ucret'] : 0.0;
         $oran = $gun / 30.0;
@@ -2244,6 +2303,11 @@ final class Repo
             $bitis = $ay !== null && preg_match('/^\d{4}-\d{2}$/', $ay)
                 ? date('Y-m-t', strtotime($ay . '-01'))
                 : date('Y-m-d');
+            // fable-015: çıkış verildiyse kıdem o tarihte DONAR (fesihte ödenecek tutar).
+            $cikis = ($p['ise_cikis'] ?? null) !== null ? substr((string) $p['ise_cikis'], 0, 10) : null;
+            if ($cikis !== null && $cikis < $bitis) {
+                $bitis = $cikis;
+            }
             // Tamamlanan ay sayısı (tam sayı ay aritmetiği — end-of-month yuvarlaması yok).
             [$sy, $sm, $sd] = array_map('intval', explode('-', substr($iseGiris, 0, 10)));
             [$ey, $em, $ed] = array_map('intval', explode('-', $bitis));

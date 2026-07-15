@@ -380,6 +380,7 @@ CREATE TABLE IF NOT EXISTS `personel` (
   `gorev`         VARCHAR(120)          DEFAULT NULL,
   `aylik_ucret`   DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'brüt aylık ücret TL',
   `ise_giris`     DATE                  DEFAULT NULL COMMENT 'kıdem başlangıcı (opus-014)',
+  `ise_cikis`     DATE                  DEFAULT NULL COMMENT 'işten çıkış; dolu=pasif, o ay kıst maaş, kıdem donar (fable-015)',
   `diger_maliyet` DECIMAL(12,2)         DEFAULT NULL COMMENT 'override tutar; NULL=ayar oranından (opus-014)',
   `is_active`     TINYINT(1)   NOT NULL DEFAULT 1,
   `created_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
