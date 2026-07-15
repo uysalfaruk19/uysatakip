@@ -961,8 +961,13 @@ body.customer-page .bottom-tabs {
   padding: 8px;
   display: none;
   /* fable-004: menü uzadı (Operasyon grubu) — ekrana sığmazsa içi kaydırılır */
-  max-height: calc(100vh - 84px - env(safe-area-inset-bottom) - env(safe-area-inset-top) - 24px);
-  max-height: calc(100dvh - 84px - env(safe-area-inset-bottom) - env(safe-area-inset-top) - 24px);
+  max-height: calc(
+    100vh - 84px - env(safe-area-inset-bottom) - env(safe-area-inset-top) - 24px
+  );
+  max-height: calc(
+    100dvh - 84px - env(safe-area-inset-bottom) - env(safe-area-inset-top) -
+      24px
+  );
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
@@ -1139,10 +1144,9 @@ body.customer-page .bottom-tabs {
   .login-shell {
     margin-inline: auto;
   }
-  .bottom-tabs {
-    left: 50%;
-    transform: translateX(-50%);
-  }
+  /* fable-011'deki titreme düzeltmesi burada da geçerli: translateX(-50%) ile ortalama,
+     üstteki left:0/right:0/margin:0 auto kuralını ve translateZ(0) katmanını EZİYOR →
+     kaydırırken bar yatayda oynuyordu. Ortalama zaten ana kuralda; burada sadece genişlik. */
   .app-shell,
   .login-shell,
   .bottom-tabs {
@@ -1489,8 +1493,21 @@ a.week-day.locked {
 }
 
 /* ── fable-012: dokunulabilir Gelir/Gider özet kartları ── */
-.tap-card { cursor: pointer; position: relative; }
-.tap-card .chev { font-size: 11px; opacity: .6; transition: transform .18s ease; }
-.tap-card.open .chev { transform: rotate(180deg); }
-.tap-card:active { transform: translateY(1px); }
-.fin-detay { margin-top: -4px; }
+.tap-card {
+  cursor: pointer;
+  position: relative;
+}
+.tap-card .chev {
+  font-size: 11px;
+  opacity: 0.6;
+  transition: transform 0.18s ease;
+}
+.tap-card.open .chev {
+  transform: rotate(180deg);
+}
+.tap-card:active {
+  transform: translateY(1px);
+}
+.fin-detay {
+  margin-top: -4px;
+}
