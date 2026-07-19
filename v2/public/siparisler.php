@@ -23,18 +23,32 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $action = (string) ($_POST['action'] ?? '');
         $orderId = (int) ($_POST['order_id'] ?? 0);
         if ($action === 'approve') {
+            $o = $repo->orderById($orderId); // url + tarih için (approve status'u değiştirir, tarihi değil)
             $res = $repo->approveOrder($orderId);
             if ($res) {
                 uysa_audit('siparis_onayla', $u['username'], (string) $orderId, json_encode($res), client_ip());
                 $flash = 'Onaylandı → üretime yazıldı: ' . $res['persons'] . ' kişi · ₺ ' . Helpers::money($res['amount']);
+                // fable-018: müşteri Akış olayı — push yok; native badge'i customer_events besler
+                if ($o) {
+                    $repo->addCustomerEvent((int) $res['customer_id'], 'siparis_durum', 'Siparişiniz onaylandı',
+                        gun_label_tr((string) $o['order_date']) . ' · ' . (int) $res['persons'] . ' kişi',
+                        '/m/siparis.php?date=' . (string) $o['order_date']);
+                }
             } else {
                 $flash = 'Sipariş bulunamadı.';
                 $flashOk = false;
             }
         } elseif ($action === 'reject') {
+            $o = $repo->orderById($orderId);
             if ($repo->rejectOrder($orderId)) {
                 uysa_audit('siparis_reddet', $u['username'], (string) $orderId, null, client_ip());
                 $flash = 'Sipariş reddedildi.';
+                // fable-018: müşteri Akış olayı
+                if ($o) {
+                    $repo->addCustomerEvent((int) $o['customer_id'], 'siparis_durum', 'Siparişiniz reddedildi',
+                        gun_label_tr((string) $o['order_date']) . ' · ' . (int) $o['persons'] . ' kişi',
+                        '/m/siparis.php?date=' . (string) $o['order_date']);
+                }
             } else {
                 $flash = 'Sipariş bulunamadı.';
                 $flashOk = false;

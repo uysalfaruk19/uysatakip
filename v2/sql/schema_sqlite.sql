@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS customer_users (
   role TEXT NOT NULL DEFAULT 'owner' CHECK(role IN ('owner','staff')),
   is_active INTEGER NOT NULL DEFAULT 1,
   last_login TEXT,
+  feed_seen_at TEXT,                        -- fable-018: Akış (customer_events) okundu kesimi; NULL=hiç açılmadı
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -289,6 +290,7 @@ CREATE TABLE IF NOT EXISTS personel (
   gorev TEXT,
   aylik_ucret REAL NOT NULL DEFAULT 0,     -- brüt aylık ücret TL
   ise_giris TEXT,                          -- kıdem başlangıcı (YYYY-MM-DD), NULL=bilinmiyor (opus-014)
+  ise_cikis TEXT,                          -- işten çıkış (YYYY-MM-DD); dolu=pasif, o ay kıst maaş, kıdem donar (fable-015)
   diger_maliyet REAL,                      -- override tutar TL; NULL=ayar diger_maliyet_oran'dan (opus-014)
   is_active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -483,6 +485,19 @@ CREATE TABLE IF NOT EXISTS push_log (
 );
 CREATE INDEX IF NOT EXISTS idx_pl_kind_cust ON push_log(kind, customer_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_pl_ref ON push_log(ref);
+
+-- ── Müşteri olay akışı (fable-018): push'un kalıcı karşılığı; müşteri app "Akış" ekranı ─
+-- Push atılamasa bile (sessiz saat / token yok) olay buraya yazılır; badge tek gerçek kaynak.
+CREATE TABLE IF NOT EXISTS customer_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  type TEXT NOT NULL,                 -- menu_yayin|talep_cevap|siparis_durum|malzeme_durum
+  title TEXT NOT NULL,
+  body TEXT,
+  url TEXT NOT NULL DEFAULT '',       -- app-içi hedef, /m/... göreli (deep-link)
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_ce_customer ON customer_events(customer_id, created_at);
 
 INSERT OR IGNORE INTO ayar (anahtar, deger) VALUES
   ('push_quiet_start', '21:00'),

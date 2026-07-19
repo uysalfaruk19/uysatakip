@@ -95,6 +95,7 @@ CREATE TABLE IF NOT EXISTS `customer_users` (
   `role`             ENUM('owner','staff') NOT NULL DEFAULT 'owner',
   `is_active`        TINYINT(1)   NOT NULL DEFAULT 1,
   `last_login`       DATETIME              DEFAULT NULL,
+  `feed_seen_at`     DATETIME              DEFAULT NULL COMMENT 'Akış (customer_events) okundu kesimi (fable-018)',
   `created_at`       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_cu_username` (`username`),
@@ -627,6 +628,20 @@ CREATE TABLE IF NOT EXISTS `push_log` (
   PRIMARY KEY (`id`),
   KEY `idx_pl_kind_cust` (`kind`, `customer_id`, `created_at`),
   KEY `idx_pl_ref` (`ref`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── Müşteri olay akışı (fable-018): push'un kalıcı karşılığı; müşteri app "Akış" ekranı ─
+CREATE TABLE IF NOT EXISTS `customer_events` (
+  `id`          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `customer_id` INT UNSIGNED NOT NULL,
+  `type`        VARCHAR(32)  NOT NULL COMMENT 'menu_yayin|talep_cevap|siparis_durum|malzeme_durum',
+  `title`       VARCHAR(200) NOT NULL,
+  `body`        VARCHAR(300)          DEFAULT NULL,
+  `url`         VARCHAR(200) NOT NULL DEFAULT '' COMMENT 'app-içi hedef, /m/... göreli',
+  `created_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_ce_customer` (`customer_id`, `created_at`),
+  CONSTRAINT `fk_ce_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT IGNORE INTO `ayar` (`anahtar`, `deger`) VALUES

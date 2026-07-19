@@ -90,6 +90,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $repo->replyRequest($reqId, mb_substr($body, 0, 2000), $fileId);
                 uysa_audit('admin_talep_cevap', $u['username'], (string) $reqId, null, client_ip());
                 $flash = 'Cevabınız gönderildi.';
+                // fable-018: Akış olayı push'tan ÖNCE (feed = kalıcı karşılık; badge tek kaynak)
+                $repo->addCustomerEvent((int) $req['customer_id'], 'talep_cevap', 'Talebinize cevap geldi', (string) $req['subject'], '/m/talep.php?r=' . $reqId);
                 // opus-021: müşteriye push — hata cevabı KIRMAZ
                 try {
                     (new Push($pdo))->toCustomer((int) $req['customer_id'], 'Talebinize cevap geldi', (string) $req['subject'], ['url' => '/m/talep.php?r=' . $reqId], 'talep_cevap');
@@ -102,6 +104,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $repo->setRequestStatus($reqId, $status);
             uysa_audit('admin_talep_durum', $u['username'], (string) $reqId, $status, client_ip());
             $flash = $status === 'cozuldu' ? 'Talep çözüldü olarak işaretlendi.' : 'Talep yeniden açıldı.';
+            // fable-018: Akış olayı push'tan ÖNCE
+            $repo->addCustomerEvent((int) $req['customer_id'], 'talep_cevap', 'Talebinize cevap geldi', (string) $req['subject'], '/m/talep.php?r=' . $reqId);
             // opus-021: durum değişikliği de müşteriye bildirilir
             try {
                 (new Push($pdo))->toCustomer((int) $req['customer_id'], 'Talebinize cevap geldi', (string) $req['subject'], ['url' => '/m/talep.php?r=' . $reqId], 'talep_cevap');

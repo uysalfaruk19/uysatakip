@@ -52,7 +52,7 @@ $statusMap = [
 
 $eyebrow = Helpers::e($cu['customer_name']) . ' · Malzeme';
 $pageTitle = 'Malzeme talebi';
-$active = 'malzeme';
+$active = 'daha'; // fable-018: Malzeme bardan kalktı → Daha altında
 require __DIR__ . '/partials/header_m.php';
 ?>
       <?php if ($flash): ?><div class="flash <?= $flashOk ? 'ok' : 'err' ?>"><?= Helpers::e($flash) ?></div><?php endif; ?>

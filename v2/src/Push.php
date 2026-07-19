@@ -46,11 +46,9 @@ class Push
         $st = $this->pdo->prepare('SELECT token FROM push_tokens WHERE customer_id = ?');
         $st->execute([$customerId]);
         $tokens = $st->fetchAll(PDO::FETCH_COLUMN);
+        // fable-018: müşteri-yüzlü olay customer_events'e push'tan ÖNCE yazılır (hook'larda) →
+        // badgeCountFor güncel olayı zaten sayar; eski +1 telafisi kalktı (tek gerçek kaynak).
         $badge = (new Repo($this->pdo))->badgeCountFor($customerId);
-        if (in_array($kind, ['menu', 'talep_cevap'], true)) {
-            // Bu olay henüz push_log'a yazılmadı; gönderilen badge'e mevcut olayı da kat.
-            $badge = min(99, $badge + 1);
-        }
         return $this->dispatch($tokens, $title, $body, $data, $kind, $customerId, null, $ref, $badge);
     }
 
@@ -90,6 +88,7 @@ class Push
         $pushed = 0;
         $skipped = 0;
         $noDevice = 0;
+        $repo = new Repo($this->pdo);
         $seen = $this->pdo->prepare("SELECT COUNT(*) FROM push_log WHERE kind = 'menu' AND ref = ? AND customer_id = ?");
         $hasDev = $this->pdo->prepare('SELECT COUNT(*) FROM push_tokens WHERE customer_id = ?');
         foreach (array_unique(array_map('intval', $customerIds)) as $cid) {
@@ -101,6 +100,8 @@ class Push
                 $skipped++;
                 continue;
             }
+            // fable-018: feed = push'un kalıcı karşılığı — cihaz olmasa/sessiz saatte bile Akış'a yazılır.
+            $repo->addCustomerEvent($cid, 'menu_yayin', 'Menünüz yayınlandı', $menuTitle, '/m/menu.php');
             $hasDev->execute([$cid]);
             if ((int) $hasDev->fetchColumn() === 0) {
                 $noDevice++;

@@ -937,8 +937,9 @@ final class Repo
     }
 
     /**
-     * Native app rozeti: app'in son token kaydından sonraki talep cevapları + yalnız bugünkü menüler.
-     * push_tokens.last_seen her app açılışında push-register ile yenilenir; ayrı okundu tablosu gerekmez.
+     * Native app rozeti (fable-018): customer_events TEK GERÇEK KAYNAK. App'in son token
+     * kaydından (push_tokens.last_seen, her açılışta push-register ile yenilenir → "app açılınca
+     * sıfırlama korunur") sonraki tüm müşteri olayları sayılır. Akış footer rozetiyle aynı kaynak.
      */
     public function badgeCountFor(int $customerId): int
     {
@@ -948,17 +949,65 @@ final class Repo
         if ($lastSeen === false || $lastSeen === null || $lastSeen === '') {
             return 0;
         }
-
-        $today = date('Y-m-d 00:00:00');
-        $tomorrow = date('Y-m-d 00:00:00', strtotime('+1 day'));
         $st = $this->pdo->prepare(
-            "SELECT COUNT(*) FROM push_log
-             WHERE customer_id = ?
-               AND created_at > ?
-               AND (kind = 'talep_cevap' OR (kind = 'menu' AND created_at >= ? AND created_at < ?))"
+            'SELECT COUNT(*) FROM customer_events WHERE customer_id = ? AND created_at > ?'
         );
-        $st->execute([$customerId, (string) $lastSeen, $today, $tomorrow]);
+        $st->execute([$customerId, (string) $lastSeen]);
         return min(99, (int) $st->fetchColumn());
+    }
+
+    // ── Müşteri olay akışı (fable-018) ────────────────────────
+    // TEK KAPI: push atılan/atılamayan HER müşteri-yüzlü olay buradan feed'e yazılır.
+    // Feed = push'un kalıcı karşılığı; badge (native + Akış footer) bu tablodan sayar.
+    public const CUSTOMER_EVENT_TYPES = ['menu_yayin', 'talep_cevap', 'siparis_durum', 'malzeme_durum'];
+
+    /** Bir müşteriye olay yaz. Geçersiz type → 'talep_cevap'e düşmez, olduğu gibi kabul edilmez → filtrelenir. */
+    public function addCustomerEvent(int $customerId, string $type, string $title, ?string $body, string $url): int
+    {
+        if (!in_array($type, self::CUSTOMER_EVENT_TYPES, true)) {
+            $type = 'talep_cevap'; // bilinmeyen tür güvenli varsayılana düşer (sessiz veri kaybı yok)
+        }
+        $this->pdo->prepare(
+            'INSERT INTO customer_events (customer_id, type, title, body, url)
+             VALUES (?, ?, ?, ?, ?)'
+        )->execute([$customerId, $type, mb_substr($title, 0, 200), $body === null ? null : mb_substr($body, 0, 300), mb_substr($url, 0, 200)]);
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    /** IDOR: sadece kendi customer_id olayları. Kronolojik (yeni→eski), sayfalı. @return array<int,array> */
+    public function customerEvents(int $customerId, int $limit = 50, int $offset = 0): array
+    {
+        $limit = max(1, min(200, $limit));
+        $offset = max(0, $offset);
+        $st = $this->pdo->prepare(
+            'SELECT id, type, title, body, url, created_at FROM customer_events
+             WHERE customer_id = ? ORDER BY created_at DESC, id DESC LIMIT ' . $limit . ' OFFSET ' . $offset
+        );
+        $st->execute([$customerId]);
+        return $st->fetchAll();
+    }
+
+    /** Akış footer rozeti: bu customer_user'ın feed_seen_at'inden sonraki olay sayısı (99+ kırpılır). */
+    public function feedUnseenCount(int $customerId, int $cuid): int
+    {
+        $s = $this->pdo->prepare('SELECT feed_seen_at FROM customer_users WHERE id = ?');
+        $s->execute([$cuid]);
+        $seen = $s->fetchColumn();
+        if ($seen === false || $seen === null || $seen === '') {
+            $st = $this->pdo->prepare('SELECT COUNT(*) FROM customer_events WHERE customer_id = ?');
+            $st->execute([$customerId]);
+        } else {
+            $st = $this->pdo->prepare('SELECT COUNT(*) FROM customer_events WHERE customer_id = ? AND created_at > ?');
+            $st->execute([$customerId, (string) $seen]);
+        }
+        return min(99, (int) $st->fetchColumn());
+    }
+
+    /** Akış açılınca okundu kesimini şimdiye çek (o customer_user'a özel). */
+    public function markFeedSeen(int $cuid): void
+    {
+        $now = $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite' ? "datetime('now')" : 'NOW()';
+        $this->pdo->prepare('UPDATE customer_users SET feed_seen_at = ' . $now . ' WHERE id = ?')->execute([$cuid]);
     }
 
     /** Geçerli talep türleri (opus-019: menu + oneri eklendi). */

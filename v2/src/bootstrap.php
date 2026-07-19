@@ -74,6 +74,29 @@ if (!function_exists('gun_label_tr')) {
     }
 }
 
+if (!function_exists('zaman_kisa_tr')) {
+    /** fable-018: Akış göreli zamanı — bugün 'HH:MM', dün 'Dün', bu yıl '12 Tem', öncesi '12.03.24'. */
+    function zaman_kisa_tr(string $dt): string
+    {
+        $ts = strtotime($dt);
+        if ($ts === false) {
+            return '';
+        }
+        $gun = date('Y-m-d', $ts);
+        if ($gun === date('Y-m-d')) {
+            return date('H:i', $ts);
+        }
+        if ($gun === date('Y-m-d', strtotime('-1 day'))) {
+            return 'Dün';
+        }
+        $kisaAy = [1 => 'Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
+        if (date('Y', $ts) === date('Y')) {
+            return (int) date('d', $ts) . ' ' . ($kisaAy[(int) date('n', $ts)] ?? '');
+        }
+        return date('d.m.y', $ts);
+    }
+}
+
 if (!function_exists('client_ip')) {
     /**
      * İstemci IP. TRUST_PROXY açıksa (reverse proxy/traefik arkası) X-Forwarded-For'un

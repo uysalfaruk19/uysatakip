@@ -39,7 +39,7 @@ if (!$cariLive && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
 $eyebrow = Helpers::e($cu['customer_name']) . ' · Cari';
 $pageTitle = 'Cari hesap';
-$active = 'cari';
+$active = 'daha'; // fable-018: Cari bardan kalktı → Daha altında
 
 if ($cariLive) {
     // ── Gerçek bakiye/ekstre (Paraşüt sonrası) ──

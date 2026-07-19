@@ -27,10 +27,16 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         if ($action === 'status') {
             $reqId = (int) ($_POST['request_id'] ?? 0);
             $status = (string) ($_POST['status'] ?? '');
-            if (in_array($status, ['acik', 'hazirlandi', 'teslim'], true) && $repo->supplyRequestById($reqId)) {
+            $sr = $repo->supplyRequestById($reqId);
+            if (in_array($status, ['acik', 'hazirlandi', 'teslim'], true) && $sr) {
                 $repo->setSupplyRequestStatus($reqId, $status);
                 uysa_audit('malzeme_durum', $u['username'], (string) $reqId, $status, client_ip());
                 $flash = 'Talep durumu güncellendi: ' . $status;
+                // fable-018: müşteri Akış olayı (yalnız ilerleme; 'acik'e geri alma bildirilmez)
+                $malzLabels = ['hazirlandi' => 'Malzeme talebiniz hazırlandı', 'teslim' => 'Malzeme talebiniz teslim edildi'];
+                if (isset($malzLabels[$status])) {
+                    $repo->addCustomerEvent((int) $sr['customer_id'], 'malzeme_durum', $malzLabels[$status], null, '/m/malzeme.php');
+                }
             } else {
                 $flash = 'Talep bulunamadı.';
                 $flashOk = false;

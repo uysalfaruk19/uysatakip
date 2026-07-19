@@ -78,6 +78,15 @@ final class PushTest extends TestCase
         )->execute([$kind, $customerId, 'Başlık', 'Mesaj', $sent, $suppressed, $createdAt]);
     }
 
+    /** fable-018: müşteri olayı (badge tek gerçek kaynak = customer_events) — açık zaman damgası. */
+    private function addEvent(int $customerId, string $type, string $createdAt): void
+    {
+        $this->pdo->prepare(
+            'INSERT INTO customer_events (customer_id, type, title, body, url, created_at)
+             VALUES (?, ?, ?, ?, ?, ?)'
+        )->execute([$customerId, $type, 'Başlık', 'Mesaj', '/m/menu.php', $createdAt]);
+    }
+
     /** Gündüz saati (sessiz saat DIŞI) sabit "now" — 12:00. */
     private function noon(): int
     {
@@ -252,8 +261,8 @@ final class PushTest extends TestCase
         $this->assertSame(1, (int) $this->pdo->query('SELECT COUNT(*) FROM push_log')->fetchColumn(), 'yine de loglandı');
     }
 
-    // ── 7) Gerçek badge: son app açılışından sonraki cevaplar + yalnız bugünkü menü ──
-    public function testBadgeCountUsesLastTokenSeenAndRelevantKinds(): void
+    // ── 7) Gerçek badge (fable-018): app açılışından (last_seen) sonraki TÜM customer_events ──
+    public function testBadgeCountUsesLastTokenSeenAndCustomerEvents(): void
     {
         $a = seed_customer($this->pdo, 'Badge AŞ', 100.0);
         $token = str_repeat('a', 64);
@@ -264,23 +273,21 @@ final class PushTest extends TestCase
         $this->pdo->prepare('UPDATE push_tokens SET last_seen = ? WHERE token = ?')
             ->execute([$today . ' 09:00:00', $token]);
 
-        $this->addLog($a, 'talep_cevap', $today . ' 08:00:00'); // app açılmadan önce → görüldü
-        $this->addLog($a, 'talep_cevap', $today . ' 10:00:00'); // sayılır
-        $this->addLog($a, 'menu', $today . ' 11:00:00');        // bugünkü menü → sayılır
-        $this->addLog($a, 'menu', $yesterday . ' 23:00:00');    // eski menü → sayılmaz
-        $this->addLog($a, 'manuel', $today . ' 11:30:00');      // badge türü değil
-        $this->addLog($a, 'talep_cevap', $today . ' 12:00:00', 0);    // içerik var; APNs gönderilemedi
-        $this->addLog($a, 'talep_cevap', $today . ' 12:05:00', 0, 1); // sessiz saatte bastırıldı
+        $this->addEvent($a, 'talep_cevap', $today . ' 08:00:00');   // app açılmadan önce → görüldü
+        $this->addEvent($a, 'talep_cevap', $today . ' 10:00:00');   // sayılır
+        $this->addEvent($a, 'menu_yayin', $today . ' 11:00:00');    // sayılır (tür fark etmez)
+        $this->addEvent($a, 'siparis_durum', $today . ' 11:30:00'); // sayılır
+        $this->addEvent($a, 'malzeme_durum', $yesterday . ' 23:00:00'); // eski → sayılmaz
 
         $repo = new Repo($this->pdo);
-        $this->assertSame(4, $repo->badgeCountFor($a), 'teslim edilemeyen ama görülmemiş içerik de sayılır');
+        $this->assertSame(3, $repo->badgeCountFor($a), 'last_seen sonrası tüm olaylar (tür ayrımı yok)');
 
         $this->pdo->prepare('UPDATE push_tokens SET last_seen = ? WHERE token = ?')
             ->execute([$today . ' 12:30:00', $token]);
-        $this->assertSame(0, $repo->badgeCountFor($a), 'app tekrar açılınca sayaç sıfırlanır');
+        $this->assertSame(0, $repo->badgeCountFor($a), 'app tekrar açılınca (last_seen ileri) sayaç sıfırlanır');
     }
 
-    public function testCustomerPushAddsCurrentEventToBadge(): void
+    public function testCustomerPushBadgeReflectsEventsWithoutPlusOne(): void
     {
         $a = seed_customer($this->pdo, 'Badge B AŞ', 100.0);
         $token = str_repeat('b', 64);
@@ -288,17 +295,21 @@ final class PushTest extends TestCase
         $today = date('Y-m-d');
         $this->pdo->prepare('UPDATE push_tokens SET last_seen = ? WHERE token = ?')
             ->execute([$today . ' 09:00:00', $token]);
-        $this->addLog($a, 'talep_cevap', $today . ' 10:00:00');
+
+        // Gerçek akış: hook olayı customer_events'e push'tan ÖNCE yazar → badge onu zaten sayar (+1 telafisi YOK).
+        $this->addEvent($a, 'talep_cevap', $today . ' 10:00:00'); // önceki görülmemiş olay
+        $this->addEvent($a, 'talep_cevap', $today . ' 11:00:00'); // "güncel" olay (hook yazdı)
 
         $fake = new FakeApns();
         $push = new Push($this->pdo, $fake, (int) strtotime($today . ' 12:00:00'));
         $push->toCustomer($a, 'Talebinize cevap geldi', 'Konu', ['url' => '/m/talep.php?r=7'], 'talep_cevap');
 
-        $this->assertSame(2, $fake->sentCalls[0]['badge'], 'önceki 1 + gönderilen güncel olay');
+        $this->assertSame(2, $fake->sentCalls[0]['badge'], 'iki görülmemiş olay; eski +1 telafisi kaldırıldı');
         $this->assertSame('/m/talep.php?r=7', $fake->sentCalls[0]['data']['url']);
 
+        // reminder olay üretmez → badge sabit kalır
         $push->toCustomer($a, 'Hatırlatma', 'Sayı girin', ['url' => '/m/siparis.php'], 'reminder');
-        $this->assertSame(2, $fake->sentCalls[1]['badge'], 'reminder badge sayısını artırmaz');
+        $this->assertSame(2, $fake->sentCalls[1]['badge'], 'reminder customer_events yazmaz, badge değişmez');
     }
 
     public function testApnsPayloadAcceptsRealAndZeroBadge(): void
