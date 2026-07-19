@@ -198,6 +198,115 @@ final class CustomerTest extends TestCase
         $this->assertArrayNotHasKey('2026-07-16', $counts, 'reddedilen görünmez');
     }
 
+    // ── fable-019: menü fallback (bugün boşsa ileriye bak) ─────
+    /** Yayınlanmış (published, audience=all) menü oluşturur; menu id döner. */
+    private function seedPublishedMenu(): int
+    {
+        $id = $this->repo->upsertMenu('Temmuz 2026', '2026-07-01', '2026-07-31', 'all');
+        $this->repo->publishMenu($id, true);
+        return $id;
+    }
+
+    public function testMenuFallbackLooksForwardWhenTodayEmpty(): void
+    {
+        $cid = seed_customer($this->pdo, 'MENÜ AŞ', 100.0);
+        $mid = $this->seedPublishedMenu();
+        // Bugün = 19 Tem PAZAR (servis yok, kalem yok); ertesi gün Pazartesi menülü
+        $this->repo->upsertMenuItem($mid, '2026-07-20', 'ogle', 'Mercimek çorbası · Tavuk sote · Şehriye pilavı');
+
+        $res = $this->repo->menuForCustomerFrom($cid, '2026-07-19', 7);
+        $this->assertNotNull($res, 'ileriye bakıp menülü günü buldu');
+        $this->assertSame('2026-07-20', $res['date'], 'ilk menülü gün = pazartesi');
+        $this->assertTrue($res['ahead'], 'bugün değil, ileri gün (etiket açık olmalı)');
+        $this->assertArrayHasKey('ogle', $res['items']);
+        $this->assertStringContainsString('Tavuk sote', $res['items']['ogle'], 'Türkçe yemek adı korunur');
+    }
+
+    public function testMenuFallbackNoneWithin7DaysReturnsNull(): void
+    {
+        $cid = seed_customer($this->pdo, 'X AŞ', 100.0);
+        $mid = $this->seedPublishedMenu();
+        // Menü kalemi 7 günlük pencerenin (19–26 Tem) DIŞINDA → "Menü yakında" kalır
+        $this->repo->upsertMenuItem($mid, '2026-07-30', 'ogle', 'Uzak menü');
+
+        $this->assertNull($this->repo->menuForCustomerFrom($cid, '2026-07-19', 7), '7 gün içinde menü yoksa null');
+    }
+
+    public function testMenuTodayTakesPriorityNotAhead(): void
+    {
+        $cid = seed_customer($this->pdo, 'Y AŞ', 100.0);
+        $mid = $this->seedPublishedMenu();
+        $this->repo->upsertMenuItem($mid, '2026-07-20', 'ogle', 'Bugünkü menü');
+        $this->repo->upsertMenuItem($mid, '2026-07-21', 'ogle', 'Yarınki menü');
+
+        $res = $this->repo->menuForCustomerFrom($cid, '2026-07-20', 7);
+        $this->assertSame('2026-07-20', $res['date'], 'bugün menü varsa bugün');
+        $this->assertFalse($res['ahead'], 'bugün → ahead=false');
+    }
+
+    // ── fable-019: yarının sayısı birleşik + devir ─────────────
+    public function testTomorrowCountFromProductionWhenNoOrder(): void
+    {
+        $cid = seed_customer($this->pdo, 'P AŞ', 100.0);
+        // UYSA production girdi (8 müşteri/419 senaryosu), müşteri app'ten hiç order girmedi
+        $this->pdo->prepare(
+            "INSERT INTO production (customer_id, prod_date, meal, persons, entered_by) VALUES (?, ?, 'ogle', 419, 'uysa')"
+        )->execute([$cid, '2026-07-20']);
+
+        $this->assertNull($this->repo->customerOrder($cid, '2026-07-20', 'ogle'), 'kendi siparişi yok');
+        $counts = $this->repo->customerDailyCounts($cid, '2026-07-20', '2026-07-20');
+        $this->assertSame(419, $counts['2026-07-20'] ?? null, 'kart birleşik sayıyı gösterir (UYSA planı)');
+    }
+
+    public function testOwnOrderTakesPriorityOverProduction(): void
+    {
+        $cid = seed_customer($this->pdo, 'O AŞ', 100.0);
+        $this->repo->upsertOrder($cid, '2026-07-20', 'ogle', 200, 'gonderildi', 'musteri');
+        $this->pdo->prepare(
+            "INSERT INTO production (customer_id, prod_date, meal, persons, entered_by) VALUES (?, ?, 'ogle', 419, 'uysa')"
+        )->execute([$cid, '2026-07-20']);
+
+        $order = $this->repo->customerOrder($cid, '2026-07-20', 'ogle');
+        $this->assertNotNull($order, 'kendi siparişi öncelikli → durum korunur');
+        $this->assertSame(200, (int) $order['persons'], 'order sayısı gösterilir, production değil');
+    }
+
+    public function testCarryForwardLastKnownDailyCount(): void
+    {
+        $cid = seed_customer($this->pdo, 'C AŞ', 100.0);
+        // Geçmiş servis günü: 17 Tem Cuma = 120 kişi (üretim). Yarın (20 Tem Pzt) için hiç kayıt yok.
+        $this->pdo->prepare(
+            "INSERT INTO production (customer_id, prod_date, meal, persons, entered_by) VALUES (?, '2026-07-17', 'ogle', 120, 'uysa')"
+        )->execute([$cid]);
+
+        $carry = $this->repo->lastKnownDailyCount($cid, '2026-07-20');
+        $this->assertNotNull($carry, 'devir: son servis gününden sayı');
+        $this->assertSame('2026-07-17', $carry['date'], 'pazar (19) + cmt (18, kayıtsız) atlanır → cuma');
+        $this->assertSame(120, $carry['persons'], 'son bilinen sayı devrolur');
+    }
+
+    public function testCarryForwardNullWhenNoHistory(): void
+    {
+        $cid = seed_customer($this->pdo, 'YENİ AŞ', 100.0);
+        $this->assertNull($this->repo->lastKnownDailyCount($cid, '2026-07-20'), 'geçmiş kayıt yoksa devir yok');
+    }
+
+    public function testExplicitZeroTomorrowIsShownNotCarried(): void
+    {
+        $cid = seed_customer($this->pdo, 'Z AŞ', 100.0);
+        // Geçmişte 100 var; müşteri yarın 0 bildirdi (kapalı) — 0 GERÇEK sayıdır, devir çalışmamalı
+        $this->pdo->prepare(
+            "INSERT INTO production (customer_id, prod_date, meal, persons, entered_by) VALUES (?, '2026-07-17', 'ogle', 100, 'uysa')"
+        )->execute([$cid]);
+        $this->pdo->prepare(
+            "INSERT INTO orders (customer_id, order_date, meal, persons, status, entered_by) VALUES (?, '2026-07-20', 'ogle', 0, 'gonderildi', 'musteri')"
+        )->execute([$cid]);
+
+        $counts = $this->repo->customerDailyCounts($cid, '2026-07-20', '2026-07-20');
+        $this->assertArrayHasKey('2026-07-20', $counts, '0 bir kayıttır → panel bunu (0) gösterir');
+        $this->assertSame(0, $counts['2026-07-20'], '0 gösterilir, dünkü 100 devrolmaz');
+    }
+
     // ── Admin: müşteri giriş hesabı oluştur (opus-018) ─────────
     public function testCreateCustomerUserUniqueAndBcrypt(): void
     {

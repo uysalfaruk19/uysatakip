@@ -133,7 +133,14 @@ require __DIR__ . '/partials/header_m.php';
         <div class="d-flex align-items-center justify-between gap-2">
           <div>
             <p class="label"><?= Helpers::e(gun_label_tr($date)) ?> · <?= Helpers::e($meals[$meal]) ?></p>
-            <h2 style="margin:0"><?= $current > 0 ? $current . ' kişi' : 'Henüz girilmedi' ?></h2>
+            <?php if ($current > 0): ?>
+              <h2 style="margin:0"><?= $current ?> kişi</h2>
+            <?php elseif ($lastPersons > 0): /* fable-019: kayıt yok → son bilinen sayı devri (gösterim; dokunulmazsa gönderilir) */ ?>
+              <h2 style="margin:0"><?= $lastPersons ?> kişi</h2>
+              <p class="row-meta"><i class="bi bi-arrow-repeat"></i> Otomatik: dünkü ile aynı</p>
+            <?php else: ?>
+              <h2 style="margin:0">Henüz girilmedi</h2>
+            <?php endif; ?>
           </div>
           <?php if ($order): [$bc, $bi, $bt] = $statusMap[$order['status']] ?? ['badge-blue', 'bi-clock', $order['status']]; ?>
             <span class="badge-soft <?= $bc ?>"><i class="bi <?= $bi ?>"></i> <?= Helpers::e($bt) ?></span>

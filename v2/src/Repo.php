@@ -3108,6 +3108,38 @@ final class Repo
     }
 
     /**
+     * fable-019: panel "günün menüsü" kaynağı. Bugün ($fromDate) menü varsa onu, yoksa İLERİYE
+     * bakıp (en fazla $lookahead gün) ilk menülü günü döner — servissiz günde (ör. pazar) "Menü
+     * yakında" yerine yaklaşan menü görünür. Müşteri-scope (menusForCustomer ile aynı görünürlük).
+     * SALT-OKUMA: sadece yayınlanmış menü kaleminden okur; orders/production'a DOKUNMAZ.
+     * @return array{date:string,items:array<string,string>,ahead:bool}|null (hiç yoksa null)
+     */
+    public function menuForCustomerFrom(int $customerId, string $fromDate, int $lookahead = 7): ?array
+    {
+        // Görünür menü kalemlerini gün×öğün haritasına indir (boş yemek atlanır).
+        $byDate = [];
+        foreach ($this->menusForCustomer($customerId, $fromDate) as $m) {
+            foreach ($this->menuItems((int) $m['id']) as $it) {
+                $dishes = trim((string) $it['dishes']);
+                if ($dishes === '') {
+                    continue;
+                }
+                $byDate[(string) $it['item_date']][(string) $it['meal']] = $dishes;
+            }
+        }
+        if (!$byDate) {
+            return null;
+        }
+        for ($i = 0; $i <= $lookahead; $i++) {
+            $d = date('Y-m-d', strtotime($fromDate . " +$i day"));
+            if (!empty($byDate[$d])) {
+                return ['date' => $d, 'items' => $byDate[$d], 'ahead' => $i > 0];
+            }
+        }
+        return null;
+    }
+
+    /**
      * Bot/admin görünümü: bir tarih aralığında YAYINLANMIŞ menülerin gün×öğün yemekleri.
      * Müşteri-scope YOK — Ömer/bot tüm yayınlanmış menüyü görür (audience gözetilmez).
      * $meal verilirse o öğüne kısıtlar. Aynı gün+öğün birden çok menüde varsa hepsi döner.
@@ -3322,6 +3354,33 @@ final class Repo
             }
         }
         return $out;
+    }
+
+    /**
+     * fable-019: sayı DEVRİ gösterim varsayılanı — $beforeDate için hiç kayıt yokken kullanılır.
+     * En yakın GEÇMİŞ servis gününün (Pzt–Cmt; pazar atlanır) birleşik sayısını döner
+     * (customerDailyCounts kaynağı: production>0 siparişi ezer → haftalık şeritle birebir tutarlı).
+     * SALT-GÖSTERİM: orders/production'a HİÇ yazmaz; bildirilmemiş sayı bildirilmiş gibi kaydedilmez.
+     * @return array{date:string,persons:int}|null (geçmişte kayıt yoksa null)
+     */
+    public function lastKnownDailyCount(int $customerId, string $beforeDate, int $maxBack = 60): ?array
+    {
+        $start = date('Y-m-d', strtotime($beforeDate . ' -' . $maxBack . ' day'));
+        $end = date('Y-m-d', strtotime($beforeDate . ' -1 day'));
+        $counts = $this->customerDailyCounts($customerId, $start, $end);
+        if (!$counts) {
+            return null;
+        }
+        for ($i = 1; $i <= $maxBack; $i++) {
+            $d = date('Y-m-d', strtotime($beforeDate . " -$i day"));
+            if ((int) date('N', strtotime($d)) === 7) {
+                continue; // pazar = servis günü değil
+            }
+            if (array_key_exists($d, $counts)) {
+                return ['date' => $d, 'persons' => (int) $counts[$d]];
+            }
+        }
+        return null;
     }
 
 

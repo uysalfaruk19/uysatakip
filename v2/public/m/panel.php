@@ -23,28 +23,31 @@ $rangeEnd = max($weekEnd, $tomorrow); // yarın haftaya taşarsa (Cmt/Paz) da ka
 $byDay = $repo->customerDailyCounts($cid, $weekStart, $rangeEnd);
 $todayPersons = $byDay[$today] ?? 0;
 $tomorrowPersons = $byDay[$tomorrow] ?? null;
-$tomorrowRow = $repo->customerOrder($cid, $tomorrow, 'ogle');
+$order = $repo->customerOrder($cid, $tomorrow, 'ogle'); // müşterinin KENDİ siparişi (durum için)
 
-$order = $tomorrowRow;
+// fable-019: "Yarının sayısı" kartı birleşik kaynağa geçer + sayı devri (gösterim varsayılanı).
+// Öncelik: kendi order'ı > birleşik sayı (UYSA planı, 0 dahil gerçek kayıt) > devir (son servis günü).
+// $tomorrowPersons null = hiç kayıt yok → devir; 0/>0 = gerçek kayıt → aynen gösterilir (devir YOK).
+$tomorrowCarry = ($order === null && $tomorrowPersons === null)
+    ? $repo->lastKnownDailyCount($cid, $tomorrow)
+    : null;
 $cutoff = Helpers::orderCutoffLabel();
 $tomorrowEditable = Helpers::orderEditable($tomorrow);
 
 // Günün menüsü: SADECE bu müşteriye yayınlanmış menülerden (IDOR scope).
 // fable-001: öğle boşsa günün İLK dolu öğünü gösterilir (öğle-dışı müşteriler boş görmesin).
+// fable-019: bugün menü yoksa İLERİYE bak (en fazla 7 gün) — servissiz günde (pazar) yaklaşan menü.
 $mealsTr = ['sabah' => 'Sabah', 'ogle' => 'Öğle', 'aksam' => 'Akşam', 'gece' => 'Gece', 'kumanya' => 'Kumanya'];
 $menuText = '';
 $menuMeal = '';
-$todayItems = [];
-foreach ($repo->menusForCustomer($cid) as $m) {
-    foreach ($repo->menuItems((int) $m['id']) as $it) {
-        if ($it['item_date'] === $today && trim((string) $it['dishes']) !== '') {
-            $todayItems[$it['meal']] = (string) $it['dishes'];
-        }
-    }
-}
-if ($todayItems) {
-    $menuMeal = isset($todayItems['ogle']) ? 'ogle' : (string) array_key_first($todayItems);
-    $menuText = $todayItems[$menuMeal];
+$menuDay = $today;
+$menuAhead = false;
+$menuFound = $repo->menuForCustomerFrom($cid, $today, 7);
+if ($menuFound) {
+    $menuDay = $menuFound['date'];
+    $menuAhead = $menuFound['ahead'];
+    $menuMeal = isset($menuFound['items']['ogle']) ? 'ogle' : (string) array_key_first($menuFound['items']);
+    $menuText = $menuFound['items'][$menuMeal];
 }
 
 $openReqs = $repo->customerRequests($cid);
@@ -78,7 +81,7 @@ require __DIR__ . '/partials/header_m.php';
 ?>
       <?php /* fable-001: günün menüsü EN ÜSTTE (Ömer: "günün menüsü sayının üstünde olsun") */ ?>
       <div class="meal-card">
-        <p class="label">Günün menüsü (<?= Helpers::e(gun_label_tr($today)) ?><?= $menuMeal !== '' && $menuMeal !== 'ogle' ? ' · ' . Helpers::e($mealsTr[$menuMeal] ?? $menuMeal) : '' ?>)</p>
+        <p class="label"><?= $menuAhead ? 'Sıradaki menü' : 'Günün menüsü' ?> (<?= Helpers::e(gun_label_tr($menuDay)) ?><?= $menuMeal !== '' && $menuMeal !== 'ogle' ? ' · ' . Helpers::e($mealsTr[$menuMeal] ?? $menuMeal) : '' ?>)</p>
         <?php if ($menuText !== ''): ?>
           <h2><?= Helpers::e($menuText) ?></h2>
           <p class="row-meta mt-1"><a href="menu.php" style="text-decoration:underline">Tüm menüyü gör</a></p>
@@ -117,6 +120,12 @@ require __DIR__ . '/partials/header_m.php';
             <?php if ($order): [$bc, $bi, $bt] = $statusMap[$order['status']] ?? ['badge-blue', 'bi-clock', $order['status']]; ?>
               <h2><?= (int) $order['persons'] ?> kişi · Öğle</h2>
               <p class="row-meta">Durum: <?= Helpers::e($bt) ?></p>
+            <?php elseif ($tomorrowPersons !== null): /* fable-019: kendi order'ı yok ama UYSA planı var → birleşik sayı görünür */ ?>
+              <h2><?= number_format($tomorrowPersons, 0, ',', '.') ?> kişi</h2>
+              <p class="row-meta"><i class="bi bi-clipboard-check"></i> Kaynak: UYSA planı</p>
+            <?php elseif ($tomorrowCarry !== null): /* fable-019: hiç kayıt yok → son servis gününden devir (SADECE gösterim, kayıt yazılmaz) */ ?>
+              <h2><?= number_format($tomorrowCarry['persons'], 0, ',', '.') ?> kişi</h2>
+              <p class="row-meta"><i class="bi bi-arrow-repeat"></i> Otomatik: dünkü ile aynı (<?= number_format($tomorrowCarry['persons'], 0, ',', '.') ?>) · değişiklik için bildirin</p>
             <?php else: ?>
               <h2>Henüz girilmedi</h2>
               <p class="row-meta">Yarın için kişi sayısı bildirin.</p>
