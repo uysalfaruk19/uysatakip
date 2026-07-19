@@ -1473,6 +1473,78 @@ final class Repo
         return array_values($days);
     }
 
+    /**
+     * fable-020: Drill-down grid'i ISO haftalara böler ve ayın TÜM servis günlerini
+     * (Pzt–Cmt; pazar atlanır) basar — kayıtsız GEÇMİŞ servis günü "eksik" işaretlenir.
+     * NEDEN: customerDailyGrid sadece kayıtlı günü döndürüyordu, atlanan gün görünmüyordu.
+     * Eksik = kayıt yok + gün geçmiş (bugün ve sonrası nötr, yanlış alarm üretmesin) +
+     *   Cmt istisnası: müşterinin o ay hiç Cmt kaydı yoksa cumartesi eksik sayılmaz.
+     * customerDailyGrid'i kaynak alır (tek gerçek kaynak; imzası bozulmaz).
+     * @param string|null $today 'YYYY-MM-DD' — test edilebilirlik için; null → bugün.
+     * @return array{weeks:array,kisi:int,tutar:float,missing:int,first_missing:?string,has_saturday_record:bool}
+     */
+    public function customerWeeklyGrid(int $customerId, string $ay, ?string $today = null): array
+    {
+        $today ??= date('Y-m-d');
+        $recorded = [];
+        foreach ($this->customerDailyGrid($customerId, $ay) as $r) {
+            $recorded[$r['gun']] = $r;
+        }
+        // Cmt kuralı: müşterinin o ay en az bir Cmt kaydı var mı?
+        $hasSat = false;
+        foreach ($recorded as $d => $_r) {
+            if ((int) date('N', strtotime((string) $d)) === 6) { $hasSat = true; break; }
+        }
+        [$y, $m] = array_map('intval', explode('-', $ay));
+        $daysInMonth = (int) date('t', mktime(0, 0, 0, $m, 1, $y));
+        $weeks = [];
+        $totKisi = 0; $totTutar = 0.0; $totMissing = 0; $firstMissing = null;
+        for ($dd = 1; $dd <= $daysInMonth; $dd++) {
+            $date = sprintf('%04d-%02d-%02d', $y, $m, $dd);
+            $dow = (int) date('N', strtotime($date)); // 1=Pzt … 7=Paz
+            if ($dow === 7) { continue; } // pazar servis günü değil
+            $iso = date('o-W', strtotime($date));
+            if (!isset($weeks[$iso])) {
+                $weeks[$iso] = ['iso' => $iso, 'start' => $date, 'end' => $date, 'days' => [], 'kisi' => 0, 'tutar' => 0.0, 'missing' => 0];
+            }
+            $weeks[$iso]['end'] = $date;
+            $rec = $recorded[$date] ?? null;
+            $future = $date >= $today; // bugün ve sonrası nötr (servis henüz girilmemiş olabilir)
+            $satNeutral = ($dow === 6 && !$hasSat);
+            $missing = ($rec === null) && !$future && !$satNeutral;
+            $row = [
+                'gun'      => $date,
+                'dow'      => $dow,
+                'recorded' => $rec !== null,
+                'future'   => $future,
+                'missing'  => $missing,
+                'ogle'     => (int) ($rec['ogle'] ?? 0),
+                'aksam'    => (int) ($rec['aksam'] ?? 0),
+                'kumanya'  => (int) ($rec['kumanya'] ?? 0),
+                'kisi'     => (int) ($rec['kisi'] ?? 0),
+                'tutar'    => (float) ($rec['tutar'] ?? 0.0),
+            ];
+            $weeks[$iso]['days'][] = $row;
+            $weeks[$iso]['kisi']  += $row['kisi'];
+            $weeks[$iso]['tutar'] += $row['tutar'];
+            if ($missing) {
+                $weeks[$iso]['missing']++;
+                $totMissing++;
+                $firstMissing ??= $date;
+            }
+            $totKisi  += $row['kisi'];
+            $totTutar += $row['tutar'];
+        }
+        return [
+            'weeks'                => array_values($weeks),
+            'kisi'                 => $totKisi,
+            'tutar'                => $totTutar,
+            'missing'              => $totMissing,
+            'first_missing'        => $firstMissing,
+            'has_saturday_record'  => $hasSat,
+        ];
+    }
+
     // ── Reçete & Maliyet (M4) ─────────────────────────────────
     /** Malzeme listesi (ad, birim, kg/birim fiyat, kritik eşik). $search verilirse ada göre LIKE filtre. */
     public function listIngredients(?string $search = null): array

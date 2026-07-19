@@ -74,49 +74,79 @@ if ($drill) {
         </div>
         <?php
     } else {
-        // ÜRETİM: gün gün öğün kırılımı
-        $rows = $repo->customerDailyGrid($drillId, $month);
-        $sumKisi = 0; $sumTutar = 0.0; $barMax = 0;
-        foreach ($rows as $r) { $sumKisi += (int) $r['kisi']; $sumTutar += (float) $r['tutar']; $barMax = max($barMax, (int) $r['kisi']); }
+        // ÜRETİM: gün gün öğün kırılımı — fable-020: haftalık gruplu + eksik gün görünür
+        $grid = $repo->customerWeeklyGrid($drillId, $month);
+        $sumKisi = $grid['kisi']; $sumTutar = $grid['tutar'];
         $nk = $repo->customerNetKarlilik($drillId, $month);
+        // fable-020: bar grafik + boş durum için kayıtlı günleri düzleştir (kaynak = weekly grid)
+        $recordedDays = []; $barMax = 0;
+        foreach ($grid['weeks'] as $wk) {
+            foreach ($wk['days'] as $dd) {
+                if ($dd['recorded']) { $recordedDays[] = $dd; $barMax = max($barMax, (int) $dd['kisi']); }
+            }
+        }
+        // fable-020: hafta ayracı için kısa Türkçe ay (14–19 Tem)
+        $ayKisa = [1 => 'Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
+        $missingCount = (int) $grid['missing'];
         ?>
         <a class="btn-action btn-ghost" href="rapor.php?ay=<?= $month ?>"><i class="bi bi-arrow-left"></i> Rapora dön</a>
         <div class="summary-grid">
           <div class="summary-card tint-orange"><p class="label">Ay toplam kişi</p><p class="metric"><?= number_format($sumKisi, 0, ',', '.') ?></p></div>
           <div class="summary-card tint-green"><p class="label">Ay cirosu</p><p class="metric">₺ <?= Helpers::money($sumTutar) ?></p></div>
           <div class="summary-card tint-blue"><p class="label">Pay: gider · personel</p><p class="metric small">₺ <?= Helpers::money($nk['pay_gider']) ?> · ₺ <?= Helpers::money($nk['pay_personel']) ?></p></div>
+          <?php if ($missingCount > 0): ?>
+            <a class="summary-card tint-red" href="#ilk-eksik" style="text-decoration:none"><p class="label">Bu ay eksik gün <span class="text-muted" style="font-weight:600">(bugüne kadar)</span></p><p class="metric neg"><?= $missingCount ?> <i class="bi bi-chevron-right" style="font-size:12px"></i></p></a>
+          <?php else: ?>
+            <div class="summary-card tint-green"><p class="label">Eksik gün</p><p class="metric pos" style="font-size:19px">Eksik gün yok</p></div>
+          <?php endif; ?>
           <div class="summary-card wide tint-green"><p class="label">Net kâr (ciro − gider payı − personel payı)</p><p class="metric <?= $nk['net'] < 0 ? 'neg' : 'pos' ?>">₺ <?= Helpers::money($nk['net']) ?></p></div>
         </div>
         <div class="cardx card-pad">
-          <h2>Gün gün öğün sayıları</h2>
-          <?php if (!$rows): ?>
+          <h2>Gün gün öğün sayıları <span class="text-muted" style="font-size:12px;font-weight:600">(haftalık)</span></h2>
+          <?php if (!$recordedDays): ?>
             <div class="empty-state">Bu ay üretim kaydı yok.</div>
           <?php else: ?>
             <div style="overflow-x:auto">
             <table class="mini-cal">
               <thead><tr><th>Gün</th><th>Öğle</th><th>Akşam</th><th>Kumanya</th><th>Kişi</th><th>Tutar</th></tr></thead>
               <tbody>
-              <?php foreach ($rows as $r): ?>
-                <tr>
-                  <td><?= Helpers::e(date('d.m D', strtotime($r['gun']))) ?></td>
-                  <td><?= $r['ogle'] ? number_format((int) $r['ogle'], 0, ',', '.') : '·' ?></td>
-                  <td><?= $r['aksam'] ? number_format((int) $r['aksam'], 0, ',', '.') : '·' ?></td>
-                  <td><?= $r['kumanya'] ? number_format((int) $r['kumanya'], 0, ',', '.') : '·' ?></td>
-                  <td><strong><?= number_format((int) $r['kisi'], 0, ',', '.') ?></strong></td>
-                  <td>₺ <?= Helpers::money((float) $r['tutar']) ?></td>
-                </tr>
+              <?php $anchored = false; foreach ($grid['weeks'] as $wk):
+                $wkNo = (int) substr($wk['iso'], -2);
+                $sd = (int) date('j', strtotime($wk['start']));
+                $ed = (int) date('j', strtotime($wk['end']));
+                $ayIdx = (int) date('n', strtotime($wk['end']));
+                $rangeLbl = $sd . '–' . $ed . ' ' . ($ayKisa[$ayIdx] ?? ''); ?>
+                <tr class="is-week"><td colspan="6">Hafta <?= $wkNo ?> · <?= Helpers::e($rangeLbl) ?><?php if ($wk['missing'] > 0): ?> · <span class="wk-eksik"><?= (int) $wk['missing'] ?> gün eksik</span><?php endif; ?></td></tr>
+                <?php foreach ($wk['days'] as $r):
+                  $isMissing = $r['missing'];
+                  $rowId = '';
+                  if ($isMissing && !$anchored) { $rowId = ' id="ilk-eksik"'; $anchored = true; }
+                  // fable-020: kayıtsız günde nötr '·'; eksikte de kolonlar '—' (belirgin)
+                  $ph = $isMissing ? '—' : '·'; ?>
+                  <tr class="<?= $isMissing ? 'is-missing' : '' ?>"<?= $rowId ?>>
+                    <?php // fable-020: gün kısaltması Türkçe (date('D') İngilizce basıyordu — UI TR kuralı)
+                    $gunTrKisa = ['Mon' => 'Pzt', 'Tue' => 'Sal', 'Wed' => 'Çar', 'Thu' => 'Per', 'Fri' => 'Cum', 'Sat' => 'Cmt', 'Sun' => 'Paz']; ?>
+                    <td><?= Helpers::e(date('d.m', strtotime($r['gun'])) . ' ' . ($gunTrKisa[date('D', strtotime($r['gun']))] ?? '')) ?><?php if ($isMissing): ?> <span class="eksik-badge">Eksik</span><?php endif; ?></td>
+                    <td><?= $r['recorded'] && $r['ogle'] ? number_format((int) $r['ogle'], 0, ',', '.') : $ph ?></td>
+                    <td><?= $r['recorded'] && $r['aksam'] ? number_format((int) $r['aksam'], 0, ',', '.') : $ph ?></td>
+                    <td><?= $r['recorded'] && $r['kumanya'] ? number_format((int) $r['kumanya'], 0, ',', '.') : $ph ?></td>
+                    <td><?= $r['recorded'] ? '<strong>' . number_format((int) $r['kisi'], 0, ',', '.') . '</strong>' : $ph ?></td>
+                    <td><?= $r['recorded'] ? '₺ ' . Helpers::money((float) $r['tutar']) : $ph ?></td>
+                  </tr>
+                <?php endforeach; ?>
+                <tr class="is-subtotal"><td>Hafta <?= $wkNo ?> ara toplam</td><td></td><td></td><td></td><td><?= number_format((int) $wk['kisi'], 0, ',', '.') ?></td><td>₺ <?= Helpers::money((float) $wk['tutar']) ?></td></tr>
               <?php endforeach; ?>
-                <tr class="is-total"><td>Toplam</td><td></td><td></td><td></td><td><?= number_format($sumKisi, 0, ',', '.') ?></td><td>₺ <?= Helpers::money($sumTutar) ?></td></tr>
+                <tr class="is-total"><td>Ay toplam</td><td></td><td></td><td></td><td><?= number_format($sumKisi, 0, ',', '.') ?></td><td>₺ <?= Helpers::money($sumTutar) ?></td></tr>
               </tbody>
             </table>
             </div>
           <?php endif; ?>
         </div>
-        <?php if ($rows): ?>
+        <?php if ($recordedDays): ?>
         <div class="cardx card-pad">
           <h2>Günlük kişi trendi</h2>
           <div class="barchart">
-            <?php foreach ($rows as $r): $w = $barMax > 0 ? max(4, round((int) $r['kisi'] / $barMax * 100)) : 4; ?>
+            <?php foreach ($recordedDays as $r): $w = $barMax > 0 ? max(4, round((int) $r['kisi'] / $barMax * 100)) : 4; ?>
               <div class="bar-row">
                 <span class="bar-name"><?= Helpers::e(date('d.m', strtotime($r['gun']))) ?></span>
                 <span class="bar-track"><span class="bar-fill" style="width: <?= $w ?>%"></span></span>

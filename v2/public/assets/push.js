@@ -126,6 +126,15 @@
     var startX = 0;
     var startY = 0;
     var pull = 0;
+    // fable-021: müşteri sayfasında kayan eleman artık main.app-shell (Hikari sabit-kabuk deseni),
+    // window değil. window.scrollY hep 0 → guard'ı gerçek scroll kabına bağla, yoksa sayfa aşağıda
+    // iken pull-to-refresh yanlışlıkla tetiklenir. Eski/window düzeni için ikisini de kontrol et.
+    var ptrScroller = document.querySelector("main.app-shell");
+
+    function atTop() {
+      var st = ptrScroller ? ptrScroller.scrollTop : window.scrollY;
+      return st <= 0 && window.scrollY <= 0;
+    }
 
     function reset() {
       tracking = false;
@@ -139,7 +148,7 @@
     document.addEventListener(
       "touchstart",
       function (event) {
-        if (refreshing || window.scrollY > 0 || !event.touches || event.touches.length !== 1) return;
+        if (refreshing || !atTop() || !event.touches || event.touches.length !== 1) return;
         var target = event.target;
         if (target && target.closest && target.closest("input, textarea, select, button, a, .counter, .bottom-tabs")) return;
         tracking = true;
