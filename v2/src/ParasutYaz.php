@@ -458,29 +458,43 @@ final class ParasutYaz
             $musteri = $this->repo->customer($customerId);
         } catch (\Throwable) {
         }
+        // fable-023g (PENDORYA/TSKB dersi, 21 Tem): alıcı GİB'de e-İrsaliye kayıtlıysa 'to'
+        // ile, KAYITLI DEĞİLSE 'to' OLMADAN gönderilir ("Alıcı etiketi boş bırakılmalı").
+        // Hangisi olduğu önceden bilinemeyebilir → alias'la dene, o hatada alias'sız tekrar dene
+        // (job error = belge resmileşmedi, tekrar legalize güvenli — CEOTHERM/PENDORYA kanıtı).
         $alias = trim((string) ($musteri['edespatch_alias'] ?? ''));
-        if ($alias === '') {
-            return ['yok', 'GİB alıcı kutusu tanımlı değil — Paraşüt\'ten elle gönderin (müşteri kartına edespatch_alias girilebilir).', null];
-        }
-        $r = $this->cagir('POST', '/shipment_documents/' . rawurlencode($docId) . '/legalize',
-            ['data' => ['type' => 'shipment_documents', 'attributes' => ['to' => $alias]]]);
-        if ($r['net'] !== 'ok' || $r['status'] < 200 || $r['status'] >= 300) {
-            return ['hata', 'gönderim isteği kabul edilmedi (HTTP ' . $r['status'] . ') — Paraşüt\'ten elle gönderin.', null];
-        }
-        // trackable_job takibi (kısa: ~16 sn). Sonuçsuz kalırsa belge durumundan okunur.
-        $jobId = (string) ($r['data']['data']['id'] ?? '');
-        for ($i = 0; $i < 4 && $jobId !== ''; $i++) {
-            $this->bekle(4);
-            $j = $this->cagir('GET', '/trackable_jobs/' . rawurlencode($jobId), null);
-            $st = (string) ($j['data']['data']['attributes']['status'] ?? '');
-            if ($st === 'done') {
-                break;
+        $attr = $alias !== '' ? ['to' => $alias] : new \stdClass();
+        $sonHata = '';
+        for ($deneme = 0; $deneme < 2; $deneme++) {
+            $r = $this->cagir('POST', '/shipment_documents/' . rawurlencode($docId) . '/legalize',
+                ['data' => ['type' => 'shipment_documents', 'attributes' => $attr]]);
+            if ($r['net'] !== 'ok' || $r['status'] < 200 || $r['status'] >= 300) {
+                return ['hata', 'gönderim isteği kabul edilmedi (HTTP ' . $r['status'] . ') — Paraşüt\'ten elle gönderin.', null];
             }
-            if ($st === 'error') {
-                $err = $j['data']['data']['attributes']['errors'] ?? [];
-                return ['hata', 'GİB gönderimi reddetti: ' . mb_substr(json_encode($err, JSON_UNESCAPED_UNICODE), 0, 160)
-                    . ' — Paraşüt\'ten elle gönderin.', null];
+            // trackable_job takibi (kısa: ~16 sn). Sonuçsuz kalırsa belge durumundan okunur.
+            $jobId = (string) ($r['data']['data']['id'] ?? '');
+            $sonHata = '';
+            for ($i = 0; $i < 4 && $jobId !== ''; $i++) {
+                $this->bekle(4);
+                $j = $this->cagir('GET', '/trackable_jobs/' . rawurlencode($jobId), null);
+                $st = (string) ($j['data']['data']['attributes']['status'] ?? '');
+                if ($st === 'done') {
+                    break;
+                }
+                if ($st === 'error') {
+                    $err = $j['data']['data']['attributes']['errors'] ?? [];
+                    $sonHata = mb_substr(json_encode($err, JSON_UNESCAPED_UNICODE), 0, 160);
+                    break;
+                }
             }
+            if ($sonHata === '') {
+                break; // job done → doğrulamaya geç
+            }
+            if ($deneme === 0 && $alias !== '' && mb_stripos($sonHata, 'etiketi boş') !== false) {
+                $attr = new \stdClass(); // alıcı e-İrsaliye kayıtlı değil → etiketsiz tekrar dene
+                continue;
+            }
+            return ['hata', 'GİB gönderimi reddetti: ' . $sonHata . ' — Paraşüt\'ten elle gönderin.', null];
         }
         // Belgeden doğrula: legalized_at oluştuysa gönderim başarılı (status 'waiting' = GİB kuyruğu, normal).
         $d = $this->cagir('GET', '/shipment_documents/' . rawurlencode($docId), null);
