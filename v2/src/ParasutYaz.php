@@ -523,9 +523,14 @@ final class ParasutYaz
      */
     private static function gercekHttp(string $method, string $path, ?array $body): array
     {
+        // fable-023c: kredensiyaller VPS'te ŞİFRELİ dosyada — env'de düz durmuyorlar. Şirket
+        // id'sini okumadan ÖNCE çözülmeleri şart; yoksa "PARASUT_COMPANY_ID yok" (HTTP 0) alınır.
+        // (İlk canlı denemedeki iki hatanın da gerçek kökü buydu.)
+        Parasut::loadEncryptedCreds();
         $company = (string) Env::get('PARASUT_COMPANY_ID', '');
         if ($company === '') {
-            return ['net' => 'connect', 'status' => 0, 'data' => [], 'error' => 'PARASUT_COMPANY_ID yok'];
+            return ['net' => 'connect', 'status' => 0, 'data' => [],
+                'error' => 'Paraşüt kredensiyali çözülemedi (PARASUT_COMPANY_ID yok)'];
         }
         try {
             $token = Parasut::token();
