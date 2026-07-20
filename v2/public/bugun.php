@@ -11,7 +11,9 @@ $u = Auth::requireLogin();
 $pdo = Db::pdo();
 $repo = new Repo($pdo);
 
-$meal = 'ogle';
+// fable-023a: ekran artık 3 öğünü (öğlen/akşam/kumanya) birlikte yönetiyor.
+// $meal yalnız geriye dönük tekil çağrılarda (yok) değil, öğün etiketleri için kullanılır.
+$mealLabels = ['ogle' => 'Öğlen', 'aksam' => 'Akşam', 'kumanya' => 'Kumanya'];
 $date = (string) ($_GET['date'] ?? Helpers::today());
 if (!Helpers::isDate($date)) {
     $date = Helpers::today();
@@ -30,19 +32,40 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $postDate = (string) ($_POST['date'] ?? $date);
         $date = Helpers::isDate($postDate) ? $postDate : Helpers::today();
         $persons = $_POST['persons'] ?? [];
+        // fable-023a: kırılım penceresinden gelen öğün alanları + "elle düzenlendi" bayrağı.
+        $postMeals = [
+            'ogle' => (array) ($_POST['meal_ogle'] ?? []),
+            'aksam' => (array) ($_POST['meal_aksam'] ?? []),
+            'kumanya' => (array) ($_POST['meal_kumanya'] ?? []),
+        ];
+        $editedFlags = (array) ($_POST['meal_edited'] ?? []);
+        // Toplam kutusu doğrudan değiştirilmişse fark öğlene yazılır → mevcut kırılım lazım.
+        $before = [];
+        foreach ($repo->dayGridAllMeals($date) as $r) {
+            $before[(int) $r['customer_id']] = $r;
+        }
         $saved = 0;
         $pdo->beginTransaction();
         try {
             foreach ($repo->activeCustomers() as $c) {
                 $cid = (int) $c['id'];
-                $p = (int) ($persons[$cid] ?? 0);
-                if ($p > 0) {
-                    // opus-017: girilen günün ayına ait fiyat (ay-bazlı; current default değil)
-                    $price = $repo->priceFor($cid, substr($date, 0, 7))['unit_price'];
-                    $repo->upsertProduction($cid, $date, $p, $price, $meal, 'uysa');
-                    $saved++;
+                $cur = $before[$cid] ?? ['ogle' => 0, 'aksam' => 0, 'kumanya' => 0];
+                if (!empty($editedFlags[$cid])) {
+                    $meals = [
+                        'ogle' => Repo::normalizePersons($postMeals['ogle'][$cid] ?? 0),
+                        'aksam' => Repo::normalizePersons($postMeals['aksam'][$cid] ?? 0),
+                        'kumanya' => Repo::normalizePersons($postMeals['kumanya'][$cid] ?? 0),
+                    ];
                 } else {
-                    $repo->deleteProduction($cid, $date, $meal);
+                    $meals = Repo::mealsFromTotal($persons[$cid] ?? 0, $cur);
+                }
+                $toplam = $meals['ogle'] + $meals['aksam'] + $meals['kumanya'];
+                // opus-017: girilen günün ayına ait fiyat (ay-bazlı; current default değil)
+                $price = $toplam > 0 ? $repo->priceFor($cid, substr($date, 0, 7))['unit_price'] : 0.0;
+                // Bağlı alanlar atomik: 3 öğün tek transaction içinde tek metotla yazılır/silinir.
+                $repo->saveDayMeals($cid, $date, $meals, $price, 'uysa');
+                if ($toplam > 0) {
+                    $saved++;
                 }
             }
             $pdo->commit();
@@ -59,9 +82,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 // ── Dünü kopyala ─────────────────────────────────────────────
 $copyValues = null;
 if (isset($_GET['copy'])) {
-    $prev = $repo->previousProductionDate($date, $meal);
+    // fable-023a: kaynak gün öğün farkı gözetmeden bulunur (sadece akşam kaydı olan gün de gelsin)
+    $prev = $repo->previousProductionDate($date, null);
     if ($prev !== null) {
-        $copyValues = $repo->productionPersonsByCustomer($prev, $meal);
+        $copyValues = [];
+        foreach ($repo->dayGridAllMeals($prev) as $r) {
+            $copyValues[(int) $r['customer_id']] = $r;
+        }
         $flash = date('d.m.Y', strtotime($prev)) . " tarihinden kopyalandı — kontrol edip Kaydet'e basın.";
     } else {
         $flash = 'Kopyalanacak önceki gün yok.';
@@ -69,8 +96,8 @@ if (isset($_GET['copy'])) {
     }
 }
 
-$grid = $repo->dayGrid($date, $meal);
-$existing = $repo->productionPersonsByCustomer($date, $meal);
+// fable-023a: 3 öğünü toplayan tek kaynak — akşam/kumanya artık sayaçlara ve ciroya giriyor.
+$grid = $repo->dayGridAllMeals($date);
 
 // Sunucu-tarafı ilk render toplamları
 $sumP = 0; $sumA = 0.0; $filled = 0;
@@ -78,12 +105,32 @@ $rowsData = [];
 $priceMonth = substr($date, 0, 7);
 foreach ($grid as $r) {
     $cid = (int) $r['customer_id'];
-    $val = $copyValues[$cid] ?? ($existing[$cid] ?? 0);
+    $src = $copyValues[$cid] ?? $r;
+    $meals = [
+        'ogle' => (int) ($src['ogle'] ?? 0),
+        'aksam' => (int) ($src['aksam'] ?? 0),
+        'kumanya' => (int) ($src['kumanya'] ?? 0),
+    ];
+    $val = $meals['ogle'] + $meals['aksam'] + $meals['kumanya'];
     // opus-017: bu ayın fiyatı (ay-bazlı) — girilmiş satırlar zaten snapshot'lı, boşlar bu fiyatı gösterir
     $price = $repo->priceFor($cid, $priceMonth)['unit_price'];
     $amt = $val * $price;
     if ($val > 0) { $sumP += $val; $sumA += $amt; $filled++; }
-    $rowsData[] = ['cid' => $cid, 'name' => $r['name'], 'price' => $price, 'val' => (int) $val, 'amt' => $amt];
+    // Kırılım etiketi yalnız akşam/kumanya varken görünür (tek öğünlü müşteride gürültü olmasın)
+    $splitLabel = '';
+    if ($meals['aksam'] > 0 || $meals['kumanya'] > 0) {
+        $parts = [];
+        foreach ($mealLabels as $mk => $ml) {
+            if ($meals[$mk] > 0) {
+                $parts[] = $meals[$mk] . ' ' . mb_strtolower($ml, 'UTF-8');
+            }
+        }
+        $splitLabel = implode(' · ', $parts);
+    }
+    $rowsData[] = [
+        'cid' => $cid, 'name' => $r['name'], 'price' => $price, 'val' => $val, 'amt' => $amt,
+        'meals' => $meals, 'split' => $splitLabel,
+    ];
 }
 $total = count($rowsData);
 
@@ -140,7 +187,8 @@ require __DIR__ . '/partials/header.php';
           <div class="ico"><i class="bi bi-shop"></i></div>
           <div class="txt">
             <p class="lbl">Giriş yapılan müşteri</p>
-            <p class="val"><span id="sum-filled"><?= $filled ?>/<?= $total ?></span></p>
+            <!-- fable-023a: JS recalc "x/y girildi" yazıyordu; ilk boyama da aynı olsun (zıplama yok) -->
+            <p class="val"><span id="sum-filled"><?= $filled ?>/<?= $total ?> girildi</span></p>
           </div>
         </a>
       </div>
@@ -200,16 +248,25 @@ require __DIR__ . '/partials/header.php';
             <div class="empty-state">Aktif müşteri yok.</div>
           <?php endif; ?>
           <?php foreach ($rowsData as $r): $missing = $r['val'] === 0; $isFocus = $focus > 0 && $r['cid'] === $focus; ?>
-            <div class="customer-row <?= $missing ? 'missing' : '' ?> <?= $isFocus ? 'is-focus' : '' ?>"<?= $isFocus ? ' id="focus-row"' : '' ?> data-price="<?= $r['price'] ?>">
+            <div class="customer-row <?= $missing ? 'missing' : '' ?> <?= $isFocus ? 'is-focus' : '' ?>"<?= $isFocus ? ' id="focus-row"' : '' ?> data-price="<?= $r['price'] ?>" data-cid="<?= $r['cid'] ?>" data-name="<?= Helpers::e($r['name']) ?>">
               <div>
-                <div class="row-title"><span class="status-dot <?= $missing ? 'warn' : '' ?>"></span><strong><?= Helpers::e($r['name']) ?></strong></div>
-                <p class="row-meta">₺ <?= Helpers::money($r['price']) ?> kişi başı · <span class="row-amt"><?= $missing ? 'girilmedi' : '₺ ' . Helpers::money($r['amt']) ?></span></p>
+                <div class="row-title"><span class="status-dot <?= $missing ? 'warn' : '' ?>"></span>
+                  <!-- fable-023a: müşteri adı = öğün kırılımı penceresini açan buton -->
+                  <button type="button" class="row-name-btn" data-meal-open aria-haspopup="dialog">
+                    <strong><?= Helpers::e($r['name']) ?></strong><i class="bi bi-sliders2" aria-hidden="true"></i>
+                  </button>
+                </div>
+                <p class="row-meta">₺ <?= Helpers::money($r['price']) ?> kişi başı · <span class="row-amt"><?= $missing ? 'girilmedi' : '₺ ' . Helpers::money($r['amt']) ?></span><span class="meal-split"<?= $r['split'] === '' ? ' hidden' : '' ?>><?= Helpers::e($r['split']) ?></span></p>
               </div>
               <div class="counter">
                 <button class="step-btn" type="button" data-step="-5">−</button>
                 <input class="count-input" inputmode="numeric" type="number" min="0" name="persons[<?= $r['cid'] ?>]" value="<?= $r['val'] > 0 ? $r['val'] : '' ?>">
                 <button class="step-btn" type="button" data-step="5">+</button>
               </div>
+              <input type="hidden" class="m-ogle" name="meal_ogle[<?= $r['cid'] ?>]" value="<?= $r['meals']['ogle'] ?>">
+              <input type="hidden" class="m-aksam" name="meal_aksam[<?= $r['cid'] ?>]" value="<?= $r['meals']['aksam'] ?>">
+              <input type="hidden" class="m-kumanya" name="meal_kumanya[<?= $r['cid'] ?>]" value="<?= $r['meals']['kumanya'] ?>">
+              <input type="hidden" class="m-edited" name="meal_edited[<?= $r['cid'] ?>]" value="<?= $copyValues !== null ? 1 : 0 ?>">
             </div>
           <?php endforeach; ?>
         </div>
@@ -219,6 +276,32 @@ require __DIR__ . '/partials/header.php';
           <button class="btn-action btn-primaryx flex-fill" type="submit"><i class="bi bi-check2"></i> Kaydet</button>
         </div>
       </form>
+
+      <!-- fable-023a: öğün kırılımı penceresi — satırdaki gizli alanları doldurur, sonra formu gönderir -->
+      <div class="meal-modal" id="meal-modal" hidden>
+        <div class="meal-backdrop" data-meal-close></div>
+        <div class="meal-card" role="dialog" aria-modal="true" aria-labelledby="meal-modal-title">
+          <div class="meal-head">
+            <h3 id="meal-modal-title">Öğün kırılımı</h3>
+            <button type="button" class="icon-btn" data-meal-close aria-label="Kapat"><i class="bi bi-x-lg"></i></button>
+          </div>
+          <p class="meal-sub" id="meal-modal-name"></p>
+          <div class="meal-fields">
+            <?php foreach ($mealLabels as $mk => $ml): ?>
+              <label class="meal-field">
+                <span><?= Helpers::e($ml) ?></span>
+                <input class="inputx meal-input" id="meal-in-<?= $mk ?>" data-meal="<?= $mk ?>" type="number" inputmode="numeric" min="0" value="0">
+              </label>
+            <?php endforeach; ?>
+          </div>
+          <p class="meal-total">Toplam: <strong id="meal-modal-total">0</strong> kişi</p>
+          <p class="meal-hint">Toplam kutusu doğrudan değiştirilirse fark öğlene yazılır; akşam ve kumanya korunur.</p>
+          <div class="actions-row">
+            <button type="button" class="btn-action btn-secondaryx flex-fill" data-meal-close>Vazgeç</button>
+            <button type="button" class="btn-action btn-primaryx flex-fill" id="meal-save">Kaydet</button>
+          </div>
+        </div>
+      </div>
       <?php if ($focus > 0): ?>
       <script>
         (function () {

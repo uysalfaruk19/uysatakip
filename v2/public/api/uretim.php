@@ -120,12 +120,13 @@ try {
 
 uysa_audit('api_uretim', $actor, $date, json_encode(['n' => count($entries)], JSON_UNESCAPED_UNICODE), $ip);
 
-// Gün toplamı + eksik müşteriler
-$tot = $repo->dayTotals($date, $meal);
-$grid = $repo->dayGrid($date, $meal);
-$eksik = [];
-foreach ($grid as $row) {
-    if ($row['persons'] === null) {
+// fable-023a: gün toplamı ve eksik listesi GÜNÜN TAMAMINDAN (3 öğün) hesaplanır — bot'un
+// söylediği rakam panelle aynı olsun. Yazma hâlâ tek öğüne ($meal) yapılıyor.
+$kisi = 0; $tutar = 0.0; $eksik = [];
+foreach ($repo->dayGridAllMeals($date) as $row) {
+    $kisi += (int) $row['toplam'];
+    $tutar += (float) $row['tutar'];
+    if ((int) $row['toplam'] === 0) {
         $eksik[] = $row['name'];
     }
 }
@@ -136,6 +137,6 @@ Helpers::json([
     'ogun'        => $meal,
     'kayitlar'    => $entries,
     'eslesmeyen'  => $unmatched,
-    'gun_toplam'  => ['kisi' => (int) $tot['persons'], 'tutar' => (float) $tot['amount']],
+    'gun_toplam'  => ['kisi' => $kisi, 'tutar' => $tutar],
     'eksik'       => $eksik,
 ]);

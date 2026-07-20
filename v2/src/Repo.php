@@ -512,9 +512,18 @@ final class Repo
         return $st->fetchAll();
     }
 
-    /** Bir önceki üretim günü (dünü kopyala kaynağı). */
-    public function previousProductionDate(string $beforeDate, string $meal = 'ogle'): ?string
+    /**
+     * Bir önceki üretim günü (dünü kopyala kaynağı).
+     * fable-023a: $meal = null → öğün farkı gözetmez (sadece akşam kaydı olan gün de bulunur).
+     */
+    public function previousProductionDate(string $beforeDate, ?string $meal = 'ogle'): ?string
     {
+        if ($meal === null) {
+            $st = $this->pdo->prepare('SELECT MAX(prod_date) FROM production WHERE prod_date < ?');
+            $st->execute([$beforeDate]);
+            $d = $st->fetchColumn();
+            return $d ?: null;
+        }
         $st = $this->pdo->prepare(
             'SELECT MAX(prod_date) FROM production WHERE prod_date < ? AND meal = ?'
         );
@@ -541,6 +550,140 @@ final class Repo
     {
         $this->pdo->prepare('DELETE FROM production WHERE customer_id = ? AND prod_date = ? AND meal = ?')
             ->execute([$customerId, $prodDate, $meal]);
+    }
+
+    // ── fable-023a: öğün kırılımı (öğlen / akşam / kumanya) ────────
+    // NEDEN: irsaliye kalemleri öğün bazlı kesiliyor (ÖĞLEN/AKŞAM/KUMANYA YEMEK BEDELİ).
+    // Bugün ekranı yalnız 'ogle' okuyordu → akşam/kumanya kayıtları ciroya girmiyordu.
+
+    /** Bugün ekranının öğün kırılımında kullandığı öğünler (sırayla gösterilir). */
+    public const MEALS = ['ogle', 'aksam', 'kumanya'];
+
+    /** Tek öğüne yazılabilecek üst sınır — hatalı/çok büyük giriş DB'ye taşmasın. */
+    public const MEAL_MAX = 1000000;
+
+    /**
+     * fable-023a: Belirli gün için müşteri × ÖĞÜN KIRILIMI (girilmeyen öğün 0).
+     * dayGrid imzası bozulmaz — bu ayrı bir metot; 3 öğünü toplayan tek gerçek kaynak.
+     * @return array<int,array{customer_id:int,name:string,unit_price:float,
+     *   ogle:int,aksam:int,kumanya:int,toplam:int,tutar:float}>
+     */
+    public function dayGridAllMeals(string $prodDate): array
+    {
+        $st = $this->pdo->prepare(
+            'SELECT c.id AS customer_id, c.name, c.unit_price,
+                    p.meal, p.persons, p.amount
+             FROM customers c
+             LEFT JOIN production p
+               ON p.customer_id = c.id AND p.prod_date = ?
+             WHERE c.is_active = 1
+             ORDER BY c.name, c.id'
+        );
+        $st->execute([$prodDate]);
+        $out = [];
+        foreach ($st->fetchAll() as $r) {
+            $cid = (int) $r['customer_id'];
+            if (!isset($out[$cid])) {
+                $out[$cid] = [
+                    'customer_id' => $cid,
+                    'name' => (string) $r['name'],
+                    'unit_price' => (float) $r['unit_price'],
+                    'ogle' => 0, 'aksam' => 0, 'kumanya' => 0,
+                    'toplam' => 0, 'tutar' => 0.0,
+                ];
+            }
+            if ($r['meal'] === null) {
+                continue; // müşteri var, o güne kayıt yok
+            }
+            $p = (int) $r['persons'];
+            $meal = (string) $r['meal'];
+            // Ekranda yeri olmayan öğünler (sabah/gece) toplama girer ama öğlene yazılmaz —
+            // sayaçlar eksik göstermesin, kırılım kutuları da yanlış dolmasın.
+            if (in_array($meal, self::MEALS, true)) {
+                $out[$cid][$meal] += $p;
+            }
+            $out[$cid]['toplam'] += $p;
+            $out[$cid]['tutar'] += (float) $r['amount'];
+        }
+        return array_values($out);
+    }
+
+    /** @return array{ogle:int,aksam:int,kumanya:int} tek müşterinin o günkü kırılımı */
+    public function customerDayMeals(int $customerId, string $prodDate): array
+    {
+        $st = $this->pdo->prepare(
+            'SELECT meal, persons FROM production WHERE customer_id = ? AND prod_date = ?'
+        );
+        $st->execute([$customerId, $prodDate]);
+        $out = ['ogle' => 0, 'aksam' => 0, 'kumanya' => 0];
+        foreach ($st->fetchAll() as $r) {
+            if (isset($out[$r['meal']])) {
+                $out[$r['meal']] = (int) $r['persons'];
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * fable-023a: 3 öğünü tek işlemde yaz — >0 upsert, 0/eksik ise sil.
+     * Bağlı alanlar atomik gider: çağıran tek transaction içinde çağırır.
+     * @param array<string,int> $meals ['ogle'=>..,'aksam'=>..,'kumanya'=>..]
+     * @return array{ogle:int,aksam:int,kumanya:int,toplam:int} yazılan (normalize) değerler
+     */
+    public function saveDayMeals(
+        int $customerId,
+        string $prodDate,
+        array $meals,
+        float $unitPrice,
+        string $enteredBy = 'uysa'
+    ): array {
+        $written = [];
+        foreach (self::MEALS as $meal) {
+            $p = self::normalizePersons($meals[$meal] ?? 0);
+            $written[$meal] = $p;
+            if ($p > 0) {
+                $this->upsertProduction($customerId, $prodDate, $p, $unitPrice, $meal, $enteredBy);
+            } else {
+                $this->deleteProduction($customerId, $prodDate, $meal);
+            }
+        }
+        $written['toplam'] = $written['ogle'] + $written['aksam'] + $written['kumanya'];
+        return $written;
+    }
+
+    /** Negatif/boş/aşırı büyük girişi güvenli tam sayıya indirger. */
+    public static function normalizePersons(int|string|null $v): int
+    {
+        $n = (int) $v;
+        if ($n < 0) {
+            return 0;
+        }
+        return $n > self::MEAL_MAX ? self::MEAL_MAX : $n;
+    }
+
+    /**
+     * fable-023a: Toplam kutusu DOĞRUDAN düzenlendiğinde kırılımı türet —
+     * fark öğlene yazılır, akşam/kumanya korunur (ekranda da yazan kural).
+     * Toplam akşam+kumanya'nın altına düşerse (kural gereği imkânsız değil) öğlen 0 olur ve
+     * yazılan toplam TUTSUN diye önce kumanya, sonra akşam kısılır — ekran yalan söylemesin.
+     * @param array<string,int> $current mevcut kırılım
+     * @return array{ogle:int,aksam:int,kumanya:int}
+     */
+    public static function mealsFromTotal(int|string|null $newTotal, array $current): array
+    {
+        $total = self::normalizePersons($newTotal);
+        $aksam = self::normalizePersons($current['aksam'] ?? 0);
+        $kumanya = self::normalizePersons($current['kumanya'] ?? 0);
+        $rest = $total - $aksam - $kumanya;
+        if ($rest >= 0) {
+            return ['ogle' => $rest, 'aksam' => $aksam, 'kumanya' => $kumanya];
+        }
+        $eksik = -$rest;
+        $kes = min($kumanya, $eksik);
+        $kumanya -= $kes;
+        $eksik -= $kes;
+        $aksam = max(0, $aksam - $eksik);
+        return ['ogle' => 0, 'aksam' => $aksam, 'kumanya' => $kumanya];
     }
 
     public function dayTotals(string $prodDate, string $meal = 'ogle'): array

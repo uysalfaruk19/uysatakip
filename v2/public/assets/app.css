@@ -1641,3 +1641,132 @@ a.week-day.locked {
 .fin-detay {
   margin-top: -4px;
 }
+
+/* ── fable-023a: öğün kırılımı (müşteri adı → küçük pencere) ── */
+.row-name-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.row-name-btn strong {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 720;
+  border-bottom: 1px dashed var(--line);
+}
+.row-name-btn i {
+  font-size: 12px;
+  color: var(--primary);
+  flex: 0 0 auto;
+}
+.row-name-btn:active {
+  opacity: 0.7;
+}
+.meal-split {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--primary-tint);
+  color: var(--primary-600);
+  font-size: 11px;
+  font-weight: 750;
+}
+.meal-split[hidden] {
+  display: none;
+}
+
+.meal-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.meal-modal[hidden] {
+  display: none;
+}
+.meal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 22, 36, 0.44);
+}
+.meal-card {
+  position: relative;
+  width: min(420px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 24px 60px rgba(10, 22, 36, 0.28);
+  padding: 16px;
+}
+.meal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.meal-head h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+}
+.meal-sub {
+  margin: 2px 0 12px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+.meal-fields {
+  display: grid;
+  gap: 10px;
+}
+.meal-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 118px;
+  align-items: center;
+  gap: 10px;
+}
+.meal-field > span {
+  font-size: 14px;
+  font-weight: 700;
+}
+/* iOS otomatik zoom olmasın: ≥16px */
+.meal-input {
+  font-size: 17px;
+  font-weight: 800;
+  text-align: center;
+  min-height: 48px;
+  -moz-appearance: textfield;
+}
+.meal-input::-webkit-outer-spin-button,
+.meal-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.meal-total {
+  margin: 12px 0 2px;
+  font-size: 14px;
+  font-weight: 700;
+}
+.meal-hint {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+body.meal-open {
+  overflow: hidden;
+}

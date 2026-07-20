@@ -17,29 +17,49 @@ if ($gun !== '') {
     if (!Helpers::isDate($gun)) {
         Helpers::json(['ok' => false, 'error' => 'Geçersiz gün'], 400);
     }
-    $meal = $_GET['meal'] ?? 'ogle';
-    if (!in_array($meal, ['sabah', 'ogle', 'aksam', 'gece', 'kumanya'], true)) {
-        $meal = 'ogle';
-    }
-    $grid = $repo->dayGrid($gun, $meal);
-    $tot = $repo->dayTotals($gun, $meal);
+    // fable-023a: öğün verilmezse GÜNÜN TAMAMI (3 öğün) döner — panelin gösterdiği rakamla
+    // birebir aynı olsun diye. Tek öğün isteyen çağıran ?meal=... ile eski davranışı alır.
+    $mealParam = (string) ($_GET['meal'] ?? '');
+    $tekOgun = in_array($mealParam, ['sabah', 'ogle', 'aksam', 'gece', 'kumanya'], true);
+
     $rows = [];
     $eksik = [];
-    foreach ($grid as $r) {
-        $rows[] = [
-            'musteri' => $r['name'],
-            'kisi'    => $r['persons'] !== null ? (int) $r['persons'] : null,
-            'tutar'   => $r['amount'] !== null ? (float) $r['amount'] : null,
-        ];
-        if ($r['persons'] === null) {
-            $eksik[] = $r['name'];
+    if ($tekOgun) {
+        $tot = $repo->dayTotals($gun, $mealParam);
+        $toplam = ['kisi' => (int) $tot['persons'], 'tutar' => (float) $tot['amount']];
+        foreach ($repo->dayGrid($gun, $mealParam) as $r) {
+            $rows[] = [
+                'musteri' => $r['name'],
+                'kisi'    => $r['persons'] !== null ? (int) $r['persons'] : null,
+                'tutar'   => $r['amount'] !== null ? (float) $r['amount'] : null,
+            ];
+            if ($r['persons'] === null) {
+                $eksik[] = $r['name'];
+            }
         }
+    } else {
+        $kisi = 0; $tutar = 0.0;
+        foreach ($repo->dayGridAllMeals($gun) as $r) {
+            $var = (int) $r['toplam'] > 0;
+            $rows[] = [
+                'musteri' => $r['name'],
+                'kisi'    => $var ? (int) $r['toplam'] : null,
+                'tutar'   => $var ? (float) $r['tutar'] : null,
+                'ogunler' => ['ogle' => (int) $r['ogle'], 'aksam' => (int) $r['aksam'], 'kumanya' => (int) $r['kumanya']],
+            ];
+            if (!$var) {
+                $eksik[] = $r['name'];
+            }
+            $kisi += (int) $r['toplam'];
+            $tutar += (float) $r['tutar'];
+        }
+        $toplam = ['kisi' => $kisi, 'tutar' => $tutar];
     }
     Helpers::json([
         'ok'    => true,
         'gun'   => $gun,
-        'ogun'  => $meal,
-        'toplam' => ['kisi' => (int) $tot['persons'], 'tutar' => (float) $tot['amount']],
+        'ogun'  => $tekOgun ? $mealParam : 'hepsi',
+        'toplam' => $toplam,
         'musteriler' => $rows,
         'eksik' => $eksik,
     ]);

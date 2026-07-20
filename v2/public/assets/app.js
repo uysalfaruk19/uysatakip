@@ -9,6 +9,71 @@
     });
   }
 
+  // fable-023a: öğün kırılımı (öğlen/akşam/kumanya). Satırdaki gizli alanlar tek gerçek kaynak;
+  // toplam kutusu onların toplamıdır. Sunucudaki Repo::mealsFromTotal ile AYNI kural.
+  var MEALS = ["ogle", "aksam", "kumanya"];
+  var MEAL_LABEL = { ogle: "öğlen", aksam: "akşam", kumanya: "kumanya" };
+  var MEAL_MAX = 1000000;
+
+  function clampP(v) {
+    var n = parseInt(v, 10);
+    if (isNaN(n) || n < 0) n = 0;
+    if (n > MEAL_MAX) n = MEAL_MAX;
+    return n;
+  }
+
+  function rowMeals(row) {
+    var m = {};
+    MEALS.forEach(function (k) {
+      var el = row.querySelector(".m-" + k);
+      m[k] = el ? clampP(el.value) : 0;
+    });
+    return m;
+  }
+
+  function setRowMeals(row, m, edited) {
+    MEALS.forEach(function (k) {
+      var el = row.querySelector(".m-" + k);
+      if (el) el.value = m[k];
+    });
+    if (edited) {
+      var f = row.querySelector(".m-edited");
+      if (f) f.value = "1";
+    }
+    var lbl = row.querySelector(".meal-split");
+    if (lbl) {
+      var parts = [];
+      MEALS.forEach(function (k) {
+        if (m[k] > 0) parts.push(m[k] + " " + MEAL_LABEL[k]);
+      });
+      var show = m.aksam > 0 || m.kumanya > 0;
+      lbl.textContent = show ? parts.join(" · ") : "";
+      lbl.hidden = !show;
+    }
+  }
+
+  // Toplam kutusu doğrudan değişti → fark öğlene; akşam/kumanya korunur.
+  // Toplam akşam+kumanya altına düşerse önce kumanya, sonra akşam kısılır (ekran yalan söylemesin).
+  function mealsFromTotal(total, cur) {
+    total = clampP(total);
+    var aksam = cur.aksam,
+      kumanya = cur.kumanya;
+    var rest = total - aksam - kumanya;
+    if (rest >= 0) return { ogle: rest, aksam: aksam, kumanya: kumanya };
+    var eksik = -rest;
+    var kes = Math.min(kumanya, eksik);
+    kumanya -= kes;
+    eksik -= kes;
+    aksam = Math.max(0, aksam - eksik);
+    return { ogle: 0, aksam: aksam, kumanya: kumanya };
+  }
+
+  function syncFromTotal(row) {
+    var input = row.querySelector(".count-input");
+    if (!input) return;
+    setRowMeals(row, mealsFromTotal(input.value, rowMeals(row)), false);
+  }
+
   function recalc() {
     var rows = document.querySelectorAll(".customer-row[data-price]");
     var totPersons = 0,
@@ -34,7 +99,8 @@
     var sa = document.getElementById("sum-amount");
     var sf = document.getElementById("sum-filled");
     if (sp) sp.textContent = totPersons.toLocaleString("tr-TR");
-    if (sa) sa.textContent = "₺ " + fmt(totAmount);
+    // fable-023a: "₺" işareti span'ın DIŞINDA (bugun.php) — buraya da yazınca "₺ ₺" çıkıyordu
+    if (sa) sa.textContent = fmt(totAmount);
     if (sf) sf.textContent = filled + "/" + rows.length + " girildi";
   }
 
@@ -48,13 +114,112 @@
       parseInt(btn.getAttribute("data-step"), 10);
     if (v < 0) v = 0;
     input.value = v;
+    var row = btn.closest(".customer-row");
+    if (row) syncFromTotal(row); // fable-023a: toplam değişti → kırılım türetilir
     recalc();
   });
 
   document.addEventListener("input", function (e) {
-    if (e.target.classList && e.target.classList.contains("count-input"))
+    if (e.target.classList && e.target.classList.contains("count-input")) {
+      var row = e.target.closest(".customer-row");
+      if (row) syncFromTotal(row); // fable-023a
       recalc();
+    }
   });
+
+  // ── fable-023a: kırılım penceresi ────────────────────────────
+  var mealModal = document.getElementById("meal-modal");
+  var mealRow = null;
+
+  function mealModalTotal() {
+    var t = 0;
+    MEALS.forEach(function (k) {
+      var el = document.getElementById("meal-in-" + k);
+      if (el) t += clampP(el.value);
+    });
+    var out = document.getElementById("meal-modal-total");
+    if (out) out.textContent = t.toLocaleString("tr-TR");
+    return t;
+  }
+
+  function openMealModal(row) {
+    if (!mealModal) return;
+    mealRow = row;
+    var m = rowMeals(row);
+    MEALS.forEach(function (k) {
+      var el = document.getElementById("meal-in-" + k);
+      if (el) el.value = m[k];
+    });
+    var nameEl = document.getElementById("meal-modal-name");
+    if (nameEl) nameEl.textContent = row.getAttribute("data-name") || "";
+    mealModalTotal();
+    mealModal.hidden = false;
+    document.body.classList.add("meal-open");
+    var first = document.getElementById("meal-in-ogle");
+    if (first) first.focus();
+  }
+
+  function closeMealModal() {
+    if (!mealModal) return;
+    mealModal.hidden = true;
+    document.body.classList.remove("meal-open");
+    if (mealRow) {
+      var btn = mealRow.querySelector(".row-name-btn");
+      if (btn) btn.focus();
+    }
+    mealRow = null;
+  }
+
+  document.addEventListener("click", function (e) {
+    var open = e.target.closest("[data-meal-open]");
+    if (open) {
+      e.preventDefault();
+      var row = open.closest(".customer-row");
+      if (row) openMealModal(row);
+      return;
+    }
+    if (e.target.closest("[data-meal-close]")) {
+      e.preventDefault();
+      closeMealModal();
+    }
+  });
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && mealModal && !mealModal.hidden) closeMealModal();
+  });
+
+  document.addEventListener("input", function (e) {
+    if (e.target.classList && e.target.classList.contains("meal-input"))
+      mealModalTotal();
+  });
+
+  var mealSaveBtn = document.getElementById("meal-save");
+  if (mealSaveBtn) {
+    mealSaveBtn.addEventListener("click", function () {
+      if (!mealRow) return;
+      var m = {};
+      MEALS.forEach(function (k) {
+        var el = document.getElementById("meal-in-" + k);
+        m[k] = el ? clampP(el.value) : 0;
+      });
+      var row = mealRow;
+      setRowMeals(row, m, true);
+      var input = row.querySelector(".count-input");
+      var tot = m.ogle + m.aksam + m.kumanya;
+      if (input) input.value = tot > 0 ? tot : "";
+      recalc();
+      closeMealModal();
+      // Tek Kaydet / tek POST: kırılım anında kalıcı olur (yarım kayıt riski yok)
+      mealSaveBtn.disabled = true; // çift tık koruması
+      var form = document.getElementById("bugun-form");
+      if (form) {
+        if (form.requestSubmit) form.requestSubmit();
+        else form.submit();
+      } else {
+        mealSaveBtn.disabled = false;
+      }
+    });
+  }
 
   window.toggleSheet = function (id) {
     var el = document.getElementById(id);
