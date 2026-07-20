@@ -152,6 +152,27 @@ final class ParasutYaz
             'city'          => (string) ($adres['city'] ?? ''),
             'district'      => (string) ($adres['district'] ?? ''),
         ];
+        // fable-023c (ilk canlı kesim dersi, 21 Tem): teslim posta kodu + ÇIKIŞ (gönderici) adresi
+        // de belgeye yazılmalı — ilk denemede boş gitti. Hepsi ayardan gelir, koda gömülmez.
+        $sabit = [
+            'postal_code'           => 'irsaliye_teslim_posta',
+            'company_address'       => 'irsaliye_cikis_adres',
+            'company_city'          => 'irsaliye_cikis_il',
+            'company_district'      => 'irsaliye_cikis_ilce',
+            'company_postal_code'   => 'irsaliye_cikis_posta',
+        ];
+        foreach ($sabit as $alan => $ayar) {
+            $v = trim((string) $this->repo->ayar($ayar, ''));
+            if ($v !== '') {
+                $attr[$alan] = $v;
+            }
+        }
+        // Ticari irsaliye (geçmiş belgelerin tamamında is_commercial=true).
+        $ticari = trim((string) $this->repo->ayar('irsaliye_ticari', '1'));
+        if ($ticari !== '' && $ticari !== '0') {
+            $attr['is_commercial'] = true;
+        }
+
         // ⚠️ Taşıyıcı alanları: canlı belgede var, spec'te yok — kabul edildiği kanıtlanmadı.
         // Yanıt doğrulanır ve işlenmediyse sonuç ekranında AÇIKÇA bildirilir (gizlenmez).
         if ($t['plaka'] !== '') {
