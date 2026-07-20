@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS `parasut_fatura_log` (
   `updated_at`         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_fatura_cust` (`customer_id`, `donem_son`),
-  CONSTRAINT `fk_fatura_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE
+  CONSTRAINT `fk_pfaturalog_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ── 4) ayar: aylık bölüşüm contact id'leri + fatura↔irsaliye bağı şalteri ──
