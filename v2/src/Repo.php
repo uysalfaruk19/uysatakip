@@ -381,6 +381,8 @@ final class Repo
             return false;
         }
         $durum = in_array($d['durum'] ?? '', ['kesildi', 'hata', 'bilinmiyor'], true) ? $d['durum'] : 'hata';
+        // fable-023d: gönderim (resmileştirme) kesimden ayrı bir adım — ayrı izlenir.
+        $gonderim = in_array($d['gonderim'] ?? '', ['gonderildi', 'hata', 'yok'], true) ? $d['gonderim'] : 'yok';
         $args = [
             $d['parasut_doc_id'] ?? null,
             $d['despatch_no'] ?? null,
@@ -389,11 +391,12 @@ final class Repo
             $durum,
             $d['hata_mesaj'] ?? null,
             !empty($d['tasiyici_ok']) ? 1 : 0,
+            $gonderim,
             (string) ($d['entered_by'] ?? ''),
         ];
         if ($mevcut !== null) {
             $sql = 'UPDATE parasut_irsaliye_log SET parasut_doc_id = ?, despatch_no = ?, kalemler = ?,
-                        toplam_kisi = ?, durum = ?, hata_mesaj = ?, tasiyici_ok = ?, entered_by = ?,
+                        toplam_kisi = ?, durum = ?, hata_mesaj = ?, tasiyici_ok = ?, gonderim = ?, entered_by = ?,
                         updated_at = ' . $this->nowExpr() . '
                     WHERE customer_id = ? AND gun = ?';
             $args[] = $customerId;
@@ -403,8 +406,8 @@ final class Repo
         }
         $sql = 'INSERT INTO parasut_irsaliye_log
                     (parasut_doc_id, despatch_no, kalemler, toplam_kisi, durum, hata_mesaj,
-                     tasiyici_ok, entered_by, customer_id, gun)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+                     tasiyici_ok, gonderim, entered_by, customer_id, gun)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
         $args[] = $customerId;
         $args[] = $gun;
         $this->pdo->prepare($sql)->execute($args);

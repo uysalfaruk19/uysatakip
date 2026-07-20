@@ -144,13 +144,20 @@ final class ParasutYaz
     public function govde(string $parasutId, string $gun, array $kalemler, array $adres, ?string $sevkZamani = null): array
     {
         $t = $this->tasiyici();
+        // fable-023d (ilk gönderim gecesi dersi): issue_datetime ZORUNLU ve formatı hassas —
+        // ISO '+03:00' formatı Paraşüt'çe YOK SAYILIYOR, '.000Z' UTC formatı kabul ediliyor.
+        // Saat boş (00:00) kalırsa GİB şeması 'IssueTime eksik' diye REDDEDİYOR.
+        // Kural (Ömer): saat daima İstanbul'a göre — Paraşüt UTC saklar (09:30 İst kesim = 06:30Z
+        // kanıtı), o yüzden İstanbul şimdisinin UTC karşılığı gönderilir; ekranda İstanbul görünür.
+        $zaman = $sevkZamani ?? gmdate('Y-m-d\TH:i:s') . '.000Z';
         $attr = [
-            'issue_date'    => $gun,
-            'shipment_date' => $sevkZamani ?? date('c'),
-            'inflow'        => false, // çıkış irsaliyesi (bizden müşteriye)
-            'address'       => (string) ($adres['address'] ?? ''),
-            'city'          => (string) ($adres['city'] ?? ''),
-            'district'      => (string) ($adres['district'] ?? ''),
+            'issue_date'     => $gun,
+            'issue_datetime' => $zaman,
+            'shipment_date'  => $zaman,
+            'inflow'         => false, // çıkış irsaliyesi (bizden müşteriye)
+            'address'        => (string) ($adres['address'] ?? ''),
+            'city'           => (string) ($adres['city'] ?? ''),
+            'district'       => (string) ($adres['district'] ?? ''),
         ];
         // fable-023c (ilk canlı kesim dersi, 21 Tem): teslim posta kodu + ÇIKIŞ (gönderici) adresi
         // de belgeye yazılmalı — ilk denemede boş gitti. Hepsi ayardan gelir, koda gömülmez.
@@ -369,6 +376,17 @@ final class ParasutYaz
         $despatch = self::despatchNo($doc);
         $tasiyiciOk = $this->tasiyiciIslendiMi($doc);
 
+        // ── GÖNDERİM (fable-023d): e-İrsaliye resmileştirme — undokümante /legalize ucu. ──
+        // İlk gönderim gecesinde (21 Tem, OPAK UU02026000000590) kanıtlanan akış:
+        //   POST {id}/legalize gövde {data:{type,attributes:{to:<GİB alıcı kutusu>}}} → 202 +
+        //   trackable_job → job 'done' → belge legalized_at + despatch_no alır (status önce
+        //   'waiting' = GİB kuyruğu, normal). Alias müşteri kartında (edespatch_alias);
+        //   YOKSA gönderim DENENMEZ (yanlış kutuya resmi belge riski) — elle gönderilir.
+        [$gonderim, $gonderimMesaj, $despatch2] = $this->gonder($customerId, $docId);
+        if ($despatch2 !== null) {
+            $despatch = $despatch2; // numara çoğu zaman gönderimden SONRA oluşur
+        }
+
         $this->repo->irsaliyeLogKaydet($customerId, $gun, [
             'parasut_doc_id' => $docId !== '' ? $docId : null,
             'despatch_no'    => $despatch,
@@ -376,21 +394,83 @@ final class ParasutYaz
             'toplam_kisi'    => $toplam,
             'durum'          => 'kesildi',
             'tasiyici_ok'    => $tasiyiciOk,
+            'gonderim'       => $gonderim,
             'entered_by'     => $actor,
         ]);
         uysa_audit('parasut_irsaliye', $actor, $gun, json_encode([
             'customer_id' => $customerId, 'doc_id' => $docId, 'despatch_no' => $despatch,
-            'toplam_kisi' => $toplam, 'tasiyici_ok' => $tasiyiciOk,
+            'toplam_kisi' => $toplam, 'tasiyici_ok' => $tasiyiciOk, 'gonderim' => $gonderim,
         ], JSON_UNESCAPED_UNICODE), '');
 
-        $mesaj = $tasiyiciOk
-            ? 'İrsaliye kesildi.'
-            : 'Belge kesildi ama taşıyıcı bilgisi (plaka/şoför) işlenmedi — Paraşüt\'ten kontrol edin.';
+        $mesaj = $gonderim === 'gonderildi'
+            ? 'İrsaliye kesildi ve GÖNDERİLDİ' . ($despatch !== null ? " ($despatch)" : '') . '.'
+            : 'İrsaliye kesildi; ' . $gonderimMesaj;
+        if (!$tasiyiciOk) {
+            $mesaj .= ' Ayrıca taşıyıcı bilgisi (plaka/şoför) işlenmedi — Paraşüt\'ten kontrol edin.';
+        }
         if (!$sorguYapildi) {
             // Kalkanlardan biri çalışmadı: gizleme, söyle (yerel kilit + onay hâlâ devrede).
             $mesaj .= ' (Not: Paraşüt mükerrer sorgusu yapılamadı — elle kesilmiş bir belge varsa çift olabilir.)';
         }
         return self::sonuc(true, 'kesildi', $mesaj, $docId, $despatch, $tasiyiciOk, $parasutAd, $toplam);
+    }
+
+    /**
+     * e-İrsaliye gönderimi (resmileştirme). Belge ZATEN kesilmiş durumda çağrılır — burada ne
+     * olursa olsun belge geri alınmaz; başarısızlıkta kullanıcı elle gönderir.
+     * @return array{0:string,1:string,2:?string} [gonderim(gonderildi|hata|yok), mesaj, despatch_no]
+     */
+    private function gonder(int $customerId, string $docId): array
+    {
+        if ($docId === '') {
+            return ['hata', 'belge id alınamadı — Paraşüt\'ten elle gönderin.', null];
+        }
+        $musteri = null;
+        try {
+            $musteri = $this->repo->customer($customerId);
+        } catch (\Throwable) {
+        }
+        $alias = trim((string) ($musteri['edespatch_alias'] ?? ''));
+        if ($alias === '') {
+            return ['yok', 'GİB alıcı kutusu tanımlı değil — Paraşüt\'ten elle gönderin (müşteri kartına edespatch_alias girilebilir).', null];
+        }
+        $r = $this->cagir('POST', '/shipment_documents/' . rawurlencode($docId) . '/legalize',
+            ['data' => ['type' => 'shipment_documents', 'attributes' => ['to' => $alias]]]);
+        if ($r['net'] !== 'ok' || $r['status'] < 200 || $r['status'] >= 300) {
+            return ['hata', 'gönderim isteği kabul edilmedi (HTTP ' . $r['status'] . ') — Paraşüt\'ten elle gönderin.', null];
+        }
+        // trackable_job takibi (kısa: ~16 sn). Sonuçsuz kalırsa belge durumundan okunur.
+        $jobId = (string) ($r['data']['data']['id'] ?? '');
+        for ($i = 0; $i < 4 && $jobId !== ''; $i++) {
+            $this->bekle(4);
+            $j = $this->cagir('GET', '/trackable_jobs/' . rawurlencode($jobId), null);
+            $st = (string) ($j['data']['data']['attributes']['status'] ?? '');
+            if ($st === 'done') {
+                break;
+            }
+            if ($st === 'error') {
+                $err = $j['data']['data']['attributes']['errors'] ?? [];
+                return ['hata', 'GİB gönderimi reddetti: ' . mb_substr(json_encode($err, JSON_UNESCAPED_UNICODE), 0, 160)
+                    . ' — Paraşüt\'ten elle gönderin.', null];
+            }
+        }
+        // Belgeden doğrula: legalized_at oluştuysa gönderim başarılı (status 'waiting' = GİB kuyruğu, normal).
+        $d = $this->cagir('GET', '/shipment_documents/' . rawurlencode($docId), null);
+        $a = $d['data']['data']['attributes'] ?? [];
+        $despatch = isset($a['despatch_no']) && $a['despatch_no'] !== null && $a['despatch_no'] !== ''
+            ? (string) $a['despatch_no'] : null;
+        if (!empty($a['legalized_at'])) {
+            return ['gonderildi', '', $despatch];
+        }
+        return ['hata', 'gönderim sonucu doğrulanamadı — Paraşüt\'ten kontrol edin/elle gönderin.', $despatch];
+    }
+
+    /** Test edilebilir bekleme (mock ağda beklememek için gerçek ağ bayrağına bağlı). */
+    private function bekle(int $sn): void
+    {
+        if ($this->gercekAg) {
+            sleep($sn);
+        }
     }
 
     // ── iç yardımcılar ───────────────────────────────────────────
