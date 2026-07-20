@@ -239,7 +239,9 @@ final class IrsaliyeTest extends TestCase
         $r = $yaz->createShipmentDocument($cid, '2026-07-20', ['ogle' => 75], ['onay' => 'imza']);
 
         $this->assertTrue($r['ok'], 'istek hiç gitmediyse tek sefer yeniden denenir');
-        $this->assertSame(2, count(array_filter($this->cagrilar, static fn($c) => $c['method'] === 'POST')));
+        // fable-023g: kesim POST'ları sayılır (path filtresi) — gönderim adımı ayrı POST atar.
+        $this->assertSame(2, count(array_filter($this->cagrilar,
+            static fn($c) => $c['method'] === 'POST' && $c['path'] === '/shipment_documents')));
     }
 
     // ══ 5) Kapsam dışı / eşleşmesiz müşteri ══════════════════════
@@ -304,14 +306,14 @@ final class IrsaliyeTest extends TestCase
         $this->assertTrue($r['ok']);
         $this->assertSame(58, $r['toplam'], '25+25+8');
 
+        // fable-023g: kesim POST'u path ile seçilir (sonrasında gönderim/legalize POST'u da var).
         $post = null;
         foreach ($this->cagrilar as $c) {
-            if ($c['method'] === 'POST') {
+            if ($c['method'] === 'POST' && $c['path'] === '/shipment_documents') {
                 $post = $c;
             }
         }
         $this->assertNotNull($post);
-        $this->assertSame('/shipment_documents', $post['path']);
         $d = $post['body']['data'];
         $this->assertSame('shipment_documents', $d['type']);
         $this->assertSame('2026-07-20', $d['attributes']['issue_date']);
