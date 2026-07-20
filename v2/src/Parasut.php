@@ -21,11 +21,57 @@ final class Parasut
     private const API_BASE  = 'https://api.parasut.com/v4';
     private const REDIRECT  = 'urn:ietf:wg:oauth:2.0:oob';
     private const TIMEOUT   = 20;
-    private const PAGE_SIZE = 100;
+    // Canlı API sayfa boyutu üst sınırı 25 — 100 istenirse HTTP 422 (fable-023 keşfinde yakalandı).
+    private const PAGE_SIZE = 25;
     private const MAX_PAGES = 100; // güvenlik freni (sonsuz sayfalamayı önle)
 
     /** @var array<string,mixed>|null bellek-içi token cache (istek boyunca) */
     private static $memToken = null;
+
+    /**
+     * fable-023: Kredensiyaller VPS'te ŞİFRELİ durur (Ömer kararı, 2026-07-20).
+     * PARASUT_ENC_FILE (AES-256-CBC, "base64(iv):base64(ciphertext)") anahtarı AYRI yoldaki
+     * PARASUT_KEY_FILE'dan okunur (chmod 400, repoya/yedeğe girmez). Çözülen değerler yalnız
+     * sürecin belleğine (putenv) alınır; diske yazılmaz, log'a basılmaz.
+     * Dürüst sınır: sunucuya root erişen anahtarı da okur — bu yöntem dosya/yedek sızıntısını kapatır.
+     * Env'de düz PARASUT_* varsa (yerel geliştirme) ona dokunulmaz.
+     */
+    public static function loadEncryptedCreds(): bool
+    {
+        if ((string) Env::get('PARASUT_CLIENT_ID', '') !== '') {
+            return true; // zaten yüklü (env veya önceki çağrı)
+        }
+        $encFile = (string) Env::get('PARASUT_ENC_FILE', '');
+        $keyFile = (string) Env::get('PARASUT_KEY_FILE', '');
+        if ($encFile === '' || $keyFile === '' || !is_readable($encFile) || !is_readable($keyFile)) {
+            return false;
+        }
+        $blob = trim((string) @file_get_contents($encFile));
+        $key  = base64_decode(trim((string) @file_get_contents($keyFile)), true);
+        if ($blob === '' || $key === false || strlen($key) !== 32 || !str_contains($blob, ':')) {
+            return false;
+        }
+        [$ivB64, $ctB64] = explode(':', $blob, 2);
+        $iv = base64_decode($ivB64, true);
+        $ct = base64_decode($ctB64, true);
+        if ($iv === false || $ct === false || strlen($iv) !== 16) {
+            return false;
+        }
+        $json = openssl_decrypt($ct, 'aes-256-cbc', $key, OPENSSL_RAW_DATA, $iv);
+        $data = $json === false ? null : json_decode($json, true);
+        if (!is_array($data)) {
+            return false;
+        }
+        foreach (['PARASUT_CLIENT_ID', 'PARASUT_CLIENT_SECRET', 'PARASUT_USERNAME', 'PARASUT_PASSWORD', 'PARASUT_COMPANY_ID'] as $k) {
+            $v = (string) ($data[$k] ?? '');
+            if ($v === '') {
+                return false;
+            }
+            putenv("$k=$v");
+            $_ENV[$k] = $v;
+        }
+        return true;
+    }
 
     /**
      * Env'de tüm Paraşüt kredensiyalleri tanımlı mı? (parasut.php bunu kontrol edip
@@ -33,6 +79,7 @@ final class Parasut
      */
     public static function configured(): bool
     {
+        self::loadEncryptedCreds();
         foreach (['PARASUT_CLIENT_ID', 'PARASUT_CLIENT_SECRET', 'PARASUT_USERNAME', 'PARASUT_PASSWORD', 'PARASUT_COMPANY_ID'] as $k) {
             if ((string) Env::get($k, '') === '') {
                 return false;
@@ -64,6 +111,7 @@ final class Parasut
      */
     public static function token(): string
     {
+        self::loadEncryptedCreds();
         if (is_array(self::$memToken) && self::tokenFresh(self::$memToken)) {
             return (string) self::$memToken['access_token'];
         }
