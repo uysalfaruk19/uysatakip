@@ -796,6 +796,22 @@ h3 {
   font-weight: 800;
   letter-spacing: 0.2px;
   vertical-align: middle;
+  white-space: nowrap;
+}
+/* fable-022: Eksik rozeti artık link — tıkla → bugun.php o tarih + müşteri odaklı (derin bağlantı) */
+a.eksik-badge {
+  text-decoration: none;
+  cursor: pointer;
+}
+a.eksik-badge:hover {
+  filter: brightness(1.12);
+}
+.customer-row.is-focus {
+  background: linear-gradient(90deg, var(--red-tint), transparent 72%);
+  margin-inline: -16px;
+  padding-inline: 16px;
+  box-shadow: inset 3px 0 0 var(--red);
+  scroll-margin-top: 90px;
 }
 .summary-card.tint-red {
   background: var(--red-tint);

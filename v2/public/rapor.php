@@ -126,7 +126,7 @@ if ($drill) {
                   <tr class="<?= $isMissing ? 'is-missing' : '' ?>"<?= $rowId ?>>
                     <?php // fable-020: gün kısaltması Türkçe (date('D') İngilizce basıyordu — UI TR kuralı)
                     $gunTrKisa = ['Mon' => 'Pzt', 'Tue' => 'Sal', 'Wed' => 'Çar', 'Thu' => 'Per', 'Fri' => 'Cum', 'Sat' => 'Cmt', 'Sun' => 'Paz']; ?>
-                    <td><?= Helpers::e(date('d.m', strtotime($r['gun'])) . ' ' . ($gunTrKisa[date('D', strtotime($r['gun']))] ?? '')) ?><?php if ($isMissing): ?> <span class="eksik-badge">Eksik</span><?php endif; ?></td>
+                    <td><?= Helpers::e(date('d.m', strtotime($r['gun'])) . ' ' . ($gunTrKisa[date('D', strtotime($r['gun']))] ?? '')) ?><?php if ($isMissing): ?> <a class="eksik-badge" href="bugun.php?date=<?= Helpers::e($r['gun']) ?>&focus=<?= (int) $drillId ?>">Eksik · Gir <i class="bi bi-pencil-square" style="font-size:10px"></i></a><?php endif; ?></td>
                     <td><?= $r['recorded'] && $r['ogle'] ? number_format((int) $r['ogle'], 0, ',', '.') : $ph ?></td>
                     <td><?= $r['recorded'] && $r['aksam'] ? number_format((int) $r['aksam'], 0, ',', '.') : $ph ?></td>
                     <td><?= $r['recorded'] && $r['kumanya'] ? number_format((int) $r['kumanya'], 0, ',', '.') : $ph ?></td>

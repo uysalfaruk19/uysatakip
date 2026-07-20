@@ -16,6 +16,8 @@ $date = (string) ($_GET['date'] ?? Helpers::today());
 if (!Helpers::isDate($date)) {
     $date = Helpers::today();
 }
+// fable-022: rapor "Eksik · Gir" derin bağlantısı — gelinen müşteri satırı vurgulanır
+$focus = (int) ($_GET['focus'] ?? 0);
 $flash = '';
 $flashOk = true;
 
@@ -123,14 +125,14 @@ require __DIR__ . '/partials/header.php';
         <div class="stat-card stat-green">
           <div class="ico"><i class="bi bi-cash-stack"></i></div>
           <div class="txt">
-            <p class="lbl">Bugünkü toplam ciro</p>
+            <p class="lbl"><?= $date === Helpers::today() ? 'Bugünkü toplam ciro' : Helpers::e(date('d.m', strtotime($date))) . ' toplam ciro' ?></p>
             <p class="val">₺ <span id="sum-amount"><?= Helpers::money($sumA) ?></span></p>
           </div>
         </div>
         <div class="stat-card stat-orange">
           <div class="ico"><i class="bi bi-people-fill"></i></div>
           <div class="txt">
-            <p class="lbl">Bugünkü toplam kişi</p>
+            <p class="lbl"><?= $date === Helpers::today() ? 'Bugünkü toplam kişi' : Helpers::e(date('d.m', strtotime($date))) . ' toplam kişi' ?></p>
             <p class="val" id="sum-persons"><?= number_format($sumP, 0, ',', '.') ?></p>
           </div>
         </div>
@@ -197,8 +199,8 @@ require __DIR__ . '/partials/header.php';
           <?php if (!$rowsData): ?>
             <div class="empty-state">Aktif müşteri yok.</div>
           <?php endif; ?>
-          <?php foreach ($rowsData as $r): $missing = $r['val'] === 0; ?>
-            <div class="customer-row <?= $missing ? 'missing' : '' ?>" data-price="<?= $r['price'] ?>">
+          <?php foreach ($rowsData as $r): $missing = $r['val'] === 0; $isFocus = $focus > 0 && $r['cid'] === $focus; ?>
+            <div class="customer-row <?= $missing ? 'missing' : '' ?> <?= $isFocus ? 'is-focus' : '' ?>"<?= $isFocus ? ' id="focus-row"' : '' ?> data-price="<?= $r['price'] ?>">
               <div>
                 <div class="row-title"><span class="status-dot <?= $missing ? 'warn' : '' ?>"></span><strong><?= Helpers::e($r['name']) ?></strong></div>
                 <p class="row-meta">₺ <?= Helpers::money($r['price']) ?> kişi başı · <span class="row-amt"><?= $missing ? 'girilmedi' : '₺ ' . Helpers::money($r['amt']) ?></span></p>
@@ -217,4 +219,15 @@ require __DIR__ . '/partials/header.php';
           <button class="btn-action btn-primaryx flex-fill" type="submit"><i class="bi bi-check2"></i> Kaydet</button>
         </div>
       </form>
+      <?php if ($focus > 0): ?>
+      <script>
+        (function () {
+          var row = document.getElementById('focus-row');
+          if (!row) return;
+          row.scrollIntoView({ block: 'center' });
+          var inp = row.querySelector('.count-input');
+          if (inp) inp.focus();
+        })();
+      </script>
+      <?php endif; ?>
 <?php require __DIR__ . '/partials/footer.php'; ?>
