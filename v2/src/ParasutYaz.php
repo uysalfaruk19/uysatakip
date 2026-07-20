@@ -387,6 +387,12 @@ final class ParasutYaz
             $despatch = $despatch2; // numara çoğu zaman gönderimden SONRA oluşur
         }
 
+        // fable-023e: müşteri mail istiyorsa (irsaliye_mail dolu) belge maillenir —
+        // SADECE resmileşmiş belge (gönderim başarısızsa müşteriye mail atılmaz).
+        [$mail, $mailMesaj] = $gonderim === 'gonderildi'
+            ? $this->mailPaylas($customerId, $docId, $despatch, $gun)
+            : ['yok', ''];
+
         $this->repo->irsaliyeLogKaydet($customerId, $gun, [
             'parasut_doc_id' => $docId !== '' ? $docId : null,
             'despatch_no'    => $despatch,
@@ -395,16 +401,23 @@ final class ParasutYaz
             'durum'          => 'kesildi',
             'tasiyici_ok'    => $tasiyiciOk,
             'gonderim'       => $gonderim,
+            'mail'           => $mail,
             'entered_by'     => $actor,
         ]);
         uysa_audit('parasut_irsaliye', $actor, $gun, json_encode([
             'customer_id' => $customerId, 'doc_id' => $docId, 'despatch_no' => $despatch,
             'toplam_kisi' => $toplam, 'tasiyici_ok' => $tasiyiciOk, 'gonderim' => $gonderim,
+            'mail' => $mail,
         ], JSON_UNESCAPED_UNICODE), '');
 
         $mesaj = $gonderim === 'gonderildi'
             ? 'İrsaliye kesildi ve GÖNDERİLDİ' . ($despatch !== null ? " ($despatch)" : '') . '.'
             : 'İrsaliye kesildi; ' . $gonderimMesaj;
+        if ($mail === 'gonderildi') {
+            $mesaj .= ' Mail paylaşıldı' . ($mailMesaj !== '' ? " ($mailMesaj)" : '') . '.';
+        } elseif ($mail === 'hata') {
+            $mesaj .= ' Mail paylaşımı BAŞARISIZ — Paraşüt\'ten elle paylaşın.';
+        }
         if (!$tasiyiciOk) {
             $mesaj .= ' Ayrıca taşıyıcı bilgisi (plaka/şoför) işlenmedi — Paraşüt\'ten kontrol edin.';
         }
@@ -471,6 +484,44 @@ final class ParasutYaz
         if ($this->gercekAg) {
             sleep($sn);
         }
+    }
+
+    /**
+     * fable-023e: Belgeyi müşterinin mail adres(ler)ine paylaş (Paraşüt 'sharings' ucu).
+     * Canlı kanıt (21 Tem): POST /sharings, 'portal' parametresi ZORUNLU (yoksa 400),
+     * başarıda email_status='sent'. Adres yoksa hiç çağrı yapılmaz.
+     * @return array{0:string,1:string} [mail(gonderildi|hata|yok), mesaj(adresler)]
+     */
+    private function mailPaylas(int $customerId, string $docId, ?string $despatch, string $gun): array
+    {
+        $musteri = null;
+        try {
+            $musteri = $this->repo->customer($customerId);
+        } catch (\Throwable) {
+        }
+        $adresler = trim((string) ($musteri['irsaliye_mail'] ?? ''));
+        if ($adresler === '' || $docId === '') {
+            return ['yok', ''];
+        }
+        $tarih = date('d.m.Y', strtotime($gun));
+        $konu = 'e-İrsaliye' . ($despatch !== null ? ' ' . $despatch : '') . ' — UYSA YEMEK';
+        $r = $this->cagir('POST', '/sharings', ['data' => [
+            'type'       => 'sharing_forms',
+            'attributes' => [
+                'email'  => [
+                    'addresses' => $adresler,
+                    'subject'   => $konu,
+                    'body'      => $tarih . ' tarihli e-İrsaliyeniz ektedir. İyi çalışmalar dileriz.',
+                ],
+                // Zorunlu parametre (400 kanıtı); irsaliye mailinde portal özellikleri kapalı.
+                'portal' => ['has_online_collection' => false, 'has_online_payment_reminder' => false, 'has_referral_link' => false],
+            ],
+            'relationships' => ['shareable' => ['data' => ['id' => $docId, 'type' => 'shipment_documents']]],
+        ]]);
+        if ($r['net'] !== 'ok' || $r['status'] < 200 || $r['status'] >= 300) {
+            return ['hata', ''];
+        }
+        return ['gonderildi', $adresler];
     }
 
     // ── iç yardımcılar ───────────────────────────────────────────

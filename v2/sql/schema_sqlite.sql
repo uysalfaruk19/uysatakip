@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS customers (
   sevk_il TEXT,
   sevk_ilce TEXT,
   edespatch_alias TEXT,                         -- fable-023d: GİB e-İrsaliye alıcı kutusu (legalize 'to')
+  irsaliye_mail TEXT,                           -- fable-023e: e-İrsaliye mail paylaşım adresleri (virgülle çoklu)
   is_active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -524,6 +525,7 @@ CREATE TABLE IF NOT EXISTS parasut_irsaliye_log (
   hata_mesaj TEXT,
   tasiyici_ok INTEGER NOT NULL DEFAULT 0,  -- dönen belgede plaka/şoför işlendi mi
   gonderim TEXT NOT NULL DEFAULT 'yok' CHECK(gonderim IN ('gonderildi','hata','yok')), -- fable-023d
+  mail TEXT NOT NULL DEFAULT 'yok' CHECK(mail IN ('gonderildi','hata','yok')),         -- fable-023e
   entered_by TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
