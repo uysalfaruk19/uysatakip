@@ -134,6 +134,31 @@ foreach ($grid as $r) {
 }
 $total = count($rowsData);
 
+// fable-023b: İrsaliyelendir — o günün adayları (seçilemeyen de listelenir, SEBEBİYLE).
+// Şalter kapalıyken de ekran çalışır; kesim yerine önizleme gösterilir (rozet uyarır).
+$irsaliyeAdaylari = [];
+$irsaliyeSecilebilir = 0;
+$irsaliyeGirilen = 0;
+// Canlı muhasebeye yazan işlem → yalnız yetkili kullanıcı görür (sunucuda da ayrı kapı var).
+$irsaliyeYetkili = Auth::isAdmin($u);
+try {
+    $irsaliyeAdaylari = $repo->irsaliyeAdaylari($date);
+    foreach ($irsaliyeAdaylari as $a) {
+        if ($a['toplam'] > 0) {
+            $irsaliyeGirilen++;
+        }
+        if ($a['secilebilir']) {
+            $irsaliyeSecilebilir++;
+        }
+    }
+} catch (\Throwable $e) {
+    // migrate_031 henüz uygulanmadıysa (kolon/tablo yok) ana ekran ÇALIŞMAYA DEVAM eder;
+    // yalnız İrsaliyelendir görünmez. "İşleyen düzeni bozma" kuralı.
+    error_log('[UYSA v2 bugun] irsaliye adayları okunamadı: ' . $e->getMessage());
+    $irsaliyeYetkili = false;
+}
+$irsaliyeAcik = \Uysa\ParasutYaz::aktif();
+
 $prevDay = date('Y-m-d', strtotime($date . ' -1 day'));
 $nextDay = date('Y-m-d', strtotime($date . ' +1 day'));
 $pendingCount = $repo->pendingOrdersCount();
@@ -243,7 +268,16 @@ require __DIR__ . '/partials/header.php';
         <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
         <input type="hidden" name="date" value="<?= Helpers::e($date) ?>">
         <div class="cardx card-pad" id="musteri-sayilari" style="scroll-margin-top: 14px">
-          <h2>Müşteri sayıları</h2>
+          <!-- fable-023b: başlık + İrsaliyelendir (Paraşüt e-İrsaliye); sayı girilmemişse pasif -->
+          <div class="head-row">
+            <h2>Müşteri sayıları</h2>
+            <?php if ($irsaliyeYetkili): ?>
+            <button type="button" class="btn-chip" id="irs-open"<?= $irsaliyeGirilen === 0 ? ' disabled' : '' ?>
+              aria-haspopup="dialog" title="<?= $irsaliyeGirilen === 0 ? 'Bugün için sayı girilmemiş' : 'Seçtiğin müşterilere Paraşüt\'ten irsaliye kes' ?>">
+              <i class="bi bi-truck"></i> İrsaliyelendir
+            </button>
+            <?php endif; ?>
+          </div>
           <?php if (!$rowsData): ?>
             <div class="empty-state">Aktif müşteri yok.</div>
           <?php endif; ?>
@@ -302,6 +336,89 @@ require __DIR__ . '/partials/header.php';
           </div>
         </div>
       </div>
+      <?php if ($irsaliyeYetkili): ?>
+      <!-- fable-023b: İrsaliyelendir — seçim → onay → sonuç (tek pencere, üç adım).
+           Form DIŞINDA: buradaki kutucuklar üretim formuyla birlikte POST edilmez. -->
+      <div class="meal-modal" id="irs-modal" hidden>
+        <div class="meal-backdrop" data-irs-close></div>
+        <div class="meal-card irs-card" role="dialog" aria-modal="true" aria-labelledby="irs-modal-title">
+          <div class="meal-head">
+            <h3 id="irs-modal-title">İrsaliyelendir</h3>
+            <button type="button" class="icon-btn" data-irs-close aria-label="Kapat"><i class="bi bi-x-lg"></i></button>
+          </div>
+          <p class="meal-sub"><?= Helpers::e(date('d.m.Y', strtotime($date))) ?> · Paraşüt e-İrsaliye</p>
+          <?php if (!$irsaliyeAcik): ?>
+            <p class="irs-badge"><i class="bi bi-lock"></i> Kesim kapalı — Ömer onayı bekleniyor. Bu ekran yalnız <strong>önizleme</strong> yapar, Paraşüt'e hiçbir şey gönderilmez.</p>
+          <?php endif; ?>
+
+          <!-- adım 1: seçim -->
+          <div id="irs-step-secim">
+            <?php if (!$irsaliyeAdaylari): ?>
+              <div class="empty-state">Aktif müşteri yok.</div>
+            <?php else: ?>
+            <div class="irs-tools">
+              <label class="irs-check"><input type="checkbox" id="irs-all"<?= $irsaliyeSecilebilir === 0 ? ' disabled' : '' ?>> <span>Tümünü seç / kaldır</span></label>
+              <span class="badge-soft" id="irs-count">0 seçili</span>
+            </div>
+            <div class="irs-list">
+              <?php foreach ($irsaliyeAdaylari as $a):
+                  $parts = [];
+                  foreach ($mealLabels as $mk => $ml) {
+                      if ($a[$mk] > 0) {
+                          $parts[] = $a[$mk] . ' ' . mb_strtolower($ml, 'UTF-8');
+                      }
+                  }
+                  $kirilim = $parts ? implode(' · ', $parts) : 'sayı yok';
+              ?>
+                <label class="irs-row <?= $a['secilebilir'] ? '' : 'is-off' ?>">
+                  <input type="checkbox" class="irs-pick" value="<?= (int) $a['customer_id'] ?>"<?= $a['secilebilir'] ? '' : ' disabled' ?>>
+                  <span class="irs-name"><?= Helpers::e($a['name']) ?></span>
+                  <span class="irs-meta"><?= Helpers::e($kirilim) ?></span>
+                  <?php if (!$a['secilebilir']): ?>
+                    <span class="irs-why"><?= Helpers::e($a['sebep']) ?><?= $a['despatch_no'] ? ' · ' . Helpers::e((string) $a['despatch_no']) : '' ?></span>
+                  <?php endif; ?>
+                  <?php if ($a['durum'] === 'bilinmiyor'): ?>
+                    <!-- Timeout kilidi çıkmaz sokak olmasın: Paraşüt'ten bakan insan kararını yazar -->
+                    <span class="irs-fix">
+                      <button type="button" class="btn-mini" data-irs-cozum="kesilmedi" data-cid="<?= (int) $a['customer_id'] ?>">Paraşüt'te YOK — kilidi aç</button>
+                      <button type="button" class="btn-mini" data-irs-cozum="kesildi" data-cid="<?= (int) $a['customer_id'] ?>">Paraşüt'te VAR — kesildi işaretle</button>
+                    </span>
+                  <?php endif; ?>
+                </label>
+              <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+            <div class="actions-row mt-3">
+              <button type="button" class="btn-action btn-secondaryx flex-fill" data-irs-close>Vazgeç</button>
+              <button type="button" class="btn-action btn-primaryx flex-fill" id="irs-next" disabled>Tamam</button>
+            </div>
+          </div>
+
+          <!-- adım 2: onay -->
+          <div id="irs-step-onay" hidden>
+            <div id="irs-ozet"></div>
+            <p class="irs-warn"><i class="bi bi-exclamation-triangle"></i> Paraşüt'te <strong>resmi e-İrsaliye</strong> oluşur ve GİB'e gider. Bu işlem geri alınamaz.</p>
+            <details class="irs-json"><summary>Paraşüt'e gidecek veri (kuru deneme)</summary><pre id="irs-govde"></pre></details>
+            <div class="actions-row mt-3">
+              <button type="button" class="btn-action btn-secondaryx flex-fill" id="irs-back">Geri</button>
+              <button type="button" class="btn-action btn-primaryx flex-fill" id="irs-cut">İrsaliyeleri Kes</button>
+            </div>
+          </div>
+
+          <!-- adım 3: sonuç -->
+          <div id="irs-step-sonuc" hidden>
+            <div id="irs-sonuc"></div>
+            <div class="actions-row mt-3">
+              <button type="button" class="btn-action btn-secondaryx flex-fill" id="irs-retry" hidden>Başarısızları tekrar dene</button>
+              <button type="button" class="btn-action btn-primaryx flex-fill" data-irs-close>Kapat</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <script>window.IRS = {csrf: <?= json_encode(Helpers::csrfToken()) ?>, date: <?= json_encode($date) ?>, kapali: <?= $irsaliyeAcik ? 'false' : 'true' ?>};</script>
+      <script src="assets/irsaliye.js?v=<?= filemtime(__DIR__ . '/assets/irsaliye.js') ?>"></script>
+      <?php endif; ?>
+
       <?php if ($focus > 0): ?>
       <script>
         (function () {

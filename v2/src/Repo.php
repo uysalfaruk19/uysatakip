@@ -339,6 +339,142 @@ final class Repo
         return $r ?: null;
     }
 
+    // ── fable-023b: Paraşüt e-İrsaliye kesim kaydı ────────────────
+    // NEDEN: kesilen belge GİB'e giden RESMİ e-İrsaliye. Mükerrer kesim geri dönülmez zarar →
+    // kalkan üç katman: (1) DB UNIQUE(customer_id,gun) burada, (2) kesim öncesi Paraşüt sorgusu
+    // (ParasutYaz), (3) UI'da "kesildi" kilidi. Kayıt SİLİNMEZ — audit izi.
+
+    /** Bir müşterinin o güne ait irsaliye kaydı (yoksa null). */
+    public function irsaliyeLog(int $customerId, string $gun): ?array
+    {
+        $st = $this->pdo->prepare(
+            'SELECT * FROM parasut_irsaliye_log WHERE customer_id = ? AND gun = ?'
+        );
+        $st->execute([$customerId, $gun]);
+        $r = $st->fetch();
+        return $r ?: null;
+    }
+
+    /** @return array<int,array> customer_id => o günkü irsaliye kaydı */
+    public function irsaliyeLoglariGun(string $gun): array
+    {
+        $st = $this->pdo->prepare('SELECT * FROM parasut_irsaliye_log WHERE gun = ?');
+        $st->execute([$gun]);
+        $out = [];
+        foreach ($st->fetchAll() as $r) {
+            $out[(int) $r['customer_id']] = $r;
+        }
+        return $out;
+    }
+
+    /**
+     * Kesim sonucunu yaz. 'kesildi' kaydının ÜZERİNE YAZILMAZ (resmi belge izi korunur);
+     * 'hata'/'bilinmiyor' kaydı tekrar denemede güncellenir.
+     * @param array{parasut_doc_id?:?string,despatch_no?:?string,kalemler?:array,toplam_kisi?:int,
+     *   durum:string,hata_mesaj?:?string,tasiyici_ok?:bool,entered_by?:string} $d
+     * @return bool yazıldı mı (false = zaten 'kesildi', dokunulmadı)
+     */
+    public function irsaliyeLogKaydet(int $customerId, string $gun, array $d): bool
+    {
+        $mevcut = $this->irsaliyeLog($customerId, $gun);
+        if ($mevcut !== null && (string) $mevcut['durum'] === 'kesildi') {
+            return false;
+        }
+        $durum = in_array($d['durum'] ?? '', ['kesildi', 'hata', 'bilinmiyor'], true) ? $d['durum'] : 'hata';
+        $args = [
+            $d['parasut_doc_id'] ?? null,
+            $d['despatch_no'] ?? null,
+            isset($d['kalemler']) ? json_encode($d['kalemler'], JSON_UNESCAPED_UNICODE) : null,
+            (int) ($d['toplam_kisi'] ?? 0),
+            $durum,
+            $d['hata_mesaj'] ?? null,
+            !empty($d['tasiyici_ok']) ? 1 : 0,
+            (string) ($d['entered_by'] ?? ''),
+        ];
+        if ($mevcut !== null) {
+            $sql = 'UPDATE parasut_irsaliye_log SET parasut_doc_id = ?, despatch_no = ?, kalemler = ?,
+                        toplam_kisi = ?, durum = ?, hata_mesaj = ?, tasiyici_ok = ?, entered_by = ?,
+                        updated_at = ' . $this->nowExpr() . '
+                    WHERE customer_id = ? AND gun = ?';
+            $args[] = $customerId;
+            $args[] = $gun;
+            $this->pdo->prepare($sql)->execute($args);
+            return true;
+        }
+        $sql = 'INSERT INTO parasut_irsaliye_log
+                    (parasut_doc_id, despatch_no, kalemler, toplam_kisi, durum, hata_mesaj,
+                     tasiyici_ok, entered_by, customer_id, gun)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+        $args[] = $customerId;
+        $args[] = $gun;
+        $this->pdo->prepare($sql)->execute($args);
+        return true;
+    }
+
+    private function nowExpr(): string
+    {
+        return $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite'
+            ? "datetime('now')" : 'NOW()';
+    }
+
+    /**
+     * fable-023b: Seçim ekranının tek gerçek kaynağı — o günün müşterileri + neden
+     * seçilebilir/seçilemez. Sessiz atlama YOK: seçilemeyen satır da listelenir, sebebi yazılır.
+     * @return array<int,array{customer_id:int,name:string,parasut_id:string,ogle:int,aksam:int,
+     *   kumanya:int,toplam:int,secilebilir:bool,sebep:string,despatch_no:?string,durum:?string}>
+     */
+    public function irsaliyeAdaylari(string $gun): array
+    {
+        $loglar = $this->irsaliyeLoglariGun($gun);
+        $flags = [];
+        foreach ($this->pdo->query('SELECT id, parasut_id, irsaliye_aktif FROM customers')->fetchAll() as $r) {
+            $flags[(int) $r['id']] = [
+                'parasut_id' => trim((string) ($r['parasut_id'] ?? '')),
+                'aktif'      => (int) ($r['irsaliye_aktif'] ?? 1) === 1,
+            ];
+        }
+        $out = [];
+        foreach ($this->dayGridAllMeals($gun) as $r) {
+            $cid = (int) $r['customer_id'];
+            $f = $flags[$cid] ?? ['parasut_id' => '', 'aktif' => true];
+            $log = $loglar[$cid] ?? null;
+            $durum = $log !== null ? (string) $log['durum'] : null;
+
+            $secilebilir = true;
+            $sebep = '';
+            if ((int) $r['toplam'] <= 0) {
+                $secilebilir = false;
+                $sebep = 'Bugün için sayı girilmemiş';
+            } elseif (!$f['aktif']) {
+                $secilebilir = false;
+                $sebep = 'İrsaliye kapsamı dışı (aylık faturadan gidiyor)';
+            } elseif ($f['parasut_id'] === '') {
+                $secilebilir = false;
+                $sebep = 'Paraşüt eşleşmesi yok';
+            } elseif ($durum === 'kesildi') {
+                $secilebilir = false;
+                $sebep = 'Bugün zaten kesildi';
+            } elseif ($durum === 'bilinmiyor') {
+                $secilebilir = false;
+                $sebep = 'Durum bilinmiyor — Paraşüt\'ten kontrol edin';
+            }
+            $out[] = [
+                'customer_id' => $cid,
+                'name'        => (string) $r['name'],
+                'parasut_id'  => $f['parasut_id'],
+                'ogle'        => (int) $r['ogle'],
+                'aksam'       => (int) $r['aksam'],
+                'kumanya'     => (int) $r['kumanya'],
+                'toplam'      => (int) $r['toplam'],
+                'secilebilir' => $secilebilir,
+                'sebep'       => $sebep,
+                'despatch_no' => $log !== null ? ($log['despatch_no'] ?? null) : null,
+                'durum'       => $durum,
+            ];
+        }
+        return $out;
+    }
+
     // ── Taşıma karlılık (opus-013: adet[production] × (satış − alış) − sabit gider) ─
     // Model: taşıma müşterisi KARTI (customers) = 4 alan →
     //   unit_price (satış birim fiyatı) · maliyet_birim (alış birim fiyatı) ·

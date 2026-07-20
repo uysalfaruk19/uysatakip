@@ -91,6 +91,24 @@ final class Auth
         ];
     }
 
+    /**
+     * fable-023b: yüksek yetki kapısı — canlı muhasebeye YAZAN işlemler (e-İrsaliye kesimi).
+     * superadmin/editor geçer; ayrıca sistem sahibi hesap (ADMIN_USER, varsayılan 'uysal')
+     * rolü ne olursa olsun geçer — sahip kendi sisteminde kilitlenmez.
+     */
+    public static function isAdmin(?array $u = null): bool
+    {
+        $u ??= self::user();
+        if ($u === null) {
+            return false;
+        }
+        if (in_array((string) ($u['role'] ?? ''), ['superadmin', 'editor'], true)) {
+            return true;
+        }
+        $sahip = (string) ($u['username'] ?? '');
+        return $sahip !== '' && ($sahip === (string) Env::get('ADMIN_USER', 'uysal') || $sahip === 'uysal');
+    }
+
     public static function requireLogin(): array
     {
         self::startSession();

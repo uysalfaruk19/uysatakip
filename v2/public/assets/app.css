@@ -1770,3 +1770,174 @@ a.week-day.locked {
 body.meal-open {
   overflow: hidden;
 }
+
+/* ── fable-023b: İrsaliyelendir (Paraşüt e-İrsaliye) ── */
+.head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.head-row h2 {
+  margin: 0;
+}
+.btn-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--primary-600);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.btn-chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.irs-card {
+  width: min(520px, 100%);
+}
+.irs-badge {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--amber-tint);
+  color: #8a5a00;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+.irs-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.irs-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+}
+.irs-list {
+  max-height: 46vh;
+  overflow: auto;
+  display: grid;
+}
+.irs-row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 10px;
+  padding: 10px 2px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+.irs-row > input {
+  width: 18px;
+  height: 18px;
+  grid-column: 1;
+  grid-row: 1 / span 5;
+  align-self: start;
+  margin-top: 2px;
+}
+/* Metin/aksiyon hücreleri DAİMA 2. sütunda kalsın (kutucuk sütununa taşmasın) */
+.irs-row > span {
+  grid-column: 2;
+}
+.irs-row.is-off {
+  opacity: 0.62;
+  cursor: not-allowed;
+}
+.irs-name {
+  font-size: 14px;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+.irs-meta {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.irs-why {
+  font-size: 12px;
+  font-weight: 700;
+  color: #a35400;
+  overflow-wrap: anywhere;
+}
+.irs-sum {
+  margin: 2px 0 10px;
+  font-size: 14px;
+  font-weight: 750;
+}
+.irs-res {
+  display: grid;
+  gap: 2px;
+  padding: 9px 10px;
+  margin-bottom: 6px;
+  border-radius: 10px;
+  border-left: 3px solid var(--line);
+  background: var(--surface-2);
+}
+.irs-res.ok {
+  border-left-color: var(--green);
+}
+.irs-res.warn {
+  border-left-color: #e08b00;
+}
+.irs-res.err {
+  border-left-color: var(--red);
+}
+.irs-warn {
+  margin: 10px 0 6px;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.45;
+  color: #a12a2a;
+}
+.irs-json summary {
+  font-size: 12px;
+  font-weight: 750;
+  color: var(--muted);
+  cursor: pointer;
+}
+.irs-json pre {
+  max-height: 30vh;
+  overflow: auto;
+  font-size: 11px;
+  line-height: 1.4;
+  background: #0f1b2a;
+  color: #d8e6f2;
+  padding: 10px;
+  border-radius: 10px;
+}
+.irs-fix {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.btn-mini {
+  min-height: 30px;
+  padding: 0 9px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.btn-mini:disabled {
+  opacity: 0.5;
+}

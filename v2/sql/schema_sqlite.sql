@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS customers (
   parasut_id TEXT,                              -- Paraşüt contact id (opus-012, eşleşince yazılır)
   parasut_bakiye REAL,                          -- Paraşüt güncel cari bakiye (SALT-OKUMA muhasebe)
   parasut_sync_at TEXT,                         -- son Paraşüt senkron zamanı
+  irsaliye_aktif INTEGER NOT NULL DEFAULT 1,    -- fable-023b: 0 = irsaliye kapsamı dışı (aylık faturadan gider)
   is_active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -502,3 +503,34 @@ CREATE INDEX IF NOT EXISTS idx_ce_customer ON customer_events(customer_id, creat
 INSERT OR IGNORE INTO ayar (anahtar, deger) VALUES
   ('push_quiet_start', '21:00'),
   ('push_quiet_end', '07:00');
+
+-- ── Paraşüt e-İrsaliye kesim kaydı (fable-023b) ─
+-- Her (müşteri, gün) için TEK satır: UNIQUE = mükerrer kalkanının DB kilidi.
+-- Kayıt SİLİNMEZ (kesilen belge resmi e-İrsaliye, GİB'e gider — iz kalıcı).
+-- durum 'bilinmiyor' = timeout; belge kesilmiş OLABİLİR → otomatik yeniden deneme YOK.
+CREATE TABLE IF NOT EXISTS parasut_irsaliye_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  gun TEXT NOT NULL,                       -- 'YYYY-MM-DD' (issue_date)
+  parasut_doc_id TEXT,                     -- shipment_documents.id
+  despatch_no TEXT,                        -- Paraşüt otomatik seri no
+  kalemler TEXT,                           -- JSON: [{ogun,urun_id,miktar}]
+  toplam_kisi INTEGER NOT NULL DEFAULT 0,
+  durum TEXT NOT NULL DEFAULT 'hata' CHECK(durum IN ('kesildi','hata','bilinmiyor')),
+  hata_mesaj TEXT,
+  tasiyici_ok INTEGER NOT NULL DEFAULT 0,  -- dönen belgede plaka/şoför işlendi mi
+  entered_by TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(customer_id, gun)
+);
+CREATE INDEX IF NOT EXISTS idx_irsaliye_gun ON parasut_irsaliye_log(gun);
+
+-- Taşıyıcı bilgisi + öğün→Paraşüt ürün eşlemesi (koda gömülmez; ayardan değişir)
+INSERT OR IGNORE INTO ayar (anahtar, deger) VALUES
+  ('irsaliye_plaka', '41BEM936'),
+  ('irsaliye_sofor_ad', 'UFUK BALTACI'),
+  ('irsaliye_sofor_tckn', '23354463864'),
+  ('irsaliye_urun_ogle', '1063984872'),
+  ('irsaliye_urun_aksam', '1063985050'),
+  ('irsaliye_urun_kumanya', '1063985150');

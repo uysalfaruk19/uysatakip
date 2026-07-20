@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS `customers` (
   `parasut_id`         VARCHAR(40)           DEFAULT NULL COMMENT 'Paraşüt contact id (opus-012, eşleşince yazılır)',
   `parasut_bakiye`     DECIMAL(14,2)         DEFAULT NULL COMMENT 'Paraşüt güncel cari bakiye (SALT-OKUMA muhasebe)',
   `parasut_sync_at`    DATETIME              DEFAULT NULL COMMENT 'son Paraşüt senkron zamanı',
+  `irsaliye_aktif`     TINYINT(1)   NOT NULL DEFAULT 1 COMMENT '0=irsaliye kapsamı dışı (fable-023b)',
   `is_active`     TINYINT(1)   NOT NULL DEFAULT 1,
   `created_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -647,5 +648,37 @@ CREATE TABLE IF NOT EXISTS `customer_events` (
 INSERT IGNORE INTO `ayar` (`anahtar`, `deger`) VALUES
   ('push_quiet_start', '21:00'),
   ('push_quiet_end', '07:00');
+
+-- ── Paraşüt e-İrsaliye kesim kaydı (fable-023b) ─
+-- UNIQUE(customer_id,gun) = mükerrer kalkanının DB kilidi. Kayıt SİLİNMEZ (resmi belge izi).
+-- durum 'bilinmiyor' = timeout; belge kesilmiş OLABİLİR → otomatik yeniden deneme YOK.
+CREATE TABLE IF NOT EXISTS `parasut_irsaliye_log` (
+  `id`             INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `customer_id`    INT UNSIGNED NOT NULL,
+  `gun`            DATE         NOT NULL COMMENT 'irsaliye günü (issue_date)',
+  `parasut_doc_id` VARCHAR(40)           DEFAULT NULL COMMENT 'shipment_documents.id',
+  `despatch_no`    VARCHAR(64)           DEFAULT NULL COMMENT 'Paraşüt otomatik seri no',
+  `kalemler`       TEXT                  DEFAULT NULL COMMENT 'JSON: [{ogun,urun_id,miktar}]',
+  `toplam_kisi`    INT          NOT NULL DEFAULT 0,
+  `durum`          VARCHAR(16)  NOT NULL DEFAULT 'hata' COMMENT 'kesildi|hata|bilinmiyor',
+  `hata_mesaj`     VARCHAR(500)          DEFAULT NULL,
+  `tasiyici_ok`    TINYINT(1)   NOT NULL DEFAULT 0 COMMENT 'dönen belgede plaka/şoför işlendi mi',
+  `entered_by`     VARCHAR(64)  NOT NULL DEFAULT '',
+  `created_at`     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_irsaliye_cust_gun` (`customer_id`, `gun`),
+  KEY `idx_irsaliye_gun` (`gun`),
+  CONSTRAINT `fk_irsaliye_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Taşıyıcı bilgisi + öğün→Paraşüt ürün eşlemesi (koda gömülmez; ayardan değişir)
+INSERT IGNORE INTO `ayar` (`anahtar`, `deger`) VALUES
+  ('irsaliye_plaka', '41BEM936'),
+  ('irsaliye_sofor_ad', 'UFUK BALTACI'),
+  ('irsaliye_sofor_tckn', '23354463864'),
+  ('irsaliye_urun_ogle', '1063984872'),
+  ('irsaliye_urun_aksam', '1063985050'),
+  ('irsaliye_urun_kumanya', '1063985150');
 
 SET FOREIGN_KEY_CHECKS = 1;
