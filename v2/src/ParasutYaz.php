@@ -755,4 +755,606 @@ final class ParasutYaz
             'error'  => '',
         ];
     }
+
+    // ══════════════════════════════════════════════════════════════════════════════════
+    // fable-024 — SATIŞ FATURASI + e-FATURA (aynı disiplin: şalter + onay imzası + timeout)
+    //
+    // İki akış:
+    //   (1) irsaliyeli (haftalık): dönem irsaliye loglarının öğün toplamı → tek fatura, öğün başına
+    //       kalem, tevkifatlıysa (PENDORYA 604/%50) kalem oranı + e-Fatura vat_withholding_params.
+    //   (2) aylık: irsaliye_aktif=0 müşteri → dönem üretim toplamı × birim, tek kalem, tevkifat YOK,
+    //       irsaliye bağı YOK. CANTAŞ bölüşümde her alt-firma için AYRI fatura (createMonthlyInvoice).
+    //
+    // ⚠️ shipment_documents ilişkisi RESMİ SPEC'te YOK (canlı faturada görüldü) — create'te kabul
+    //    edildiği KANITLANMADI. 422 riskine karşı ayardan kapatılabilir (fatura_irsaliye_bagla=0).
+    //    "Faturalandı → listede görünmesin" bizim fatura_log_id işaretimizle çalışır; Paraşüt-yanı
+    //    has_invoice bağı BONUS'tur, ona güvenilmez.
+    // ══════════════════════════════════════════════════════════════════════════════════
+
+    /** Fatura şalteri: env PARASUT_FATURA_AKTIF. 1/true/on/yes dışında her şey KAPALI. */
+    public static function faturaAktif(): bool
+    {
+        $v = strtolower(trim((string) Env::get('PARASUT_FATURA_AKTIF', '0')));
+        return in_array($v, ['1', 'true', 'on', 'yes'], true);
+    }
+
+    /** Yemek KDV oranı (parametrik; ayardan değişebilir). */
+    private function faturaKdvOrani(): float
+    {
+        return (float) str_replace(',', '.', (string) $this->repo->ayar('fatura_kdv_orani', '10'));
+    }
+
+    /**
+     * Tutar matematiği (PÜR — kuruş bazında, float taşması yok).
+     * brüt = Σ(miktar×birim) · KDV = brüt×oran · tevkifat = KDV×tevkifatOran · net = brüt+KDV−tevkifat.
+     * @param array<int,array{miktar:int,birim:float}> $kalemler
+     * @return array{brut:float,kdv:float,tevkifat:float,net:float,brut_kurus:int,kdv_kurus:int,tevkifat_kurus:int,net_kurus:int}
+     */
+    public static function faturaHesap(array $kalemler, float $vatRate, ?float $tevkifatOran): array
+    {
+        $brutKurus = 0;
+        foreach ($kalemler as $k) {
+            $brutKurus += (int) round(((int) $k['miktar']) * ((float) $k['birim']) * 100);
+        }
+        $kdvKurus = (int) round($brutKurus * $vatRate / 100);
+        $tevkifatKurus = $tevkifatOran !== null && $tevkifatOran > 0
+            ? (int) round($kdvKurus * $tevkifatOran / 100) : 0;
+        $netKurus = $brutKurus + $kdvKurus - $tevkifatKurus;
+        return [
+            'brut' => (float) ($brutKurus / 100), 'kdv' => (float) ($kdvKurus / 100),
+            'tevkifat' => (float) ($tevkifatKurus / 100), 'net' => (float) ($netKurus / 100),
+            'brut_kurus' => $brutKurus, 'kdv_kurus' => $kdvKurus,
+            'tevkifat_kurus' => $tevkifatKurus, 'net_kurus' => $netKurus,
+        ];
+    }
+
+    /**
+     * Dönemin FATURALANMAMIŞ irsaliyelerinden öğün kalemlerini kur (PÜR — ağ yok).
+     * @return array{kalemler:array<int,array{ogun:string,urun_id:string,miktar:int,birim:float}>,
+     *   irsaliye_ids:array<int,int>,doc_ids:array<int,string>,despatch_nolar:array<int,string>,
+     *   toplam_kisi:int,eksik:array<int,string>,birim:float,parasut_id:string,
+     *   tevkifat_kodu:string,tevkifat_oran:?float,vade_gun:int}
+     */
+    public function faturaKalemler(int $customerId, string $bas, string $son): array
+    {
+        $c = $this->repo->customer($customerId);
+        $bos = ['kalemler' => [], 'irsaliye_ids' => [], 'doc_ids' => [], 'despatch_nolar' => [],
+            'toplam_kisi' => 0, 'eksik' => [], 'birim' => 0.0, 'parasut_id' => '',
+            'tevkifat_kodu' => '', 'tevkifat_oran' => null, 'vade_gun' => 1];
+        if ($c === null) {
+            return $bos;
+        }
+        $rows = $this->repo->faturaAdayIrsaliyeler($customerId, $bas, $son);
+        $sums = ['ogle' => 0, 'aksam' => 0, 'kumanya' => 0];
+        $irsaliyeIds = $docIds = $nolar = [];
+        foreach ($rows as $r) {
+            $irsaliyeIds[] = (int) $r['id'];
+            if (($r['parasut_doc_id'] ?? '') !== '') {
+                $docIds[] = (string) $r['parasut_doc_id'];
+            }
+            if (($r['despatch_no'] ?? '') !== '') {
+                $nolar[] = (string) $r['despatch_no'];
+            }
+            foreach (json_decode((string) ($r['kalemler'] ?? '[]'), true) ?: [] as $k) {
+                $og = (string) ($k['ogun'] ?? '');
+                if (isset($sums[$og])) {
+                    $sums[$og] += (int) ($k['miktar'] ?? 0);
+                }
+            }
+        }
+        $birim = $this->repo->priceFor($customerId, substr($son, 0, 7))['unit_price'];
+        $kalemler = [];
+        $eksik = [];
+        $toplam = 0;
+        foreach (self::URUN_AYAR as $ogun => $ayarKey) {
+            $m = (int) $sums[$ogun];
+            if ($m <= 0) {
+                continue;
+            }
+            $urunId = trim((string) $this->repo->ayar($ayarKey, ''));
+            if ($urunId === '') {
+                $eksik[] = $ogun;
+                continue;
+            }
+            $kalemler[] = ['ogun' => $ogun, 'urun_id' => $urunId, 'miktar' => $m, 'birim' => $birim];
+            $toplam += $m;
+        }
+        return [
+            'kalemler' => $kalemler, 'irsaliye_ids' => $irsaliyeIds, 'doc_ids' => $docIds,
+            'despatch_nolar' => $nolar, 'toplam_kisi' => $toplam, 'eksik' => $eksik, 'birim' => $birim,
+            'parasut_id' => trim((string) ($c['parasut_id'] ?? '')),
+            'tevkifat_kodu' => trim((string) ($c['tevkifat_kodu'] ?? '')),
+            'tevkifat_oran' => $c['tevkifat_oran'] !== null ? (float) $c['tevkifat_oran'] : null,
+            'vade_gun' => (int) ($c['fatura_vade_gun'] ?? 1),
+        ];
+    }
+
+    /**
+     * Satış faturası JSON:API gövdesi (PÜR — ağ yok; kuru deneme ekranı bunu gösterir).
+     * @param array<int,array{ogun:string,urun_id:string,miktar:int,birim:float}> $kalemler
+     * @param array<int,string> $docIds dönemin irsaliye belge id'leri (bağ; ayarla kapatılabilir)
+     */
+    public function faturaGovde(string $parasutId, string $bas, string $son, array $kalemler,
+        int $vadeGun, ?string $tevkifatKodu, ?float $tevkifatOran, array $docIds = []): array
+    {
+        $vat = $this->faturaKdvOrani();
+        $vade = date('Y-m-d', strtotime($son . ' +' . max(0, $vadeGun) . ' day'));
+        $details = [];
+        foreach ($kalemler as $k) {
+            $attr = [
+                'quantity'    => (int) $k['miktar'],
+                'unit_price'  => (float) $k['birim'],
+                'vat_rate'    => $vat,
+                'description' => self::OGUN_ETIKET[$k['ogun']] ?? $k['ogun'],
+            ];
+            if ($tevkifatKodu !== null && $tevkifatKodu !== '' && $tevkifatOran !== null && $tevkifatOran > 0) {
+                $attr['vat_withholding_rate'] = $tevkifatOran;
+            }
+            $details[] = [
+                'type'          => 'sales_invoice_details',
+                'attributes'    => $attr,
+                'relationships' => [
+                    'product' => ['data' => ['id' => (string) $k['urun_id'], 'type' => 'products']],
+                ],
+            ];
+        }
+        $rel = [
+            'contact' => ['data' => ['id' => $parasutId, 'type' => 'contacts']],
+            'details' => ['data' => $details],
+        ];
+        // shipment_documents bağı: ayardan açıksa ve belge id'leri varsa gönder (best-effort, spec dışı).
+        $bagla = trim((string) $this->repo->ayar('fatura_irsaliye_bagla', '1'));
+        if ($bagla !== '' && $bagla !== '0' && $docIds) {
+            $rel['shipment_documents'] = ['data' => array_map(
+                static fn(string $id): array => ['id' => $id, 'type' => 'shipment_documents'],
+                array_values(array_unique($docIds))
+            )];
+        }
+        return ['data' => [
+            'type'       => 'sales_invoices',
+            'attributes' => [
+                'item_type'         => 'invoice',
+                'issue_date'        => $son,
+                'due_date'          => $vade,
+                'shipment_included' => true,
+                'description'       => date('d.m.Y', strtotime($bas)) . ' - ' . date('d.m.Y', strtotime($son))
+                    . ' dönemi yemek hizmet bedeli',
+            ],
+            'relationships' => $rel,
+        ]];
+    }
+
+    /** Aylık tek-kalem fatura gövdesi (tevkifat YOK, irsaliye bağı YOK). */
+    public function aylikGovde(string $parasutId, string $son, int $adet, float $birim, int $vadeGun, string $etiket = 'Yemek hizmet bedeli'): array
+    {
+        $vat = $this->faturaKdvOrani();
+        $vade = date('Y-m-d', strtotime($son . ' +' . max(0, $vadeGun) . ' day'));
+        $detail = [
+            'type'       => 'sales_invoice_details',
+            'attributes' => [
+                'quantity'    => $adet,
+                'unit_price'  => $birim,
+                'vat_rate'    => $vat,
+                'description' => $etiket,
+            ],
+        ];
+        $urun = trim((string) $this->repo->ayar('irsaliye_urun_ogle', ''));
+        if ($urun !== '') {
+            $detail['relationships'] = ['product' => ['data' => ['id' => $urun, 'type' => 'products']]];
+        }
+        return ['data' => [
+            'type'       => 'sales_invoices',
+            'attributes' => [
+                'item_type'   => 'invoice',
+                'issue_date'  => $son,
+                'due_date'    => $vade,
+                'description' => date('m.Y', strtotime($son)) . ' dönemi yemek hizmet bedeli',
+            ],
+            'relationships' => [
+                'contact' => ['data' => ['id' => $parasutId, 'type' => 'contacts']],
+                'details' => ['data' => [$detail]],
+            ],
+        ]];
+    }
+
+    /**
+     * e-Fatura resmileştirme gövdesi. Tevkifatlıysa her kalem için vat_withholding_params.
+     * @param array<int,int> $detailIds fatura kalem id'leri (create yanıtından)
+     */
+    public function eFaturaGovde(string $faturaId, string $alias, array $detailIds, ?string $tevkifatKodu): array
+    {
+        $attr = ['scenario' => 'commercial'];
+        if ($alias !== '') {
+            $attr['to'] = $alias;
+        }
+        if ($tevkifatKodu !== null && $tevkifatKodu !== '') {
+            $params = [];
+            foreach ($detailIds as $did) {
+                $params[] = ['detail_id' => (int) $did, 'vat_withholding_code' => $tevkifatKodu];
+            }
+            if ($params) {
+                $attr['vat_withholding_params'] = $params;
+            }
+        }
+        return ['data' => [
+            'type'          => 'e_invoices',
+            'attributes'    => $attr,
+            'relationships' => ['invoice' => ['data' => ['id' => $faturaId, 'type' => 'sales_invoices']]],
+        ]];
+    }
+
+    /**
+     * KURU DENEME (irsaliyeli) — hiçbir ağ çağrısı yapmadan gövde + tutar + engelleri hesaplar.
+     * @return array{ok:bool,durum:string,mesaj:string,kalemler:array,hesap:array,toplam:int,
+     *   despatch_nolar:array,vade:string,govde:?array}
+     */
+    public function faturaOnizleme(int $customerId, string $bas, string $son): array
+    {
+        $on = $this->faturaOnKontrol($customerId, $bas, $son);
+        if (!$on['ok']) {
+            return $on + ['kalemler' => [], 'hesap' => self::faturaHesap([], $this->faturaKdvOrani(), null),
+                'toplam' => 0, 'despatch_nolar' => [], 'vade' => '', 'govde' => null];
+        }
+        $k = $on['kalem'];
+        $hesap = self::faturaHesap($k['kalemler'], $this->faturaKdvOrani(), $k['tevkifat_oran']);
+        $vade = date('Y-m-d', strtotime($son . ' +' . max(0, $k['vade_gun']) . ' day'));
+        return [
+            'ok' => true, 'durum' => 'hazir', 'mesaj' => '',
+            'kalemler' => $k['kalemler'], 'hesap' => $hesap, 'toplam' => $k['toplam_kisi'],
+            'despatch_nolar' => $k['despatch_nolar'], 'vade' => $vade,
+            'govde' => $this->faturaGovde($k['parasut_id'], $bas, $son, $k['kalemler'],
+                $k['vade_gun'], $k['tevkifat_kodu'], $k['tevkifat_oran'], $k['doc_ids']),
+        ];
+    }
+
+    /**
+     * 🔒 SATIŞ FATURASI KES (irsaliyeli). Sıra: şalter → onay imzası → yerel kalkan →
+     *    CLAIM (irsaliyeleri bu faturaya kilitle, atomik) → POST → e-Fatura → mail → log + audit.
+     * @param array{onay?:string,actor?:string} $ctx
+     * @return array{ok:bool,durum:string,mesaj:string,fatura_id:?string,fatura_no:?string,
+     *   resmilestirme:string,mail:string,net:float,toplam:int}
+     */
+    public function createSalesInvoice(int $customerId, string $bas, string $son, array $ctx): array
+    {
+        if (!self::faturaAktif()) {
+            return self::faturaSonuc(false, 'kapali', 'Fatura kesimi kapalı — Ömer onayı bekleniyor (PARASUT_FATURA_AKTIF=0).');
+        }
+        $imza = (string) ($ctx['onay'] ?? '');
+        if ($this->onayToken === null || $this->onayToken === '' || $imza === ''
+            || !hash_equals($this->onayToken, $imza)) {
+            return self::faturaSonuc(false, 'onaysiz', 'Onay imzası geçersiz — fatura kesilmedi.');
+        }
+        if (!Helpers::isDate($bas) || !Helpers::isDate($son) || $bas > $son) {
+            return self::faturaSonuc(false, 'hata', 'Geçersiz dönem.');
+        }
+        $on = $this->faturaOnKontrol($customerId, $bas, $son);
+        if (!$on['ok']) {
+            return self::faturaSonuc(false, $on['durum'], $on['mesaj']);
+        }
+        $k = $on['kalem'];
+        $actor = (string) ($ctx['actor'] ?? '');
+        $hesap = self::faturaHesap($k['kalemler'], $this->faturaKdvOrani(), $k['tevkifat_oran']);
+        $kalemlerLog = array_map(static fn(array $x): array => [
+            'ogun' => $x['ogun'], 'urun_id' => $x['urun_id'], 'miktar' => $x['miktar'], 'birim_fiyat' => $x['birim'],
+        ], $k['kalemler']);
+
+        // ── CLAIM FIRST: fatura kaydını 'bilinmiyor' (güvenli varsayılan) aç + irsaliyeleri kilitle ──
+        $faturaLogId = $this->repo->faturaLogEkle([
+            'customer_id' => $customerId, 'donem_bas' => $bas, 'donem_son' => $son, 'tip' => 'irsaliye',
+            'parasut_contact_id' => $k['parasut_id'], 'kalemler' => $kalemlerLog,
+            'toplam_kisi' => $k['toplam_kisi'], 'toplam_tutar' => $hesap['net'],
+            'durum' => 'bilinmiyor', 'entered_by' => $actor,
+        ]);
+        $claimed = $this->repo->irsaliyeleriFaturayaBagla($k['irsaliye_ids'], $faturaLogId);
+        if ($claimed !== count($k['irsaliye_ids'])) {
+            $this->repo->irsaliyeleriFaturadanCoz($k['irsaliye_ids'], $faturaLogId);
+            $this->repo->faturaLogGuncelle($faturaLogId, ['durum' => 'hata',
+                'hata_mesaj' => 'Çakışma — irsaliyeler eşzamanlı başka faturaya bağlandı; kesim yapılmadı.']);
+            return self::faturaSonuc(false, 'cakisma',
+                'Bu irsaliyeler eşzamanlı başka bir fatura tarafından alındı — baştan seçin.');
+        }
+
+        // ── POST /sales_invoices (timeout'ta RETRY YOK; connect'te 1 tekrar) ──
+        $govde = $this->faturaGovde($k['parasut_id'], $bas, $son, $k['kalemler'],
+            $k['vade_gun'], $k['tevkifat_kodu'], $k['tevkifat_oran'], $k['doc_ids']);
+        $r = $this->cagir('POST', '/sales_invoices?include=details', $govde);
+        if ($r['net'] === 'connect') {
+            $r = $this->cagir('POST', '/sales_invoices?include=details', $govde);
+        }
+        if ($r['net'] === 'timeout') {
+            // Belge kesilmiş OLABİLİR → claim KALIR (kilitli), durum bilinmiyor, retry YOK.
+            $this->repo->faturaLogGuncelle($faturaLogId, ['durum' => 'bilinmiyor',
+                'hata_mesaj' => 'Zaman aşımı — fatura kesilmiş OLABİLİR. Yeniden denenmedi.']);
+            uysa_audit('parasut_fatura', $actor, $son, json_encode([
+                'customer_id' => $customerId, 'durum' => 'bilinmiyor', 'fatura_log_id' => $faturaLogId,
+            ], JSON_UNESCAPED_UNICODE), '');
+            return self::faturaSonuc(false, 'bilinmiyor',
+                'Zaman aşımı — fatura kesilmiş olabilir. TEKRAR DENEMEYİN, Paraşüt\'ten kontrol edin.',
+                null, null, 'yok', 'yok', $hesap['net'], $k['toplam_kisi']);
+        }
+        if ($r['net'] !== 'ok' || $r['status'] < 200 || $r['status'] >= 300) {
+            // Kalıcı hata → claim GERİ AL (irsaliyeler tekrar aday olsun) + durum hata.
+            $this->repo->irsaliyeleriFaturadanCoz($k['irsaliye_ids'], $faturaLogId);
+            $mesaj = 'Paraşüt reddetti (HTTP ' . $r['status'] . ')' . ($r['error'] !== '' ? ': ' . $r['error'] : '')
+                . self::apiHata($r['data']);
+            $this->repo->faturaLogGuncelle($faturaLogId, ['durum' => 'hata', 'hata_mesaj' => $mesaj]);
+            uysa_audit('parasut_fatura', $actor, $son, json_encode([
+                'customer_id' => $customerId, 'durum' => 'hata', 'fatura_log_id' => $faturaLogId,
+            ], JSON_UNESCAPED_UNICODE), '');
+            return self::faturaSonuc(false, 'hata', $mesaj, null, null, 'yok', 'yok', $hesap['net'], $k['toplam_kisi']);
+        }
+
+        $doc = $r['data']['data'] ?? [];
+        $faturaId = (string) ($doc['id'] ?? '');
+        $faturaNo = trim((string) ($doc['attributes']['invoice_no'] ?? '')) ?: null;
+        $detailIds = self::faturaDetailIds($r['data']);
+
+        // ── e-Fatura resmileştirme (edespatch_alias varsa; tevkifat params) ──
+        [$resm, $resmMsg] = $this->faturaResmilestir($customerId, $faturaId, $detailIds, $k['tevkifat_kodu']);
+        // ── mail (fatura_mail dolu + resmileşti ise) ──
+        [$mail, $mailMsg] = $resm === 'gonderildi'
+            ? $this->faturaMailPaylas($customerId, $faturaId, $faturaNo)
+            : ['yok', ''];
+
+        $this->repo->faturaLogGuncelle($faturaLogId, [
+            'parasut_fatura_id' => $faturaId !== '' ? $faturaId : null,
+            'fatura_no' => $faturaNo, 'durum' => 'kesildi',
+            'resmilestirme' => $resm, 'mail' => $mail,
+            'hata_mesaj' => $resm !== 'gonderildi' && $resmMsg !== '' ? $resmMsg : null,
+        ]);
+        uysa_audit('parasut_fatura', $actor, $son, json_encode([
+            'customer_id' => $customerId, 'fatura_id' => $faturaId, 'fatura_no' => $faturaNo,
+            'toplam_kisi' => $k['toplam_kisi'], 'net' => $hesap['net'],
+            'resmilestirme' => $resm, 'mail' => $mail, 'fatura_log_id' => $faturaLogId,
+        ], JSON_UNESCAPED_UNICODE), '');
+
+        $mesaj = 'Fatura kesildi' . ($faturaNo !== null ? " ($faturaNo)" : '') . '; '
+            . ($resm === 'gonderildi' ? 'e-Fatura resmileşti.' : 'e-Fatura resmileşmedi — ' . $resmMsg);
+        if ($mail === 'gonderildi') {
+            $mesaj .= ' Mail paylaşıldı' . ($mailMsg !== '' ? " ($mailMsg)" : '') . '.';
+        } elseif ($mail === 'hata') {
+            $mesaj .= ' Mail paylaşımı BAŞARISIZ — Paraşüt\'ten elle paylaşın.';
+        }
+        return self::faturaSonuc(true, 'kesildi', $mesaj, $faturaId, $faturaNo, $resm, $mail, $hesap['net'], $k['toplam_kisi']);
+    }
+
+    /**
+     * 🔒 AYLIK FATURA KES (tek contact). CANTAŞ bölüşümde UI her alt-firma için AYRI çağırır.
+     * Tevkifat YOK, irsaliye bağı YOK. Mükerrer: onay imzası + aday-aşaması 'kesildi' kilidi.
+     * @param array{contact_id:string,ad?:string,kisi:int} $part
+     * @param array{onay?:string,actor?:string} $ctx
+     */
+    public function createMonthlyInvoice(int $customerId, string $bas, string $son, array $part, array $ctx): array
+    {
+        if (!self::faturaAktif()) {
+            return self::faturaSonuc(false, 'kapali', 'Fatura kesimi kapalı — Ömer onayı bekleniyor (PARASUT_FATURA_AKTIF=0).');
+        }
+        $imza = (string) ($ctx['onay'] ?? '');
+        if ($this->onayToken === null || $this->onayToken === '' || $imza === ''
+            || !hash_equals($this->onayToken, $imza)) {
+            return self::faturaSonuc(false, 'onaysiz', 'Onay imzası geçersiz — fatura kesilmedi.');
+        }
+        if (!Helpers::isDate($bas) || !Helpers::isDate($son) || $bas > $son) {
+            return self::faturaSonuc(false, 'hata', 'Geçersiz dönem.');
+        }
+        $c = $this->repo->customer($customerId);
+        if ($c === null) {
+            return self::faturaSonuc(false, 'hata', 'Müşteri bulunamadı.');
+        }
+        $contactId = trim((string) ($part['contact_id'] ?? ''));
+        if ($contactId === '') {
+            return self::faturaSonuc(false, 'eslesme_yok', 'Paraşüt cari eşleşmesi yok — fatura kesilemez.');
+        }
+        $kisi = Repo::normalizePersons($part['kisi'] ?? 0);
+        if ($kisi <= 0) {
+            return self::faturaSonuc(false, 'kalem_yok', 'Kişi sayısı 0 — fatura kesilmez.');
+        }
+        $altAd = trim((string) ($part['ad'] ?? $c['name']));
+        $birim = $this->repo->priceFor($customerId, substr($son, 0, 7))['unit_price'];
+        $vadeGun = (int) ($c['fatura_vade_gun'] ?? 1);
+        $hesap = self::faturaHesap([['miktar' => $kisi, 'birim' => $birim]], $this->faturaKdvOrani(), null);
+        $actor = (string) ($ctx['actor'] ?? '');
+
+        $faturaLogId = $this->repo->faturaLogEkle([
+            'customer_id' => $customerId, 'donem_bas' => $bas, 'donem_son' => $son, 'tip' => 'aylik',
+            'parasut_contact_id' => $contactId, 'alt_ad' => $altAd,
+            'kalemler' => [['ogun' => 'aylik', 'urun_id' => trim((string) $this->repo->ayar('irsaliye_urun_ogle', '')), 'miktar' => $kisi, 'birim_fiyat' => $birim]],
+            'toplam_kisi' => $kisi, 'toplam_tutar' => $hesap['net'],
+            'durum' => 'bilinmiyor', 'entered_by' => $actor,
+        ]);
+
+        $govde = $this->aylikGovde($contactId, $son, $kisi, $birim, $vadeGun, $altAd . ' — yemek hizmet bedeli');
+        $r = $this->cagir('POST', '/sales_invoices', $govde);
+        if ($r['net'] === 'connect') {
+            $r = $this->cagir('POST', '/sales_invoices', $govde);
+        }
+        if ($r['net'] === 'timeout') {
+            $this->repo->faturaLogGuncelle($faturaLogId, ['durum' => 'bilinmiyor',
+                'hata_mesaj' => 'Zaman aşımı — fatura kesilmiş OLABİLİR. Yeniden denenmedi.']);
+            uysa_audit('parasut_fatura', $actor, $son, json_encode([
+                'customer_id' => $customerId, 'alt_ad' => $altAd, 'durum' => 'bilinmiyor',
+            ], JSON_UNESCAPED_UNICODE), '');
+            return self::faturaSonuc(false, 'bilinmiyor',
+                $altAd . ': zaman aşımı — fatura kesilmiş olabilir. TEKRAR DENEMEYİN, Paraşüt\'ten kontrol edin.',
+                null, null, 'yok', 'yok', $hesap['net'], $kisi);
+        }
+        if ($r['net'] !== 'ok' || $r['status'] < 200 || $r['status'] >= 300) {
+            $mesaj = $altAd . ': Paraşüt reddetti (HTTP ' . $r['status'] . ')' . self::apiHata($r['data']);
+            $this->repo->faturaLogGuncelle($faturaLogId, ['durum' => 'hata', 'hata_mesaj' => $mesaj]);
+            return self::faturaSonuc(false, 'hata', $mesaj, null, null, 'yok', 'yok', $hesap['net'], $kisi);
+        }
+        $doc = $r['data']['data'] ?? [];
+        $faturaId = (string) ($doc['id'] ?? '');
+        $faturaNo = trim((string) ($doc['attributes']['invoice_no'] ?? '')) ?: null;
+        // Aylık: alias yok (alt-firmalar customers'ta değil) → resmileştirme elle. Sessiz geçme, söyle.
+        $this->repo->faturaLogGuncelle($faturaLogId, [
+            'parasut_fatura_id' => $faturaId !== '' ? $faturaId : null, 'fatura_no' => $faturaNo,
+            'durum' => 'kesildi', 'resmilestirme' => 'yok',
+            'hata_mesaj' => 'Aylık fatura — e-Fatura resmileştirme Paraşüt\'ten elle yapılır (alias tanımlı değil).',
+        ]);
+        uysa_audit('parasut_fatura', $actor, $son, json_encode([
+            'customer_id' => $customerId, 'alt_ad' => $altAd, 'fatura_id' => $faturaId,
+            'fatura_no' => $faturaNo, 'kisi' => $kisi, 'net' => $hesap['net'], 'durum' => 'kesildi',
+        ], JSON_UNESCAPED_UNICODE), '');
+        return self::faturaSonuc(true, 'kesildi',
+            $altAd . ': fatura kesildi' . ($faturaNo !== null ? " ($faturaNo)" : '')
+            . ' — e-Fatura Paraşüt\'ten elle resmileştirilir.',
+            $faturaId, $faturaNo, 'yok', 'yok', $hesap['net'], $kisi);
+    }
+
+    /**
+     * e-Fatura resmileştirme (POST /e_invoices → trackable_job). Fatura ZATEN kesilmiş — burada
+     * ne olursa olsun fatura geri alınmaz; başarısızlıkta kullanıcı elle resmileştirir.
+     * @param array<int,int> $detailIds
+     * @return array{0:string,1:string} [resmilestirme(gonderildi|hata|yok), mesaj]
+     */
+    private function faturaResmilestir(int $customerId, string $faturaId, array $detailIds, ?string $tevkifatKodu): array
+    {
+        if ($faturaId === '') {
+            return ['hata', 'fatura id alınamadı — Paraşüt\'ten elle resmileştirin.'];
+        }
+        $musteri = null;
+        try {
+            $musteri = $this->repo->customer($customerId);
+        } catch (\Throwable) {
+        }
+        $alias = trim((string) ($musteri['edespatch_alias'] ?? ''));
+        if ($alias === '') {
+            return ['yok', 'alıcı e-Fatura kutusu (alias) tanımlı değil — Paraşüt\'ten elle resmileştirin.'];
+        }
+        $r = $this->cagir('POST', '/e_invoices', $this->eFaturaGovde($faturaId, $alias, $detailIds, $tevkifatKodu));
+        if ($r['net'] !== 'ok' || $r['status'] < 200 || $r['status'] >= 300) {
+            return ['hata', 'e-Fatura isteği kabul edilmedi (HTTP ' . $r['status'] . ')' . self::apiHata($r['data'])
+                . ' — Paraşüt\'ten elle resmileştirin.'];
+        }
+        $jobId = (string) ($r['data']['data']['id'] ?? '');
+        $sonHata = '';
+        for ($i = 0; $i < 4 && $jobId !== ''; $i++) {
+            $this->bekle(4);
+            $j = $this->cagir('GET', '/trackable_jobs/' . rawurlencode($jobId), null);
+            $st = (string) ($j['data']['data']['attributes']['status'] ?? '');
+            if ($st === 'done') {
+                break;
+            }
+            if ($st === 'error') {
+                $err = $j['data']['data']['attributes']['errors'] ?? [];
+                $sonHata = mb_substr(json_encode($err, JSON_UNESCAPED_UNICODE), 0, 160);
+                break;
+            }
+        }
+        if ($sonHata !== '') {
+            return ['hata', 'GİB e-Fatura reddetti: ' . $sonHata . ' — Paraşüt\'ten elle resmileştirin.'];
+        }
+        // Doğrula: sales_invoice active_e_document oluştu mu (varsayım değil, ölçüm).
+        $d = $this->cagir('GET', '/sales_invoices/' . rawurlencode($faturaId) . '?include=active_e_document', null);
+        $rel = $d['data']['data']['relationships']['active_e_document']['data'] ?? null;
+        if (is_array($rel) && ($rel['id'] ?? '') !== '') {
+            return ['gonderildi', ''];
+        }
+        return ['hata', 'resmileştirme sonucu doğrulanamadı — Paraşüt\'ten kontrol edin.'];
+    }
+
+    /**
+     * Faturayı müşterinin fatura_mail adres(ler)ine paylaş (Paraşüt 'sharings' ucu).
+     * @return array{0:string,1:string} [mail(gonderildi|hata|yok), adresler]
+     */
+    private function faturaMailPaylas(int $customerId, string $faturaId, ?string $faturaNo): array
+    {
+        $musteri = null;
+        try {
+            $musteri = $this->repo->customer($customerId);
+        } catch (\Throwable) {
+        }
+        $adresler = trim((string) ($musteri['fatura_mail'] ?? ''));
+        if ($adresler === '' || $faturaId === '') {
+            return ['yok', ''];
+        }
+        $konu = 'Fatura' . ($faturaNo !== null ? ' ' . $faturaNo : '') . ' — UYSA YEMEK';
+        $r = $this->cagir('POST', '/sharings', ['data' => [
+            'type'       => 'sharing_forms',
+            'attributes' => [
+                'email'  => [
+                    'addresses' => $adresler,
+                    'subject'   => $konu,
+                    'body'      => 'Faturanız ektedir. İyi çalışmalar dileriz.',
+                ],
+                'portal' => ['has_online_collection' => false, 'has_online_payment_reminder' => false, 'has_referral_link' => false],
+            ],
+            'relationships' => ['shareable' => ['data' => ['id' => $faturaId, 'type' => 'sales_invoices']]],
+        ]]);
+        if ($r['net'] !== 'ok' || $r['status'] < 200 || $r['status'] >= 300) {
+            return ['hata', ''];
+        }
+        return ['gonderildi', $adresler];
+    }
+
+    /** create yanıtından fatura kalem (detail) id'lerini çıkar (e-Fatura tevkifat params için). */
+    private static function faturaDetailIds(array $data): array
+    {
+        $ids = [];
+        foreach (($data['data']['relationships']['details']['data'] ?? []) as $d) {
+            $id = (int) ($d['id'] ?? 0);
+            if ($id > 0) {
+                $ids[] = $id;
+            }
+        }
+        if ($ids) {
+            return $ids;
+        }
+        foreach (($data['included'] ?? []) as $inc) {
+            if (($inc['type'] ?? '') === 'sales_invoice_details') {
+                $id = (int) ($inc['id'] ?? 0);
+                if ($id > 0) {
+                    $ids[] = $id;
+                }
+            }
+        }
+        return $ids;
+    }
+
+    /**
+     * Fatura (irsaliyeli) ağ öncesi tüm yerel engeller tek yerde (önizleme ve kesim AYNI kural).
+     * @return array{ok:bool,durum:string,mesaj:string,kalem:array}
+     */
+    private function faturaOnKontrol(int $customerId, string $bas, string $son): array
+    {
+        $red = static fn(string $d, string $m): array => ['ok' => false, 'durum' => $d, 'mesaj' => $m, 'kalem' => []];
+        if (!Helpers::isDate($bas) || !Helpers::isDate($son) || $bas > $son) {
+            return $red('hata', 'Geçersiz dönem.');
+        }
+        $c = $this->repo->customer($customerId);
+        if ($c === null) {
+            return $red('hata', 'Müşteri bulunamadı.');
+        }
+        if ((int) ($c['irsaliye_aktif'] ?? 1) !== 1) {
+            return $red('kapsam_disi', 'Bu müşteri aylık faturadan gidiyor (irsaliyeli değil).');
+        }
+        $k = $this->faturaKalemler($customerId, $bas, $son);
+        if ($k['parasut_id'] === '') {
+            return $red('eslesme_yok', 'Paraşüt eşleşmesi yok — fatura kesilemez.');
+        }
+        if ($k['eksik']) {
+            $adlar = array_map(static fn($o) => self::OGUN_ETIKET[$o] ?? $o, $k['eksik']);
+            return $red('hata', 'Ürün eşlemesi eksik: ' . implode(', ', $adlar) . ' (ayarlardan tanımlayın).');
+        }
+        if (!$k['kalemler'] || $k['toplam_kisi'] <= 0) {
+            return $red('faturalanacak_yok', 'Bu dönemde faturalanmamış irsaliye yok.');
+        }
+        $kilit = $this->repo->faturaKilidi($customerId, $bas, $son);
+        if ($kilit !== null) {
+            return $red('bilinmiyor', $kilit);
+        }
+        return ['ok' => true, 'durum' => 'hazir', 'mesaj' => '', 'kalem' => $k];
+    }
+
+    private static function faturaSonuc(bool $ok, string $durum, string $mesaj, ?string $faturaId = null,
+        ?string $faturaNo = null, string $resmilestirme = 'yok', string $mail = 'yok',
+        float $net = 0.0, int $toplam = 0): array
+    {
+        return [
+            'ok' => $ok, 'durum' => $durum, 'mesaj' => $mesaj, 'fatura_id' => $faturaId,
+            'fatura_no' => $faturaNo, 'resmilestirme' => $resmilestirme, 'mail' => $mail,
+            'net' => $net, 'toplam' => $toplam,
+        ];
+    }
 }

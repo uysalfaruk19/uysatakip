@@ -247,6 +247,13 @@ require __DIR__ . '/partials/header.php';
           <div class="mt">Talepler</div>
           <div class="md">Şikayet · öneri · menü · mesaj takip</div>
         </a>
+        <?php if ($irsaliyeYetkili): ?>
+        <a class="mod-card i-green" href="fatura-kes.php">
+          <div class="mico"><i class="bi bi-receipt-cutoff"></i></div>
+          <div class="mt">Fatura Kes</div>
+          <div class="md">Kesilen irsaliyelerden Paraşüt faturası</div>
+        </a>
+        <?php endif; ?>
       </div>
 
       <?php if ($barRows): ?>

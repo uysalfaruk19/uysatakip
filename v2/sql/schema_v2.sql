@@ -46,6 +46,11 @@ CREATE TABLE IF NOT EXISTS `customers` (
   `sevk_ilce`          VARCHAR(60)           DEFAULT NULL,
   `edespatch_alias`    VARCHAR(120)          DEFAULT NULL COMMENT 'GİB e-İrsaliye alıcı kutusu (fable-023d)',
   `irsaliye_mail`      VARCHAR(255)          DEFAULT NULL COMMENT 'e-İrsaliye mail paylaşım adresleri (fable-023e)',
+  `tevkifat_kodu`      VARCHAR(10)           DEFAULT NULL COMMENT 'KDV tevkifat kodu (dolu=tevkifatlı, örn 604); boş=yok (fable-024)',
+  `tevkifat_oran`      DECIMAL(5,2)          DEFAULT NULL COMMENT 'tevkifat oranı (KDV %si, örn 50.00) (fable-024)',
+  `fatura_vade_gun`    INT          NOT NULL DEFAULT 1 COMMENT 'fatura vadesi = issue + N gün (fable-024)',
+  `fatura_mail`        VARCHAR(255)          DEFAULT NULL COMMENT 'fatura mail paylaşım adresleri (fable-024)',
+  `fatura_bolusum`     TEXT                  DEFAULT NULL COMMENT 'aylık faturayı N contact a bölme config JSON [{key,ad}] (fable-024)',
   `is_active`     TINYINT(1)   NOT NULL DEFAULT 1,
   `created_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -670,13 +675,45 @@ CREATE TABLE IF NOT EXISTS `parasut_irsaliye_log` (
   `tasiyici_ok`    TINYINT(1)   NOT NULL DEFAULT 0 COMMENT 'dönen belgede plaka/şoför işlendi mi',
   `gonderim`       VARCHAR(16)  NOT NULL DEFAULT 'yok' COMMENT 'gonderildi|hata|yok (fable-023d)',
   `mail`           VARCHAR(16)  NOT NULL DEFAULT 'yok' COMMENT 'gonderildi|hata|yok (fable-023e)',
+  `fatura_log_id`  INT UNSIGNED          DEFAULT NULL COMMENT 'faturalanınca parasut_fatura_log.id (aday havuzundan düşer, fable-024)',
   `entered_by`     VARCHAR(64)  NOT NULL DEFAULT '',
   `created_at`     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at`     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_irsaliye_cust_gun` (`customer_id`, `gun`),
   KEY `idx_irsaliye_gun` (`gun`),
+  KEY `idx_irsaliye_fatura` (`fatura_log_id`),
   CONSTRAINT `fk_irsaliye_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── Paraşüt satış faturası kesim kaydı (fable-024) ─
+-- Kesilen irsaliyelerin DÖNEM toplamından (ya da aylık üretimden) satış faturası + e-Fatura.
+-- UNIQUE YOK: aynı müşteriye ay içinde birden çok fatura olabilir. Kayıt SİLİNMEZ (resmi belge izi).
+-- Mükerrer kalkanı: faturalanan irsaliye satırları fatura_log_id ile işaretlenir + onay imzası +
+-- 'bilinmiyor' (timeout) kilidi. durum 'bilinmiyor' = belge kesilmiş OLABİLİR (retry YOK).
+CREATE TABLE IF NOT EXISTS `parasut_fatura_log` (
+  `id`                 INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `customer_id`        INT UNSIGNED NOT NULL,
+  `donem_bas`          DATE         NOT NULL COMMENT 'dönem başlangıç',
+  `donem_son`          DATE         NOT NULL COMMENT 'dönem bitiş (= issue_date)',
+  `tip`                VARCHAR(16)  NOT NULL DEFAULT 'irsaliye' COMMENT 'irsaliye|aylik',
+  `parasut_contact_id` VARCHAR(40)           DEFAULT NULL COMMENT 'faturanın kesildiği contact',
+  `parasut_fatura_id`  VARCHAR(40)           DEFAULT NULL COMMENT 'sales_invoices.id',
+  `fatura_no`          VARCHAR(64)           DEFAULT NULL COMMENT 'Paraşüt otomatik seri no',
+  `alt_ad`             VARCHAR(120)          DEFAULT NULL COMMENT 'aylık bölüşümde alt-firma adı',
+  `kalemler`           TEXT                  DEFAULT NULL COMMENT 'JSON: [{ogun,urun_id,miktar,birim_fiyat}]',
+  `toplam_kisi`        INT          NOT NULL DEFAULT 0,
+  `toplam_tutar`       DECIMAL(14,2) NOT NULL DEFAULT 0.00 COMMENT 'net (tahsil edilecek) = brüt + KDV − tevkifat',
+  `durum`              VARCHAR(16)  NOT NULL DEFAULT 'hata' COMMENT 'kesildi|hata|bilinmiyor|iptal',
+  `resmilestirme`      VARCHAR(16)  NOT NULL DEFAULT 'yok' COMMENT 'gonderildi|hata|yok (e-Fatura)',
+  `mail`               VARCHAR(16)  NOT NULL DEFAULT 'yok' COMMENT 'gonderildi|hata|yok',
+  `hata_mesaj`         VARCHAR(500)          DEFAULT NULL,
+  `entered_by`         VARCHAR(64)  NOT NULL DEFAULT '',
+  `created_at`         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_fatura_cust` (`customer_id`, `donem_son`),
+  CONSTRAINT `fk_fatura_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Taşıyıcı bilgisi + öğün→Paraşüt ürün eşlemesi (koda gömülmez; ayardan değişir)
@@ -687,5 +724,12 @@ INSERT IGNORE INTO `ayar` (`anahtar`, `deger`) VALUES
   ('irsaliye_urun_ogle', '1063984872'),
   ('irsaliye_urun_aksam', '1063985050'),
   ('irsaliye_urun_kumanya', '1063985150');
+
+-- fable-024: aylık bölüşüm contact id'leri (CANTAŞ 3 tüzel kişi) + fatura↔irsaliye bağı şalteri.
+INSERT IGNORE INTO `ayar` (`anahtar`, `deger`) VALUES
+  ('fatura_cantas_icdis', '1062205016'),
+  ('fatura_cantas_bakir', '1062204894'),
+  ('fatura_cantas_hc',    '1062205054'),
+  ('fatura_irsaliye_bagla', '1');
 
 SET FOREIGN_KEY_CHECKS = 1;

@@ -126,6 +126,9 @@ require __DIR__ . '/partials/header.php';
       <div class="quick-tiles">
         <a class="q-tile" href="faturalar.php"><i class="bi bi-receipt"></i> Faturalar</a>
         <a class="q-tile" href="cari.php"><i class="bi bi-cash-coin"></i> Cari & tahsilat</a>
+        <?php if (Auth::isAdmin($u)): ?>
+        <a class="q-tile" href="fatura-kes.php"><i class="bi bi-receipt-cutoff"></i> Fatura Kes</a>
+        <?php endif; ?>
       </div>
 
       <form method="get" class="date-row">

@@ -1941,3 +1941,163 @@ body.meal-open {
 .btn-mini:disabled {
   opacity: 0.5;
 }
+
+/* fable-024 — Fatura Kes ekranı */
+.ftr-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 750;
+  margin: 4px 0 10px;
+  cursor: pointer;
+}
+.ftr-list {
+  display: grid;
+  gap: 8px;
+}
+.ftr-row {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: var(--surface);
+}
+.ftr-row.disabled {
+  opacity: 0.6;
+}
+.ftr-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  cursor: pointer;
+}
+.ftr-head input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+}
+.ftr-name {
+  font-size: 14px;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+.ftr-meta {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--muted);
+  margin: 6px 0 0 26px;
+}
+.ftr-why {
+  font-size: 12px;
+  font-weight: 700;
+  color: #a35400;
+  margin: 6px 0 0 26px;
+  overflow-wrap: anywhere;
+}
+.ftr-why.warn,
+.ftr-bol-uyari.warn {
+  color: var(--red);
+}
+.ftr-bolusum {
+  margin: 8px 0 0 26px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  display: grid;
+  gap: 6px;
+}
+.ftr-bol-head {
+  font-size: 12px;
+  font-weight: 750;
+  color: var(--muted);
+}
+.ftr-bol-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 650;
+}
+.ftr-bol-in {
+  width: 110px;
+  min-height: 34px;
+  font-size: 16px;
+  text-align: right;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 8px;
+}
+.ftr-bol-uyari {
+  font-size: 12px;
+  font-weight: 750;
+  color: var(--red);
+}
+.ftr-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.ftr-res {
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  margin-bottom: 7px;
+  border-radius: 10px;
+  border-left: 3px solid var(--line);
+  background: var(--surface-2);
+}
+.ftr-res.ok {
+  border-left-color: var(--green);
+}
+.ftr-res.warn {
+  border-left-color: #e08b00;
+}
+.ftr-res.err {
+  border-left-color: var(--red);
+}
+.ftr-lines {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.ftr-calc {
+  font-size: 12.5px;
+  font-weight: 650;
+}
+.ftr-irs,
+.ftr-meta.small {
+  font-size: 11px;
+  color: var(--muted);
+}
+.ftr-sum {
+  margin: 2px 0 10px;
+  font-size: 14px;
+  font-weight: 750;
+}
+.ftr-uyari {
+  margin: 10px 0 4px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #a12a2a;
+  line-height: 1.45;
+}
+.ftr-govde-wrap summary {
+  font-size: 12px;
+  font-weight: 750;
+  color: var(--muted);
+  cursor: pointer;
+}
+.ftr-govde {
+  max-height: 34vh;
+  overflow: auto;
+  font-size: 11px;
+  line-height: 1.4;
+  background: #0f1b2a;
+  color: #d8e6f2;
+  padding: 10px;
+  border-radius: 10px;
+  margin-top: 8px;
+}

@@ -36,6 +36,11 @@ CREATE TABLE IF NOT EXISTS customers (
   sevk_ilce TEXT,
   edespatch_alias TEXT,                         -- fable-023d: GİB e-İrsaliye alıcı kutusu (legalize 'to')
   irsaliye_mail TEXT,                           -- fable-023e: e-İrsaliye mail paylaşım adresleri (virgülle çoklu)
+  tevkifat_kodu TEXT,                           -- fable-024: KDV tevkifat kodu (dolu=tevkifatlı, örn '604'); boş=tevkifat yok
+  tevkifat_oran REAL,                           -- fable-024: tevkifat oranı (KDV'nin %'si, örn 50.00)
+  fatura_vade_gun INTEGER NOT NULL DEFAULT 1,   -- fable-024: fatura vadesi = issue + N gün (PENDORYA 7)
+  fatura_mail TEXT,                             -- fable-024: fatura mail paylaşım adresleri (virgülle çoklu; boş başlar)
+  fatura_bolusum TEXT,                          -- fable-024: aylık faturayı N contact'a bölme config'i (JSON [{key,ad}]; key=ayar contact id anahtarı). CANTAŞ 3'lü; boş=tek fatura
   is_active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -526,12 +531,49 @@ CREATE TABLE IF NOT EXISTS parasut_irsaliye_log (
   tasiyici_ok INTEGER NOT NULL DEFAULT 0,  -- dönen belgede plaka/şoför işlendi mi
   gonderim TEXT NOT NULL DEFAULT 'yok' CHECK(gonderim IN ('gonderildi','hata','yok')), -- fable-023d
   mail TEXT NOT NULL DEFAULT 'yok' CHECK(mail IN ('gonderildi','hata','yok')),         -- fable-023e
+  fatura_log_id INTEGER REFERENCES parasut_fatura_log(id) ON DELETE SET NULL, -- fable-024: faturalanınca işaretlenir → aday listeden düşer
   entered_by TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(customer_id, gun)
 );
 CREATE INDEX IF NOT EXISTS idx_irsaliye_gun ON parasut_irsaliye_log(gun);
+CREATE INDEX IF NOT EXISTS idx_irsaliye_fatura ON parasut_irsaliye_log(fatura_log_id);
+
+-- ── Paraşüt satış faturası kesim kaydı (fable-024) ─
+-- Kesilen irsaliyelerin DÖNEM toplamından tek satış faturası + e-Fatura resmileştirme.
+-- UNIQUE YOK: aynı müşteriye ay içinde birden çok fatura olabilir. Kayıt SİLİNMEZ (resmi belge izi).
+-- Mükerrer kalkanı: faturalanan irsaliye satırları fatura_log_id ile işaretlenir (aday havuzundan düşer)
+-- + onay imzası + 'bilinmiyor' (timeout) kilidi. durum 'bilinmiyor' = belge kesilmiş OLABİLİR.
+CREATE TABLE IF NOT EXISTS parasut_fatura_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  donem_bas TEXT NOT NULL,                  -- 'YYYY-MM-DD' dönem başlangıç
+  donem_son TEXT NOT NULL,                  -- 'YYYY-MM-DD' dönem bitiş (= issue_date)
+  tip TEXT NOT NULL DEFAULT 'irsaliye' CHECK(tip IN ('irsaliye','aylik')), -- irsaliyeden mi aylık toplamdan mı
+  parasut_contact_id TEXT,                  -- faturanın kesildiği contact (irsaliyeli=customers.parasut_id; aylık bölüşümde alt-firma)
+  parasut_fatura_id TEXT,                   -- sales_invoices.id
+  fatura_no TEXT,                           -- Paraşüt otomatik seri no (UY...)
+  alt_ad TEXT,                              -- aylık bölüşümde alt-firma adı (İç-Dış / HC / Bakır)
+  kalemler TEXT,                            -- JSON: [{ogun,urun_id,miktar,birim_fiyat}]
+  toplam_kisi INTEGER NOT NULL DEFAULT 0,
+  toplam_tutar REAL NOT NULL DEFAULT 0,     -- net (tahsil edilecek) = brüt + KDV − tevkifat
+  durum TEXT NOT NULL DEFAULT 'hata' CHECK(durum IN ('kesildi','hata','bilinmiyor','iptal')),
+  resmilestirme TEXT NOT NULL DEFAULT 'yok' CHECK(resmilestirme IN ('gonderildi','hata','yok')), -- e-Fatura
+  mail TEXT NOT NULL DEFAULT 'yok' CHECK(mail IN ('gonderildi','hata','yok')),
+  hata_mesaj TEXT,
+  entered_by TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_fatura_cust ON parasut_fatura_log(customer_id, donem_son);
+
+-- fable-024: aylık bölüşüm contact id'leri (CANTAŞ 3 tüzel kişi — customers'ta YOK, koda gömülmez).
+INSERT OR IGNORE INTO ayar (anahtar, deger) VALUES
+  ('fatura_cantas_icdis', '1062205016'),
+  ('fatura_cantas_bakir', '1062204894'),
+  ('fatura_cantas_hc',    '1062205054'),
+  ('fatura_irsaliye_bagla', '1');   -- fatura↔irsaliye bağı (shipment_documents) gönderilsin mi; 422 riskinde '0'
 
 -- Taşıyıcı bilgisi + öğün→Paraşüt ürün eşlemesi (koda gömülmez; ayardan değişir)
 INSERT OR IGNORE INTO ayar (anahtar, deger) VALUES

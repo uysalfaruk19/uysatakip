@@ -480,6 +480,354 @@ final class Repo
         return $out;
     }
 
+    // ── fable-024: Paraşüt satış faturası (irsaliyeden haftalık / üretimden aylık) ──────
+    // Mükerrer kalkanı üç katman: (1) faturalanan irsaliye satırları fatura_log_id ile
+    // işaretlenir → aday havuzundan düşer, (2) onay imzası (ParasutYaz), (3) 'bilinmiyor'
+    // (timeout) + aylık 'kesildi' kilidi. Kayıt SİLİNMEZ (resmi belge izi).
+
+    /** Bir müşterinin verilen dönemde FATURALANMAMIŞ (fatura_log_id NULL) kesilmiş irsaliyeleri. */
+    public function faturaAdayIrsaliyeler(int $customerId, string $bas, string $son): array
+    {
+        $st = $this->pdo->prepare(
+            "SELECT * FROM parasut_irsaliye_log
+             WHERE customer_id = ? AND durum = 'kesildi' AND fatura_log_id IS NULL
+               AND gun >= ? AND gun <= ?
+             ORDER BY gun"
+        );
+        $st->execute([$customerId, $bas, $son]);
+        return $st->fetchAll();
+    }
+
+    /** Bir müşterinin verilen dönemde production.persons toplamı (aylık fatura adedi). */
+    public function productionPersonsRange(int $customerId, string $bas, string $son): int
+    {
+        $st = $this->pdo->prepare(
+            'SELECT COALESCE(SUM(persons),0) FROM production
+             WHERE customer_id = ? AND prod_date >= ? AND prod_date <= ?'
+        );
+        $st->execute([$customerId, $bas, $son]);
+        return (int) $st->fetchColumn();
+    }
+
+    /**
+     * Dönemi kesişen fatura kaydından kilit sebebi (yoksa null).
+     * 'bilinmiyor' her tip için kilitler; aylık 'kesildi' aynı dönemin ikinci kesimini engeller.
+     */
+    public function faturaKilidi(int $customerId, string $bas, string $son): ?string
+    {
+        $st = $this->pdo->prepare(
+            "SELECT tip, durum FROM parasut_fatura_log
+             WHERE customer_id = ? AND donem_bas <= ? AND donem_son >= ?
+             ORDER BY id DESC"
+        );
+        $st->execute([$customerId, $son, $bas]);
+        foreach ($st->fetchAll() as $r) {
+            if ((string) $r['durum'] === 'bilinmiyor') {
+                return 'Önceki fatura denemesi belirsiz — Paraşüt\'ten kontrol edin';
+            }
+            if ((string) $r['tip'] === 'aylik' && (string) $r['durum'] === 'kesildi') {
+                return 'Bu dönem zaten faturalandı';
+            }
+        }
+        return null;
+    }
+
+    public function faturaLog(int $id): ?array
+    {
+        $st = $this->pdo->prepare('SELECT * FROM parasut_fatura_log WHERE id = ?');
+        $st->execute([$id]);
+        $r = $st->fetch();
+        return $r ?: null;
+    }
+
+    /**
+     * Yeni fatura kaydı ekle (INSERT — UNIQUE yok). Başlangıç durumu genelde 'bilinmiyor'
+     * (POST öncesi güvenli varsayılan: süreç yarıda kalırsa kilitli kalır, mükerrer olmaz).
+     * @return int yeni kayıt id
+     */
+    public function faturaLogEkle(array $d): int
+    {
+        $enum = static fn(string $v, array $ok, string $def): string => in_array($v, $ok, true) ? $v : $def;
+        $tip  = $enum((string) ($d['tip'] ?? 'irsaliye'), ['irsaliye', 'aylik'], 'irsaliye');
+        $durum = $enum((string) ($d['durum'] ?? 'hata'), ['kesildi', 'hata', 'bilinmiyor', 'iptal'], 'hata');
+        $resm = $enum((string) ($d['resmilestirme'] ?? 'yok'), ['gonderildi', 'hata', 'yok'], 'yok');
+        $mail = $enum((string) ($d['mail'] ?? 'yok'), ['gonderildi', 'hata', 'yok'], 'yok');
+        $sql = 'INSERT INTO parasut_fatura_log
+                    (customer_id, donem_bas, donem_son, tip, parasut_contact_id, parasut_fatura_id,
+                     fatura_no, alt_ad, kalemler, toplam_kisi, toplam_tutar, durum, resmilestirme, mail,
+                     hata_mesaj, entered_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+        $this->pdo->prepare($sql)->execute([
+            (int) $d['customer_id'],
+            (string) $d['donem_bas'],
+            (string) $d['donem_son'],
+            $tip,
+            $d['parasut_contact_id'] ?? null,
+            $d['parasut_fatura_id'] ?? null,
+            $d['fatura_no'] ?? null,
+            $d['alt_ad'] ?? null,
+            isset($d['kalemler']) ? json_encode($d['kalemler'], JSON_UNESCAPED_UNICODE) : null,
+            (int) ($d['toplam_kisi'] ?? 0),
+            (float) ($d['toplam_tutar'] ?? 0),
+            $durum,
+            $resm,
+            $mail,
+            isset($d['hata_mesaj']) ? mb_substr((string) $d['hata_mesaj'], 0, 490) : null,
+            (string) ($d['entered_by'] ?? ''),
+        ]);
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    /** Var olan fatura kaydını güncelle (yalnız verilen alanlar). */
+    public function faturaLogGuncelle(int $id, array $d): void
+    {
+        $set = [];
+        $args = [];
+        foreach ([
+            'parasut_fatura_id', 'fatura_no', 'toplam_kisi', 'toplam_tutar', 'durum',
+            'resmilestirme', 'mail', 'kalemler',
+        ] as $k) {
+            if (!array_key_exists($k, $d)) {
+                continue;
+            }
+            if ($k === 'kalemler') {
+                $set[] = 'kalemler = ?';
+                $args[] = json_encode($d['kalemler'], JSON_UNESCAPED_UNICODE);
+            } elseif ($k === 'durum') {
+                $set[] = 'durum = ?';
+                $args[] = in_array($d['durum'], ['kesildi', 'hata', 'bilinmiyor', 'iptal'], true) ? $d['durum'] : 'hata';
+            } elseif ($k === 'resmilestirme') {
+                $set[] = 'resmilestirme = ?';
+                $args[] = in_array($d['resmilestirme'], ['gonderildi', 'hata', 'yok'], true) ? $d['resmilestirme'] : 'yok';
+            } elseif ($k === 'mail') {
+                $set[] = 'mail = ?';
+                $args[] = in_array($d['mail'], ['gonderildi', 'hata', 'yok'], true) ? $d['mail'] : 'yok';
+            } else {
+                $set[] = "$k = ?";
+                $args[] = $d[$k];
+            }
+        }
+        if (array_key_exists('hata_mesaj', $d)) {
+            $set[] = 'hata_mesaj = ?';
+            $args[] = $d['hata_mesaj'] === null ? null : mb_substr((string) $d['hata_mesaj'], 0, 490);
+        }
+        if (!$set) {
+            return;
+        }
+        $set[] = 'updated_at = ' . $this->nowExpr();
+        $args[] = $id;
+        $this->pdo->prepare('UPDATE parasut_fatura_log SET ' . implode(', ', $set) . ' WHERE id = ?')->execute($args);
+    }
+
+    /**
+     * İrsaliye satırlarını bir faturaya BAĞLA (yalnız hâlâ boş olanları — atomik claim).
+     * @param array<int,int> $irsaliyeIds
+     * @return int gerçekten bağlanan satır sayısı (beklenenden azsa çakışma vardır)
+     */
+    public function irsaliyeleriFaturayaBagla(array $irsaliyeIds, int $faturaLogId): int
+    {
+        $ids = array_values(array_unique(array_map('intval', $irsaliyeIds)));
+        if (!$ids) {
+            return 0;
+        }
+        $ph = implode(',', array_fill(0, count($ids), '?'));
+        $st = $this->pdo->prepare(
+            "UPDATE parasut_irsaliye_log SET fatura_log_id = ?
+             WHERE fatura_log_id IS NULL AND id IN ($ph)"
+        );
+        $st->execute(array_merge([$faturaLogId], $ids));
+        return $st->rowCount();
+    }
+
+    /** Bağı GERİ AL (fatura başarısız → irsaliyeler tekrar aday olsun). Yalnız bu faturaya bağlı olanlar. */
+    public function irsaliyeleriFaturadanCoz(array $irsaliyeIds, int $faturaLogId): int
+    {
+        $ids = array_values(array_unique(array_map('intval', $irsaliyeIds)));
+        if (!$ids) {
+            return 0;
+        }
+        $ph = implode(',', array_fill(0, count($ids), '?'));
+        $st = $this->pdo->prepare(
+            "UPDATE parasut_irsaliye_log SET fatura_log_id = NULL
+             WHERE fatura_log_id = ? AND id IN ($ph)"
+        );
+        $st->execute(array_merge([$faturaLogId], $ids));
+        return $st->rowCount();
+    }
+
+    /**
+     * fable-024: Fatura Kes ekranının tek gerçek kaynağı — dönemdeki faturalanabilir müşteriler.
+     * İki tip: 'irsaliye' (faturalanmamış kesilmiş irsaliyelerin öğün toplamı) ve
+     * 'aylik' (irsaliye_aktif=0 → dönemdeki production.persons toplamı × birim; CANTAŞ bölüşümlü).
+     * Seçilemeyen de listelenir (sessiz atlama yok, sebep yazılı).
+     * @return array<int,array<string,mixed>>
+     */
+    public function faturaAdaylari(string $bas, string $son): array
+    {
+        $ay = substr($son, 0, 7);
+        $out = [];
+        $rows = $this->pdo->query('SELECT * FROM customers WHERE is_active = 1 ORDER BY name, id')->fetchAll();
+        foreach ($rows as $c) {
+            $cid = (int) $c['id'];
+            $parasutId = trim((string) ($c['parasut_id'] ?? ''));
+            $irsAktif = (int) ($c['irsaliye_aktif'] ?? 1) === 1;
+            $kilit = $this->faturaKilidi($cid, $bas, $son);
+            $birim = $this->priceFor($cid, $ay)['unit_price'];
+
+            if ($irsAktif) {
+                $irs = $this->faturaAdayIrsaliyeler($cid, $bas, $son);
+                if (!$irs && $kilit === null) {
+                    continue; // faturalanacak irsaliye yok → listeleme
+                }
+                $ogle = $aksam = $kumanya = 0;
+                $irsaliyeIds = $docIds = $nolar = [];
+                foreach ($irs as $r) {
+                    $irsaliyeIds[] = (int) $r['id'];
+                    if (($r['parasut_doc_id'] ?? '') !== '') {
+                        $docIds[] = (string) $r['parasut_doc_id'];
+                    }
+                    if (($r['despatch_no'] ?? '') !== '') {
+                        $nolar[] = (string) $r['despatch_no'];
+                    }
+                    foreach (json_decode((string) ($r['kalemler'] ?? '[]'), true) ?: [] as $k) {
+                        $m = (int) ($k['miktar'] ?? 0);
+                        $og = (string) ($k['ogun'] ?? '');
+                        if ($og === 'ogle') {
+                            $ogle += $m;
+                        } elseif ($og === 'aksam') {
+                            $aksam += $m;
+                        } elseif ($og === 'kumanya') {
+                            $kumanya += $m;
+                        }
+                    }
+                }
+                $toplam = $ogle + $aksam + $kumanya;
+                $secilebilir = true;
+                $sebep = '';
+                if ($parasutId === '') {
+                    $secilebilir = false;
+                    $sebep = 'Paraşüt eşleşmesi yok';
+                } elseif ($kilit !== null) {
+                    // timeout sonrası irsaliye kilitli olduğundan $irs boş olabilir — kilit önce gelir.
+                    $secilebilir = false;
+                    $sebep = $kilit;
+                } elseif (!$irs || $toplam <= 0) {
+                    $secilebilir = false;
+                    $sebep = 'Faturalanacak irsaliye yok';
+                }
+                $out[] = [
+                    'customer_id'   => $cid,
+                    'name'          => (string) $c['name'],
+                    'tip'           => 'irsaliye',
+                    'parasut_id'    => $parasutId,
+                    'ogle'          => $ogle, 'aksam' => $aksam, 'kumanya' => $kumanya,
+                    'toplam'        => $toplam,
+                    'irsaliye_sayisi' => count($irs),
+                    'irsaliye_ids'  => $irsaliyeIds,
+                    'doc_ids'       => $docIds,
+                    'despatch_nolar' => $nolar,
+                    'birim'         => $birim,
+                    'tevkifat_kodu' => trim((string) ($c['tevkifat_kodu'] ?? '')),
+                    'tevkifat_oran' => $c['tevkifat_oran'] !== null ? (float) $c['tevkifat_oran'] : null,
+                    'vade_gun'      => (int) ($c['fatura_vade_gun'] ?? 1),
+                    'secilebilir'   => $secilebilir,
+                    'sebep'         => $sebep,
+                ];
+                continue;
+            }
+
+            // ── aylık müşteri (irsaliye_aktif=0) ──
+            $adet = $this->productionPersonsRange($cid, $bas, $son);
+            if ($adet <= 0 && $kilit === null) {
+                continue;
+            }
+            $bolusum = null;
+            $bRaw = trim((string) ($c['fatura_bolusum'] ?? ''));
+            if ($bRaw !== '') {
+                $dec = json_decode($bRaw, true);
+                if (is_array($dec)) {
+                    $bolusum = [];
+                    foreach ($dec as $p) {
+                        $key = (string) ($p['key'] ?? '');
+                        $bolusum[] = [
+                            'key'        => $key,
+                            'ad'         => (string) ($p['ad'] ?? $key),
+                            'contact_id' => trim((string) $this->ayar($key, '')),
+                        ];
+                    }
+                }
+            }
+            $secilebilir = true;
+            $sebep = '';
+            if ($bolusum !== null) {
+                foreach ($bolusum as $p) {
+                    if ($p['contact_id'] === '') {
+                        $secilebilir = false;
+                        $sebep = 'Bölüşüm cari eşleşmesi eksik (' . $p['ad'] . ')';
+                        break;
+                    }
+                }
+            } elseif ($parasutId === '') {
+                $secilebilir = false;
+                $sebep = 'Paraşüt eşleşmesi yok — cari açılınca aktif olur';
+            }
+            if ($secilebilir && $adet <= 0) {
+                $secilebilir = false;
+                $sebep = 'Bu dönemde üretim yok';
+            }
+            if ($secilebilir && $kilit !== null) {
+                $secilebilir = false;
+                $sebep = $kilit;
+            }
+            $out[] = [
+                'customer_id' => $cid,
+                'name'        => (string) $c['name'],
+                'tip'         => 'aylik',
+                'parasut_id'  => $parasutId,
+                'adet'        => $adet,
+                'birim'       => $birim,
+                'vade_gun'    => (int) ($c['fatura_vade_gun'] ?? 1),
+                'bolusum'     => $bolusum,
+                'son_bolusum' => $bolusum !== null ? $this->faturaSonBolusum($cid) : null,
+                'secilebilir' => $secilebilir,
+                'sebep'       => $sebep,
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * Aylık bölüşümlü müşterinin (CANTAŞ) SON kesilen faturalarındaki kişi dağılımı
+     * (contact_id => kişi) — UI'da varsayılan bölüşüm oranı olarak kullanılır.
+     * @return array<string,int>|null
+     */
+    public function faturaSonBolusum(int $customerId): ?array
+    {
+        $st = $this->pdo->prepare(
+            "SELECT donem_son FROM parasut_fatura_log
+             WHERE customer_id = ? AND tip = 'aylik' AND durum = 'kesildi'
+             ORDER BY donem_son DESC, id DESC LIMIT 1"
+        );
+        $st->execute([$customerId]);
+        $son = $st->fetchColumn();
+        if ($son === false) {
+            return null;
+        }
+        $st = $this->pdo->prepare(
+            "SELECT parasut_contact_id, toplam_kisi FROM parasut_fatura_log
+             WHERE customer_id = ? AND tip = 'aylik' AND durum = 'kesildi' AND donem_son = ?"
+        );
+        $st->execute([$customerId, $son]);
+        $out = [];
+        foreach ($st->fetchAll() as $r) {
+            $cid = trim((string) ($r['parasut_contact_id'] ?? ''));
+            if ($cid !== '') {
+                $out[$cid] = (int) $r['toplam_kisi'];
+            }
+        }
+        return $out ?: null;
+    }
+
     // ── Taşıma karlılık (opus-013: adet[production] × (satış − alış) − sabit gider) ─
     // Model: taşıma müşterisi KARTI (customers) = 4 alan →
     //   unit_price (satış birim fiyatı) · maliyet_birim (alış birim fiyatı) ·
