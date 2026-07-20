@@ -376,6 +376,18 @@ final class ParasutYaz
         $despatch = self::despatchNo($doc);
         $tasiyiciOk = $this->tasiyiciIslendiMi($doc);
 
+        // ── SAAT DÜZELTMESİ (fable-023f — CEOTHERM dersi, 21 Tem sabahı): Paraşüt
+        // issue_datetime'ı CREATE sırasında YOK SAYIYOR (hangi formatta olursa olsun) —
+        // yalnız oluşturma SONRASI PUT ile '.000Z' formatında yazılabiliyor. Saat 00:00
+        // kalırsa GİB "IssueTime eksik" diye REDDEDİYOR. O yüzden kesimden hemen sonra
+        // ayrı bir güncelleme adımı şart. (OPAK gece bu yüzden elle PUT'la kurtarılmıştı.)
+        if ($docId !== '') {
+            $utc = gmdate('Y-m-d\TH:i:s') . '.000Z';
+            $this->cagir('PUT', '/shipment_documents/' . rawurlencode($docId),
+                ['data' => ['id' => $docId, 'type' => 'shipment_documents',
+                    'attributes' => ['issue_datetime' => $utc, 'shipment_date' => $utc]]]);
+        }
+
         // ── GÖNDERİM (fable-023d): e-İrsaliye resmileştirme — undokümante /legalize ucu. ──
         // İlk gönderim gecesinde (21 Tem, OPAK UU02026000000590) kanıtlanan akış:
         //   POST {id}/legalize gövde {data:{type,attributes:{to:<GİB alıcı kutusu>}}} → 202 +
@@ -402,6 +414,9 @@ final class ParasutYaz
             'tasiyici_ok'    => $tasiyiciOk,
             'gonderim'       => $gonderim,
             'mail'           => $mail,
+            // fable-023f: gönderim hatasının SEBEBİ de loglanır (CEOTHERM'de NULL kalmıştı,
+            // teşhis için Paraşüt'e gitmek gerekti — sebep kayıttan okunabilmeli).
+            'hata_mesaj'     => $gonderim !== 'gonderildi' && $gonderimMesaj !== '' ? mb_substr($gonderimMesaj, 0, 490) : null,
             'entered_by'     => $actor,
         ]);
         uysa_audit('parasut_irsaliye', $actor, $gun, json_encode([
