@@ -399,7 +399,7 @@ final class IrsaliyeTest extends TestCase
         $yaz = new ParasutYaz($this->repo, 'imza', $this->http([$adressiz, $this->bosListe(), $this->createYanit()]));
         $r = $yaz->createShipmentDocument($cid, '2026-07-20', ['ogle' => 75], ['onay' => 'imza']);
         $this->assertFalse($r['ok']);
-        $this->assertStringContainsString('sevk adresi yok', $r['mesaj']);
+        $this->assertStringContainsString('Sevk adresi yok', $r['mesaj']);
         $this->assertNotContains('POST', array_column($this->cagrilar, 'method'));
     }
 

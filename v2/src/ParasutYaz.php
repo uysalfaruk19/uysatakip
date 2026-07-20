@@ -76,6 +76,29 @@ final class ParasutYaz
         return bin2hex(random_bytes(16));
     }
 
+    /**
+     * fable-023c: Kokpit'te kayıtlı sevk adresi (customers.sevk_*). Kolon henüz yoksa boş döner
+     * (migration uygulanmadan deploy edilirse ekran çökmesin).
+     * @return array{address:string,city:string,district:string}
+     */
+    public function kayitliAdres(int $customerId): array
+    {
+        $bos = ['address' => '', 'city' => '', 'district' => ''];
+        try {
+            $c = $this->repo->customer($customerId);
+        } catch (\Throwable) {
+            return $bos;
+        }
+        if (!is_array($c)) {
+            return $bos;
+        }
+        return [
+            'address'  => trim((string) ($c['sevk_adres'] ?? '')),
+            'city'     => trim((string) ($c['sevk_il'] ?? '')),
+            'district' => trim((string) ($c['sevk_ilce'] ?? '')),
+        ];
+    }
+
     /** @return array{plaka:string,sofor_ad:string,sofor_tckn:string,alan_plaka:string,alan_sofor:string} */
     public function tasiyici(): array
     {
@@ -191,7 +214,11 @@ final class ParasutYaz
                 $on['parasut_id'],
                 $gun,
                 $kalemler,
-                ['address' => '(kesim anında Paraşüt cari kartından okunur)', 'city' => '', 'district' => ''],
+                // fable-023c: önizleme artık GERÇEK adresi gösterir (kayıtlı adres = gidecek veri).
+                // Kayıtlı adres yoksa kesim anında Paraşüt cari kartından okunmaya çalışılır.
+                $this->kayitliAdres($customerId)['address'] !== ''
+                    ? $this->kayitliAdres($customerId)
+                    : ['address' => '(kayıtlı adres yok — kesimde Paraşüt cari kartından okunur)', 'city' => '', 'district' => ''],
                 $gun . 'T00:00:00+03:00' // önizlemede sabit: gövde karşılaştırması zamanla değişmesin
             ),
         ];
@@ -234,23 +261,29 @@ final class ParasutYaz
         }
         $actor = (string) ($ctx['actor'] ?? '');
 
-        // ── Sevk adresi Paraşüt cari kartından (elle yazımdaki tutarsızlık böylece biter) ──
-        $c = $this->cagir('GET', '/contacts/' . rawurlencode($parasutId), null);
-        if ($c['net'] !== 'ok' || $c['status'] < 200 || $c['status'] >= 300) {
-            return $this->hataYaz($customerId, $gun, $kalemler, $toplam, $actor, 'hata',
-                'Paraşüt cari kartı okunamadı (HTTP ' . $c['status'] . ') — adres alınamadı.');
-        }
-        $cAttr = $c['data']['data']['attributes'] ?? [];
-        $adres = [
-            'address'  => trim((string) ($cAttr['address'] ?? '')),
-            'city'     => trim((string) ($cAttr['city'] ?? '')),
-            'district' => trim((string) ($cAttr['district'] ?? '')),
-        ];
-        $parasutAd = trim((string) ($cAttr['name'] ?? ''));
+        // ── Sevk adresi: ÖNCE Kokpit'teki kayıtlı adres (fable-023c) ──
+        // Ders (ilk canlı deneme, 21 Tem): adres için her kesimde Paraşüt'e sormak gereksiz bir
+        // kırılma noktasıydı — cari kart okuması HTTP 0 verince kesim hiç yapılamadı. Adres her
+        // belgede AYNI (geçmiş irsaliyelerle birebir doğrulandı) → bizde durur, uzaktan sorulmaz.
+        $adres = $this->kayitliAdres($customerId);
+        $parasutAd = null;
         if ($adres['address'] === '') {
-            // Sessiz atlama YOK: sebebi kullanıcıya söylenir.
+            // Kayıtlı adres yoksa Paraşüt cari kartını dene (ilk kurulum / yeni müşteri).
+            $c = $this->cagir('GET', '/contacts/' . rawurlencode($parasutId), null);
+            if ($c['net'] === 'ok' && $c['status'] >= 200 && $c['status'] < 300) {
+                $cAttr = $c['data']['data']['attributes'] ?? [];
+                $adres = [
+                    'address'  => trim((string) ($cAttr['address'] ?? '')),
+                    'city'     => trim((string) ($cAttr['city'] ?? '')),
+                    'district' => trim((string) ($cAttr['district'] ?? '')),
+                ];
+                $parasutAd = trim((string) ($cAttr['name'] ?? '')) ?: null;
+            }
+        }
+        if ($adres['address'] === '') {
+            // Sessiz atlama YOK: sebebi kullanıcıya söylenir (müşteri kartına adres girilmeli).
             return $this->hataYaz($customerId, $gun, $kalemler, $toplam, $actor, 'hata',
-                'Paraşüt cari kartında sevk adresi yok — bu müşteri atlandı.');
+                'Sevk adresi yok — müşteri kartına sevk adresi girin (Paraşüt cari kartı da okunamadı).');
         }
 
         // ── Dış kaynaklı mükerrer kalkanı: o gün + o cari için belge var mı? ──
