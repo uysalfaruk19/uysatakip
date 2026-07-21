@@ -59,6 +59,9 @@
     stepOnay.hidden = step !== "onay";
     stepSonuc.hidden = step !== "sonuc";
     window.scrollTo(0, 0);
+    // fable-025: admin'de kayan eleman artık main.app-shell (sabit-kabuk deseni)
+    var shell = document.querySelector("main.app-shell");
+    if (shell) shell.scrollTop = 0;
   }
 
   // Aylık bölüşüm: seçiliyken panel açılır; toplam ≠ hedef ise kırmızı uyarı (bloklamaz).

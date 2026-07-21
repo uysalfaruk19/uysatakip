@@ -89,19 +89,19 @@ a {
    momentum scroll'da geride kalacağı fixed katman kalmadı → titreme fiziksel olarak imkansız.
    KAPSAM SADECE body.customer-page; admin (masaüstü kabuk + FAB) position:fixed barını korur. */
 body.customer-page {
-  height: 100vh;   /* eski WebKit / iOS <15.4 fallback (dvh yok) */
-  height: 100dvh;  /* destekleyen ezer → iOS adres çubuğu daralınca bar dipte doğru oturur */
+  height: 100vh; /* eski WebKit / iOS <15.4 fallback (dvh yok) */
+  height: 100dvh; /* destekleyen ezer → iOS adres çubuğu daralınca bar dipte doğru oturur */
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 body.customer-page main.app-shell {
   flex: 1 1 auto;
-  min-height: 0;                  /* flex item'ın scroll kabı olabilmesi için şart (yoksa min-height:100vh taşırır, barı ekran dışına iter) */
+  min-height: 0; /* flex item'ın scroll kabı olabilmesi için şart (yoksa min-height:100vh taşırır, barı ekran dışına iter) */
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain; /* zincir-scroll'u main'de tut; pull-to-refresh (push.js) main.scrollTop=0 iken tetiklenir */
-  scroll-behavior: smooth;        /* html'deki smooth artık kayan eleman main'e taşınır */
+  scroll-behavior: smooth; /* html'deki smooth artık kayan eleman main'e taşınır */
   /* Alt padding küçüldü: bar akışta yer kapladığı için eski fixed-bar payı (122px) gereksiz.
      safe-area-inset-bottom BAR'ın kendi padding'inde (.bottom-tabs, aşağıda). */
   padding-bottom: 22px;
@@ -110,6 +110,32 @@ body.customer-page .bottom-tabs {
   position: static;
   flex: 0 0 auto;
   /* Görünüm (yükseklik/gölge/blur/max-width ortalama) korunur — sadece konumlandırma değişti. */
+}
+
+/* fable-025: AYNI desen ADMIN'e (Ömer: "alt bar yine oynuyor" — bu sefer yönetim panelinde).
+   021'de admin bilerek dışarıda bırakılmıştı ("işleyen düzeni bozma"); iPhone'da admin de
+   titreyince aynı kanıtlı reçete uygulandı. FAB bar İÇİNDE (fab-slot absolute) olduğu için
+   barla birlikte akışa geçer; fab-menu position:fixed kalır (bar görsel olarak viewport
+   dibinde olduğundan menü konumu değişmez). kb-open gizlemesi display:none — statikte de işler. */
+body.admin-page {
+  height: 100vh; /* eski WebKit fallback */
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+body.admin-page main.app-shell {
+  flex: 1 1 auto;
+  min-height: 0; /* flex item'ın scroll kabı olabilmesi için şart */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  scroll-behavior: smooth;
+  padding-bottom: 22px; /* fixed-bar payı (122px) gereksizleşti */
+}
+body.admin-page .bottom-tabs {
+  position: static;
+  flex: 0 0 auto;
 }
 
 .topbar {

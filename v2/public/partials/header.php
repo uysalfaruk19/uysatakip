@@ -16,7 +16,7 @@ $eyebrow = $eyebrow ?? ('UYSA Kokpit · ' . ($u['display_name'] ?: $u['username'
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
 <link href="assets/app.css?v=<?= filemtime(__DIR__ . '/../assets/app.css') ?>" rel="stylesheet">
 </head>
-<body>
+<body class="admin-page"><!-- fable-025: sabit-kabuk deseni (alt bar titremesi) admin'e de uygulandı -->
 <main class="app-shell">
   <header class="topbar">
     <div class="d-flex align-items-center gap-3">
