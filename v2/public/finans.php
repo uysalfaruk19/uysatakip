@@ -190,6 +190,8 @@ require __DIR__ . '/partials/header.php';
         <a class="chip <?= $filter === 'all' ? 'active' : '' ?>" href="finans.php?ay=<?= $month ?>&tur=all">Tümü</a>
         <a class="chip <?= $filter === 'gelir' ? 'active' : '' ?>" href="finans.php?ay=<?= $month ?>&tur=gelir">Gelir</a>
         <a class="chip <?= $filter === 'gider' ? 'active' : '' ?>" href="finans.php?ay=<?= $month ?>&tur=gider">Gider</a>
+        <?php // fable-029b (Ömer): form artık varsayılan GİZLİ — bu buton açar ?>
+        <button class="chip" type="button" onclick="toggleSheet('add-sheet')"><i class="bi bi-plus-lg"></i> Ekle</button>
       </div>
 
       <?php if (!$byDay): ?>
@@ -222,7 +224,9 @@ require __DIR__ . '/partials/header.php';
         <?php endforeach; ?>
       <?php endif; ?>
 
-      <div class="fab-sheet" id="add-sheet">
+      <?php // fable-029b (Ömer): "finansta gider ekle gözükmesin" — form varsayılan GİZLİ,
+            // üstteki "+ Ekle" çipiyle açılır (gizleme stili hiç yoktu, form hep açık duruyordu) ?>
+      <div class="fab-sheet" id="add-sheet" style="display:none">
         <h2>Gider ekle</h2>
         <form method="post" enctype="multipart/form-data" class="form-grid">
           <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
