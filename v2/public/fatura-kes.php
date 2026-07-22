@@ -136,6 +136,8 @@ if ($method === 'POST') {
                     'customer_id' => $cid, 'name' => $a['name'], 'ok' => true, 'tip' => 'aylik',
                     // fable-028: aylıkta döküm = dönem içi GİRİLEN sayılar (fatura bunların toplamı)
                     'gunler' => $repo->customerMealsRange($cid, $bas, $son),
+                    // fable-028b: belge önizlemesi için gerçek vade (dönem sonu + müşteri vade günü)
+                    'vade' => date('Y-m-d', strtotime($son . ' +' . max(0, (int) $a['vade_gun']) . ' day')),
                     'adet' => (int) $a['adet'], 'birim' => (float) $a['birim'],
                     'parts' => $partOut, 'sum_kisi' => $sumKisi, 'net' => $altNet,
                     'fark' => $sumKisi - (int) $a['adet'],

@@ -234,6 +234,70 @@
             "</tbody></table></div></details>"
           );
         }
+        // fable-028b: BELGE görünümlü fatura önizlemesi — Paraşüt'te oluşacak faturanın aynısı
+        // (kalem satırları, ara toplam, KDV, tevkifat, genel toplam, vade). "Öyle mi, kes" hissi.
+        var URUN_AD = {
+          Öğlen: "ÖĞLEN YEMEK BEDELİ",
+          Akşam: "AKŞAM YEMEK BEDELİ",
+          Kumanya: "KUMANYA BEDELİ",
+        };
+        function faturaBelge(baslik, kalemler, hesap, vade, tevkifat) {
+          var rows = kalemler
+            .map(function (k) {
+              return (
+                "<tr><td>" +
+                esc(URUN_AD[k.ad] || k.ad) +
+                "</td><td>" +
+                k.miktar +
+                "</td><td>" +
+                money(k.birim) +
+                "</td><td>%10</td><td>" +
+                money(k.miktar * k.birim) +
+                "</td></tr>"
+              );
+            })
+            .join("");
+          return (
+            '<details class="ftr-belge-wrap"><summary>🧾 Fatura önizleme</summary>' +
+            '<div class="ftr-belge">' +
+            '<div class="ftr-belge-head"><strong>SATIŞ FATURASI</strong> <span class="ftr-belge-tag">ÖNİZLEME</span></div>' +
+            '<div class="ftr-belge-meta">Satıcı: UYSA YEMEK · Alıcı: <strong>' +
+            esc(baslik) +
+            "</strong><br>" +
+            "Fatura tarihi: " +
+            esc(window.FTR.son) +
+            " · Vade: " +
+            esc(vade) +
+            " · Dönem: " +
+            esc(window.FTR.bas) +
+            " → " +
+            esc(window.FTR.son) +
+            "</div>" +
+            '<div style="overflow-x:auto"><table class="mini-cal ftr-belge-tablo">' +
+            "<thead><tr><th>Açıklama</th><th>Miktar</th><th>Birim ₺</th><th>KDV</th><th>Tutar ₺</th></tr></thead>" +
+            "<tbody>" +
+            rows +
+            "</tbody></table></div>" +
+            '<div class="ftr-belge-alt">' +
+            "<div>Ara toplam <strong>" +
+            money(hesap.brut) +
+            "</strong></div>" +
+            "<div>KDV (%10) <strong>" +
+            money(hesap.kdv) +
+            "</strong></div>" +
+            (hesap.tevkifat > 0
+              ? "<div>KDV tevkifatı" +
+                (tevkifat ? " (" + esc(tevkifat) + ")" : "") +
+                " <strong>−" +
+                money(hesap.tevkifat) +
+                "</strong></div>"
+              : "") +
+            '<div class="ftr-belge-genel">TAHSİL EDİLECEK <strong>' +
+            money(hesap.net) +
+            "</strong></div>" +
+            "</div></div></details>"
+          );
+        }
         r.satirlar.forEach(function (s) {
           if (!s.ok) {
             html +=
@@ -274,6 +338,7 @@
               "</strong> · Vade " +
               esc(s.vade) +
               "</div>" +
+              faturaBelge(s.name, s.kalemler, s.hesap, s.vade, s.tevkifat) +
               gunTablosu(s.gunler, true) +
               "</div>";
             govdeler.push(s.name + ":\n" + JSON.stringify(s.govde, null, 2));
@@ -302,6 +367,33 @@
               '<div class="ftr-calc"><strong>Tahsil toplam ' +
               money(s.net) +
               "</strong></div>" +
+              s.parts
+                .filter(function (p) {
+                  return p.kisi > 0;
+                })
+                .map(function (p) {
+                  // Aylık: HER parça ayrı fatura → her birine ayrı belge önizlemesi.
+                  var brut = Math.round(p.kisi * s.birim * 100) / 100;
+                  return faturaBelge(
+                    p.ad,
+                    [
+                      {
+                        ad: "Yemek hizmet bedeli",
+                        miktar: p.kisi,
+                        birim: s.birim,
+                      },
+                    ],
+                    {
+                      brut: brut,
+                      kdv: Math.round((p.net - brut) * 100) / 100,
+                      tevkifat: 0,
+                      net: p.net,
+                    },
+                    s.vade || window.FTR.son,
+                    "",
+                  );
+                })
+                .join("") +
               gunTablosu(s.gunler, false) +
               "</div>";
             Object.keys(s.govde).forEach(function (k) {
