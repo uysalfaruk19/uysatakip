@@ -17,7 +17,8 @@ if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
     $month = date('Y-m');
 }
 $filter = $_GET['tur'] ?? 'all';
-if (!in_array($filter, ['all', 'gelir', 'gider'], true)) {
+// fable-031: 'firma' = gider FİRMA özeti görünümü (kronolojiğe alternatif)
+if (!in_array($filter, ['all', 'gelir', 'gider', 'firma'], true)) {
     $filter = 'all';
 }
 $flash = '';
@@ -131,11 +132,13 @@ $suppliers = $repo->activeSuppliers();
 // Filtre + güne göre grupla
 $byDay = [];
 foreach ($txs as $t) {
-    if ($filter !== 'all' && $t['type'] !== $filter) {
+    if ($filter !== 'all' && $filter !== 'firma' && $t['type'] !== $filter) {
         continue;
     }
     $byDay[$t['tx_date']][] = $t;
 }
+// fable-031: firma görünümü — gider firma özeti (kim bana ne kesiyor)
+$firmaOzet = $filter === 'firma' ? $repo->giderFirmaOzet($month) : [];
 
 $eyebrow = ay_label_tr($month);
 $pageTitle = 'Finans';
@@ -211,6 +214,8 @@ require __DIR__ . '/partials/header.php';
         <a class="chip <?= $filter === 'all' ? 'active' : '' ?>" href="finans.php?ay=<?= $month ?>&tur=all">Tümü</a>
         <a class="chip <?= $filter === 'gelir' ? 'active' : '' ?>" href="finans.php?ay=<?= $month ?>&tur=gelir">Gelir</a>
         <a class="chip <?= $filter === 'gider' ? 'active' : '' ?>" href="finans.php?ay=<?= $month ?>&tur=gider">Gider</a>
+        <?php // fable-031 (Ömer): "firma firma bana ne fatura kesiyor" — aylık tedarikçi özeti ?>
+        <a class="chip <?= $filter === 'firma' ? 'active' : '' ?>" href="finans.php?ay=<?= $month ?>&tur=firma">Firma bazında</a>
         <?php // fable-029b (Ömer): form artık varsayılan GİZLİ — bu buton açar ?>
         <button class="chip" type="button" onclick="toggleSheet('add-sheet')"><i class="bi bi-plus-lg"></i> Ekle</button>
         <?php if (Auth::isAdmin($u)): // fable-030: giderler Paraşüt'ten tek dokunuş (Hikari deseni) ?>
@@ -223,7 +228,26 @@ require __DIR__ . '/partials/header.php';
         <?php endif; ?>
       </div>
 
-      <?php if (!$byDay): ?>
+      <?php if ($filter === 'firma'): // fable-031: gider FİRMA özeti ?>
+        <div class="cardx card-pad">
+          <h2>Gider — firma bazında <span class="text-muted" style="font-size:12px;font-weight:600">(<?= Helpers::e(ay_label_tr($month)) ?>)</span></h2>
+          <?php if (!$firmaOzet): ?>
+            <div class="empty-state">Bu ay gider kaydı yok.</div>
+          <?php else: $fTop = 0.0; ?>
+            <div style="overflow-x:auto"><table class="mini-cal">
+              <thead><tr><th>Firma</th><th>Fatura</th><th>Toplam</th></tr></thead>
+              <tbody>
+              <?php foreach ($firmaOzet as $f): $fTop += $f['toplam']; ?>
+                <tr><td><?= Helpers::e($f['firma']) ?></td>
+                    <td><?= (int) $f['adet'] ?></td>
+                    <td>₺ <?= Helpers::money($f['toplam']) ?></td></tr>
+              <?php endforeach; ?>
+                <tr class="is-total"><td>Toplam</td><td></td><td>₺ <?= Helpers::money($fTop) ?></td></tr>
+              </tbody>
+            </table></div>
+          <?php endif; ?>
+        </div>
+      <?php elseif (!$byDay): ?>
         <div class="empty-state">
           Bu ay henüz kayıt yok.
           <div class="mt-3"><button class="btn-action btn-secondaryx" type="button" onclick="toggleSheet('add-sheet')">Gider / gelir ekle</button></div>

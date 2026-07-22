@@ -906,6 +906,32 @@ final class Repo
      *   net   = brut − tasima_sabit_gider
      * @return array{adet,satis,alis,birim_satis,birim_alis,toplam_satis,toplam_alis,brut,sabit,sabit_gider,net,kar,note}
      */
+    /**
+     * fable-031: O ay 'Taşıma alış' kategorili GERÇEK fatura toplamı (KIRMIZI 1).
+     * >0 ise taşıma kârında matbu birim yerine bu kullanılır (Ömer: "olmazsa matbu kabul etme").
+     */
+    public function tasimaAlisFatura(string $ay): float
+    {
+        $st = $this->pdo->prepare(
+            "SELECT COALESCE(SUM(amount),0) FROM transactions
+             WHERE type = 'gider' AND category = 'Taşıma alış' AND substr(tx_date,1,7) = ?"
+        );
+        $st->execute([$ay]);
+        return (float) $st->fetchColumn();
+    }
+
+    /** O ay TÜM taşıma müşterilerinin toplam adedi (gerçek alışı adet-oranlı dağıtmak için). */
+    public function tasimaToplamAdet(string $ay): int
+    {
+        $st = $this->pdo->prepare(
+            "SELECT COALESCE(SUM(p.persons),0) FROM production p
+             JOIN customers c ON c.id = p.customer_id
+             WHERE c.category = 'tasima' AND substr(p.prod_date,1,7) = ?"
+        );
+        $st->execute([$ay]);
+        return (int) $st->fetchColumn();
+    }
+
     public function tasimaProfit(int $customerId, string $ay): array
     {
         $c = $this->customer($customerId);
@@ -916,7 +942,22 @@ final class Repo
         $sabit = $pr['tasima_sabit_gider'];
         $note  = $c['tasima_not'] ?? null;
         $adet  = $this->monthProductionPersons($customerId, $ay);
-        $brut  = $adet * ($satis - $alis);
+
+        // fable-031 (Ömer): 'Taşıma alış' faturası (KIRMIZI 1) varsa GERÇEK maliyet esas —
+        // ay toplamı taşıma müşterilerine ADET ORANLI dağıtılır; fatura yoksa matbu birim.
+        $alisKaynak = 'matbu';
+        $toplamAlis = $adet * $alis;
+        $fatura = $this->tasimaAlisFatura($ay);
+        if ($fatura > 0) {
+            $tumAdet = $this->tasimaToplamAdet($ay);
+            if ($tumAdet > 0 && $adet > 0) {
+                $toplamAlis = round($fatura * $adet / $tumAdet, 2);
+                $alis = round($toplamAlis / $adet, 2);
+                $alisKaynak = 'fatura';
+            }
+        }
+
+        $brut  = ($adet * $satis) - $toplamAlis;
         $net   = $brut - $sabit;
         return [
             'adet'         => $adet,
@@ -925,12 +966,13 @@ final class Repo
             'birim_satis'  => $satis,   // UI geriye dönük ad
             'birim_alis'   => $alis,
             'toplam_satis' => $adet * $satis,
-            'toplam_alis'  => $adet * $alis,
+            'toplam_alis'  => $toplamAlis,
             'brut'         => $brut,
             'sabit'        => $sabit,
             'sabit_gider'  => $sabit,   // UI geriye dönük ad
             'net'          => $net,
             'kar'          => $net,     // UI geriye dönük ad
+            'alis_kaynak'  => $alisKaynak, // 'fatura' = KIRMIZI 1 gerçek maliyet · 'matbu' = kart birimi
             'note'         => $note,
         ];
     }
@@ -1334,10 +1376,28 @@ final class Repo
             "INSERT INTO transactions (type, category, tx_date, amount, description, source, parasut_id, alloc_type)
              VALUES ('gider', ?, ?, ?, ?, 'parasut', ?, 'genel')"
         );
+        // fable-031 (Ömer): taşıma yemeğinin alındığı tedarikçi (KIRMIZI 1) faturaları
+        // 'Taşıma alış' kategorisine işlenir — taşıma kârında matbu birim yerine GERÇEK maliyet
+        // olur ve genel gider dağıtım havuzuna GİRMEZ (çift sayım olmaz). Anahtar ayarda.
+        $tasimaAnahtar = [];
+        foreach (explode(',', (string) $this->ayar('tasima_alis_tedarikci', 'KIRMIZI')) as $k) {
+            // Türkçe İ tuzağı (Hikari dersi): mb_strtolower('İ') bozuk — önce elle küçült.
+            $k = mb_strtolower(strtr(trim($k), ['İ' => 'i', 'I' => 'ı']), 'UTF-8');
+            if ($k !== '') {
+                $tasimaAnahtar[] = $k;
+            }
+        }
         foreach ($bills as $b) {
             $pid = (string) ($b['parasut_id'] ?? '');
             if ($pid === '' || (float) ($b['tutar'] ?? 0) <= 0) {
                 continue;
+            }
+            $tedNorm = mb_strtolower(strtr((string) ($b['tedarikci'] ?? ''), ['İ' => 'i', 'I' => 'ı']), 'UTF-8');
+            foreach ($tasimaAnahtar as $k) {
+                if ($k !== '' && str_contains($tedNorm, $k)) {
+                    $b['kategori_ad'] = 'Taşıma alış';
+                    break;
+                }
             }
             // Çift-gider köprüsü: pb kimliği geldiyse ama aynı fatura ei- anahtarıyla zaten
             // girdiyse atla; ei- kaydı geldiyse ve içeri-alınmış pb karşılığı zaten girdiyse atla.
@@ -1440,6 +1500,40 @@ final class Repo
         );
         $st->execute([$month]);
         return $st->fetchAll();
+    }
+
+    /**
+     * fable-031 (Ömer): "firma firma aylık bana ne fatura kesiyor" — gider FİRMA özeti.
+     * Paraşüt kaydında firma = description'ın ' · ' öncesi (senkron 'TEDARİKÇİ · faturaNo' yazar);
+     * elle girilende firma bilinmez → 'Elle girilen · {kategori}' grubu. Sürücü bağımsız (PHP grupla).
+     * @return array<int,array{firma:string,adet:int,toplam:float}> toplam DESC
+     */
+    public function giderFirmaOzet(string $month): array
+    {
+        $st = $this->pdo->prepare(
+            "SELECT source, category, description, amount FROM transactions
+             WHERE type = 'gider' AND substr(tx_date,1,7) = ?"
+        );
+        $st->execute([$month]);
+        $grup = [];
+        foreach ($st->fetchAll() as $r) {
+            if (($r['source'] ?? 'manuel') === 'parasut') {
+                $d = (string) ($r['description'] ?? '');
+                $firma = trim(explode(' · ', $d)[0] ?? '');
+                if ($firma === '') {
+                    $firma = 'Paraşüt (tedarikçi bilinmiyor)';
+                }
+            } else {
+                $firma = 'Elle girilen · ' . (trim((string) ($r['category'] ?? '')) ?: 'Diğer');
+            }
+            if (!isset($grup[$firma])) {
+                $grup[$firma] = ['firma' => $firma, 'adet' => 0, 'toplam' => 0.0];
+            }
+            $grup[$firma]['adet']++;
+            $grup[$firma]['toplam'] += (float) $r['amount'];
+        }
+        usort($grup, static fn(array $a, array $b) => $b['toplam'] <=> $a['toplam']);
+        return array_values($grup);
     }
 
     public function monthFinanceTotals(string $month): array
@@ -3576,10 +3670,12 @@ final class Repo
         $totalCiro = array_sum($ciro);
         $allIds = array_keys($ciro);
 
+        // fable-031: 'Taşıma alış' (KIRMIZI 1) genel havuza GİRMEZ — taşıma kârında
+        // gerçek alış maliyeti olarak mahsup edilir (çift sayım olmasın).
         $st = $this->pdo->prepare(
             "SELECT id, amount, alloc_type FROM transactions
              WHERE type = 'gider' AND substr(tx_date,1,7) = ?
-               AND (category IS NULL OR category <> 'Personel')"
+               AND (category IS NULL OR category NOT IN ('Personel', 'Taşıma alış'))"
         );
         $st->execute([$ay]);
 
