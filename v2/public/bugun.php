@@ -57,6 +57,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                         'kumanya' => Repo::normalizePersons($postMeals['kumanya'][$cid] ?? 0),
                     ];
                 } else {
+                    // fable-027c: gün için hiç kayıt yoksa taban = son kayıtlı günün kırılımı —
+                    // yeni güne "58" yazınca 25/25/8 dağılımı korunur (PENDORYA tek-öğün dersi).
+                    $curTop = (int) ($cur['ogle'] ?? 0) + (int) ($cur['aksam'] ?? 0) + (int) ($cur['kumanya'] ?? 0);
+                    if ($curTop === 0) {
+                        $son = $repo->lastKnownMeals($cid, $date);
+                        if ($son !== null) {
+                            $cur = $son;
+                        }
+                    }
                     $meals = Repo::mealsFromTotal($persons[$cid] ?? 0, $cur);
                 }
                 $toplam = $meals['ogle'] + $meals['aksam'] + $meals['kumanya'];
@@ -350,8 +359,22 @@ require __DIR__ . '/partials/header.php';
           <?php if (!$rowsData): ?>
             <div class="empty-state">Aktif müşteri yok.</div>
           <?php endif; ?>
-          <?php foreach ($rowsData as $r): $missing = $r['val'] === 0; $isFocus = $focus > 0 && $r['cid'] === $focus; ?>
-            <div class="customer-row <?= $missing ? 'missing' : '' ?> <?= $isFocus ? 'is-focus' : '' ?>"<?= $isFocus ? ' id="focus-row"' : '' ?> data-price="<?= $r['price'] ?>" data-cid="<?= $r['cid'] ?>" data-name="<?= Helpers::e($r['name']) ?>">
+          <?php foreach ($rowsData as $r): $missing = $r['val'] === 0; $isFocus = $focus > 0 && $r['cid'] === $focus;
+            // fable-027c: toplam kutusunun TABAN kırılımı — dolu günde günün kendi kırılımı,
+            // boş günde son kayıtlı günün kırılımı. JS bunu SABİT taban olarak kullanır; tuş tuş
+            // yazarken ara değerler ("5" → "58") kırılımı bozamaz. Sunucu kuralıyla aynı.
+            $taban = $r['meals'];
+            if ($missing) {
+                $son = $repo->lastKnownMeals((int) $r['cid'], $date);
+                if ($son !== null) {
+                    $taban = $son;
+                }
+            }
+            $base = htmlspecialchars(json_encode([
+                'ogle' => (int) $taban['ogle'], 'aksam' => (int) $taban['aksam'], 'kumanya' => (int) $taban['kumanya'],
+            ]), ENT_QUOTES);
+          ?>
+            <div class="customer-row <?= $missing ? 'missing' : '' ?> <?= $isFocus ? 'is-focus' : '' ?>"<?= $isFocus ? ' id="focus-row"' : '' ?> data-price="<?= $r['price'] ?>" data-cid="<?= $r['cid'] ?>" data-name="<?= Helpers::e($r['name']) ?>" data-base="<?= $base ?>">
               <div>
                 <div class="row-title"><span class="status-dot <?= $missing ? 'warn' : '' ?>"></span>
                   <!-- fable-023a: müşteri adı = öğün kırılımı penceresini açan buton -->

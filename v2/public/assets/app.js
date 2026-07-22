@@ -71,7 +71,21 @@
   function syncFromTotal(row) {
     var input = row.querySelector(".count-input");
     if (!input) return;
-    setRowMeals(row, mealsFromTotal(input.value, rowMeals(row)), false);
+    // fable-027c: taban DAİMA data-base (render'daki kırılım: dolu günde günün kendi kırılımı,
+    // kopya akışında kopyalanan kırılım, boş günde son kayıtlı günün kırılımı) — rowMeals DEĞİL.
+    // Yoksa "58"i tuş tuş yazarken ara değer ("5") hidden kırılımı bozar, ikinci tuş bozuk
+    // tabana göre türetir (53/5/0 hatası). Modal kaydı sayfayı yeniden yüklediği için (tek POST)
+    // data-base her zaman ekranda görünen kırılımla eşdeğerdir.
+    var cur = { ogle: 0, aksam: 0, kumanya: 0 };
+    try {
+      var b = JSON.parse(row.getAttribute("data-base") || "{}");
+      cur = {
+        ogle: clampP(b.ogle),
+        aksam: clampP(b.aksam),
+        kumanya: clampP(b.kumanya),
+      };
+    } catch (e) {}
+    setRowMeals(row, mealsFromTotal(input.value, cur), false);
   }
 
   function recalc() {

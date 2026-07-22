@@ -1158,6 +1158,39 @@ final class Repo
      * @param array<string,int> $current mevcut kırılım
      * @return array{ogle:int,aksam:int,kumanya:int}
      */
+    /**
+     * fable-027c: Müşterinin hedef günden ÖNCEKİ son kayıtlı gününün öğün kırılımı (yoksa null).
+     * NEDEN: yeni güne yalnız TOPLAM girildiğinde kırılım kaybolmasın (PENDORYA 58 = 25/25/8
+     * dersi — 22 Tem belgesi tek öğün kesildi). Taban olarak kullanılır; fark-öğlene kuralı korunur.
+     */
+    public function lastKnownMeals(int $customerId, string $beforeDate): ?array
+    {
+        $st = $this->pdo->prepare(
+            'SELECT MAX(prod_date) FROM production WHERE customer_id = ? AND prod_date < ?'
+        );
+        $st->execute([$customerId, $beforeDate]);
+        $d = $st->fetchColumn();
+        if (!$d) {
+            return null;
+        }
+        return $this->customerDayMeals($customerId, (string) $d);
+    }
+
+    /**
+     * fable-027c: Son N günde (hedef gün hariç) akşam/kumanya kaydı var mıydı?
+     * Kesim onayında "dün kırılımlıydı, bugün tek öğün" uyarısının kaynağı.
+     */
+    public function hadRecentSplit(int $customerId, string $beforeDate, int $days = 7): bool
+    {
+        $st = $this->pdo->prepare(
+            "SELECT COUNT(*) FROM production
+             WHERE customer_id = ? AND prod_date < ? AND prod_date >= ?
+               AND meal IN ('aksam','kumanya') AND persons > 0"
+        );
+        $st->execute([$customerId, $beforeDate, date('Y-m-d', strtotime($beforeDate . ' -' . $days . ' day'))]);
+        return (int) $st->fetchColumn() > 0;
+    }
+
     public static function mealsFromTotal(int|string|null $newTotal, array $current): array
     {
         $total = self::normalizePersons($newTotal);

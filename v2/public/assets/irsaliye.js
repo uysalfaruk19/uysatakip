@@ -177,12 +177,19 @@
                 return esc(k.ogun) + " × " + k.miktar;
               })
               .join(" · ");
+            // fable-027c: tek öğüne çökmüş kırılım uyarısı onay ekranında SARI görünür
             html +=
-              '<div class="irs-res ok"><span class="irs-name">' +
+              '<div class="irs-res ' +
+              (s.uyari ? "warn" : "ok") +
+              '"><span class="irs-name">' +
               esc(s.name) +
               '</span><span class="irs-meta">' +
               kal +
-              "</span></div>";
+              "</span>" +
+              (s.uyari
+                ? '<span class="irs-why">⚠ ' + esc(s.uyari) + "</span>"
+                : "") +
+              "</div>";
             govdeler.push(s.name + ":\n" + JSON.stringify(s.govde, null, 2));
           } else {
             html +=

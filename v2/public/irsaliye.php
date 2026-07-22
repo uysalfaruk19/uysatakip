@@ -84,6 +84,12 @@ if ($action === 'hazirla') {
                 'sebep' => $p['mesaj'], 'kalemler' => [], 'toplam' => 0, 'govde' => null];
             continue;
         }
+        // fable-027c: son 7 günde akşam/kumanya kırılımı olan müşteri bugün TEK ÖĞÜN görünüyorsa
+        // kesim ONAYINDA uyar — 22 Tem PENDORYA belgesi bu yüzden ÖĞLEN×58 tek kalem kesilmişti.
+        $uyari = '';
+        if ((int) $a['aksam'] === 0 && (int) $a['kumanya'] === 0 && $repo->hadRecentSplit($cid, $date)) {
+            $uyari = 'Son günlerde öğün kırılımı vardı; bugün TEK ÖĞÜN görünüyor — kırılım eksikse önce Bugün ekranından düzeltin.';
+        }
         $gecerli[] = $cid;
         $toplamKisi += $p['toplam'];
         $satirlar[] = [
@@ -91,6 +97,7 @@ if ($action === 'hazirla') {
             'name'        => $a['name'],
             'ok'          => true,
             'sebep'       => '',
+            'uyari'       => $uyari,
             'kalemler'    => array_map(static fn(array $k): array => [
                 'ogun'    => ParasutYaz::OGUN_ETIKET[$k['ogun']] ?? $k['ogun'],
                 'urun_id' => $k['urun_id'],
