@@ -80,10 +80,20 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 }
 
 // ── Dünü kopyala ─────────────────────────────────────────────
+// fable-026b (Ömer, 22 Tem): PAZARTESİ için kaynak CUMA'dır — pazar günü genelde sadece
+// PENDORYA çalıştığı için "önceki gün" pazarı bulup diğer müşterileri boş getiriyordu.
+$hedefPzt = (int) date('N', strtotime($date)) === 1;
 $copyValues = null;
 if (isset($_GET['copy'])) {
+    $prev = null;
+    if ($hedefPzt) {
+        $cuma = date('Y-m-d', strtotime($date . ' -3 day'));
+        foreach ($repo->dayGridAllMeals($cuma) as $r) {
+            if ((int) $r['toplam'] > 0) { $prev = $cuma; break; }
+        }
+    }
     // fable-023a: kaynak gün öğün farkı gözetmeden bulunur (sadece akşam kaydı olan gün de gelsin)
-    $prev = $repo->previousProductionDate($date, null);
+    $prev = $prev ?? $repo->previousProductionDate($date, null);
     if ($prev !== null) {
         $copyValues = [];
         foreach ($repo->dayGridAllMeals($prev) as $r) {
@@ -313,7 +323,7 @@ require __DIR__ . '/partials/header.php';
         </div>
 
         <div class="actions-row mt-3">
-          <a class="btn-action btn-secondaryx flex-fill" href="bugun.php?date=<?= Helpers::e($date) ?>&copy=1"><i class="bi bi-copy"></i> Dünü kopyala</a>
+          <a class="btn-action btn-secondaryx flex-fill" href="bugun.php?date=<?= Helpers::e($date) ?>&copy=1"><i class="bi bi-copy"></i> <?= $hedefPzt ? 'Cumayı kopyala' : 'Dünü kopyala' ?></a>
           <button class="btn-action btn-primaryx flex-fill" type="submit"><i class="bi bi-check2"></i> Kaydet</button>
         </div>
       </form>
