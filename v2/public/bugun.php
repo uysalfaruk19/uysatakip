@@ -125,14 +125,23 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 // ── Dünü kopyala ─────────────────────────────────────────────
 // fable-026b (Ömer, 22 Tem): PAZARTESİ için kaynak CUMA'dır — pazar günü genelde sadece
 // PENDORYA çalıştığı için "önceki gün" pazarı bulup diğer müşterileri boş getiriyordu.
-$hedefPzt = (int) date('N', strtotime($date)) === 1;
+// fable-027b (Ömer): CUMARTESİ/PAZAR için kaynak GEÇEN HAFTANIN AYNI GÜNÜ (cmt→cmt, paz→paz) —
+// hafta sonu kadrosu hafta içinden farklı, cuma sayısını kopyalamak yanlış olurdu.
+$dowHedef = (int) date('N', strtotime($date));
+$hedefPzt = $dowHedef === 1;
+$hedefHaftaSonu = $dowHedef >= 6;
 $copyValues = null;
 if (isset($_GET['copy'])) {
     $prev = null;
+    $aday = null;
     if ($hedefPzt) {
-        $cuma = date('Y-m-d', strtotime($date . ' -3 day'));
-        foreach ($repo->dayGridAllMeals($cuma) as $r) {
-            if ((int) $r['toplam'] > 0) { $prev = $cuma; break; }
+        $aday = date('Y-m-d', strtotime($date . ' -3 day')); // cuma
+    } elseif ($hedefHaftaSonu) {
+        $aday = date('Y-m-d', strtotime($date . ' -7 day')); // geçen haftanın aynı günü
+    }
+    if ($aday !== null) {
+        foreach ($repo->dayGridAllMeals($aday) as $r) {
+            if ((int) $r['toplam'] > 0) { $prev = $aday; break; }
         }
     }
     // fable-023a: kaynak gün öğün farkı gözetmeden bulunur (sadece akşam kaydı olan gün de gelsin)
@@ -365,11 +374,21 @@ require __DIR__ . '/partials/header.php';
           <?php endforeach; ?>
         </div>
 
+        <?php
+        // fable-027b: kopya butonu etiketi güne göre; "Haftaya kopyala" yalnız Pzt–Per görünür
+        // (Cum/Cmt/Paz'da kopyalanacak ileri hafta içi gün yok — buton yer kaplamasın).
+        $kopyaEtiket = $hedefPzt ? 'Cumayı kopyala'
+            : ($dowHedef === 6 ? 'Geçen cumartesiyi kopyala'
+            : ($dowHedef === 7 ? 'Geçen pazarı kopyala' : 'Dünü kopyala'));
+        $haftaGoster = $dowHedef <= 4;
+        ?>
         <div class="actions-row actions-uc mt-3"><!-- fable-027: 3 buton tek sıra, kompakt -->
-          <a class="btn-action btn-secondaryx flex-fill" href="bugun.php?date=<?= Helpers::e($date) ?>&copy=1"><i class="bi bi-copy"></i> <?= $hedefPzt ? 'Cumayı kopyala' : 'Dünü kopyala' ?></a>
+          <a class="btn-action btn-secondaryx flex-fill" href="bugun.php?date=<?= Helpers::e($date) ?>&copy=1"><i class="bi bi-copy"></i> <?= $kopyaEtiket ?></a>
+          <?php if ($haftaGoster): ?>
           <button class="btn-action btn-secondaryx flex-fill" type="submit" name="hafta_kopyala" value="1"
             onclick="return confirm('Bugünün sayıları önce kaydedilir, sonra bu haftanın KALAN hafta içi günlerine kopyalanır (mevcut kayıtların üzerine yazılır). Devam?')">
             <i class="bi bi-calendar2-week"></i> Haftaya kopyala</button>
+          <?php endif; ?>
           <button class="btn-action btn-primaryx flex-fill" type="submit"><i class="bi bi-check2"></i> Kaydet</button>
         </div>
       </form>
