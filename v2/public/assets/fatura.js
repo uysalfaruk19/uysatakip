@@ -20,6 +20,7 @@
   var onayGenelEl = document.getElementById("ftr-onay-genel");
   var sonucEl = document.getElementById("ftr-sonuc");
   var onayToken = "";
+  var sonPlan = []; // fable-026: onaylanan müşteriler [{cid, name}] — canlı ilerleme satırları
 
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
@@ -175,6 +176,10 @@
           return;
         }
         onayToken = r.onay || "";
+        sonPlan = [];
+        r.satirlar.forEach(function (s) {
+          if (s.ok) sonPlan.push({ cid: s.customer_id, name: s.name });
+        });
         var html = "";
         var govdeler = [];
         r.satirlar.forEach(function (s) {
@@ -284,51 +289,111 @@
       location.reload();
     });
 
-  // ── adım 2 → 3: kesim ──
+  // ── adım 2 → 3: kesim — fable-026 kalıbı: müşteriler SIRAYLA faturalanır, sonuç ANINDA görünür.
+  // (İrsaliyedeki ders: hepsi tek istekte gidince e-Fatura beklemeleri ekranı dakikalarca
+  // sessiz bırakıyor. Aylık müşteri tek adımda ama parçaları — örn. CANTAŞ 3 fatura — ayrı satır döner.)
   function kes() {
-    cutBtn.disabled = true; // çift tık kalkanı (asıl kalkan: sunucuda tek kullanımlık imza)
+    cutBtn.disabled = true; // çift tık kalkanı (asıl kalkan: sunucuda müşteri-bazlı plan claim)
     if (retryBtn) retryBtn.hidden = true;
-    post({ action: "kes", onay: onayToken }, function (r) {
-      onayToken = "";
-      if (!r.ok) {
-        sonucEl.innerHTML =
-          '<div class="ftr-res err"><span class="ftr-why">' +
-          esc(r.error || "Kesim başarısız.") +
-          "</span></div>";
-        show("sonuc");
+
+    var html =
+      '<p class="ftr-sum" id="ftr-progress">İşleniyor… 0/' +
+      sonPlan.length +
+      "</p>";
+    sonPlan.forEach(function (p) {
+      html +=
+        '<div class="ftr-res wait" id="ftr-prog-' +
+        p.cid +
+        '"><div class="ftr-name">' +
+        esc(p.name) +
+        '</div><div class="ftr-why">Sırada bekliyor…</div></div>';
+    });
+    sonucEl.innerHTML = html;
+    show("sonuc");
+
+    var queue = sonPlan.slice();
+    var faturaOk = 0;
+    var faturaTop = 0;
+    var islenen = 0;
+    var basarisiz = 0;
+
+    function ilerleme(sonMu) {
+      var p = document.getElementById("ftr-progress");
+      if (!p) return;
+      p.textContent = sonMu
+        ? faturaOk + "/" + faturaTop + " fatura kesildi"
+        : "İşleniyor… " +
+          islenen +
+          "/" +
+          sonPlan.length +
+          (faturaOk ? " · " + faturaOk + " fatura kesildi" : "");
+    }
+
+    function blok(s) {
+      var cls = s.ok
+        ? s.resmilestirme === "gonderildi"
+          ? "ok"
+          : "warn"
+        : "err";
+      return (
+        '<div class="ftr-res ' +
+        cls +
+        '"><div class="ftr-name">' +
+        esc(s.name) +
+        (s.fatura_no
+          ? ' <span class="ftr-meta">' + esc(s.fatura_no) + "</span>"
+          : "") +
+        '</div><div class="ftr-why">' +
+        esc(s.mesaj) +
+        "</div></div>"
+      );
+    }
+
+    function siradaki() {
+      if (!queue.length) {
+        onayToken = ""; // plan tükendi
+        ilerleme(true);
+        if (retryBtn) retryBtn.hidden = basarisiz === 0;
         return;
       }
-      var html =
-        '<p class="ftr-sum">' +
-        r.basarili +
-        "/" +
-        r.sonuclar.length +
-        " fatura kesildi</p>";
-      var basarisiz = 0;
-      r.sonuclar.forEach(function (s) {
-        var cls = s.ok
-          ? s.resmilestirme === "gonderildi"
-            ? "ok"
-            : "warn"
-          : "err";
-        if (!s.ok) basarisiz++;
-        html +=
-          '<div class="ftr-res ' +
-          cls +
-          '"><div class="ftr-name">' +
-          esc(s.name) +
-          (s.fatura_no
-            ? ' <span class="ftr-meta">' + esc(s.fatura_no) + "</span>"
-            : "") +
-          "</div>" +
-          '<div class="ftr-why">' +
-          esc(s.mesaj) +
-          "</div></div>";
+      var p = queue.shift();
+      var row = document.getElementById("ftr-prog-" + p.cid);
+      if (row) {
+        row.className = "ftr-res wait busy";
+        row.innerHTML =
+          '<div class="ftr-name">' +
+          esc(p.name) +
+          '</div><div class="ftr-why">Fatura kesiliyor ve resmileştiriliyor…</div>';
+      }
+      post({ action: "kes", tek: p.cid, onay: onayToken }, function (r) {
+        islenen++;
+        if (!r.ok) {
+          basarisiz++;
+          faturaTop++;
+          if (row) {
+            row.className = "ftr-res err";
+            row.innerHTML =
+              '<div class="ftr-name">' +
+              esc(p.name) +
+              '</div><div class="ftr-why">' +
+              esc(r.error || "Kesim başarısız.") +
+              "</div>";
+          }
+        } else {
+          var parcalar = r.sonuclar || [];
+          faturaTop += parcalar.length;
+          faturaOk += r.basarili || 0;
+          parcalar.forEach(function (s) {
+            if (!s.ok) basarisiz++;
+          });
+          if (row) row.outerHTML = parcalar.map(blok).join("") || "";
+        }
+        ilerleme(false);
+        siradaki();
       });
-      sonucEl.innerHTML = html;
-      if (retryBtn) retryBtn.hidden = basarisiz === 0;
-      show("sonuc");
-    });
+    }
+    ilerleme(false);
+    siradaki();
   }
   if (cutBtn) cutBtn.addEventListener("click", kes);
   if (retryBtn)

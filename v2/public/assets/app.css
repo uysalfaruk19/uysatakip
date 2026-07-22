@@ -1924,11 +1924,14 @@ body.meal-open {
 .irs-res.err {
   border-left-color: var(--red);
 }
-/* fable-026: canlı ilerleme — bekleyen soluk, işlenen "nefes alır" (kesim sürüyor hissi) */
-.irs-res.wait {
+/* fable-026: canlı ilerleme — bekleyen soluk, işlenen "nefes alır" (kesim sürüyor hissi).
+   Aynı desen fatura sonuç satırlarında (.ftr-res) da kullanılır. */
+.irs-res.wait,
+.ftr-res.wait {
   opacity: 0.55;
 }
-.irs-res.wait.busy {
+.irs-res.wait.busy,
+.ftr-res.wait.busy {
   opacity: 1;
   border-left-color: var(--primary);
   animation: irsNefes 1.1s ease-in-out infinite;

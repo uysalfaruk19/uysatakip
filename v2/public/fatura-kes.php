@@ -137,6 +137,72 @@ if ($method === 'POST') {
             'satirlar' => $satirlar, 'gecerli_sayi' => count($plan), 'genel_net' => $genelNet]);
     }
 
+    // ── KES-TEK: onaylı plandan TEK müşteriyi faturala (fable-026 canlı ilerleme kalıbı).
+    // İmza tüketilmez; müşterinin plan kalemi kesimden ÖNCE plandan düşülür (çift tık kalkanı
+    // müşteri bazında). Aylık müşteride o müşterinin TÜM parçaları (örn. CANTAŞ 3 fatura) bu
+    // istekte kesilir — sonuç dizisi parça parça döner.
+    if ($action === 'kes' && (int) ($body['tek'] ?? 0) > 0) {
+        $tek = (int) $body['tek'];
+        $oturum = $_SESSION['fatura_onay'] ?? null;
+        $imza = (string) ($body['onay'] ?? '');
+        if (!is_array($oturum) || (int) ($oturum['exp'] ?? 0) < time()
+            || (string) ($oturum['bas'] ?? '') !== $bas || (string) ($oturum['son'] ?? '') !== $son
+            || $imza === '' || !hash_equals((string) ($oturum['token'] ?? ''), $imza)) {
+            Helpers::json(['ok' => false, 'error' => 'Onay süresi doldu veya geçersiz — baştan seçin.'], 403);
+        }
+        $plan = (array) ($oturum['plan'] ?? []);
+        $item = null;
+        $kalanPlan = [];
+        foreach ($plan as $p) {
+            if ($item === null && (int) ($p['customer_id'] ?? 0) === $tek) {
+                $item = $p;
+                continue;
+            }
+            $kalanPlan[] = $p;
+        }
+        if ($item === null) {
+            Helpers::json(['ok' => false, 'error' => 'Bu müşteri onaylı planda yok ya da zaten işlendi.'], 403);
+        }
+        // Claim-first: kalem plandan düşülür; plan boşalınca oturum kapanır.
+        if ($kalanPlan) {
+            $_SESSION['fatura_onay']['plan'] = $kalanPlan;
+        } else {
+            unset($_SESSION['fatura_onay']);
+        }
+
+        $yaz = new ParasutYaz($repo, (string) $oturum['token']);
+        $a = $adaylar[$tek] ?? null;
+        $ad = $a['name'] ?? ('#' . $tek);
+        $sonuclar = [];
+        $basarili = 0;
+        if (($item['tip'] ?? '') === 'irsaliye') {
+            $r = $yaz->createSalesInvoice($tek, $bas, $son, ['onay' => $imza, 'actor' => (string) $u['username']]);
+            if ($r['ok']) {
+                $basarili++;
+            }
+            $sonuclar[] = ['customer_id' => $tek, 'name' => $ad, 'ok' => $r['ok'], 'durum' => $r['durum'],
+                'mesaj' => $r['mesaj'], 'fatura_no' => $r['fatura_no'], 'resmilestirme' => $r['resmilestirme'],
+                'mail' => $r['mail'], 'net' => $r['net']];
+        } else {
+            foreach ((array) ($item['parts'] ?? []) as $pt) {
+                if ((int) ($pt['kisi'] ?? 0) <= 0) {
+                    continue; // 0 kişi = fatura kesilmez (onay özetinde görünür, sessiz değil)
+                }
+                $r = $yaz->createMonthlyInvoice($tek, $bas, $son, $pt, ['onay' => $imza, 'actor' => (string) $u['username']]);
+                if ($r['ok']) {
+                    $basarili++;
+                }
+                $sonuclar[] = ['customer_id' => $tek, 'name' => $ad . ' · ' . ($pt['ad'] ?? ''),
+                    'ok' => $r['ok'], 'durum' => $r['durum'], 'mesaj' => $r['mesaj'],
+                    'fatura_no' => $r['fatura_no'], 'resmilestirme' => $r['resmilestirme'], 'mail' => $r['mail'], 'net' => $r['net']];
+            }
+        }
+        uysa_audit('fatura_kesim', (string) $u['username'], $bas . '..' . $son, json_encode([
+            'tek' => $tek, 'basarili' => $basarili, 'toplam' => count($sonuclar), 'kapali' => $kapali,
+        ], JSON_UNESCAPED_UNICODE), client_ip());
+        Helpers::json(['ok' => true, 'kapali' => $kapali, 'basarili' => $basarili, 'sonuclar' => $sonuclar]);
+    }
+
     // ── KES: onay imzasını tüket + Paraşüt'e kes (şalter kapalıysa ParasutYaz zaten POST atmaz) ──
     if ($action === 'kes') {
         $oturum = $_SESSION['fatura_onay'] ?? null;
