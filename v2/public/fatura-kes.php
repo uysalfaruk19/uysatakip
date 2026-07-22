@@ -101,11 +101,48 @@ if ($method === 'POST') {
                     }
                     $gunler[] = $g;
                 }
+                // ── fable-029: SİSTEM KONTROLLERİ — Ömer'in elle yaptığı doğrulamalar otomatik ──
+                $kontroller = [];
+                $uretim = $repo->customerMealsRange($cid, $bas, $son);
+                $irsGunSet = [];
+                foreach ($gunler as $g) {
+                    $irsGunSet[$g['gun']] = true;
+                }
+                $irssiz = [];
+                $uretimTop = 0;
+                foreach ($uretim as $ur) {
+                    $uretimTop += (int) $ur['toplam'];
+                    if ((int) $ur['toplam'] > 0 && !isset($irsGunSet[$ur['gun']])) {
+                        $irssiz[] = date('d.m', strtotime($ur['gun']));
+                    }
+                }
+                if ($irssiz) {
+                    $kontroller[] = ['ok' => false, 'txt' => 'Üretim kaydı olup KESİLMİŞ İRSALİYESİ OLMAYAN gün: '
+                        . implode(', ', $irssiz) . ' — bu günler faturaya GİRMEYECEK.'];
+                } else {
+                    $kontroller[] = ['ok' => true, 'txt' => 'Dönemdeki tüm üretim günlerinin irsaliyesi kesilmiş ve faturada (' . count($gunler) . ' gün).'];
+                }
+                if ($uretimTop !== (int) $p['toplam']) {
+                    $kontroller[] = ['ok' => false, 'txt' => 'Fatura toplamı (' . (int) $p['toplam']
+                        . ' kişi) üretim kayıtları toplamından (' . $uretimTop . ') FARKLI — fark ' . ($uretimTop - (int) $p['toplam']) . ' kişi.'];
+                } else {
+                    $kontroller[] = ['ok' => true, 'txt' => 'Fatura toplamı üretim kayıtlarıyla birebir (' . $uretimTop . ' kişi).'];
+                }
+                $sonF = $repo->sonKesilenFatura($cid, $bas);
+                if ($sonF !== null && $sonF['kisi'] > 0) {
+                    $farkYuzde = (int) round((($p['toplam'] - $sonF['kisi']) / $sonF['kisi']) * 100);
+                    $kiyasTxt = 'Önceki fatura (' . date('d.m', strtotime($sonF['donem_bas'])) . '–' . date('d.m', strtotime($sonF['donem_son']))
+                        . '): ' . $sonF['kisi'] . ' kişi · ₺' . number_format($sonF['tutar'], 2, ',', '.')
+                        . ' — bu dönem ' . (int) $p['toplam'] . ' kişi (' . ($farkYuzde >= 0 ? '+' : '') . $farkYuzde . '%).';
+                    $kontroller[] = ['ok' => abs($farkYuzde) <= 25, 'txt' => $kiyasTxt];
+                }
+
                 $plan[] = ['customer_id' => $cid, 'tip' => 'irsaliye'];
                 $genelNet += $p['hesap']['net'];
                 $satirlar[] = [
                     'customer_id' => $cid, 'name' => $a['name'], 'ok' => true, 'tip' => 'irsaliye',
                     'gunler' => $gunler,
+                    'kontroller' => $kontroller,
                     'kalemler' => array_map(static fn(array $k): array => [
                         'ad' => ParasutYaz::OGUN_ETIKET[$k['ogun']] ?? $k['ogun'],
                         'miktar' => $k['miktar'], 'birim' => $k['birim'],
@@ -130,12 +167,49 @@ if ($method === 'POST') {
                     $partOut[] = ['ad' => $pt['ad'], 'kisi' => $kisi, 'net' => $h['net']];
                     $govdeler[$pt['ad']] = $yaz->aylikGovde($pt['contact_id'], $son, $kisi, (float) $a['birim'], (int) $a['vade_gun'], $pt['ad'] . ' — yemek hizmet bedeli');
                 }
+                // ── fable-029: aylık sistem kontrolleri ──
+                $kontroller = [];
+                $gunlerAy = $repo->customerMealsRange($cid, $bas, $son);
+                $kayitliSet = [];
+                foreach ($gunlerAy as $g) {
+                    if ((int) $g['toplam'] > 0) {
+                        $kayitliSet[$g['gun']] = true;
+                    }
+                }
+                // Dönem içi GEÇMİŞ hafta içi günlerden kaydı olmayanlar (eksik gün → fatura düşük kalır)
+                $eksikGun = [];
+                for ($d = strtotime($bas); $d <= min(strtotime($son), strtotime('yesterday')); $d += 86400) {
+                    if ((int) date('N', $d) <= 5 && !isset($kayitliSet[date('Y-m-d', $d)])) {
+                        $eksikGun[] = date('d.m', $d);
+                    }
+                }
+                if ($eksikGun) {
+                    $kontroller[] = ['ok' => false, 'txt' => 'Kayıtsız hafta içi gün: ' . implode(', ', $eksikGun)
+                        . ' — bu günler toplama girmiyor (eksikse önce Bugün ekranından girin).'];
+                } else {
+                    $kontroller[] = ['ok' => true, 'txt' => 'Dönemin geçmiş hafta içi günlerinin tamamı kayıtlı (' . count($kayitliSet) . ' gün).'];
+                }
+                if ($sumKisi !== (int) $a['adet']) {
+                    $kontroller[] = ['ok' => false, 'txt' => 'Bölüşüm toplamı (' . $sumKisi . ') sistem toplamından ('
+                        . (int) $a['adet'] . ') farklı — fark ' . ($sumKisi - (int) $a['adet']) . ' kişi.'];
+                } else {
+                    $kontroller[] = ['ok' => true, 'txt' => 'Bölüşüm toplamı sistem toplamıyla birebir (' . $sumKisi . ' kişi).'];
+                }
+                $sonF = $repo->sonKesilenFatura($cid, $bas);
+                if ($sonF !== null && $sonF['kisi'] > 0) {
+                    $farkYuzde = (int) round((($sumKisi - $sonF['kisi']) / $sonF['kisi']) * 100);
+                    $kontroller[] = ['ok' => abs($farkYuzde) <= 25, 'txt' => 'Önceki fatura dönemi ('
+                        . date('d.m', strtotime($sonF['donem_bas'])) . '–' . date('d.m', strtotime($sonF['donem_son'])) . '): '
+                        . $sonF['kisi'] . ' kişi — bu dönem ' . $sumKisi . ' kişi (' . ($farkYuzde >= 0 ? '+' : '') . $farkYuzde . '%).'];
+                }
+
                 $plan[] = ['customer_id' => $cid, 'tip' => 'aylik', 'parts' => $parts];
                 $genelNet += $altNet;
                 $satirlar[] = [
                     'customer_id' => $cid, 'name' => $a['name'], 'ok' => true, 'tip' => 'aylik',
                     // fable-028: aylıkta döküm = dönem içi GİRİLEN sayılar (fatura bunların toplamı)
-                    'gunler' => $repo->customerMealsRange($cid, $bas, $son),
+                    'gunler' => $gunlerAy,
+                    'kontroller' => $kontroller,
                     // fable-028b: belge önizlemesi için gerçek vade (dönem sonu + müşteri vade günü)
                     'vade' => date('Y-m-d', strtotime($son . ' +' . max(0, (int) $a['vade_gun']) . ' day')),
                     'adet' => (int) $a['adet'], 'birim' => (float) $a['birim'],
@@ -311,6 +385,21 @@ require __DIR__ . '/partials/header.php';
           Fatura kesimi <strong>KAPALI</strong> (PARASUT_FATURA_AKTIF=0). Ekran çalışır, seçim + tutar + kuru deneme gösterilir; Paraşüt'e YAZILMAZ.</div>
       <?php endif; ?>
 
+      <?php
+      // fable-029: dönem kısayolları — tarih seçmeyle uğraşmadan tek tık
+      $pzt = date('Y-m-d', strtotime('monday this week'));
+      $kisayollar = [
+          'Geçen hafta' => [date('Y-m-d', strtotime($pzt . ' -7 day')), date('Y-m-d', strtotime($pzt . ' -1 day'))],
+          'Bu hafta'    => [$pzt, Helpers::today()],
+          'Geçen ay'    => [date('Y-m-01', strtotime('first day of last month')), date('Y-m-t', strtotime('first day of last month'))],
+          'Bu ay'       => [date('Y-m-01'), Helpers::today()],
+      ];
+      ?>
+      <div class="ftr-kisayol">
+        <?php foreach ($kisayollar as $ad => [$kb, $ks]): $aktif = ($kb === $bas && $ks === $son); ?>
+          <a class="chip <?= $aktif ? 'active' : '' ?>" href="fatura-kes.php?bas=<?= $kb ?>&son=<?= $ks ?>"><?= $ad ?></a>
+        <?php endforeach; ?>
+      </div>
       <form method="get" class="date-row" style="gap:8px;flex-wrap:wrap">
         <div class="date-pill"><i class="bi bi-calendar2-week"></i>
           <input type="date" name="bas" value="<?= Helpers::e($bas) ?>" onchange="this.form.submit()"></div>

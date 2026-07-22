@@ -526,6 +526,29 @@ final class Repo
         return array_values($out);
     }
 
+    /**
+     * fable-029: Müşterinin SON kesilmiş faturası (önceki dönemle kıyas kontrolü için).
+     * Aylıkta parçalar ayrı satır olduğundan dönem toplamı döner.
+     * @return array{donem_bas:string,donem_son:string,kisi:int,tutar:float}|null
+     */
+    public function sonKesilenFatura(int $customerId, string $oncesinde): ?array
+    {
+        $st = $this->pdo->prepare(
+            "SELECT donem_bas, donem_son, SUM(toplam_kisi) AS kisi, SUM(toplam_tutar) AS tutar
+             FROM parasut_fatura_log
+             WHERE customer_id = ? AND durum = 'kesildi' AND donem_son < ?
+             GROUP BY donem_bas, donem_son
+             ORDER BY donem_son DESC LIMIT 1"
+        );
+        $st->execute([$customerId, $oncesinde]);
+        $r = $st->fetch();
+        if (!$r) {
+            return null;
+        }
+        return ['donem_bas' => (string) $r['donem_bas'], 'donem_son' => (string) $r['donem_son'],
+            'kisi' => (int) $r['kisi'], 'tutar' => (float) $r['tutar']];
+    }
+
     /** Bir müşterinin verilen dönemde production.persons toplamı (aylık fatura adedi). */
     public function productionPersonsRange(int $customerId, string $bas, string $son): int
     {

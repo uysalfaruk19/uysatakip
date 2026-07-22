@@ -298,6 +298,36 @@
             "</div></div></details>"
           );
         }
+        // fable-029: sistem kontrolleri bloğu — Ömer'in elle yaptığı doğrulamalar otomatik
+        // koşulur; hepsi yeşilse başlıkta "✔ kontroller temiz", değilse "⚠ N uyarı" rozeti.
+        function kontrolBlok(kontroller) {
+          if (!kontroller || !kontroller.length) return ["", ""];
+          var uyari = kontroller.filter(function (k) {
+            return !k.ok;
+          }).length;
+          var rozet = uyari
+            ? ' <span class="badge-soft badge-warn">⚠ ' +
+              uyari +
+              " uyarı</span>"
+            : ' <span class="badge-soft badge-ok">✔ kontroller temiz</span>';
+          var blok =
+            '<div class="ftr-kontrol">' +
+            kontroller
+              .map(function (k) {
+                return (
+                  '<div class="ftr-kontrol-satir ' +
+                  (k.ok ? "ok" : "warn") +
+                  '">' +
+                  (k.ok ? "✔" : "⚠") +
+                  " " +
+                  esc(k.txt) +
+                  "</div>"
+                );
+              })
+              .join("") +
+            "</div>";
+          return [rozet, blok];
+        }
         r.satirlar.forEach(function (s) {
           if (!s.ok) {
             html +=
@@ -308,6 +338,7 @@
               "</span></div>";
             return;
           }
+          var kb = kontrolBlok(s.kontroller);
           if (s.tip === "irsaliye") {
             var kal = s.kalemler
               .map(function (k) {
@@ -322,7 +353,9 @@
                   esc(s.tevkifat) +
                   "</span>"
                 : "") +
+              kb[0] +
               "</div>" +
+              kb[1] +
               '<div class="ftr-lines">' +
               kal +
               "</div>" +
@@ -351,7 +384,10 @@
             html +=
               '<div class="ftr-res ok"><div class="ftr-name">' +
               esc(s.name) +
-              ' <span class="badge-soft badge-blue">AYLIK</span></div>' +
+              ' <span class="badge-soft badge-blue">AYLIK</span>' +
+              kb[0] +
+              "</div>" +
+              kb[1] +
               '<div class="ftr-lines">' +
               pl +
               "</div>" +

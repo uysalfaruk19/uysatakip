@@ -1942,6 +1942,38 @@ body.meal-open {
   }
 }
 
+/* fable-029: sistem kontrolleri + dönem kısayolları */
+.ftr-kisayol {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.ftr-kisayol .chip {
+  min-height: 36px;
+  text-decoration: none;
+}
+.ftr-kontrol {
+  margin: 6px 0 8px;
+  display: grid;
+  gap: 4px;
+}
+.ftr-kontrol-satir {
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 5px 9px;
+  border-radius: 8px;
+}
+.ftr-kontrol-satir.ok {
+  background: var(--green-tint);
+  color: #12813b;
+}
+.ftr-kontrol-satir.warn {
+  background: var(--amber-tint);
+  color: #8a5a00;
+  font-weight: 700;
+}
+
 /* fable-028b: belge görünümlü fatura önizlemesi */
 .ftr-belge-wrap {
   margin-top: 8px;
