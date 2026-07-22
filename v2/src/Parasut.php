@@ -242,6 +242,127 @@ final class Parasut
         return $out;
     }
 
+    // ── fable-030: Paraşüt GİDER okuma (Hikari kanıtlı deseni; SALT-OKUMA) ──────────
+
+    /**
+     * İçeri alınmış alış faturaları (purchase_bills) — hedef ayın kayıtları.
+     * net_total = KDV DAHİL ödenen para (Hikari canlı kanıtı: METRO gross 3.465,74 / net 3.921,97).
+     * Sunucu filtresine güvenilmez; ay süzgeci istemcide.
+     * @return array<int,array{parasut_id:string,gun:string,tutar:float,kategori_ad:string,tedarikci:string,fatura_no:string}>
+     */
+    public static function purchaseBillsForMonth(string $ym): array
+    {
+        if (!preg_match('/^\d{4}-\d{2}$/', $ym)) {
+            throw new \InvalidArgumentException('ay=YYYY-MM bekleniyor.');
+        }
+        $rows = [];
+        $seen = 0;
+        $total = null;
+        for ($page = 1; $page <= self::MAX_PAGES; $page++) {
+            $resp = self::get('/purchase_bills', [
+                'include' => 'category,supplier', 'sort' => '-issue_date',
+                'page[size]' => self::PAGE_SIZE, 'page[number]' => $page,
+            ]);
+            $data = $resp['data'] ?? [];
+            if (!is_array($data) || $data === []) {
+                break;
+            }
+            $names = [];
+            foreach (($resp['included'] ?? []) as $i) {
+                $names[($i['type'] ?? '') . ':' . ($i['id'] ?? '')] = (string) ($i['attributes']['name'] ?? '');
+            }
+            $eskiyeGecti = false;
+            foreach ($data as $r) {
+                $a = is_array($r['attributes'] ?? null) ? $r['attributes'] : [];
+                $gun = (string) ($a['issue_date'] ?? '');
+                if ($gun !== '' && $gun < $ym . '-01') {
+                    $eskiyeGecti = true;
+                    break;
+                }
+                if (!str_starts_with($gun, $ym)) {
+                    continue;
+                }
+                $tutar = (float) ($a['net_total'] ?? 0);
+                if ($tutar <= 0) {
+                    $tutar = (float) ($a['gross_total'] ?? 0) + (float) ($a['total_vat'] ?? 0);
+                }
+                $catRef = $r['relationships']['category']['data'] ?? null;
+                $supRef = $r['relationships']['supplier']['data'] ?? null;
+                $rows[] = [
+                    'parasut_id'  => (string) ($r['id'] ?? ''),
+                    'gun'         => $gun,
+                    'tutar'       => round($tutar, 2),
+                    'kategori_ad' => is_array($catRef) ? (string) ($names[($catRef['type'] ?? 'item_categories') . ':' . ($catRef['id'] ?? '')] ?? '') : '',
+                    'tedarikci'   => is_array($supRef) ? (string) ($names[($supRef['type'] ?? 'contacts') . ':' . ($supRef['id'] ?? '')] ?? '') : '',
+                    'fatura_no'   => (string) ($a['invoice_no'] ?? ''),
+                ];
+            }
+            $seen += count($data);
+            $total ??= isset($resp['meta']['total_count']) ? (int) $resp['meta']['total_count'] : null;
+            if ($eskiyeGecti || ($total !== null && $seen >= $total) || ($total === null && count($data) < self::PAGE_SIZE)) {
+                break;
+            }
+        }
+        return $rows;
+    }
+
+    /**
+     * e-Fatura GELEN KUTUSU (inbound e_invoices) — Paraşüt'e "içeri alınmamış" faturalar da gider
+     * toplamına girsin diye DOĞRUDAN okunur (Hikari dersi: 474 fatura kutuda bekliyordu).
+     * Çift sayım köprüsü: içeri alınmış e-faturada relationships.invoice.data.id = purchase_bill
+     * id'si → çağıran o kaydı atlar (fatura pb yolundan gelir). include=invoice ŞART.
+     * İade faturaları alınmaz (sayısı raporlanır; negatif gider kaydı yok, Ömer elle düşer).
+     * @return array{bills:array<int,array<string,mixed>>,iade:int}
+     */
+    public static function inboundEInvoicesForMonth(string $ym): array
+    {
+        if (!preg_match('/^\d{4}-\d{2}$/', $ym)) {
+            throw new \InvalidArgumentException('ay=YYYY-MM bekleniyor.');
+        }
+        $rows = [];
+        $iade = 0;
+        for ($page = 1; $page <= self::MAX_PAGES; $page++) {
+            $resp = self::get('/e_invoices', [
+                'sort' => '-issue_date', 'include' => 'invoice',
+                'page[size]' => self::PAGE_SIZE, 'page[number]' => $page,
+            ]);
+            $data = $resp['data'] ?? [];
+            if (!is_array($data) || $data === []) {
+                break;
+            }
+            $eskiyeGecti = false;
+            foreach ($data as $r) {
+                $a = is_array($r['attributes'] ?? null) ? $r['attributes'] : [];
+                $gun = (string) ($a['issue_date'] ?? '');
+                if ($gun !== '' && $gun < $ym . '-01') {
+                    $eskiyeGecti = true;
+                    break;
+                }
+                if (!str_starts_with($gun, $ym) || (string) ($a['direction'] ?? '') !== 'inbound' || !empty($a['archived'])) {
+                    continue;
+                }
+                if (!empty($a['refund_of_id']) || (string) ($a['item_type'] ?? 'invoice') !== 'invoice') {
+                    $iade++;
+                    continue;
+                }
+                $rows[] = [
+                    'parasut_id'    => 'ei-' . (string) ($r['id'] ?? ''),
+                    'gun'           => $gun,
+                    'tutar'         => round((float) ($a['net_total'] ?? 0), 2),
+                    'kategori_ad'   => '',
+                    'tedarikci'     => (string) ($a['contact_name'] ?? ''),
+                    'fatura_no'     => (string) ($a['external_id'] ?? ''),
+                    'iceri_alinmis' => !empty($r['relationships']['invoice']['data']['id']),
+                    'pb_ref'        => (string) ($r['relationships']['invoice']['data']['id'] ?? ''),
+                ];
+            }
+            if ($eskiyeGecti || count($data) < self::PAGE_SIZE) {
+                break;
+            }
+        }
+        return ['bills' => $rows, 'iade' => $iade];
+    }
+
     // ── iç yardımcılar ───────────────────────────────────────────
 
     /** Token cache'i (istenleşen 5 dk emniyet payıyla) hâlâ taze mi? */

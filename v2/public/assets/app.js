@@ -99,7 +99,8 @@
       var p = parseInt(input.value, 10) || 0;
       var amt = p * price;
       var amtEl = row.querySelector(".row-amt");
-      if (amtEl) amtEl.textContent = p > 0 ? "₺ " + fmt(amt) : "girilmedi";
+      // fable-030 (Ömer): satırda para GÖSTERİLMEZ — sadece "girilmedi" uyarısı
+      if (amtEl) amtEl.textContent = p > 0 ? "" : "girilmedi";
       var dot = row.querySelector(".status-dot");
       if (dot) dot.classList.toggle("warn", p === 0);
       row.classList.toggle("missing", p === 0);

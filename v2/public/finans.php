@@ -30,6 +30,27 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     if (!Helpers::csrfCheck($_POST['csrf'] ?? null)) {
         $flash = 'Oturum doğrulaması başarısız.';
         $flashOk = false;
+    } elseif (($_POST['form'] ?? '') === 'parasut_cek') {
+        // ── fable-030: Paraşüt'ten gider getir (SALT-OKUMA; Hikari deseni) ──
+        $ayCek = (string) ($_POST['ay'] ?? date('Y-m'));
+        if (!preg_match('/^\d{4}-\d{2}$/', $ayCek)) {
+            $ayCek = date('Y-m');
+        }
+        try {
+            $pb = \Uysa\Parasut::purchaseBillsForMonth($ayCek);
+            $ei = \Uysa\Parasut::inboundEInvoicesForMonth($ayCek);
+            $eiBekleyen = array_values(array_filter($ei['bills'], static fn(array $b) => empty($b['iceri_alinmis'])));
+            $s = $repo->parasutGiderIsle(array_merge($pb, $eiBekleyen));
+            uysa_audit('gider_parasut', $u['username'], $ayCek, json_encode([
+                'yeni' => $s['yeni'], 'mevcut' => $s['mevcut'], 'tutar' => $s['tutar'], 'iade' => $ei['iade'],
+            ], JSON_UNESCAPED_UNICODE), client_ip());
+            $flash = 'Paraşüt (' . date('F Y', strtotime($ayCek . '-01')) . '): ' . $s['yeni'] . ' yeni gider · ₺'
+                . number_format($s['tutar'], 2, ',', '.') . ' · ' . $s['mevcut'] . ' zaten vardı'
+                . ($ei['iade'] > 0 ? ' · ' . $ei['iade'] . ' iade ATLANDI (elle düşün)' : '');
+        } catch (\Throwable $e) {
+            $flash = 'Paraşüt okunamadı: ' . $e->getMessage();
+            $flashOk = false;
+        }
     } else {
         $type = in_array($_POST['type'] ?? '', ['gelir', 'gider'], true) ? $_POST['type'] : 'gider';
         $amount = Helpers::parseMoney((string) ($_POST['amount'] ?? '0'));
@@ -192,6 +213,14 @@ require __DIR__ . '/partials/header.php';
         <a class="chip <?= $filter === 'gider' ? 'active' : '' ?>" href="finans.php?ay=<?= $month ?>&tur=gider">Gider</a>
         <?php // fable-029b (Ömer): form artık varsayılan GİZLİ — bu buton açar ?>
         <button class="chip" type="button" onclick="toggleSheet('add-sheet')"><i class="bi bi-plus-lg"></i> Ekle</button>
+        <?php if (Auth::isAdmin($u)): // fable-030: giderler Paraşüt'ten tek dokunuş (Hikari deseni) ?>
+        <form method="post" style="display:inline">
+          <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
+          <input type="hidden" name="form" value="parasut_cek">
+          <input type="hidden" name="ay" value="<?= Helpers::e($month) ?>">
+          <button class="chip" type="submit"><i class="bi bi-cloud-download"></i> Paraşüt'ten getir</button>
+        </form>
+        <?php endif; ?>
       </div>
 
       <?php if (!$byDay): ?>

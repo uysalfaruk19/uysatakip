@@ -226,8 +226,9 @@ CREATE TABLE IF NOT EXISTS `transactions` (
   `supplier_id` INT UNSIGNED          DEFAULT NULL,
   `description` VARCHAR(500)          DEFAULT NULL,
   `file_id`     INT UNSIGNED          DEFAULT NULL,
-  -- TODO (Paraşüt): dış-kaynak senkron alanı. Bu turda kullanılmıyor; 'manuel'/'parasut'.
+  -- fable-030: dış-kaynak senkron alanları ('manuel'/'parasut'; parasut_id = mükerrer kalkanı)
   `source`      VARCHAR(20)  NOT NULL DEFAULT 'manuel',
+  `parasut_id`  VARCHAR(48)           DEFAULT NULL COMMENT 'Paraşüt fatura id (ei- önekli=gelen kutusu)',
   -- opus-015: gider dağıtım hedefi. 'genel'=tüm müşterilere ciro oranlı; 'musteri'=transaction_customer hedefleri.
   `alloc_type`  VARCHAR(10)  NOT NULL DEFAULT 'genel',
   `created_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,

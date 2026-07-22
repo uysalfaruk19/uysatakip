@@ -1314,6 +1314,57 @@ final class Repo
      *   $allocType 'musteri'→ $allocCustomerIds hedeflerine kendi ciroları oranlı dağılır.
      * Hedefler transaction_customer link tablosuna yazılır ('musteri' iken, boş değilse).
      */
+    /**
+     * fable-030: Paraşüt gider senkronu — bir ayın faturalarını transactions'a işler.
+     * Mükerrer kalkanı: parasut_id UNIQUE (aynı fatura iki kez düşmez, elle girilenler ezilmez).
+     * Gelen-kutusu kaydı daha önce 'ei-{id}' ile girdiyse, içeri alınınca oluşan purchase_bill
+     * kimliğiyle TEKRAR girmesin diye pb_ref köprüsü de kontrol edilir (Hikari deseni).
+     * @param array<int,array<string,mixed>> $bills
+     * @return array{yeni:int,mevcut:int,tutar:float}
+     */
+    public function parasutGiderIsle(array $bills): array
+    {
+        $st = $this->pdo->prepare("SELECT parasut_id FROM transactions WHERE parasut_id IS NOT NULL");
+        $st->execute();
+        $mevcutIds = array_flip(array_column($st->fetchAll(), 'parasut_id'));
+        $yeni = 0;
+        $mevcut = 0;
+        $tutarTop = 0.0;
+        $ins = $this->pdo->prepare(
+            "INSERT INTO transactions (type, category, tx_date, amount, description, source, parasut_id, alloc_type)
+             VALUES ('gider', ?, ?, ?, ?, 'parasut', ?, 'genel')"
+        );
+        foreach ($bills as $b) {
+            $pid = (string) ($b['parasut_id'] ?? '');
+            if ($pid === '' || (float) ($b['tutar'] ?? 0) <= 0) {
+                continue;
+            }
+            // Çift-gider köprüsü: pb kimliği geldiyse ama aynı fatura ei- anahtarıyla zaten
+            // girdiyse atla; ei- kaydı geldiyse ve içeri-alınmış pb karşılığı zaten girdiyse atla.
+            $pbRef = (string) ($b['pb_ref'] ?? '');
+            if (isset($mevcutIds[$pid])
+                || ($pbRef !== '' && isset($mevcutIds[$pbRef]))
+                || (!str_starts_with($pid, 'ei-') && isset($mevcutIds['ei-' . $pid]))) {
+                $mevcut++;
+                continue;
+            }
+            $kategori = trim((string) ($b['kategori_ad'] ?? ''));
+            if ($kategori === '') {
+                $kategori = 'Tedarikçi faturası';
+            }
+            $aciklama = trim((string) ($b['tedarikci'] ?? ''));
+            if (($b['fatura_no'] ?? '') !== '') {
+                $aciklama .= ($aciklama !== '' ? ' · ' : '') . $b['fatura_no'];
+            }
+            $ins->execute([$kategori, (string) $b['gun'], round((float) $b['tutar'], 2),
+                $aciklama !== '' ? mb_substr($aciklama, 0, 490) : null, $pid]);
+            $mevcutIds[$pid] = true;
+            $yeni++;
+            $tutarTop += (float) $b['tutar'];
+        }
+        return ['yeni' => $yeni, 'mevcut' => $mevcut, 'tutar' => round($tutarTop, 2)];
+    }
+
     public function addTransaction(
         string $type,
         float $amount,
