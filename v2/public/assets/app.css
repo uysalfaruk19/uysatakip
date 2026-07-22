@@ -1924,6 +1924,24 @@ body.meal-open {
 .irs-res.err {
   border-left-color: var(--red);
 }
+/* fable-026: canlı ilerleme — bekleyen soluk, işlenen "nefes alır" (kesim sürüyor hissi) */
+.irs-res.wait {
+  opacity: 0.55;
+}
+.irs-res.wait.busy {
+  opacity: 1;
+  border-left-color: var(--primary);
+  animation: irsNefes 1.1s ease-in-out infinite;
+}
+@keyframes irsNefes {
+  0%,
+  100% {
+    background: var(--surface-2);
+  }
+  50% {
+    background: var(--primary-tint);
+  }
+}
 .irs-warn {
   margin: 10px 0 6px;
   font-size: 12px;

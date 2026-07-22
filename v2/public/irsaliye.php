@@ -118,6 +118,58 @@ if ($action === 'hazirla') {
     ]);
 }
 
+// ── 2b) KES-TEK: onaylı kümeden TEK müşteriyi kes (fable-026 — canlı ilerleme).
+// Ömer: "hepsi kesilene kadar ne olduğunu anlamıyorum" → istemci müşterileri SIRAYLA keser,
+// her sonucu anında gösterir. İmza tüketilmez; kesilen id onaylı kümeden ATOMİK düşülür
+// (aynı müşteri için ikinci istek 'zaten işlendi' alır — çift tık kalkanı müşteri seviyesinde).
+if ($action === 'kes' && (int) ($body['tek'] ?? 0) > 0) {
+    $tek = (int) $body['tek'];
+    $oturum = $_SESSION['irsaliye_onay'] ?? null;
+    $imza = (string) ($body['onay'] ?? '');
+    if (!is_array($oturum) || (int) ($oturum['exp'] ?? 0) < time()
+        || (string) ($oturum['date'] ?? '') !== $date
+        || $imza === '' || !hash_equals((string) ($oturum['token'] ?? ''), $imza)) {
+        Helpers::json(['ok' => false, 'error' => 'Onay süresi doldu veya geçersiz — baştan seçin.'], 403);
+    }
+    $izinli = array_map('intval', (array) ($oturum['ids'] ?? []));
+    if (!in_array($tek, $izinli, true)) {
+        Helpers::json(['ok' => false, 'error' => 'Bu müşteri onaylı listede yok ya da zaten işlendi.'], 403);
+    }
+    // Claim-first: id kümeden kesimden ÖNCE düşülür; küme boşalınca oturum kapanır.
+    $kalan = array_values(array_diff($izinli, [$tek]));
+    if ($kalan) {
+        $_SESSION['irsaliye_onay']['ids'] = $kalan;
+    } else {
+        unset($_SESSION['irsaliye_onay']);
+    }
+
+    $a = $adaylar[$tek] ?? null;
+    if ($a === null) {
+        Helpers::json(['ok' => true, 'kapali' => $kapali, 'sonuc' => ['customer_id' => $tek,
+            'name' => '#' . $tek, 'ok' => false, 'durum' => 'hata', 'mesaj' => 'Müşteri listede yok.']]);
+    }
+    $yaz = new ParasutYaz($repo, (string) $oturum['token']);
+    $r = $yaz->createShipmentDocument($tek, $date, ['ogle' => $a['ogle'], 'aksam' => $a['aksam'], 'kumanya' => $a['kumanya']], [
+        'onay'  => $imza,
+        'actor' => (string) $u['username'],
+    ]);
+    uysa_audit('irsaliye_kesim', (string) $u['username'], $date, json_encode([
+        'tek' => $tek, 'ok' => $r['ok'], 'durum' => $r['durum'], 'kapali' => $kapali,
+    ], JSON_UNESCAPED_UNICODE), client_ip());
+    Helpers::json(['ok' => true, 'kapali' => $kapali, 'sonuc' => [
+        'customer_id' => $tek,
+        'name'        => $a['name'],
+        'ok'          => $r['ok'],
+        'durum'       => $r['durum'],
+        'mesaj'       => $r['mesaj'],
+        'despatch_no' => $r['despatch_no'],
+        'doc_id'      => $r['doc_id'],
+        'parasut_ad'  => $r['parasut_ad'],
+        'tasiyici_ok' => $r['tasiyici_ok'],
+        'toplam'      => $r['toplam'],
+    ]]);
+}
+
 // ── 2) KES: onay imzasını tüket + Paraşüt'e kes (şalter kapalıysa ParasutYaz zaten POST atmaz) ──
 if ($action === 'kes') {
     $oturum = $_SESSION['irsaliye_onay'] ?? null;

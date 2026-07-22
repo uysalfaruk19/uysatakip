@@ -22,6 +22,7 @@
   var sonucEl = document.getElementById("irs-sonuc");
   var onayToken = "";
   var sonHedef = [];
+  var sonAd = {}; // fable-026: cid → müşteri adı (canlı ilerleme satırları için)
 
   function picks() {
     return [].slice.call(modal.querySelectorAll(".irs-pick:checked"));
@@ -157,6 +158,7 @@
         }
         onayToken = r.onay || "";
         sonHedef = [];
+        sonAd = {};
         var html =
           '<p class="irs-sum"><strong>' +
           esc(r.tarih) +
@@ -169,6 +171,7 @@
         r.satirlar.forEach(function (s) {
           if (s.ok) {
             sonHedef.push(s.customer_id);
+            sonAd[s.customer_id] = s.name;
             var kal = s.kalemler
               .map(function (k) {
                 return esc(k.ogun) + " × " + k.miktar;
@@ -209,48 +212,62 @@
       show("secim");
     });
 
-  // ── adım 2 → 3: kesim (şalter kapalıysa sunucu POST atmaz, "kapali" döner) ──
+  // ── adım 2 → 3: kesim — fable-026: müşteriler SIRAYLA kesilir, her sonuç ANINDA görünür.
+  // (Eskiden hepsi tek istekteydi; gönderim beklemeleri yüzünden dakikalarca sessiz kalıyordu —
+  // Ömer: "kesilip kesilmediğini anlamıyorum". Şimdi: bekleyen ▫ / işleniyor ⏳ / ✅-❌ canlı.)
   function kes(ids) {
-    cutBtn.disabled = true; // çift tık kalkanı (asıl kalkan: sunucuda tek kullanımlık imza)
+    cutBtn.disabled = true; // çift tık kalkanı (asıl kalkan: sunucuda müşteri-bazlı claim)
     if (retryBtn) retryBtn.hidden = true;
-    post({ action: "kes", ids: ids, onay: onayToken }, function (r) {
-      onayToken = ""; // imza tüketildi
-      if (!r.ok) {
-        sonucEl.innerHTML =
-          '<div class="irs-res err"><span class="irs-why">' +
-          esc(r.error || "Kesim başarısız.") +
-          "</span></div>";
-        show("sonuc");
-        return;
-      }
-      var html =
-        '<p class="irs-sum">' +
-        r.basarili +
-        "/" +
-        r.sonuclar.length +
-        " irsaliye kesildi</p>";
-      var basarisiz = [];
-      r.sonuclar.forEach(function (s) {
-        var cls = s.ok
-          ? s.durum === "kesildi" && !s.tasiyici_ok
-            ? "warn"
-            : "ok"
-          : "err";
-        if (!s.ok) basarisiz.push(s.customer_id);
-        html +=
-          '<div class="irs-res ' +
-          cls +
-          '"><span class="irs-name">' +
-          esc(s.name) +
-          "</span>" +
-          (s.despatch_no
-            ? '<span class="irs-meta">' + esc(s.despatch_no) + "</span>"
-            : "") +
-          '<span class="irs-why">' +
-          esc(s.mesaj) +
-          "</span></div>";
-      });
-      sonucEl.innerHTML = html;
+
+    var html =
+      '<p class="irs-sum" id="irs-progress">İşleniyor… 0/' +
+      ids.length +
+      "</p>";
+    ids.forEach(function (cid) {
+      html +=
+        '<div class="irs-res wait" id="irs-row-' +
+        cid +
+        '"><span class="irs-name">' +
+        esc(sonAd[cid] || "#" + cid) +
+        '</span><span class="irs-why">Sırada bekliyor…</span></div>';
+    });
+    sonucEl.innerHTML = html;
+    show("sonuc");
+
+    var queue = ids.slice();
+    var basarili = 0;
+    var tamam = 0;
+    var basarisiz = [];
+
+    function satir(cid, cls, meta, why) {
+      var row = document.getElementById("irs-row-" + cid);
+      if (!row) return;
+      row.className = "irs-res " + cls;
+      row.innerHTML =
+        '<span class="irs-name">' +
+        esc(sonAd[cid] || "#" + cid) +
+        "</span>" +
+        (meta ? '<span class="irs-meta">' + esc(meta) + "</span>" : "") +
+        '<span class="irs-why">' +
+        esc(why || "") +
+        "</span>";
+    }
+
+    function ilerleme(sonMu) {
+      var p = document.getElementById("irs-progress");
+      if (!p) return;
+      p.textContent = sonMu
+        ? basarili + "/" + ids.length + " irsaliye kesildi"
+        : "İşleniyor… " +
+          tamam +
+          "/" +
+          ids.length +
+          (basarili ? " · " + basarili + " kesildi" : "");
+    }
+
+    function bitir() {
+      onayToken = ""; // küme tükendi
+      ilerleme(true);
       if (retryBtn) {
         // Sadece BAŞARISIZLAR tekrar denenir; "durum bilinmiyor" olanlar sunucuda zaten kilitli.
         retryBtn.hidden = basarisiz.length === 0;
@@ -261,12 +278,48 @@
               return;
             }
             onayToken = h.onay;
+            h.satirlar.forEach(function (s) {
+              if (s.ok) sonAd[s.customer_id] = s.name;
+            });
             kes(basarisiz);
           });
         };
       }
-      show("sonuc");
-    });
+    }
+
+    function siradaki() {
+      if (!queue.length) {
+        bitir();
+        return;
+      }
+      var cid = queue.shift();
+      satir(cid, "wait busy", "", "Kesiliyor ve gönderiliyor…");
+      post({ action: "kes", tek: cid, onay: onayToken }, function (r) {
+        tamam++;
+        if (!r.ok) {
+          basarisiz.push(cid);
+          satir(cid, "err", "", r.error || "Kesim başarısız.");
+        } else {
+          var s = r.sonuc || {};
+          if (s.ok) {
+            basarili++;
+            satir(
+              cid,
+              s.durum === "kesildi" && !s.tasiyici_ok ? "warn" : "ok",
+              s.despatch_no || "",
+              s.mesaj || "",
+            );
+          } else {
+            basarisiz.push(cid);
+            satir(cid, "err", "", s.mesaj || "Kesim başarısız.");
+          }
+        }
+        ilerleme(false);
+        siradaki();
+      });
+    }
+    ilerleme(false);
+    siradaki();
   }
 
   if (cutBtn) {
