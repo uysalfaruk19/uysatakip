@@ -59,10 +59,10 @@ $csrf = Helpers::csrfToken();
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#f2f6fa">
+<meta name="theme-color" content="#f7f8fa">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <title>UYSA Kokpit · Giriş</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+<link href="assets/bootstrap-icons.css?v=<?= filemtime(__DIR__ . '/assets/bootstrap-icons.css') ?>" rel="stylesheet">
 <link href="assets/app.css?v=<?= filemtime(__DIR__ . '/assets/app.css') ?>" rel="stylesheet">
 </head>
 <body>
