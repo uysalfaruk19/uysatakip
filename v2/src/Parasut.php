@@ -363,6 +363,62 @@ final class Parasut
         return ['bills' => $rows, 'iade' => $iade];
     }
 
+    /**
+     * fable-031b: Gelen e-faturanın SATIRLARI (miktar × birim) — API'de satır ucu yok,
+     * imzalı UBL zip'i indirilip XML'den okunur (KIRMIZI 1 kanıtı: 568×175=99.400).
+     * @return array{adet:float,net:float}|null toplam miktar + KDV-hariç toplam (okunamazsa null)
+     */
+    public static function eInvoiceLineTotals(string $eInvoiceId): ?array
+    {
+        $company = (string) Env::get('PARASUT_COMPANY_ID', '');
+        if ($company === '' || !class_exists(\ZipArchive::class)) {
+            return null;
+        }
+        $token = self::token();
+        $ch = curl_init(self::API_BASE . '/' . rawurlencode($company) . '/e_invoices/' . rawurlencode($eInvoiceId) . '/signed_ubl');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $token], CURLOPT_TIMEOUT => 40,
+        ]);
+        $bin = curl_exec($ch);
+        $st = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($bin === false || $st !== 200 || strlen((string) $bin) < 100) {
+            return null;
+        }
+        $tmp = tempnam(sys_get_temp_dir(), 'ubl');
+        file_put_contents($tmp, $bin);
+        $xmlStr = null;
+        $z = new \ZipArchive();
+        if ($z->open($tmp) === true) {
+            for ($i = 0; $i < $z->numFiles; $i++) {
+                if (preg_match('/\.xml$/i', (string) $z->getNameIndex($i))) {
+                    $xmlStr = $z->getFromIndex($i);
+                    break;
+                }
+            }
+            $z->close();
+        }
+        @unlink($tmp);
+        if (!$xmlStr) {
+            return null;
+        }
+        $sx = @simplexml_load_string($xmlStr);
+        if (!$sx) {
+            return null;
+        }
+        $sx->registerXPathNamespace('cac', 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2');
+        $sx->registerXPathNamespace('cbc', 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2');
+        $adet = 0.0;
+        $net = 0.0;
+        foreach ($sx->xpath('//cac:InvoiceLine') as $L) {
+            $L->registerXPathNamespace('cbc', 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2');
+            $adet += (float) (($L->xpath('./cbc:InvoicedQuantity')[0] ?? 0));
+            $net += (float) (($L->xpath('./cbc:LineExtensionAmount')[0] ?? 0));
+        }
+        return $adet > 0 ? ['adet' => $adet, 'net' => round($net, 2)] : null;
+    }
+
     // ── iç yardımcılar ───────────────────────────────────────────
 
     /** Token cache'i (istenleşen 5 dk emniyet payıyla) hâlâ taze mi? */

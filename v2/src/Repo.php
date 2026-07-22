@@ -920,6 +920,28 @@ final class Repo
         return (float) $st->fetchColumn();
     }
 
+    /**
+     * fable-031b: O ay taşıma alış faturalarının GERÇEK BİRİM fiyatı (KDV hariç) —
+     * fatura satırlarından: Σnet_amount / Σqty (KIRMIZI kanıtı: 345.275/1.973 = 175,00).
+     * Ay ortasında toplam/ay-adedi bölmek YANILTIR (Ömer 23 Tem dersi); birim faturadan okunur.
+     * Satır verisi (UBL) okunamamış kayıt varsa null döner → çağıran adet-oranlı yönteme düşer.
+     */
+    public function tasimaAlisBirim(string $ay): ?float
+    {
+        $st = $this->pdo->prepare(
+            "SELECT COUNT(*) AS n, COALESCE(SUM(qty),0) AS q, COALESCE(SUM(net_amount),0) AS net,
+                    SUM(CASE WHEN qty IS NULL OR qty <= 0 THEN 1 ELSE 0 END) AS satirsiz
+             FROM transactions
+             WHERE type = 'gider' AND category = 'Taşıma alış' AND substr(tx_date,1,7) = ?"
+        );
+        $st->execute([$ay]);
+        $r = $st->fetch();
+        if (!$r || (int) $r['n'] === 0 || (int) $r['satirsiz'] > 0 || (float) $r['q'] <= 0) {
+            return null;
+        }
+        return round((float) $r['net'] / (float) $r['q'], 2);
+    }
+
     /** O ay TÜM taşıma müşterilerinin toplam adedi (gerçek alışı adet-oranlı dağıtmak için). */
     public function tasimaToplamAdet(string $ay): int
     {
@@ -943,17 +965,26 @@ final class Repo
         $note  = $c['tasima_not'] ?? null;
         $adet  = $this->monthProductionPersons($customerId, $ay);
 
-        // fable-031 (Ömer): 'Taşıma alış' faturası (KIRMIZI 1) varsa GERÇEK maliyet esas —
-        // ay toplamı taşıma müşterilerine ADET ORANLI dağıtılır; fatura yoksa matbu birim.
+        // fable-031/031b (Ömer): 'Taşıma alış' faturası (KIRMIZI 1) varsa GERÇEK maliyet esas.
+        // ÖNCELİK: fatura satırından okunan BİRİM (KDV hariç; satışla elmayla elma — 175,00 kanıtı).
+        // Satır verisi yoksa: ay toplamı adet-oranlı dağıtılır (yaklaşık; ay kapanınca oturur).
+        // Fatura hiç yoksa: matbu birim (kart). Ay ortasında toplam/ay-adedi YANILTIR — birim esas.
         $alisKaynak = 'matbu';
         $toplamAlis = $adet * $alis;
-        $fatura = $this->tasimaAlisFatura($ay);
-        if ($fatura > 0) {
-            $tumAdet = $this->tasimaToplamAdet($ay);
-            if ($tumAdet > 0 && $adet > 0) {
-                $toplamAlis = round($fatura * $adet / $tumAdet, 2);
-                $alis = round($toplamAlis / $adet, 2);
-                $alisKaynak = 'fatura';
+        $birimGercek = $this->tasimaAlisBirim($ay);
+        if ($birimGercek !== null && $adet > 0) {
+            $alis = $birimGercek;
+            $toplamAlis = round($adet * $alis, 2);
+            $alisKaynak = 'fatura';
+        } else {
+            $fatura = $this->tasimaAlisFatura($ay);
+            if ($fatura > 0) {
+                $tumAdet = $this->tasimaToplamAdet($ay);
+                if ($tumAdet > 0 && $adet > 0) {
+                    $toplamAlis = round($fatura * $adet / $tumAdet, 2);
+                    $alis = round($toplamAlis / $adet, 2);
+                    $alisKaynak = 'fatura-oran';
+                }
             }
         }
 
@@ -1373,8 +1404,8 @@ final class Repo
         $mevcut = 0;
         $tutarTop = 0.0;
         $ins = $this->pdo->prepare(
-            "INSERT INTO transactions (type, category, tx_date, amount, description, source, parasut_id, alloc_type)
-             VALUES ('gider', ?, ?, ?, ?, 'parasut', ?, 'genel')"
+            "INSERT INTO transactions (type, category, tx_date, amount, description, source, parasut_id, qty, net_amount, alloc_type)
+             VALUES ('gider', ?, ?, ?, ?, 'parasut', ?, ?, ?, 'genel')"
         );
         // fable-031 (Ömer): taşıma yemeğinin alındığı tedarikçi (KIRMIZI 1) faturaları
         // 'Taşıma alış' kategorisine işlenir — taşıma kârında matbu birim yerine GERÇEK maliyet
@@ -1416,8 +1447,19 @@ final class Repo
             if (($b['fatura_no'] ?? '') !== '') {
                 $aciklama .= ($aciklama !== '' ? ' · ' : '') . $b['fatura_no'];
             }
+            // fable-031b: Taşıma alış faturasının SATIRLARI (miktar + KDV-hariç tutar) UBL'den —
+            // gerçek BİRİM fiyat hesabı için. Okunamazsa null (birim yolu oran yöntemine düşer).
+            $satir = null;
+            if ($kategori === 'Taşıma alış' && str_starts_with($pid, 'ei-')) {
+                try {
+                    $satir = \Uysa\Parasut::eInvoiceLineTotals(substr($pid, 3));
+                } catch (\Throwable) {
+                    $satir = null;
+                }
+            }
             $ins->execute([$kategori, (string) $b['gun'], round((float) $b['tutar'], 2),
-                $aciklama !== '' ? mb_substr($aciklama, 0, 490) : null, $pid]);
+                $aciklama !== '' ? mb_substr($aciklama, 0, 490) : null, $pid,
+                $satir['adet'] ?? null, $satir['net'] ?? null]);
             $mevcutIds[$pid] = true;
             $yeni++;
             $tutarTop += (float) $b['tutar'];

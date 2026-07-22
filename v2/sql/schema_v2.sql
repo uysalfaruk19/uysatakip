@@ -229,6 +229,8 @@ CREATE TABLE IF NOT EXISTS `transactions` (
   -- fable-030: dış-kaynak senkron alanları ('manuel'/'parasut'; parasut_id = mükerrer kalkanı)
   `source`      VARCHAR(20)  NOT NULL DEFAULT 'manuel',
   `parasut_id`  VARCHAR(48)           DEFAULT NULL COMMENT 'Paraşüt fatura id (ei- önekli=gelen kutusu)',
+  `qty`         DECIMAL(12,2)         DEFAULT NULL COMMENT 'fatura satır adedi (fable-031b)',
+  `net_amount`  DECIMAL(12,2)         DEFAULT NULL COMMENT 'KDV hariç tutar (fable-031b)',
   -- opus-015: gider dağıtım hedefi. 'genel'=tüm müşterilere ciro oranlı; 'musteri'=transaction_customer hedefleri.
   `alloc_type`  VARCHAR(10)  NOT NULL DEFAULT 'genel',
   `created_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,

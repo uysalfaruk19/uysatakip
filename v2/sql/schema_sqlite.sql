@@ -177,6 +177,8 @@ CREATE TABLE IF NOT EXISTS transactions (
   file_id INTEGER REFERENCES files(id) ON DELETE SET NULL,
   source TEXT NOT NULL DEFAULT 'manuel',
   parasut_id TEXT UNIQUE,                       -- fable-030: Paraşüt fatura id (ei- önekli=gelen kutusu; mükerrer kalkanı)
+  qty REAL,                                     -- fable-031b: fatura satır adedi (taşıma alış birimi için)
+  net_amount REAL,                              -- fable-031b: KDV hariç tutar
   -- opus-015: gider dağıtım hedefi. 'genel'=tüm müşterilere ciro oranlı; 'musteri'=transaction_customer'daki hedeflere ciro oranlı.
   alloc_type TEXT NOT NULL DEFAULT 'genel' CHECK(alloc_type IN ('genel','musteri')),
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
