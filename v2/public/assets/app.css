@@ -1924,6 +1924,24 @@ body.meal-open {
 .irs-res.err {
   border-left-color: var(--red);
 }
+/* fable-027: Bugün ekranı 3'lü buton sırası — dar ekranda taşmasın, ekran büyümesin */
+.actions-uc {
+  gap: 8px;
+}
+.actions-uc .btn-action {
+  padding-inline: 8px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+@media (max-width: 400px) {
+  .actions-uc .btn-action {
+    font-size: 12px;
+  }
+  .actions-uc .btn-action i {
+    display: none; /* çok dar ekranda ikonlar gizlenir, metin sığar */
+  }
+}
+
 /* fable-026: canlı ilerleme — bekleyen soluk, işlenen "nefes alır" (kesim sürüyor hissi).
    Aynı desen fatura sonuç satırlarında (.ftr-res) da kullanılır. */
 .irs-res.wait,

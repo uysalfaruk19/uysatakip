@@ -71,6 +71,49 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $pdo->commit();
             uysa_audit('uretim_kaydet', $u['username'], $date, json_encode(['n' => $saved]), client_ip());
             $flash = "Kaydedildi · $saved müşteri";
+
+            // ── fable-027 (Ömer): "Haftaya kopyala" — bugünün sayıları haftanın KALAN hafta içi
+            // günlerine yazılır (Salı–Cuma vb; sadece İLERİ günler — geçmiş gün asla ezilmez).
+            // Önce yukarıdaki normal kayıt koşar: ekranda yazılı ama kaydedilmemiş sayı kaybolmaz.
+            if (isset($_POST['hafta_kopyala'])) {
+                $dow = (int) date('N', strtotime($date));
+                $hedefler = [];
+                for ($d = $dow + 1; $d <= 5; $d++) {
+                    $hedefler[] = date('Y-m-d', strtotime($date . ' +' . ($d - $dow) . ' day'));
+                }
+                if (!$hedefler) {
+                    $flash .= ' · Kopyalanacak hafta içi gün kalmadı.';
+                } else {
+                    $kaynak = $repo->dayGridAllMeals($date);
+                    $pdo->beginTransaction();
+                    try {
+                        $nMusteri = 0;
+                        foreach ($kaynak as $r) {
+                            if ((int) $r['toplam'] <= 0) {
+                                continue; // bugün sayısı olmayan müşteri ileri günlere yazılmaz/silinmez
+                            }
+                            $nMusteri++;
+                            $meals = ['ogle' => (int) $r['ogle'], 'aksam' => (int) $r['aksam'], 'kumanya' => (int) $r['kumanya']];
+                            foreach ($hedefler as $gun) {
+                                $price = $repo->priceFor((int) $r['customer_id'], substr($gun, 0, 7))['unit_price'];
+                                $repo->saveDayMeals((int) $r['customer_id'], $gun, $meals, $price, 'uysa');
+                            }
+                        }
+                        $pdo->commit();
+                        uysa_audit('uretim_hafta_kopyala', $u['username'], $date, json_encode([
+                            'hedef' => $hedefler, 'n' => $nMusteri,
+                        ], JSON_UNESCAPED_UNICODE), client_ip());
+                        $gunTr = ['Tue' => 'Sal', 'Wed' => 'Çar', 'Thu' => 'Per', 'Fri' => 'Cum'];
+                        $flash .= ' · ' . count($hedefler) . ' güne kopyalandı ('
+                            . ($gunTr[date('D', strtotime($hedefler[0]))] ?? '') . '–'
+                            . ($gunTr[date('D', strtotime(end($hedefler)))] ?? '') . ", $nMusteri müşteri).";
+                    } catch (\Throwable $e) {
+                        $pdo->rollBack();
+                        $flash .= ' · Hafta kopyalama HATALI (bugün kaydedildi).';
+                        $flashOk = false;
+                    }
+                }
+            }
         } catch (\Throwable $e) {
             $pdo->rollBack();
             $flash = 'Kayıt hatası.';
@@ -322,8 +365,11 @@ require __DIR__ . '/partials/header.php';
           <?php endforeach; ?>
         </div>
 
-        <div class="actions-row mt-3">
+        <div class="actions-row actions-uc mt-3"><!-- fable-027: 3 buton tek sıra, kompakt -->
           <a class="btn-action btn-secondaryx flex-fill" href="bugun.php?date=<?= Helpers::e($date) ?>&copy=1"><i class="bi bi-copy"></i> <?= $hedefPzt ? 'Cumayı kopyala' : 'Dünü kopyala' ?></a>
+          <button class="btn-action btn-secondaryx flex-fill" type="submit" name="hafta_kopyala" value="1"
+            onclick="return confirm('Bugünün sayıları önce kaydedilir, sonra bu haftanın KALAN hafta içi günlerine kopyalanır (mevcut kayıtların üzerine yazılır). Devam?')">
+            <i class="bi bi-calendar2-week"></i> Haftaya kopyala</button>
           <button class="btn-action btn-primaryx flex-fill" type="submit"><i class="bi bi-check2"></i> Kaydet</button>
         </div>
       </form>
