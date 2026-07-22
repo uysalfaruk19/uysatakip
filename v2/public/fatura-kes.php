@@ -87,10 +87,25 @@ if ($method === 'POST') {
                     $satirlar[] = ['customer_id' => $cid, 'name' => $a['name'], 'ok' => false, 'sebep' => $p['mesaj']];
                     continue;
                 }
+                // fable-028: gün gün döküm — fatura KESİLEN İRSALİYELERDEN kesilir, tablo da
+                // birebir o irsaliye loglarından kurulur (netleştirme: gördüğün = faturalanan).
+                $gunler = [];
+                foreach ($repo->faturaAdayIrsaliyeler($cid, $bas, $son) as $log) {
+                    $g = ['gun' => (string) $log['gun'], 'irsaliye' => (string) ($log['despatch_no'] ?? ''),
+                        'ogle' => 0, 'aksam' => 0, 'kumanya' => 0, 'toplam' => (int) $log['toplam_kisi']];
+                    foreach ((array) json_decode((string) ($log['kalemler'] ?? '[]'), true) as $kk) {
+                        $og = (string) ($kk['ogun'] ?? '');
+                        if (isset($g[$og])) {
+                            $g[$og] += (int) ($kk['miktar'] ?? 0);
+                        }
+                    }
+                    $gunler[] = $g;
+                }
                 $plan[] = ['customer_id' => $cid, 'tip' => 'irsaliye'];
                 $genelNet += $p['hesap']['net'];
                 $satirlar[] = [
                     'customer_id' => $cid, 'name' => $a['name'], 'ok' => true, 'tip' => 'irsaliye',
+                    'gunler' => $gunler,
                     'kalemler' => array_map(static fn(array $k): array => [
                         'ad' => ParasutYaz::OGUN_ETIKET[$k['ogun']] ?? $k['ogun'],
                         'miktar' => $k['miktar'], 'birim' => $k['birim'],
@@ -119,6 +134,8 @@ if ($method === 'POST') {
                 $genelNet += $altNet;
                 $satirlar[] = [
                     'customer_id' => $cid, 'name' => $a['name'], 'ok' => true, 'tip' => 'aylik',
+                    // fable-028: aylıkta döküm = dönem içi GİRİLEN sayılar (fatura bunların toplamı)
+                    'gunler' => $repo->customerMealsRange($cid, $bas, $son),
                     'adet' => (int) $a['adet'], 'birim' => (float) $a['birim'],
                     'parts' => $partOut, 'sum_kisi' => $sumKisi, 'net' => $altNet,
                     'fark' => $sumKisi - (int) $a['adet'],

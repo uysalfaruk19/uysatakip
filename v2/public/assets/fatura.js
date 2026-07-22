@@ -182,6 +182,58 @@
         });
         var html = "";
         var govdeler = [];
+        // fable-028: gün gün öğün dökümü tablosu — fatura neyin toplamıysa o görünür
+        // (haftalıkta kesilen irsaliyeler + numaraları, aylıkta girilen günlük sayılar).
+        function gunTablosu(gunler, irsaliyeli) {
+          if (!gunler || !gunler.length) return "";
+          var t = { ogle: 0, aksam: 0, kumanya: 0, toplam: 0 };
+          var rows = gunler
+            .map(function (g) {
+              t.ogle += g.ogle;
+              t.aksam += g.aksam;
+              t.kumanya += g.kumanya;
+              t.toplam += g.toplam;
+              var d = g.gun.slice(8, 10) + "." + g.gun.slice(5, 7);
+              return (
+                "<tr><td>" +
+                d +
+                (irsaliyeli && g.irsaliye
+                  ? ' <span class="ftr-irsno">' + esc(g.irsaliye) + "</span>"
+                  : "") +
+                "</td><td>" +
+                (g.ogle || "·") +
+                "</td><td>" +
+                (g.aksam || "·") +
+                "</td><td>" +
+                (g.kumanya || "·") +
+                "</td><td><strong>" +
+                g.toplam +
+                "</strong></td></tr>"
+              );
+            })
+            .join("");
+          return (
+            '<details class="ftr-gunler"><summary>Gün gün döküm (' +
+            gunler.length +
+            " gün · " +
+            t.toplam +
+            " kişi)</summary>" +
+            '<div style="overflow-x:auto"><table class="mini-cal">' +
+            "<thead><tr><th>Gün</th><th>Öğle</th><th>Akşam</th><th>Kumanya</th><th>Kişi</th></tr></thead>" +
+            "<tbody>" +
+            rows +
+            '<tr class="is-total"><td>Toplam</td><td>' +
+            t.ogle +
+            "</td><td>" +
+            t.aksam +
+            "</td><td>" +
+            t.kumanya +
+            "</td><td><strong>" +
+            t.toplam +
+            "</strong></td></tr>" +
+            "</tbody></table></div></details>"
+          );
+        }
         r.satirlar.forEach(function (s) {
           if (!s.ok) {
             html +=
@@ -222,11 +274,7 @@
               "</strong> · Vade " +
               esc(s.vade) +
               "</div>" +
-              (s.despatch_nolar && s.despatch_nolar.length
-                ? '<div class="ftr-irs">İrsaliye: ' +
-                  esc(s.despatch_nolar.join(", ")) +
-                  "</div>"
-                : "") +
+              gunTablosu(s.gunler, true) +
               "</div>";
             govdeler.push(s.name + ":\n" + JSON.stringify(s.govde, null, 2));
           } else {
@@ -253,7 +301,9 @@
                 : "") +
               '<div class="ftr-calc"><strong>Tahsil toplam ' +
               money(s.net) +
-              "</strong></div></div>";
+              "</strong></div>" +
+              gunTablosu(s.gunler, false) +
+              "</div>";
             Object.keys(s.govde).forEach(function (k) {
               govdeler.push(
                 s.name +

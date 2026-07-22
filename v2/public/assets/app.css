@@ -1942,6 +1942,26 @@ body.meal-open {
   }
 }
 
+/* fable-028: fatura onayında gün gün döküm (netleştirme tablosu) */
+.ftr-gunler {
+  margin-top: 8px;
+}
+.ftr-gunler summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--primary);
+}
+.ftr-gunler .mini-cal {
+  margin-top: 6px;
+}
+.ftr-irsno {
+  font-size: 10px;
+  color: var(--muted);
+  display: inline-block;
+  margin-left: 4px;
+}
+
 /* fable-026: canlı ilerleme — bekleyen soluk, işlenen "nefes alır" (kesim sürüyor hissi).
    Aynı desen fatura sonuç satırlarında (.ftr-res) da kullanılır. */
 .irs-res.wait,

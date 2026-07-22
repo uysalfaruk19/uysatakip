@@ -498,6 +498,34 @@ final class Repo
         return $st->fetchAll();
     }
 
+    /**
+     * fable-028: Müşterinin dönem içi GÜN GÜN öğün kırılımı (fatura onayında "netleştirme" tablosu).
+     * @return array<int,array{gun:string,ogle:int,aksam:int,kumanya:int,toplam:int}>
+     */
+    public function customerMealsRange(int $customerId, string $bas, string $son): array
+    {
+        $st = $this->pdo->prepare(
+            'SELECT prod_date, meal, persons FROM production
+             WHERE customer_id = ? AND prod_date >= ? AND prod_date <= ?
+             ORDER BY prod_date, meal'
+        );
+        $st->execute([$customerId, $bas, $son]);
+        $out = [];
+        foreach ($st->fetchAll() as $r) {
+            $g = (string) $r['prod_date'];
+            if (!isset($out[$g])) {
+                $out[$g] = ['gun' => $g, 'ogle' => 0, 'aksam' => 0, 'kumanya' => 0, 'toplam' => 0];
+            }
+            $meal = (string) $r['meal'];
+            $p = (int) $r['persons'];
+            if (isset($out[$g][$meal])) {
+                $out[$g][$meal] += $p;
+            }
+            $out[$g]['toplam'] += $p;
+        }
+        return array_values($out);
+    }
+
     /** Bir müşterinin verilen dönemde production.persons toplamı (aylık fatura adedi). */
     public function productionPersonsRange(int $customerId, string $bas, string $son): int
     {
