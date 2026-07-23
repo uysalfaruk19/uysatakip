@@ -99,8 +99,9 @@
       var p = parseInt(input.value, 10) || 0;
       var amt = p * price;
       var amtEl = row.querySelector(".row-amt");
-      // fable-030 (Ömer): satırda para GÖSTERİLMEZ — sadece "girilmedi" uyarısı
-      if (amtEl) amtEl.textContent = p > 0 ? "" : "girilmedi";
+      // fable-030 (Ömer): satırda para GÖSTERİLMEZ — sadece "bekliyor" uyarısı
+      // fable-032 tur2: metin "Bekliyor" (server render'ıyla senkron — bekleyen hissi)
+      if (amtEl) amtEl.textContent = p > 0 ? "" : "Bekliyor";
       var dot = row.querySelector(".status-dot");
       if (dot) dot.classList.toggle("warn", p === 0);
       row.classList.toggle("missing", p === 0);

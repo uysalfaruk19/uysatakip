@@ -264,29 +264,32 @@ require __DIR__ . '/partials/header.php';
 
       <?php if ($flash): ?><div class="flash <?= $flashOk ? 'ok' : 'err' ?>"><?= Helpers::e($flash) ?></div><?php endif; ?>
 
+      <!-- fable-032 tur2: 1 KOYU ciro HERO + 2 beyaz kompakt metrik (id'ler korundu; canlı recalc aynı) -->
       <div class="stat-stack">
-        <div class="stat-card stat-green">
+        <div class="stat-card stat-green stat-hero">
           <div class="ico"><i class="bi bi-cash-stack"></i></div>
           <div class="txt">
             <p class="lbl"><?= $date === Helpers::today() ? 'Bugünkü toplam ciro' : Helpers::e(date('d.m', strtotime($date))) . ' toplam ciro' ?></p>
             <p class="val">₺ <span id="sum-amount"><?= Helpers::money($sumA) ?></span></p>
           </div>
         </div>
-        <div class="stat-card stat-orange">
-          <div class="ico"><i class="bi bi-people-fill"></i></div>
-          <div class="txt">
-            <p class="lbl"><?= $date === Helpers::today() ? 'Bugünkü toplam kişi' : Helpers::e(date('d.m', strtotime($date))) . ' toplam kişi' ?></p>
-            <p class="val" id="sum-persons"><?= number_format($sumP, 0, ',', '.') ?></p>
+        <div class="stat-duo">
+          <div class="stat-card stat-orange stat-mini">
+            <div class="ico"><i class="bi bi-people-fill"></i></div>
+            <div class="txt">
+              <p class="lbl"><?= $date === Helpers::today() ? 'Bugünkü toplam kişi' : Helpers::e(date('d.m', strtotime($date))) . ' toplam kişi' ?></p>
+              <p class="val" id="sum-persons"><?= number_format($sumP, 0, ',', '.') ?></p>
+            </div>
           </div>
+          <a class="stat-card stat-blue stat-mini" href="#musteri-sayilari" aria-label="Müşteri sayılarına git">
+            <div class="ico"><i class="bi bi-shop"></i></div>
+            <div class="txt">
+              <p class="lbl">Giriş yapılan müşteri</p>
+              <!-- fable-023a: JS recalc "x/y girildi" yazıyordu; ilk boyama da aynı olsun (zıplama yok) -->
+              <p class="val"><span id="sum-filled"><?= $filled ?>/<?= $total ?> girildi</span></p>
+            </div>
+          </a>
         </div>
-        <a class="stat-card stat-blue" href="#musteri-sayilari" aria-label="Müşteri sayılarına git">
-          <div class="ico"><i class="bi bi-shop"></i></div>
-          <div class="txt">
-            <p class="lbl">Giriş yapılan müşteri</p>
-            <!-- fable-023a: JS recalc "x/y girildi" yazıyordu; ilk boyama da aynı olsun (zıplama yok) -->
-            <p class="val"><span id="sum-filled"><?= $filled ?>/<?= $total ?> girildi</span></p>
-          </div>
-        </a>
       </div>
 
       <div class="section-head"><h2>Bölümler</h2></div>
@@ -357,7 +360,9 @@ require __DIR__ . '/partials/header.php';
             <?php endif; ?>
           </div>
           <?php if (!$rowsData): ?>
-            <div class="empty-state">Aktif müşteri yok.</div>
+            <div class="empty-state">
+              <div class="es-ico"><i class="bi bi-people"></i></div>
+              Aktif müşteri yok.</div>
           <?php endif; ?>
           <?php foreach ($rowsData as $r): $missing = $r['val'] === 0; $isFocus = $focus > 0 && $r['cid'] === $focus;
             // fable-027c: toplam kutusunun TABAN kırılımı — dolu günde günün kendi kırılımı,
@@ -384,7 +389,7 @@ require __DIR__ . '/partials/header.php';
                 </div>
                 <!-- fable-029b/030 (Ömer): bu ekranda PARA GÖRÜNMEZ (birim fiyat + gün tutarı kaldırıldı;
                      sayım sırasında ekran başkalarına açık olabiliyor). "girilmedi" uyarısı + kırılım kalır. -->
-                <p class="row-meta"><span class="row-amt"><?= $missing ? 'girilmedi' : '' ?></span><span class="meal-split"<?= $r['split'] === '' ? ' hidden' : '' ?>><?= Helpers::e($r['split']) ?></span></p>
+                <p class="row-meta"><span class="row-amt"><?= $missing ? 'Bekliyor' : '' ?></span><span class="meal-split"<?= $r['split'] === '' ? ' hidden' : '' ?>><?= Helpers::e($r['split']) ?></span></p>
               </div>
               <div class="counter">
                 <button class="step-btn" type="button" data-step="-5">−</button>
@@ -461,7 +466,9 @@ require __DIR__ . '/partials/header.php';
           <!-- adım 1: seçim -->
           <div id="irs-step-secim">
             <?php if (!$irsaliyeAdaylari): ?>
-              <div class="empty-state">Aktif müşteri yok.</div>
+              <div class="empty-state">
+              <div class="es-ico"><i class="bi bi-people"></i></div>
+              Aktif müşteri yok.</div>
             <?php else: ?>
             <div class="irs-tools">
               <label class="irs-check"><input type="checkbox" id="irs-all"<?= $irsaliyeSecilebilir === 0 ? ' disabled' : '' ?>> <span>Tümünü seç / kaldır</span></label>
