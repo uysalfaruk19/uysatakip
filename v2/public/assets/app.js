@@ -100,7 +100,7 @@
       var amt = p * price;
       var amtEl = row.querySelector(".row-amt");
       // fable-030 (Ömer): satırda para GÖSTERİLMEZ — sadece "girilmedi" uyarısı
-      if (amtEl) amtEl.textContent = p > 0 ? "" : "girilmedi";
+      if (amtEl) amtEl.textContent = p > 0 ? "" : "Bekliyor — sayı girilmedi";
       var dot = row.querySelector(".status-dot");
       if (dot) dot.classList.toggle("warn", p === 0);
       row.classList.toggle("missing", p === 0);

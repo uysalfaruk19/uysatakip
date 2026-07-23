@@ -210,6 +210,7 @@ $total = count($rowsData);
 $irsaliyeAdaylari = [];
 $irsaliyeSecilebilir = 0;
 $irsaliyeGirilen = 0;
+$irsaliyeKesilen = 0;
 // Canlı muhasebeye yazan işlem → yalnız yetkili kullanıcı görür (sunucuda da ayrı kapı var).
 $irsaliyeYetkili = Auth::isAdmin($u);
 try {
@@ -220,6 +221,9 @@ try {
         }
         if ($a['secilebilir']) {
             $irsaliyeSecilebilir++;
+        }
+        if (($a['durum'] ?? '') === 'kesildi') {
+            $irsaliyeKesilen++;
         }
     }
 } catch (\Throwable $e) {
@@ -232,120 +236,67 @@ $irsaliyeAcik = \Uysa\ParasutYaz::aktif();
 
 $prevDay = date('Y-m-d', strtotime($date . ' -1 day'));
 $nextDay = date('Y-m-d', strtotime($date . ' +1 day'));
+// Airbnb dili: tarih insan-okur biçimde (mockup: "23 Temmuz Perşembe"). Native seçici korunur.
+$trAy = [1 => 'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+$trGun = [1 => 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'];
+$ts = strtotime($date);
+$dateLabel = (int) date('j', $ts) . ' ' . $trAy[(int) date('n', $ts)] . ' ' . $trGun[(int) date('N', $ts)];
 $pendingCount = $repo->pendingOrdersCount();
 $critCount = count($repo->criticalStock());
 $supplyCount = $repo->openSupplyRequestsCount();
 $openReqCount = $repo->openRequestsCount();
 
-// Bar grafik verisi (girilen firmalar × kişi), broşür "Bugün Sipariş Veren Firmalar".
-$barRows = [];
-$barMax = 0;
-foreach ($rowsData as $r) {
-    if ($r['val'] > 0) {
-        $barRows[] = ['name' => $r['name'], 'val' => $r['val']];
-        $barMax = max($barMax, $r['val']);
-    }
-}
-usort($barRows, static fn($a, $b) => $b['val'] <=> $a['val']);
-$barRows = array_slice($barRows, 0, 6);
-
-$pageTitle = 'Panel';
+$pageTitle = 'Bugün';
 $active = 'bugun';
 require __DIR__ . '/partials/header.php';
 ?>
-      <div class="date-row">
-        <a class="icon-btn" href="bugun.php?date=<?= $prevDay ?>" aria-label="Önceki gün"><i class="bi bi-chevron-left"></i></a>
-        <form method="get" class="date-pill">
-          <i class="bi bi-calendar2-week"></i>
-          <input type="date" name="date" value="<?= Helpers::e($date) ?>" onchange="this.form.submit()">
+      <!-- Airbnb tek-pill tarih şeridi: ‹ 23 Temmuz Perşembe · 4/6 girildi › (mockup) -->
+      <div class="date-row date-solo">
+        <a class="date-nav" href="bugun.php?date=<?= $prevDay ?>" aria-label="Önceki gün"><i class="bi bi-chevron-left"></i></a>
+        <form method="get" class="date-mid">
+          <span class="date-label"><?= Helpers::e($dateLabel) ?></span>
+          <input class="date-native" type="date" name="date" value="<?= Helpers::e($date) ?>" onchange="this.form.submit()" aria-label="Tarih seç">
         </form>
-        <a class="icon-btn" href="bugun.php?date=<?= $nextDay ?>" aria-label="Sonraki gün"><i class="bi bi-chevron-right"></i></a>
+        <span class="date-ok" id="sum-filled"><?= $filled ?>/<?= $total ?> girildi</span>
+        <a class="date-nav" href="bugun.php?date=<?= $nextDay ?>" aria-label="Sonraki gün"><i class="bi bi-chevron-right"></i></a>
       </div>
 
       <?php if ($flash): ?><div class="flash <?= $flashOk ? 'ok' : 'err' ?>"><?= Helpers::e($flash) ?></div><?php endif; ?>
 
-      <div class="stat-stack">
-        <div class="stat-card stat-green">
-          <div class="ico"><i class="bi bi-cash-stack"></i></div>
-          <div class="txt">
-            <p class="lbl"><?= $date === Helpers::today() ? 'Bugünkü toplam ciro' : Helpers::e(date('d.m', strtotime($date))) . ' toplam ciro' ?></p>
-            <p class="val">₺ <span id="sum-amount"><?= Helpers::money($sumA) ?></span></p>
-          </div>
+      <!-- Airbnb yatay stat pill-kartları — ilki turkuaz ciro hero (mockup) -->
+      <div class="stat-scroll">
+        <div class="stat-box hero">
+          <p class="lbl"><?= $date === Helpers::today() ? 'Bugünkü ciro' : Helpers::e(date('d.m', strtotime($date))) . ' ciro' ?></p>
+          <p class="val">₺ <span id="sum-amount"><?= Helpers::money($sumA) ?></span></p>
         </div>
-        <div class="stat-card stat-orange">
-          <div class="ico"><i class="bi bi-people-fill"></i></div>
-          <div class="txt">
-            <p class="lbl"><?= $date === Helpers::today() ? 'Bugünkü toplam kişi' : Helpers::e(date('d.m', strtotime($date))) . ' toplam kişi' ?></p>
-            <p class="val" id="sum-persons"><?= number_format($sumP, 0, ',', '.') ?></p>
-          </div>
+        <div class="stat-box">
+          <p class="lbl">Toplam kişi</p>
+          <p class="val" id="sum-persons"><?= number_format($sumP, 0, ',', '.') ?></p>
         </div>
-        <a class="stat-card stat-blue" href="#musteri-sayilari" aria-label="Müşteri sayılarına git">
-          <div class="ico"><i class="bi bi-shop"></i></div>
-          <div class="txt">
-            <p class="lbl">Giriş yapılan müşteri</p>
-            <!-- fable-023a: JS recalc "x/y girildi" yazıyordu; ilk boyama da aynı olsun (zıplama yok) -->
-            <p class="val"><span id="sum-filled"><?= $filled ?>/<?= $total ?> girildi</span></p>
-          </div>
-        </a>
-      </div>
-
-      <div class="section-head"><h2>Bölümler</h2></div>
-      <div class="mod-grid">
-        <a class="mod-card i-green" href="musteriler.php">
-          <div class="mico"><i class="bi bi-people"></i></div>
-          <div class="mt">Müşteriler</div>
-          <div class="md">Üretim / taşıma, birim fiyat, kâr</div>
-        </a>
-        <a class="mod-card i-amber" href="siparisler.php">
-          <?php if ($pendingCount > 0): ?><span class="soon-chip" style="background:var(--red-tint);color:var(--red)"><?= $pendingCount ?> yeni</span><?php endif; ?>
-          <div class="mico"><i class="bi bi-basket"></i></div>
-          <div class="mt">Siparişler</div>
-          <div class="md">Müşteri onay kuyruğu</div>
-        </a>
-        <a class="mod-card i-amber" href="personel.php">
-          <div class="mico"><i class="bi bi-person-badge"></i></div>
-          <div class="mt">Personel Giderleri</div>
-          <div class="md">Maaş / prim takibi</div>
-        </a>
-        <a class="mod-card i-green" href="menu.php">
-          <div class="mico"><i class="bi bi-card-list"></i></div>
-          <div class="mt">Menü</div>
-          <div class="md">Menü oluştur + hedefli yayınla</div>
-        </a>
-        <a class="mod-card i-blue" href="talepler.php">
-          <?php if ($openReqCount > 0): ?><span class="soon-chip" style="background:var(--red-tint);color:var(--red)"><?= $openReqCount ?> açık</span><?php endif; ?>
-          <div class="mico"><i class="bi bi-chat-left-text"></i></div>
-          <div class="mt">Talepler</div>
-          <div class="md">Şikayet · öneri · menü · mesaj takip</div>
-        </a>
         <?php if ($irsaliyeYetkili): ?>
-        <a class="mod-card i-green" href="fatura-kes.php">
-          <div class="mico"><i class="bi bi-receipt-cutoff"></i></div>
-          <div class="mt">Fatura Kes</div>
-          <div class="md">Kesilen irsaliyelerden Paraşüt faturası</div>
-        </a>
+        <div class="stat-box">
+          <p class="lbl">Kesilen irsaliye</p>
+          <p class="val"><?= $irsaliyeKesilen ?> / <?= $irsaliyeGirilen ?></p>
+        </div>
         <?php endif; ?>
       </div>
 
-      <?php if ($barRows): ?>
-      <div class="cardx card-pad">
-        <h2>Bugün üretim veren firmalar</h2>
-        <div class="barchart">
-          <?php foreach ($barRows as $b): $w = $barMax > 0 ? max(4, round($b['val'] / $barMax * 100)) : 4; ?>
-            <div class="bar-row">
-              <span class="bar-name"><?= Helpers::e($b['name']) ?></span>
-              <span class="bar-track"><span class="bar-fill" style="width: <?= $w ?>%"></span></span>
-              <span class="bar-val"><?= number_format($b['val'], 0, ',', '.') ?></span>
-            </div>
-          <?php endforeach; ?>
-        </div>
+      <!-- Airbnb yatay chip şeridi (Bölümler grid'inin yerini alır — aynı linkler) -->
+      <div class="chiprow" role="navigation" aria-label="Bölümler">
+        <a class="chip" href="musteriler.php">Müşteriler</a>
+        <a class="chip" href="siparisler.php">Siparişler<?php if ($pendingCount > 0): ?> <span class="chip-badge"><?= $pendingCount ?></span><?php endif; ?></a>
+        <a class="chip" href="menu.php">Menü</a>
+        <?php if ($irsaliyeYetkili): ?><a class="chip" href="fatura-kes.php">Fatura Kes</a><?php endif; ?>
+        <a class="chip" href="talepler.php">Talepler<?php if ($openReqCount > 0): ?> <span class="chip-badge"><?= $openReqCount ?></span><?php endif; ?></a>
+        <a class="chip" href="personel.php">Personel</a>
+        <a class="chip" href="moduller.php">Diğer…</a>
       </div>
-      <?php endif; ?>
 
       <form method="post" id="bugun-form">
         <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
         <input type="hidden" name="date" value="<?= Helpers::e($date) ?>">
-        <div class="cardx card-pad" id="musteri-sayilari" style="scroll-margin-top: 14px">
+        <!-- Airbnb: liste kart kutusuz — hairline ayraçlı avatar satırları doğrudan kanvasta (mockup) -->
+        <div id="musteri-sayilari" style="scroll-margin-top: 14px">
           <!-- fable-023b: başlık + İrsaliyelendir (Paraşüt e-İrsaliye); sayı girilmemişse pasif -->
           <div class="head-row">
             <h2>Müşteri sayıları</h2>
@@ -356,6 +307,7 @@ require __DIR__ . '/partials/header.php';
             </button>
             <?php endif; ?>
           </div>
+          <p class="list-sub">Adına dokunup öğün kırılımı girebilirsin</p>
           <?php if (!$rowsData): ?>
             <div class="empty-state">Aktif müşteri yok.</div>
           <?php endif; ?>
@@ -374,7 +326,9 @@ require __DIR__ . '/partials/header.php';
                 'ogle' => (int) $taban['ogle'], 'aksam' => (int) $taban['aksam'], 'kumanya' => (int) $taban['kumanya'],
             ]), ENT_QUOTES);
           ?>
-            <div class="customer-row <?= $missing ? 'missing' : '' ?> <?= $isFocus ? 'is-focus' : '' ?>"<?= $isFocus ? ' id="focus-row"' : '' ?> data-price="<?= $r['price'] ?>" data-cid="<?= $r['cid'] ?>" data-name="<?= Helpers::e($r['name']) ?>" data-base="<?= $base ?>">
+            <?php $avLetter = mb_strtoupper(mb_substr((string) $r['name'], 0, 1, 'UTF-8'), 'UTF-8'); ?>
+            <div class="customer-row has-av <?= $missing ? 'missing' : '' ?> <?= $isFocus ? 'is-focus' : '' ?>"<?= $isFocus ? ' id="focus-row"' : '' ?> data-price="<?= $r['price'] ?>" data-cid="<?= $r['cid'] ?>" data-name="<?= Helpers::e($r['name']) ?>" data-base="<?= $base ?>">
+              <div class="av" aria-hidden="true"><?= Helpers::e($avLetter) ?></div>
               <div>
                 <div class="row-title"><span class="status-dot <?= $missing ? 'warn' : '' ?>"></span>
                   <!-- fable-023a: müşteri adı = öğün kırılımı penceresini açan buton -->
@@ -383,8 +337,8 @@ require __DIR__ . '/partials/header.php';
                   </button>
                 </div>
                 <!-- fable-029b/030 (Ömer): bu ekranda PARA GÖRÜNMEZ (birim fiyat + gün tutarı kaldırıldı;
-                     sayım sırasında ekran başkalarına açık olabiliyor). "girilmedi" uyarısı + kırılım kalır. -->
-                <p class="row-meta"><span class="row-amt"><?= $missing ? 'girilmedi' : '' ?></span><span class="meal-split"<?= $r['split'] === '' ? ' hidden' : '' ?>><?= Helpers::e($r['split']) ?></span></p>
+                     sayım sırasında ekran başkalarına açık olabiliyor). Bekleyen uyarısı + kırılım kalır. -->
+                <p class="row-meta"><span class="row-amt"><?= $missing ? 'Bekliyor — sayı girilmedi' : '' ?></span><span class="meal-split"<?= $r['split'] === '' ? ' hidden' : '' ?>><?= Helpers::e($r['split']) ?></span></p>
               </div>
               <div class="counter">
                 <button class="step-btn" type="button" data-step="-5">−</button>
