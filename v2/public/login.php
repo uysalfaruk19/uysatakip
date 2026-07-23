@@ -66,24 +66,30 @@ $csrf = Helpers::csrfToken();
 <link href="assets/app.css?v=<?= filemtime(__DIR__ . '/assets/app.css') ?>" rel="stylesheet">
 </head>
 <body>
-<main class="login-shell">
-  <div class="login-logo">U</div>
-  <h1>UYSA Kokpit</h1>
-  <p class="eyebrow mb-4">UYSA operasyon ekibi için güvenli giriş.</p>
-  <div class="hint-card native-login-note mb-3" data-native-login-note hidden>
-    <i class="bi bi-phone"></i><span></span>
+<main class="login-v2">
+  <div class="login-hero">
+    <div class="login-hero-inner">
+      <div class="login-badge">U</div>
+      <h1>UYSA Kokpit</h1>
+      <p class="login-tag">UYSA operasyon ekibi için güvenli giriş.</p>
+    </div>
   </div>
-  <?php if ($error): ?><div class="flash err mb-3"><?= Helpers::e($error) ?></div><?php endif; ?>
-  <section class="cardx card-pad">
-    <form method="post" autocomplete="off" class="form-grid">
-      <input type="hidden" name="csrf" value="<?= Helpers::e($csrf) ?>">
-      <div class="field"><label>Kullanıcı adı</label><input class="inputx" name="username" autocapitalize="none" required></div>
-      <div class="field"><label>Şifre</label><input class="inputx" type="password" name="password" required></div>
-      <button class="btn-action btn-primaryx btn-full" type="submit"><i class="bi bi-box-arrow-in-right"></i> Giriş yap</button>
-    </form>
-  </section>
-  <div class="hint-card mt-3">
-    Müşteri hesabınız mı var? <a href="/m/login.php" style="text-decoration:underline">Müşteri girişi</a>.
+  <div class="login-body">
+    <div class="hint-card native-login-note mb-3" data-native-login-note hidden>
+      <i class="bi bi-phone"></i><span></span>
+    </div>
+    <?php if ($error): ?><div class="flash err mb-3"><?= Helpers::e($error) ?></div><?php endif; ?>
+    <section class="cardx login-card card-pad">
+      <form method="post" autocomplete="off" class="form-grid">
+        <input type="hidden" name="csrf" value="<?= Helpers::e($csrf) ?>">
+        <div class="field"><label>Kullanıcı adı</label><input class="inputx" name="username" autocapitalize="none" required></div>
+        <div class="field"><label>Şifre</label><input class="inputx" type="password" name="password" required></div>
+        <button class="btn-action btn-primaryx btn-full" type="submit"><i class="bi bi-box-arrow-in-right"></i> Giriş yap</button>
+      </form>
+    </section>
+    <div class="hint-card mt-3">
+      Müşteri hesabınız mı var? <a href="/m/login.php" style="text-decoration:underline">Müşteri girişi</a>.
+    </div>
   </div>
 </main>
 <script>
