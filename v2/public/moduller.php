@@ -40,7 +40,7 @@ require __DIR__ . '/partials/header.php';
       <div class="section-head"><h2><?= Helpers::e($baslik) ?></h2></div>
       <div class="mod-grid">
         <?php foreach ($items as [$href, $ico, $ad, $aciklama]): ?>
-        <a class="mod-card i-blue" href="<?= Helpers::e($href) ?>">
+        <a class="mod-card" href="<?= Helpers::e($href) ?>">
           <div class="mico"><i class="bi <?= Helpers::e($ico) ?>"></i></div>
           <div class="mt"><?= Helpers::e($ad) ?></div>
           <div class="md"><?= Helpers::e($aciklama) ?></div>

@@ -266,8 +266,9 @@ require __DIR__ . '/partials/header.php';
       <div class="cardx card-pad">
         <?php if (!$uretim): ?>
           <div class="empty-state">Üretim müşterisi yok.</div>
-        <?php else: foreach ($uretim as $c): ?>
-          <div class="customer-row">
+        <?php else: foreach ($uretim as $c): $avL = mb_strtoupper(mb_substr((string) $c['name'], 0, 1, 'UTF-8'), 'UTF-8'); ?>
+          <div class="customer-row has-av">
+            <div class="av" aria-hidden="true"><?= Helpers::e($avL) ?></div>
             <div>
               <div class="row-title"><span class="status-dot"></span><strong><?= Helpers::e($c['name']) ?></strong>
                 <?php if (($c['parasut_bakiye'] ?? null) !== null): ?><span class="badge-soft <?= (float) $c['parasut_bakiye'] < 0 ? 'badge-neg' : 'badge-ok' ?>" title="Paraşüt muhasebe bakiyesi">Paraşüt ₺ <?= Helpers::money((float) $c['parasut_bakiye']) ?></span><?php endif; ?>
@@ -295,8 +296,10 @@ require __DIR__ . '/partials/header.php';
         <?php else: foreach ($tasima as $c):
             $t = $repo->tasimaProfit((int) $c['id'], $month);
             $adet = (float) $t['adet'];
-            $kar = (float) $t['net']; ?>
-          <div class="customer-row">
+            $kar = (float) $t['net'];
+            $avL = mb_strtoupper(mb_substr((string) $c['name'], 0, 1, 'UTF-8'), 'UTF-8'); ?>
+          <div class="customer-row has-av">
+            <div class="av" aria-hidden="true"><?= Helpers::e($avL) ?></div>
             <div>
               <div class="row-title"><span class="status-dot"></span><strong><?= Helpers::e($c['name']) ?></strong>
                 <?php if ($adet > 0): ?><span class="badge-soft <?= $kar >= 0 ? 'badge-ok' : 'badge-neg' ?>">₺ <?= Helpers::money($kar) ?> kâr</span><?php endif; ?>
