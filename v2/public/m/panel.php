@@ -153,6 +153,7 @@ require __DIR__ . '/partials/header_m.php';
         </a>
       <?php else: ?>
         <div class="empty-state">
+          <div class="es-ico"><i class="bi bi-chat-left-text"></i></div>
           Açık talebiniz yok.
           <div class="mt-3"><a class="btn-action btn-secondaryx" href="talep.php">Talep aç</a></div>
         </div>

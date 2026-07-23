@@ -33,20 +33,23 @@ require __DIR__ . '/partials/header_m.php';
 ?>
       <?php if (!$events && $offset === 0): ?>
         <div class="empty-state">
+          <div class="es-ico"><i class="bi bi-bell"></i></div>
           Henüz olay yok — siparişleriniz ve talepleriniz burada görünecek.
         </div>
-      <?php else: ?>
-        <div class="list-groupx">
+      <?php else: /* fable-032 tur2: gerçek dikey zaman çizgisi (nokta + çizgi + zaman meta) */ ?>
+        <div class="feed-timeline">
           <?php foreach ($events as $e): $ico = $iconMap[$e['type']] ?? 'bi-bell'; ?>
-            <a class="flow-item" style="grid-template-columns: 34px minmax(0,1fr) auto" href="<?= Helpers::e((string) $e['url']) ?>">
+            <a class="feed-node" href="<?= Helpers::e((string) $e['url']) ?>">
               <span class="feed-ico"><i class="bi <?= $ico ?>"></i></span>
-              <div style="min-width:0">
-                <strong><?= Helpers::e((string) $e['title']) ?></strong>
+              <div class="feed-body">
+                <div class="feed-top">
+                  <strong><?= Helpers::e((string) $e['title']) ?></strong>
+                  <span class="feed-time"><?= Helpers::e(zaman_kisa_tr((string) $e['created_at'])) ?></span>
+                </div>
                 <?php if (trim((string) ($e['body'] ?? '')) !== ''): ?>
                   <p class="row-meta"><?= Helpers::e((string) $e['body']) ?></p>
                 <?php endif; ?>
               </div>
-              <span class="row-meta" style="white-space:nowrap"><?= Helpers::e(zaman_kisa_tr((string) $e['created_at'])) ?></span>
             </a>
           <?php endforeach; ?>
         </div>
