@@ -62,7 +62,9 @@ require __DIR__ . '/partials/header.php';
       <?php if ($flash): ?><div class="flash <?= $flashOk ? 'ok' : 'err' ?>"><?= Helpers::e($flash) ?></div><?php endif; ?>
 
       <?php if (!$cust): ?>
-        <div class="empty-state">Müşteri bulunamadı.</div>
+        <div class="empty-state">
+          <div class="es-ico"><i class="bi bi-people"></i></div>
+          Müşteri bulunamadı.</div>
       <?php else: ?>
         <div class="summary-grid">
           <div class="summary-card"><p class="label">Birim fiyat</p><p class="metric">₺ <?= Helpers::money((float) $cust['unit_price']) ?></p></div>
@@ -106,7 +108,9 @@ require __DIR__ . '/partials/header.php';
         <div class="cardx card-pad">
           <h2><?= Helpers::e(ay_label_tr($month)) ?> ekstresi</h2>
           <?php if (!$statement): ?>
-            <div class="empty-state">Bu ay hareket yok.</div>
+            <div class="empty-state">
+              <div class="es-ico"><i class="bi bi-cash-coin"></i></div>
+              Bu ay hareket yok.</div>
           <?php else: ?>
             <table class="tablex">
               <thead><tr><th>Tarih</th><th>Açıklama</th><th class="num">Tutar</th></tr></thead>

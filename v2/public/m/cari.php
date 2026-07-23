@@ -70,7 +70,9 @@ if ($cariLive) {
 
       <div class="section-head mt-3"><h2>Hareketler</h2></div>
       <?php if (!$rows): ?>
-        <div class="empty-state">Bu ay hareket yok.</div>
+        <div class="empty-state">
+        <div class="es-ico"><i class="bi bi-cash-coin"></i></div>
+        Bu ay hareket yok.</div>
       <?php else: ?>
         <div class="list-groupx">
           <?php foreach ($rows as $r): $out = $r['kind'] === 'borc'; ?>

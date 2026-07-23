@@ -77,7 +77,9 @@ require __DIR__ . '/partials/header.php';
 
       <div class="section-head mt-3"><h2>Tedarikçiler</h2><span class="text-muted" style="font-size:12px"><?= count($list) ?> kayıt</span></div>
       <?php if (!$list): ?>
-        <div class="empty-state">Henüz tedarikçi yok. Stok girişinde tedarikçi seçebilmek için ekleyin.</div>
+        <div class="empty-state">
+          <div class="es-ico"><i class="bi bi-shop-window"></i></div>
+          Henüz tedarikçi yok. Stok girişinde tedarikçi seçebilmek için ekleyin.</div>
       <?php else: ?>
         <div class="cardx card-pad">
           <?php foreach ($list as $s): $pasif = (int) $s['is_active'] !== 1; ?>

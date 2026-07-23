@@ -92,7 +92,9 @@ require __DIR__ . '/partials/header.php';
 
       <?php if ($cust && $invoice): ?>
         <?php if ($invoice['ara_toplam'] <= 0): ?>
-          <div class="empty-state"><?= Helpers::e($cust['name']) ?> için <?= Helpers::e(ay_label_tr($month)) ?> ayında üretim kaydı yok. Fatura üretilemez.</div>
+          <div class="empty-state">
+            <div class="es-ico"><i class="bi bi-receipt"></i></div>
+            <?= Helpers::e($cust['name']) ?> için <?= Helpers::e(ay_label_tr($month)) ?> ayında üretim kaydı yok. Fatura üretilemez.</div>
         <?php else: ?>
           <div class="cardx card-pad fatura-print">
             <div class="d-flex align-items-center justify-content-between" style="gap:10px;margin-bottom:12px">
@@ -158,7 +160,9 @@ require __DIR__ . '/partials/header.php';
       <div class="section-head fatura-gecmis"><h2>Kesilen faturalar</h2></div>
       <div class="cardx card-pad fatura-gecmis">
         <?php if (!$faturalar): ?>
-          <div class="empty-state">Henüz fatura oluşturulmadı.</div>
+          <div class="empty-state">
+            <div class="es-ico"><i class="bi bi-receipt"></i></div>
+            Henüz fatura oluşturulmadı.</div>
         <?php else: ?>
           <table class="tablex">
             <thead><tr><th>Müşteri</th><th>Dönem</th><th class="num">Genel toplam</th><th>Durum</th></tr></thead>

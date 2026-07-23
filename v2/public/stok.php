@@ -201,7 +201,9 @@ require __DIR__ . '/partials/header.php';
       <div class="section-head"><h2>Güncel stok</h2><span class="text-muted" style="font-size:12px"><?= count($levels) ?> malzeme</span></div>
       <div class="cardx card-pad">
         <?php if (!$levels): ?>
-          <div class="empty-state"><?= $search ? 'Eşleşen malzeme yok.' : 'Malzeme yok.' ?></div>
+          <div class="empty-state">
+            <div class="es-ico"><i class="bi bi-box-seam"></i></div>
+            <?= $search ? 'Eşleşen malzeme yok.' : 'Malzeme yok.' ?></div>
         <?php else: foreach ($levels as $l): $iid = (int) $l['id']; $stok = (float) $l['stok']; $min = (float) $l['min_stok'];
           $crit = $min > 0 && $stok < $min; ?>
           <div class="customer-row <?= $crit ? 'missing' : '' ?>">

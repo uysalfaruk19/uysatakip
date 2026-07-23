@@ -84,7 +84,9 @@ require __DIR__ . '/partials/header.php';
       </div>
 
       <?php if (!$rows): ?>
-        <div class="empty-state">Bu gün için üretim girişi yok — sevkiyat listesi üretimden oluşur.</div>
+        <div class="empty-state">
+          <div class="es-ico"><i class="bi bi-truck"></i></div>
+          Bu gün için üretim girişi yok — sevkiyat listesi üretimden oluşur.</div>
       <?php else: ?>
         <div class="list-groupx">
           <?php foreach ($rows as $r): [$bc, $bi, $bt] = $statusMap[$r['status']]; ?>

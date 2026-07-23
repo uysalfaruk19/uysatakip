@@ -219,6 +219,7 @@ require __DIR__ . '/partials/header_m.php';
 
       <?php if (!$menus): ?>
         <div class="empty-state">
+          <div class="es-ico"><i class="bi bi-card-list"></i></div>
           Yayınlanan menü yok.
           <div class="row-meta mt-2">UYSA size menü yayınladığında burada görünecek.</div>
         </div>
@@ -234,7 +235,9 @@ require __DIR__ . '/partials/header_m.php';
         </div>
 
         <?php if (!$days): ?>
-          <div class="empty-state">Menülerde gün eklenmemiş.</div>
+          <div class="empty-state">
+          <div class="es-ico"><i class="bi bi-card-list"></i></div>
+          Menülerde gün eklenmemiş.</div>
         <?php else: ?>
           <div class="section-head mt-2"><h2>Günlere göre menü</h2><span class="text-muted" style="font-size:12px">yukarı: geçmiş · aşağı: ileri</span></div>
           <div class="screen-stack">

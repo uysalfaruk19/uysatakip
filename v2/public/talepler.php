@@ -239,7 +239,9 @@ require __DIR__ . '/partials/header.php';
         ?>
         <div class="section-head mt-3"><h2>Talepler</h2><span class="text-muted" style="font-size:12px"><?= count($rows) ?> kayıt</span></div>
         <?php if (!$rows): ?>
-          <div class="empty-state">Filtreye uyan talep yok.</div>
+          <div class="empty-state">
+            <div class="es-ico"><i class="bi bi-chat-left-text"></i></div>
+            Filtreye uyan talep yok.</div>
         <?php else: ?>
           <div class="list-groupx">
             <?php foreach ($rows as $r): [$bc, $bi, $bt] = $statusMap[$r['status']] ?? ['badge-blue', 'bi-clock', $r['status']]; ?>

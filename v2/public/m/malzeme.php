@@ -74,7 +74,9 @@ require __DIR__ . '/partials/header_m.php';
 
       <div class="section-head mt-3"><h2>Bu ay gönderilenler (<?= Helpers::e(ay_label_tr(date('Y-m'))) ?>)</h2></div>
       <?php if (!$monthReqs): ?>
-        <div class="empty-state">Bu ay malzeme talebi olmadı.</div>
+        <div class="empty-state">
+        <div class="es-ico"><i class="bi bi-box-seam"></i></div>
+        Bu ay malzeme talebi olmadı.</div>
       <?php else: ?>
         <div class="list-groupx">
           <?php foreach ($monthReqs as $r): [$bc, $bi, $bt] = $statusMap[$r['status']] ?? ['badge-blue', 'bi-clock', $r['status']]; ?>
@@ -97,7 +99,9 @@ require __DIR__ . '/partials/header_m.php';
 
       <div class="section-head mt-3"><h2>Geçmiş talepler</h2></div>
       <?php if (!$history): ?>
-        <div class="empty-state">Henüz malzeme talebiniz yok.</div>
+        <div class="empty-state">
+        <div class="es-ico"><i class="bi bi-box-seam"></i></div>
+        Henüz malzeme talebiniz yok.</div>
       <?php else: ?>
         <div class="list-groupx">
           <?php foreach ($history as $r): [$bc, $bi, $bt] = $statusMap[$r['status']] ?? ['badge-blue', 'bi-clock', $r['status']]; ?>

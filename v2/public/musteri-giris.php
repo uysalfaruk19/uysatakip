@@ -124,7 +124,9 @@ require __DIR__ . '/partials/header.php';
 
       <div class="section-head mt-3"><h2>Mevcut girişler</h2><span class="text-muted" style="font-size:12px"><?= count($users) ?> hesap</span></div>
       <?php if (!$users): ?>
-        <div class="empty-state">Henüz müşteri girişi oluşturulmadı.</div>
+        <div class="empty-state">
+        <div class="es-ico"><i class="bi bi-people"></i></div>
+        Henüz müşteri girişi oluşturulmadı.</div>
       <?php else: ?>
         <div class="cardx card-pad">
           <?php foreach ($users as $cu): $on = (int) $cu['is_active'] === 1; ?>

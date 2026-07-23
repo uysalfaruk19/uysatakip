@@ -411,7 +411,9 @@ require __DIR__ . '/partials/header.php';
       <div class="section-head"><h2>Personel</h2><span class="text-muted" style="font-size:12px"><?= count($personeller) ?> kişi</span></div>
       <div class="cardx card-pad">
         <?php if (!$personeller): ?>
-          <div class="empty-state">Henüz personel yok. <a href="personel.php?ay=<?= $month ?>&yeni=1" style="color:var(--primary);font-weight:700">Personel ekle →</a></div>
+          <div class="empty-state">
+            <div class="es-ico"><i class="bi bi-person-badge"></i></div>
+            Henüz personel yok. <a href="personel.php?ay=<?= $month ?>&yeni=1" style="color:var(--primary);font-weight:700">Personel ekle →</a></div>
         <?php else: foreach ($personeller as $p): $pid = (int) $p['id']; $info = $pInfo[$pid]; $y = $info['yuklu']; $k = $info['kidem']; $at = $info['atama']; $maas = $info['maas'];
           $atamaLbl = $at['genel'] ? 'Genel (hacme oranlı)' : ($at['customer_ids'] ? count($at['customer_ids']) . ' müşteri (eşit)' : 'atanmamış');
           $paid = (bool) $maas['maas_odendi'];

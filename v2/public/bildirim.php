@@ -101,7 +101,9 @@ require __DIR__ . '/partials/header.php';
 <section class="cardx card-pad mb-3">
   <h2 class="h6 mb-3"><i class="bi bi-clock-history"></i> Son gönderimler <span class="text-muted">(son 50 · otomatik olay bildirimleri dahil)</span></h2>
   <?php if (!$logs): ?>
-    <div class="empty-state">Henüz gönderim yok.</div>
+    <div class="empty-state">
+      <div class="es-ico"><i class="bi bi-bell"></i></div>
+      Henüz gönderim yok.</div>
   <?php else: ?>
     <div style="overflow-x:auto">
       <table class="tablex" style="width:100%;font-size:13px">

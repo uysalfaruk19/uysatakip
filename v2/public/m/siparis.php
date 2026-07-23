@@ -186,7 +186,9 @@ require __DIR__ . '/partials/header_m.php';
 
       <div class="section-head mt-3"><h2>Geçmiş bildirimler</h2></div>
       <?php if (!$history): ?>
-        <div class="empty-state">Henüz sayı bildirmediniz.</div>
+        <div class="empty-state">
+        <div class="es-ico"><i class="bi bi-basket"></i></div>
+        Henüz sayı bildirmediniz.</div>
       <?php else: ?>
         <div class="list-groupx">
           <?php foreach ($history as $h): [$bc, $bi, $bt] = $statusMap[$h['status']] ?? ['badge-blue', 'bi-clock', $h['status']]; ?>

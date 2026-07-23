@@ -406,7 +406,9 @@ require __DIR__ . '/partials/header.php';
       </div>
 
       <?php if (!$editItems): ?>
-        <div class="empty-state">Henüz gün eklenmedi. Yukarıdan gün × öğün yemek listesi ekleyin.</div>
+        <div class="empty-state">
+          <div class="es-ico"><i class="bi bi-card-list"></i></div>
+          Henüz gün eklenmedi. Yukarıdan gün × öğün yemek listesi ekleyin.</div>
       <?php else: ?>
         <div class="list-groupx">
           <?php foreach ($editItems as $it): ?>
@@ -504,7 +506,9 @@ require __DIR__ . '/partials/header.php';
 
       <div class="section-head mt-3"><h2>Menüler</h2><span class="text-muted" style="font-size:12px"><?= count($menus) ?> menü</span></div>
       <?php if (!$menus): ?>
-        <div class="empty-state">Henüz menü yok. "Yeni menü" ile başlayın.</div>
+        <div class="empty-state">
+          <div class="es-ico"><i class="bi bi-card-list"></i></div>
+          Henüz menü yok. "Yeni menü" ile başlayın.</div>
       <?php else: ?>
         <div class="list-groupx">
           <?php foreach ($menus as $m): ?>

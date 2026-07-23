@@ -45,7 +45,9 @@ require __DIR__ . '/partials/header.php';
       <div class="section-head"><h2>Üretim</h2><span class="text-muted" style="font-size:12px">gelir − gider − personel = net</span></div>
       <div class="cardx card-pad">
         <?php if (!$ka['uretim']['rows']): ?>
-          <div class="empty-state">Bu ay üretim kaydı yok.</div>
+          <div class="empty-state">
+            <div class="es-ico"><i class="bi bi-graph-up-arrow"></i></div>
+            Bu ay üretim kaydı yok.</div>
         <?php else: ?>
           <div style="overflow-x:auto">
           <table class="tablex">

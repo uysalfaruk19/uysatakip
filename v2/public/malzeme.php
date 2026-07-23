@@ -115,7 +115,9 @@ require __DIR__ . '/partials/header.php';
 
       <div class="section-head mt-3"><h2>Açık talepler</h2></div>
       <?php if (!$acik): ?>
-        <div class="empty-state">Açık malzeme talebi yok.</div>
+        <div class="empty-state">
+          <div class="es-ico"><i class="bi bi-box-seam"></i></div>
+          Açık malzeme talebi yok.</div>
       <?php else: foreach ($acik as $r): ?>
         <div class="cardx card-pad mb-2">
           <div class="d-flex align-items-center justify-between gap-2">
@@ -197,7 +199,7 @@ require __DIR__ . '/partials/header.php';
 
       <div class="section-head mt-3"><h2>Katalog</h2><span class="text-muted" style="font-size:12px"><?= count($items) ?> kalem</span></div>
       <div class="cardx card-pad">
-        <?php if (!$items): ?><div class="empty-state">Katalog boş.</div><?php endif; ?>
+        <?php if (!$items): ?><div class="empty-state"><div class="es-ico"><i class="bi bi-box-seam"></i></div>Katalog boş.</div><?php endif; ?>
         <?php foreach ($items as $it): $pasif = (int) $it['is_active'] !== 1; ?>
           <div class="customer-row" style="<?= $pasif ? 'opacity:.55' : '' ?>">
             <div>

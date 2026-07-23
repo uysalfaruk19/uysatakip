@@ -112,7 +112,9 @@ if ($view === 'detay' && $recipeId) {
       <div class="cardx card-pad">
         <h2>Malzemeler <span class="text-muted" style="font-size:12px;font-weight:600">(<?= count($items) ?> kalem)</span></h2>
         <?php if (!$items): ?>
-          <div class="empty-state">Bu reçetede henüz malzeme yok. Aşağıdan ekleyin.</div>
+          <div class="empty-state">
+            <div class="es-ico"><i class="bi bi-clipboard2-check"></i></div>
+            Bu reçetede henüz malzeme yok. Aşağıdan ekleyin.</div>
         <?php else: ?>
           <div style="overflow-x:auto">
           <table class="tablex">
@@ -213,7 +215,9 @@ if ($view === 'malzemeler') {
       <div class="cardx card-pad">
         <h2>Malzeme fiyatları <span class="text-muted" style="font-size:12px;font-weight:600">(<?= count($ingredients) ?>)</span></h2>
         <?php if (!$ingredients): ?>
-          <div class="empty-state">Malzeme bulunamadı.</div>
+          <div class="empty-state">
+            <div class="es-ico"><i class="bi bi-box-seam"></i></div>
+            Malzeme bulunamadı.</div>
         <?php else: foreach ($ingredients as $ing): $iid = (int) $ing['id']; ?>
           <div class="customer-row">
             <div>
@@ -289,7 +293,9 @@ require __DIR__ . '/partials/header.php';
       <div class="section-head"><h2>Reçeteler</h2><span class="text-muted" style="font-size:12px"><?= count($recipes) ?> reçete · adına tıkla</span></div>
       <div class="cardx card-pad">
         <?php if (!$recipes): ?>
-          <div class="empty-state"><?= $search ? 'Eşleşen reçete yok.' : 'Henüz reçete yok.' ?></div>
+          <div class="empty-state">
+            <div class="es-ico"><i class="bi bi-clipboard2-check"></i></div>
+            <?= $search ? 'Eşleşen reçete yok.' : 'Henüz reçete yok.' ?></div>
         <?php else: foreach ($recipes as $r): ?>
           <a class="customer-row" href="recete.php?recete=<?= (int) $r['id'] ?>" style="color:inherit">
             <div>

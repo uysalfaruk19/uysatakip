@@ -376,7 +376,9 @@ require __DIR__ . '/partials/header.php';
 
       <div class="section-head mt-3"><h2>Teklifler</h2><span class="text-muted" style="font-size:12px"><?= count($list) ?> kayıt</span></div>
       <?php if (!$list): ?>
-        <div class="empty-state">Henüz teklif yok — ilk teklifi yukarıdan ekleyin.</div>
+        <div class="empty-state">
+          <div class="es-ico"><i class="bi bi-briefcase"></i></div>
+          Henüz teklif yok — ilk teklifi yukarıdan ekleyin.</div>
       <?php else: ?>
         <div class="list-groupx">
           <?php foreach ($list as $t): [$bc, $bi, $bt] = $durumMap[$t['durum']]; ?>

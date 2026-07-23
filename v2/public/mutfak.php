@@ -57,7 +57,9 @@ require __DIR__ . '/partials/header.php';
       </div>
 
       <?php if (!$kitchen && !$menuByMeal): ?>
-        <div class="empty-state">Bu gün için üretim girişi ve yayınlanmış menü yok.</div>
+        <div class="empty-state">
+        <div class="es-ico"><i class="bi bi-fire"></i></div>
+        Bu gün için üretim girişi ve yayınlanmış menü yok.</div>
       <?php endif; ?>
 
       <?php foreach ($meals as $mk => $ml):

@@ -29,7 +29,9 @@ require __DIR__ . '/partials/header.php';
       </form>
 
       <?php if (!$rows): ?>
-        <div class="empty-state"><?= $q ? 'Eşleşen kayıt yok.' : 'Henüz işlem kaydı yok.' ?></div>
+        <div class="empty-state">
+          <div class="es-ico"><i class="bi bi-cash-coin"></i></div>
+          <?= $q ? 'Eşleşen kayıt yok.' : 'Henüz işlem kaydı yok.' ?></div>
       <?php else: ?>
         <div class="cardx card-pad">
           <div class="list-groupx">

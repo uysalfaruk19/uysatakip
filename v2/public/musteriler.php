@@ -265,7 +265,9 @@ require __DIR__ . '/partials/header.php';
       <div class="section-head"><h2>Üretim müşterileri</h2><span class="text-muted" style="font-size:12px"><?= count($uretim) ?> firma</span></div>
       <div class="cardx card-pad">
         <?php if (!$uretim): ?>
-          <div class="empty-state">Üretim müşterisi yok.</div>
+          <div class="empty-state">
+            <div class="es-ico"><i class="bi bi-people"></i></div>
+            Üretim müşterisi yok.</div>
         <?php else: foreach ($uretim as $c): ?>
           <div class="customer-row">
             <div>
@@ -291,7 +293,9 @@ require __DIR__ . '/partials/header.php';
       <div class="section-head"><h2>Taşıma müşterileri</h2><span class="text-muted" style="font-size:12px"><?= Helpers::e(ay_label_tr($month)) ?></span></div>
       <div class="cardx card-pad">
         <?php if (!$tasima): ?>
-          <div class="empty-state">Taşıma müşterisi yok.</div>
+          <div class="empty-state">
+            <div class="es-ico"><i class="bi bi-people"></i></div>
+            Taşıma müşterisi yok.</div>
         <?php else: foreach ($tasima as $c):
             $t = $repo->tasimaProfit((int) $c['id'], $month);
             $adet = (float) $t['adet'];

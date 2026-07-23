@@ -73,7 +73,9 @@ require __DIR__ . '/partials/header.php';
       <div class="section-head"><h2>Paraşüt bakiyesi bağlı müşteriler</h2><span class="text-muted" style="font-size:12px"><?= count($bagli) ?> firma</span></div>
       <div class="cardx card-pad">
         <?php if (!$bagli): ?>
-          <div class="empty-state">Henüz senkron yok. Ömer'in PC'sinde <code>php tools/parasut_sync.php</code> çalıştırılınca burada listelenir.</div>
+          <div class="empty-state">
+            <div class="es-ico"><i class="bi bi-shield-check"></i></div>
+            Henüz senkron yok. Ömer'in PC'sinde <code>php tools/parasut_sync.php</code> çalıştırılınca burada listelenir.</div>
         <?php else: ?>
         <table class="tablex">
           <thead><tr><th>Müşteri</th><th class="num">Paraşüt bakiye</th><th>Son senkron</th></tr></thead>

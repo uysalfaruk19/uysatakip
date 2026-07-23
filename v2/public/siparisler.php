@@ -108,7 +108,9 @@ require __DIR__ . '/partials/header.php';
           <a class="icon-btn" href="siparisler.php?view=hafta&w=<?= date('Y-m-d', strtotime($weekStart . ' +7 day')) ?>" aria-label="Sonraki hafta"><i class="bi bi-chevron-right"></i></a>
         </div>
         <?php if (!$matrix): ?>
-          <div class="empty-state">Bu hafta sipariş girişi yok.</div>
+          <div class="empty-state">
+            <div class="es-ico"><i class="bi bi-basket"></i></div>
+            Bu hafta sipariş girişi yok.</div>
         <?php else: ?>
           <div style="overflow-x:auto">
             <table class="cetvel-table">
@@ -150,7 +152,9 @@ require __DIR__ . '/partials/header.php';
 
       <div class="section-head mt-3"><h2>Onay kuyruğu</h2></div>
       <?php if (!$pending): ?>
-        <div class="empty-state">Onay bekleyen müşteri siparişi yok.</div>
+        <div class="empty-state">
+          <div class="es-ico"><i class="bi bi-basket"></i></div>
+          Onay bekleyen müşteri siparişi yok.</div>
       <?php else: ?>
         <div class="list-groupx">
           <?php foreach ($pending as $o): $amt = (int) $o['persons'] * (float) $o['unit_price']; ?>
@@ -186,7 +190,9 @@ require __DIR__ . '/partials/header.php';
 
       <div class="section-head mt-3"><h2>Geçmiş</h2></div>
       <?php if (!$decided): ?>
-        <div class="empty-state">Henüz karar verilmiş sipariş yok.</div>
+        <div class="empty-state">
+          <div class="es-ico"><i class="bi bi-basket"></i></div>
+          Henüz karar verilmiş sipariş yok.</div>
       <?php else: ?>
         <div class="list-groupx">
           <?php foreach ($decided as $o): [$bc, $bi, $bt] = $statusMap[$o['status']] ?? ['badge-blue', 'bi-clock', $o['status']]; ?>

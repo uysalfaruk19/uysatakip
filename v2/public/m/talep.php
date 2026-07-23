@@ -207,7 +207,9 @@ require __DIR__ . '/partials/header_m.php';
 
         <div class="section-head mt-3"><h2>Taleplerim</h2></div>
         <?php if (!$requests): ?>
-          <div class="empty-state">Henüz talebiniz yok.</div>
+          <div class="empty-state">
+          <div class="es-ico"><i class="bi bi-chat-left-text"></i></div>
+          Henüz talebiniz yok.</div>
         <?php else: ?>
           <div class="list-groupx">
             <?php foreach ($requests as $r): [$bc, $bi, $bt] = $statusMap[$r['status']] ?? ['badge-blue', 'bi-clock', $r['status']]; ?>
