@@ -1,35 +1,39 @@
-/* UYSA Kokpit v2 — AÇIK TEMA (CateringPro broşürü esinli).
-   Beyaz kartlar, açık zemin, turuncu birincil renk, yumuşak gölge, yuvarlak köşe.
-   Kendine yeten: Bootstrap grid'e bağımlı değil; sadece bootstrap-icons (dekoratif) CDN.
-   Referans: vault/projeler/uysa-erp-v2/referans/cateringpro-brosur-1.jpg (sol mobil ekranlar). */
+/* UYSA Kokpit v2 — AIRBNB TASARIM DİLİ (Ömer onaylı mockup: tasarim-referans-bugun.html).
+   Beyaz kanvas, hairline çizgiler, cömert boşluk, pill'ler, yumuşak 14px kartlar, modest
+   500/600 ağırlıklar. TEK marka voltajı = UYSA turkuazı (#0e6e74). Sert köşe / koyu blok yok;
+   tek koyu şey turkuaz dolgu butonlar + küçük turkuaz hero kart. Token kaynağı: v2/DESIGN.md. */
 :root {
-  --bg: #eef3f8;
+  --bg: #ffffff;
   --surface: #ffffff;
-  --surface-2: #f4f7fb;
-  --surface-3: #e9eff6;
-  --line: rgba(16, 32, 51, 0.09);
-  --line-2: rgba(16, 32, 51, 0.06);
-  --text: #14233b;
-  --muted: #6b7b8d;
+  --surface-2: #f7f7f7; /* Airbnb surface-soft */
+  --surface-3: #f2f2f2; /* Airbnb surface-strong */
+  --line: #dddddd; /* Airbnb hairline */
+  --line-2: #ebebeb; /* Airbnb hairline-soft */
+  --text: #222222; /* Airbnb ink — asla saf siyah */
+  --muted: #6a6a6a;
 
-  --primary: #0e6e74; /* koyu turkuaz — UYSA Kokpit */
+  --primary: #0e6e74; /* koyu turkuaz — UYSA marka voltajı (Airbnb Rausch yerine) */
   --primary-600: #0a565b;
   --primary-tint: #e4f4f4;
   --primary-tint-2: #c2e7e6;
 
   --green: #16a34a;
-  --green-tint: #e7f6ee;
+  --green-tint: #eaf6ef;
   --blue: #2563eb;
-  --blue-tint: #e8f0fe;
-  --amber: #d97706;
-  --amber-tint: #fdf1dd;
-  --red: #e5484d;
-  --red-tint: #fdeaea;
+  --blue-tint: #eaf0fe;
+  --amber: #b06a00;
+  --amber-tint: #fbf1e2;
+  --red: #c13515; /* Airbnb error — sıcak kiremit */
+  --red-tint: #fff3ef;
+  /* Bekleyen/uyarı sıcak tonu (mockup: kiremit metin + çok açık zemin) */
+  --warm: #c13515;
+  --warm-tint: #fff8f6;
 
-  --radius: 16px;
+  --radius: 14px; /* Airbnb kart md (~14px) */
   --radius-sm: 12px;
-  --shadow: 0 6px 22px rgba(20, 40, 80, 0.07), 0 1px 2px rgba(20, 40, 80, 0.04);
-  --shadow-sm: 0 2px 8px rgba(20, 40, 80, 0.05);
+  --radius-pill: 999px;
+  --shadow: 0 3px 12px rgba(0, 0, 0, 0.06); /* mockup — tek hafif kat */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 * {
   box-sizing: border-box;
@@ -50,17 +54,18 @@ html {
 body {
   min-height: 100%;
   margin: 0;
-  background:
-    radial-gradient(
-      circle at 50% -8%,
-      rgba(14, 110, 116, 0.1),
-      transparent 30rem
-    ),
-    linear-gradient(180deg, #f2f6fa 0%, #eef3f8 100%);
+  background: var(
+    --bg
+  ); /* Airbnb: saf beyaz kanvas — gradient/koyu zemin YOK */
   color: var(--text);
   font-family:
-    -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, Inter,
-    "Segoe UI", sans-serif;
+    Circular,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    system-ui,
+    sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   /* overflow-x: hidden BİLEREK YOK — html'e taşındı (fable-016; sebep yukarıda). */
@@ -76,7 +81,7 @@ a {
   max-width: 400px;
   min-height: 100vh;
   margin: 0 auto;
-  padding: 18px 15px calc(122px + env(safe-area-inset-bottom));
+  padding: 16px 20px calc(122px + env(safe-area-inset-bottom));
   position: relative;
   overflow-x: hidden;
 }
@@ -138,32 +143,33 @@ body.admin-page .bottom-tabs {
   flex: 0 0 auto;
 }
 
+/* Airbnb: logo kutusu yok — selamlama (eyebrow) + büyük sayfa başlığı; sağda ince yuvarlak çıkış. */
 .topbar {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  min-height: 48px;
-  margin-bottom: 18px;
+  min-height: 44px;
+  margin: 2px 0 16px;
 }
 .brand-mark {
-  width: 42px;
-  height: 42px;
+  width: 40px;
+  height: 40px;
   border-radius: 12px;
   display: grid;
   place-items: center;
-  background: linear-gradient(135deg, var(--primary), #14a8a0);
+  background: var(--primary);
   color: #fff;
-  font-weight: 900;
-  box-shadow: 0 6px 16px rgba(14, 110, 116, 0.32);
+  font-weight: 700;
 }
 .brand-copy {
   min-width: 0;
 }
 .eyebrow {
-  margin: 0;
+  margin: 0 0 1px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 14px;
+  font-weight: 500;
   line-height: 1.25;
 }
 h1,
@@ -174,22 +180,22 @@ p {
 }
 h1 {
   margin-bottom: 2px;
-  font-size: 22px;
-  line-height: 1.18;
-  font-weight: 800;
-  letter-spacing: -0.01em;
+  font-size: 26px;
+  line-height: 1.15;
+  font-weight: 600;
+  letter-spacing: -0.4px;
 }
 h2 {
   margin-bottom: 12px;
   font-size: 16px;
   line-height: 1.25;
-  font-weight: 780;
+  font-weight: 600;
 }
 h3 {
   margin-bottom: 6px;
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.25;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .icon-btn,
@@ -202,18 +208,17 @@ h3 {
 .icon-btn {
   width: 44px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--radius-pill); /* Airbnb yuvarlak ikon buton */
   background: var(--surface);
   color: var(--text);
   display: grid;
   place-items: center;
   cursor: pointer;
-  box-shadow: var(--shadow-sm);
 }
 
 .screen-stack {
   display: grid;
-  gap: 13px;
+  gap: 14px;
 }
 .cardx {
   min-width: 0;
@@ -258,16 +263,17 @@ h3 {
 .stat-card .lbl {
   margin: 0 0 3px;
   font-size: 12.5px;
-  font-weight: 650;
+  font-weight: 500;
   color: var(--muted);
 }
 .stat-card .val {
   margin: 0;
-  font-size: 24px;
+  font-size: 23px;
   line-height: 1.1;
-  font-weight: 850;
-  letter-spacing: -0.01em;
+  font-weight: 700;
+  letter-spacing: -0.2px;
   overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
 }
 .stat-green {
   background: var(--green-tint);
@@ -295,6 +301,52 @@ h3 {
 }
 .stat-blue .val {
   color: #1d4ed8;
+}
+
+/* ── Airbnb yatay stat pill-kartları (mockup: bugun.php) — ilki turkuaz hero ── */
+.stat-scroll {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 2px 0 4px;
+  margin-inline: -20px;
+  padding-inline: 20px;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.stat-scroll::-webkit-scrollbar {
+  display: none;
+}
+.stat-box {
+  flex: 0 0 auto;
+  min-width: 152px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 14px 16px;
+}
+.stat-box .lbl {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.stat-box .val {
+  margin: 5px 0 0;
+  font-size: 21px;
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.stat-box.hero {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+.stat-box.hero .lbl {
+  color: rgba(255, 255, 255, 0.78);
 }
 
 /* ── Klasik özet kartları (finans/rapor/cari) — beyaz ──────── */
@@ -337,10 +389,11 @@ h3 {
   margin: 0;
   font-size: clamp(19px, 5.1vw, 23px);
   line-height: 1.12;
-  font-weight: 850;
+  font-weight: 700;
   overflow-wrap: anywhere;
   word-break: break-word;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.2px;
+  font-variant-numeric: tabular-nums;
 }
 .metric.small {
   font-size: 18px;
@@ -380,41 +433,39 @@ h3 {
 .date-pill,
 .chip {
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--radius-pill); /* Airbnb: her yerde pill */
   background: var(--surface);
   color: var(--text);
-  box-shadow: var(--shadow-sm);
 }
 .date-pill {
-  padding: 10px 13px;
+  padding: 10px 15px;
   min-height: 44px;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-weight: 700;
+  font-weight: 600;
 }
 .date-pill input {
   border: 0;
   background: transparent;
   color: var(--text);
   font: inherit;
-  font-weight: 700;
+  font-weight: 600;
 }
 .chip {
-  padding: 0 14px;
+  padding: 0 16px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--muted);
+  color: var(--text);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
 }
 .chip.active {
   background: var(--primary);
   border-color: var(--primary);
   color: #fff;
-  box-shadow: 0 4px 12px rgba(14, 110, 116, 0.28);
 }
 /* Tek-dokunuş "dünkü ile aynı" — sayı alanını doldurur (ios-011) */
 .chip-fill {
@@ -422,6 +473,94 @@ h3 {
   border-color: var(--primary);
   color: var(--primary);
   background: var(--surface);
+}
+
+/* Airbnb yatay chip şeridi (mockup: bugun modül linkleri) — kenardan kenara kayar */
+.chiprow {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 0 4px;
+  margin-inline: -20px;
+  padding-inline: 20px;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.chiprow::-webkit-scrollbar {
+  display: none;
+}
+.chiprow .chip {
+  flex: 0 0 auto;
+  min-height: 40px;
+  white-space: nowrap;
+  gap: 6px;
+}
+.chip-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--warm);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* ── Airbnb tek-pill tarih şeridi (mockup: bugun.php) — ‹ tarih · girildi › tek hatta ── */
+.date-row.date-solo {
+  justify-content: stretch;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  padding: 6px 10px;
+}
+.date-solo .date-nav {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  color: var(--text);
+  font-size: 18px;
+}
+.date-solo .date-mid {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 4px;
+}
+.date-solo .date-label {
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.date-solo .date-ok {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+/* native tarih seçici: görünmez katman, etikete dokununca açılır */
+.date-solo .date-native {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
 }
 
 /* ── Bölüm başlığı (kart dışı) ─────────────────────────────── */
@@ -438,7 +577,7 @@ h3 {
 .section-head .link {
   color: var(--primary);
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .customer-row {
@@ -455,12 +594,65 @@ h3 {
   padding-top: 2px;
 }
 .customer-row.missing {
-  background: linear-gradient(90deg, var(--amber-tint), transparent 72%);
+  background: linear-gradient(90deg, var(--warm-tint), transparent 72%);
   margin-inline: -16px;
   padding-inline: 16px;
 }
 .customer-row > div {
   min-width: 0;
+}
+
+/* Airbnb baş-harf avatarlı liste satırı (mockup: bugun.php) — kart kutusu yok, hairline ayraç */
+.customer-row.has-av {
+  grid-template-columns: 44px minmax(0, 1fr) 136px;
+  gap: 12px;
+  padding: 14px 0;
+  border-top-color: var(--line-2);
+}
+.customer-row.has-av.missing {
+  background: none;
+  margin-inline: 0;
+  padding-inline: 0;
+}
+.av {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--primary);
+  flex: 0 0 auto;
+}
+.customer-row.has-av.missing .av {
+  background: var(--warm-tint);
+  color: var(--warm);
+}
+.customer-row.has-av .status-dot {
+  display: none; /* avatar durum taşır — nokta gizli (JS class'ı zararsız korunur) */
+}
+.customer-row.has-av.missing .row-meta {
+  color: var(--warm);
+  font-weight: 600;
+}
+/* Airbnb avatar satırında meta düz gri metin (turkuaz pill değil), isimde alt-çizgi yok */
+.customer-row.has-av .meal-split {
+  background: transparent;
+  color: var(--muted);
+  padding: 0;
+  margin-left: 0;
+  font-weight: 500;
+  font-size: 12.5px;
+}
+.customer-row.has-av .row-name-btn strong {
+  border-bottom: 0;
+}
+.list-sub {
+  margin: -6px 0 8px;
+  color: var(--muted);
+  font-size: 13px;
 }
 .row-title {
   display: flex;
@@ -472,12 +664,15 @@ h3 {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-weight: 720;
+  font-weight: 600;
+}
+.customer-row.has-av .row-title strong {
+  font-size: 15px;
 }
 .row-meta {
   margin: 4px 0 0;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 12.5px;
 }
 .status-dot {
   width: 9px;
@@ -487,16 +682,16 @@ h3 {
   flex: 0 0 auto;
 }
 .status-dot.warn {
-  background: var(--amber);
+  background: var(--warm);
 }
 
 .counter {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr) 36px;
+  grid-template-columns: 38px minmax(0, 1fr) 38px;
   align-items: center;
   border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--surface-2);
+  border-radius: var(--radius-pill); /* Airbnb pill sayaç */
+  background: var(--surface);
   min-height: 44px;
   overflow: hidden;
   min-width: 0;
@@ -504,9 +699,9 @@ h3 {
 .step-btn {
   border: 0;
   background: transparent;
-  color: var(--primary);
-  font-size: 20px;
-  font-weight: 800;
+  color: var(--text);
+  font-size: 19px;
+  font-weight: 500;
   cursor: pointer;
 }
 .count-input {
@@ -515,9 +710,10 @@ h3 {
   background: transparent;
   color: var(--text);
   text-align: center;
-  font-size: clamp(16px, 4.5vw, 18px);
-  font-weight: 850;
+  font-size: clamp(16px, 4.5vw, 17px);
+  font-weight: 700;
   outline: 0;
+  font-variant-numeric: tabular-nums;
   -moz-appearance: textfield;
 }
 .count-input::-webkit-outer-spin-button,
@@ -528,28 +724,28 @@ h3 {
 
 .btn-action {
   border: 0;
-  border-radius: 12px;
-  padding: 0 16px;
+  border-radius: var(--radius-pill); /* Airbnb pill buton */
+  padding: 0 18px;
   min-height: 46px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  font-weight: 800;
   font: inherit;
-  font-weight: 800;
+  font-weight: 600;
   cursor: pointer;
 }
 .btn-primaryx {
-  background: linear-gradient(135deg, var(--primary), #14a8a0);
+  background: var(--primary); /* tek koyu şey: turkuaz dolgu (mockup) */
   color: #fff;
-  box-shadow: 0 8px 18px rgba(14, 110, 116, 0.3);
+}
+.btn-primaryx:active {
+  background: var(--primary-600);
 }
 .btn-secondaryx {
   background: var(--surface);
   border: 1px solid var(--line);
   color: var(--text);
-  box-shadow: var(--shadow-sm);
 }
 .btn-ghost {
   background: transparent;
@@ -599,7 +795,7 @@ h3 {
   color: var(--red);
 }
 .amount {
-  font-weight: 850;
+  font-weight: 700;
   white-space: nowrap;
 }
 .amount.out {
@@ -617,7 +813,7 @@ h3 {
   align-items: center;
   gap: 5px;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
 }
 .badge-ok {
   background: var(--green-tint);
@@ -698,7 +894,7 @@ h3 {
 .tablex th {
   color: var(--muted);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.02em;
 }
@@ -711,7 +907,7 @@ h3 {
   font-variant-numeric: tabular-nums;
 }
 .tablex tr.is-total td {
-  font-weight: 850;
+  font-weight: 700;
   border-top: 2px solid var(--line);
   background: var(--surface-2);
 }
@@ -745,12 +941,12 @@ h3 {
 .bar-fill {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, var(--primary), #2cc2b6);
+  background: var(--primary);
   min-width: 4px;
 }
 .bar-val {
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   text-align: right;
   font-variant-numeric: tabular-nums;
   color: var(--muted);
@@ -776,11 +972,11 @@ h3 {
 .mini-cal th {
   color: var(--muted);
   font-size: 10.5px;
-  font-weight: 800;
+  font-weight: 700;
   text-transform: uppercase;
 }
 .mini-cal tr.is-total td {
-  font-weight: 850;
+  font-weight: 700;
   border-top: 2px solid var(--line);
   background: var(--surface-2);
 }
@@ -789,7 +985,7 @@ h3 {
   background: var(--surface-3);
   color: var(--muted);
   font-size: 10.5px;
-  font-weight: 800;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.3px;
   text-align: left;
@@ -800,7 +996,7 @@ h3 {
   text-transform: none;
 }
 .mini-cal tr.is-subtotal td {
-  font-weight: 800;
+  font-weight: 700;
   background: var(--surface-2);
   border-bottom: 1px solid var(--line);
 }
@@ -819,7 +1015,7 @@ h3 {
   background: var(--red);
   color: #fff;
   font-size: 9.5px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.2px;
   vertical-align: middle;
   white-space: nowrap;
@@ -955,7 +1151,7 @@ body.customer-page .bottom-tabs {
   color: var(--amber);
 }
 .mod-card .mt {
-  font-weight: 780;
+  font-weight: 600;
   font-size: 14px;
   line-height: 1.2;
 }
@@ -973,7 +1169,7 @@ body.customer-page .bottom-tabs {
   top: 11px;
   right: 11px;
   font-size: 9.5px;
-  font-weight: 800;
+  font-weight: 700;
   padding: 3px 8px;
   border-radius: 999px;
   background: var(--amber-tint);
@@ -1063,7 +1259,7 @@ body.customer-page .bottom-tabs {
   background: var(--red);
   color: #fff;
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 16px;
   text-align: center;
 }
@@ -1090,7 +1286,7 @@ body.customer-page .bottom-tabs {
   height: 58px;
   border: 0;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--primary), #14a8a0);
+  background: var(--primary);
   color: #fff;
   font-size: 28px;
   display: grid;
@@ -1147,7 +1343,7 @@ body.customer-page .bottom-tabs {
   background: var(--surface);
   border: 1px solid var(--line-2);
   box-shadow: var(--shadow-sm);
-  font-weight: 750;
+  font-weight: 600;
   font-size: 13.5px;
   min-height: 44px;
 }
@@ -1162,7 +1358,7 @@ body.customer-page .bottom-tabs {
 .q-tile .q-badge {
   margin-left: auto;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   padding: 2px 8px;
   border-radius: 999px;
   background: var(--red-tint);
@@ -1171,7 +1367,7 @@ body.customer-page .bottom-tabs {
 .fab-menu .fab-label {
   margin: 12px 6px 2px;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--muted);
@@ -1226,10 +1422,10 @@ body.customer-page .bottom-tabs {
   display: grid;
   place-items: center;
   margin-bottom: 18px;
-  background: linear-gradient(135deg, var(--primary), #14a8a0);
+  background: var(--primary);
   color: #fff;
   font-size: 30px;
-  font-weight: 900;
+  font-weight: 700;
   box-shadow: 0 12px 26px rgba(14, 110, 116, 0.34);
 }
 
@@ -1375,7 +1571,7 @@ body.customer-page .bottom-tabs {
 }
 .supply-row .s-name {
   min-width: 0;
-  font-weight: 650;
+  font-weight: 500;
   font-size: 14px;
 }
 .supply-row .s-meta {
@@ -1392,7 +1588,7 @@ body.customer-page .bottom-tabs {
   display: inline-block;
   margin-top: 3px;
   font-size: 11.5px;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--green);
   background: var(--green-tint);
   border-radius: 999px;
@@ -1459,7 +1655,7 @@ html.native-app [data-web-only] {
   color: var(--text);
   box-shadow: var(--shadow-sm);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   opacity: 0;
   transform: translate(-50%, -58px);
   transition:
@@ -1575,7 +1771,7 @@ html.native-app [data-web-only] {
 }
 .week-day .wd-count {
   font-size: 15px;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
@@ -1686,7 +1882,7 @@ a.week-day.locked {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-weight: 720;
+  font-weight: 600;
   border-bottom: 1px dashed var(--line);
 }
 .row-name-btn i {
@@ -1705,7 +1901,7 @@ a.week-day.locked {
   background: var(--primary-tint);
   color: var(--primary-600);
   font-size: 11px;
-  font-weight: 750;
+  font-weight: 600;
 }
 .meal-split[hidden] {
   display: none;
@@ -1747,7 +1943,7 @@ a.week-day.locked {
 .meal-head h3 {
   margin: 0;
   font-size: 16px;
-  font-weight: 800;
+  font-weight: 700;
 }
 .meal-sub {
   margin: 2px 0 12px;
@@ -1772,7 +1968,7 @@ a.week-day.locked {
 /* iOS otomatik zoom olmasın: ≥16px */
 .meal-input {
   font-size: 17px;
-  font-weight: 800;
+  font-weight: 700;
   text-align: center;
   min-height: 48px;
   -moz-appearance: textfield;
@@ -1819,7 +2015,7 @@ body.meal-open {
   background: var(--surface);
   color: var(--primary-600);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 700;
   cursor: pointer;
 }
 .btn-chip:disabled {
@@ -1852,7 +2048,7 @@ body.meal-open {
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 600;
   cursor: pointer;
 }
 .irs-list {
@@ -1887,7 +2083,7 @@ body.meal-open {
 }
 .irs-name {
   font-size: 14px;
-  font-weight: 750;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 .irs-meta {
@@ -1904,7 +2100,7 @@ body.meal-open {
 .irs-sum {
   margin: 2px 0 10px;
   font-size: 14px;
-  font-weight: 750;
+  font-weight: 600;
 }
 .irs-res {
   display: grid;
@@ -2000,7 +2196,7 @@ body.meal-open {
 }
 .ftr-belge-tag {
   font-size: 9.5px;
-  font-weight: 800;
+  font-weight: 700;
   padding: 1px 7px;
   border-radius: 999px;
   background: var(--amber-tint);
@@ -2029,7 +2225,7 @@ body.meal-open {
   padding-top: 6px;
   border-top: 1px solid var(--line);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--text);
 }
 
@@ -2077,13 +2273,13 @@ body.meal-open {
 .irs-warn {
   margin: 10px 0 6px;
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.45;
   color: #a12a2a;
 }
 .irs-json summary {
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
   color: var(--muted);
   cursor: pointer;
 }
@@ -2111,7 +2307,7 @@ body.meal-open {
   background: var(--surface);
   color: var(--text);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   cursor: pointer;
 }
 .btn-mini:disabled {
@@ -2124,7 +2320,7 @@ body.meal-open {
   align-items: center;
   gap: 7px;
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 600;
   margin: 4px 0 10px;
   cursor: pointer;
 }
@@ -2154,12 +2350,12 @@ body.meal-open {
 }
 .ftr-name {
   font-size: 14px;
-  font-weight: 750;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 .ftr-meta {
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 500;
   color: var(--muted);
   margin: 6px 0 0 26px;
 }
@@ -2184,7 +2380,7 @@ body.meal-open {
 }
 .ftr-bol-head {
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
   color: var(--muted);
 }
 .ftr-bol-row {
@@ -2193,7 +2389,7 @@ body.meal-open {
   justify-content: space-between;
   gap: 10px;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 500;
 }
 .ftr-bol-in {
   width: 110px;
@@ -2206,7 +2402,7 @@ body.meal-open {
 }
 .ftr-bol-uyari {
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
   color: var(--red);
 }
 .ftr-actions {
@@ -2235,13 +2431,13 @@ body.meal-open {
 }
 .ftr-lines {
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 500;
   color: var(--muted);
   overflow-wrap: anywhere;
 }
 .ftr-calc {
   font-size: 12.5px;
-  font-weight: 650;
+  font-weight: 500;
 }
 .ftr-irs,
 .ftr-meta.small {
@@ -2251,7 +2447,7 @@ body.meal-open {
 .ftr-sum {
   margin: 2px 0 10px;
   font-size: 14px;
-  font-weight: 750;
+  font-weight: 600;
 }
 .ftr-uyari {
   margin: 10px 0 4px;
@@ -2262,7 +2458,7 @@ body.meal-open {
 }
 .ftr-govde-wrap summary {
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
   color: var(--muted);
   cursor: pointer;
 }

@@ -50,7 +50,7 @@ if (isset($_GET['goster'])) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Menü PDF</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+<link href="/assets/bootstrap-icons.css?v=<?= filemtime(__DIR__ . '/../assets/bootstrap-icons.css') ?>" rel="stylesheet">
 <style>
   html,body{margin:0;height:100%;background:#33373d;font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif}
   .pdf-bar{position:fixed;top:0;left:0;right:0;height:calc(52px + env(safe-area-inset-top));padding-top:env(safe-area-inset-top);
