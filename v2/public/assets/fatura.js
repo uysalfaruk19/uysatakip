@@ -59,6 +59,16 @@
     stepSecim.hidden = step !== "secim";
     stepOnay.hidden = step !== "onay";
     stepSonuc.hidden = step !== "sonuc";
+    // fable-032 tur2: görsel adım göstergesini güncelle (yalnız kozmetik)
+    var order = { secim: 0, onay: 1, sonuc: 2 };
+    var idx = order[step];
+    [].slice
+      .call(document.querySelectorAll("#ftr-stepper .step-node"))
+      .forEach(function (n) {
+        var ni = order[n.getAttribute("data-step")];
+        n.classList.toggle("is-active", ni === idx);
+        n.classList.toggle("is-done", ni < idx);
+      });
     window.scrollTo(0, 0);
     // fable-025: admin'de kayan eleman artık main.app-shell (sabit-kabuk deseni)
     var shell = document.querySelector("main.app-shell");

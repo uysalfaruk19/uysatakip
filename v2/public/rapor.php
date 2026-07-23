@@ -43,15 +43,19 @@ if ($drill) {
           <div class="summary-card tint-blue"><p class="label">Toplam satış</p><p class="metric small">₺ <?= Helpers::money((float) $t['toplam_satis']) ?></p></div>
           <div class="summary-card tint-orange"><p class="label">Brüt kâr · sabit gider</p><p class="metric small">₺ <?= Helpers::money($brut) ?> · ₺ <?= Helpers::money((float) $t['sabit']) ?></p></div>
           <div class="summary-card tint-orange"><p class="label">Pay: gider · personel</p><p class="metric small">₺ <?= Helpers::money($nk['pay_gider']) ?> · ₺ <?= Helpers::money($nk['pay_personel']) ?></p></div>
-          <div class="summary-card wide tint-green"><p class="label">Net kâr (satış − alış − sabit − gider payı − personel payı)</p><p class="metric <?= $nk['net'] < 0 ? 'neg' : 'pos' ?>">₺ <?= Helpers::money($nk['net']) ?></p></div>
+          <div class="summary-card wide metric-hero"><p class="label">Net kâr (satış − alış − sabit − gider payı − personel payı)</p><p class="metric <?= $nk['net'] < 0 ? 'neg' : 'pos' ?>">₺ <?= Helpers::money($nk['net']) ?></p></div>
         </div>
         <?php if ($adet <= 0): ?>
-          <div class="empty-state">Bu ay <strong>Bugün</strong> ekranında bu müşteriye sayım girilmemiş (adet 0). <a href="bugun.php" style="color:var(--primary);font-weight:700">Bugün'e git →</a></div>
+          <div class="empty-state">
+            <div class="es-ico"><i class="bi bi-calendar2-check"></i></div>
+            Bu ay <strong>Bugün</strong> ekranında bu müşteriye sayım girilmemiş (adet 0). <a href="bugun.php" style="color:var(--primary);font-weight:700">Bugün'e git →</a></div>
         <?php endif; ?>
         <div class="cardx card-pad">
           <h2>Aylar trendi</h2>
           <?php if (!$trend): ?>
-            <div class="empty-state">Henüz kâr geçmişi yok.</div>
+            <div class="empty-state">
+              <div class="es-ico"><i class="bi bi-graph-up-arrow"></i></div>
+              Henüz kâr geçmişi yok.</div>
           <?php else: ?>
             <div style="overflow-x:auto">
             <table class="tablex">
@@ -99,12 +103,14 @@ if ($drill) {
           <?php else: ?>
             <div class="summary-card tint-green"><p class="label">Eksik gün</p><p class="metric pos" style="font-size:19px">Eksik gün yok</p></div>
           <?php endif; ?>
-          <div class="summary-card wide tint-green"><p class="label">Net kâr (ciro − gider payı − personel payı)</p><p class="metric <?= $nk['net'] < 0 ? 'neg' : 'pos' ?>">₺ <?= Helpers::money($nk['net']) ?></p></div>
+          <div class="summary-card wide metric-hero"><p class="label">Net kâr (ciro − gider payı − personel payı)</p><p class="metric <?= $nk['net'] < 0 ? 'neg' : 'pos' ?>">₺ <?= Helpers::money($nk['net']) ?></p></div>
         </div>
         <div class="cardx card-pad">
           <h2>Gün gün öğün sayıları <span class="text-muted" style="font-size:12px;font-weight:600">(haftalık)</span></h2>
           <?php if (!$recordedDays): ?>
-            <div class="empty-state">Bu ay üretim kaydı yok.</div>
+            <div class="empty-state">
+            <div class="es-ico"><i class="bi bi-calendar2-check"></i></div>
+            Bu ay üretim kaydı yok.</div>
           <?php else: ?>
             <div style="overflow-x:auto">
             <table class="mini-cal">
@@ -189,10 +195,12 @@ require __DIR__ . '/partials/header.php';
         </div>
       </form>
 
+      <!-- fable-032 tur2: baş rakam = NET KARLILIK, geniş koyu hero; altında destek metrikler -->
       <div class="summary-grid">
+        <div class="summary-card wide metric-hero"><p class="label"><?= Helpers::e(ay_label_tr($month)) ?> · Net karlılık</p><p class="metric <?= $nk['net'] < 0 ? 'neg' : 'pos' ?>">₺ <?= Helpers::money($nk['net']) ?></p></div>
         <div class="summary-card tint-orange"><p class="label">Toplam kişi</p><p class="metric"><?= number_format($toplamKisi, 0, ',', '.') ?></p></div>
         <div class="summary-card tint-green"><p class="label">Üretim cirosu</p><p class="metric">₺ <?= Helpers::money($toplamCiro) ?></p></div>
-        <div class="summary-card wide"><p class="label">Finans net nakit</p><p class="metric <?= $fin['net'] < 0 ? 'neg' : '' ?>">₺ <?= Helpers::money($fin['net']) ?></p></div>
+        <div class="summary-card wide tint-blue"><p class="label">Finans net nakit</p><p class="metric <?= $fin['net'] < 0 ? 'neg' : '' ?>">₺ <?= Helpers::money($fin['net']) ?></p></div>
       </div>
 
       <div class="cardx card-pad">
@@ -214,7 +222,9 @@ require __DIR__ . '/partials/header.php';
       <div class="section-head"><h2>Üretim müşterileri</h2><span class="text-muted" style="font-size:12px">adına tıkla → gün gün</span></div>
       <div class="cardx card-pad">
         <?php if (!$rows): ?>
-          <div class="empty-state">Bu ay üretim kaydı yok.</div>
+          <div class="empty-state">
+            <div class="es-ico"><i class="bi bi-calendar2-check"></i></div>
+            Bu ay üretim kaydı yok.</div>
         <?php else: ?>
           <table class="tablex">
             <thead><tr><th>Müşteri</th><th class="num">Gün</th><th class="num">Kişi</th><th class="num">Ciro</th></tr></thead>

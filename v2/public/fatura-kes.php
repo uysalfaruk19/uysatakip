@@ -407,11 +407,20 @@ require __DIR__ . '/partials/header.php';
           <input type="date" name="son" value="<?= Helpers::e($son) ?>" onchange="this.form.submit()"></div>
       </form>
 
+      <!-- fable-032 tur2: adım göstergesi (yalnız görsel; akış/işlev fatura.js'te aynı) -->
+      <div class="stepper" id="ftr-stepper">
+        <div class="step-node is-active" data-step="secim"><span class="step-dot">1</span><span class="step-lbl">Seçim</span></div>
+        <div class="step-node" data-step="onay"><span class="step-dot">2</span><span class="step-lbl">Onay</span></div>
+        <div class="step-node" data-step="sonuc"><span class="step-dot">3</span><span class="step-lbl">Sonuç</span></div>
+      </div>
+
       <div class="cardx card-pad" id="ftr-step-secim">
         <div class="head-row"><h2>Faturalanacak müşteriler</h2>
           <span class="row-meta" id="ftr-count"><?= $secilebilirSayi ?> seçilebilir</span></div>
         <?php if (!$adaylar): ?>
-          <div class="empty-state">Bu dönemde faturalanacak müşteri yok.</div>
+          <div class="empty-state">
+            <div class="es-ico"><i class="bi bi-receipt"></i></div>
+            Bu dönemde faturalanacak müşteri yok.</div>
         <?php else: ?>
           <label class="ftr-all"><input type="checkbox" id="ftr-all"> Tümünü seç</label>
           <div class="ftr-list">

@@ -228,34 +228,48 @@ require __DIR__ . '/partials/header.php';
         <?php endif; ?>
       </div>
 
-      <?php if ($filter === 'firma'): // fable-031: gider FİRMA özeti ?>
+      <?php if ($filter === 'firma'): // fable-031: gider FİRMA özeti — fable-032 tur2: sıralı liste kartı ?>
         <div class="cardx card-pad">
           <h2>Gider — firma bazında <span class="text-muted" style="font-size:12px;font-weight:600">(<?= Helpers::e(ay_label_tr($month)) ?>)</span></h2>
           <?php if (!$firmaOzet): ?>
-            <div class="empty-state">Bu ay gider kaydı yok.</div>
-          <?php else: $fTop = 0.0; ?>
-            <div style="overflow-x:auto"><table class="mini-cal">
-              <thead><tr><th>Firma</th><th>Fatura</th><th>Toplam</th></tr></thead>
-              <tbody>
-              <?php foreach ($firmaOzet as $f): $fTop += $f['toplam']; ?>
-                <tr><td><?= Helpers::e($f['firma']) ?></td>
-                    <td><?= (int) $f['adet'] ?></td>
-                    <td>₺ <?= Helpers::money($f['toplam']) ?></td></tr>
+            <div class="empty-state"><div class="es-ico"><i class="bi bi-building"></i></div>Bu ay gider kaydı yok.</div>
+          <?php else: $fTop = 0.0; foreach ($firmaOzet as $f) { $fTop += $f['toplam']; } $rank = 0; ?>
+            <div class="rank-list">
+              <?php foreach ($firmaOzet as $f): $rank++; ?>
+                <div class="rank-row">
+                  <span class="rank-no"><?= $rank ?></span>
+                  <div class="rank-main">
+                    <strong><?= Helpers::e($f['firma']) ?></strong>
+                    <p class="row-meta"><?= (int) $f['adet'] ?> fatura</p>
+                  </div>
+                  <span class="rank-amt amount out">₺ <?= Helpers::money($f['toplam']) ?></span>
+                </div>
               <?php endforeach; ?>
-                <tr class="is-total"><td>Toplam</td><td></td><td>₺ <?= Helpers::money($fTop) ?></td></tr>
-              </tbody>
-            </table></div>
+              <div class="rank-row rank-total">
+                <span class="rank-no"><i class="bi bi-sigma"></i></span>
+                <div class="rank-main"><strong>Toplam gider</strong></div>
+                <span class="rank-amt">₺ <?= Helpers::money($fTop) ?></span>
+              </div>
+            </div>
           <?php endif; ?>
         </div>
       <?php elseif (!$byDay): ?>
         <div class="empty-state">
+          <div class="es-ico"><i class="bi bi-cash-coin"></i></div>
           Bu ay henüz kayıt yok.
           <div class="mt-3"><button class="btn-action btn-secondaryx" type="button" onclick="toggleSheet('add-sheet')">Gider / gelir ekle</button></div>
         </div>
-      <?php else: ?>
-        <?php foreach ($byDay as $day => $items): ?>
-          <div class="cardx card-pad">
-            <h2><?= Helpers::e(gun_label_tr($day)) ?></h2>
+      <?php else: /* fable-032 tur2: gün grupları zaman-akışı (sol dikey çizgi + nokta) */ ?>
+        <div class="fin-timeline">
+        <?php foreach ($byDay as $day => $items):
+            $dayIn = 0.0; $dayOut = 0.0;
+            foreach ($items as $t) { if ($t['type'] === 'gelir') { $dayIn += (float) $t['amount']; } else { $dayOut += (float) $t['amount']; } }
+        ?>
+          <div class="fin-day">
+            <div class="fin-day-head">
+              <h2><?= Helpers::e(gun_label_tr($day)) ?></h2>
+              <span class="fin-day-sum"><?php if ($dayIn > 0): ?><span class="amount in">+₺ <?= Helpers::money($dayIn) ?></span><?php endif; ?><?php if ($dayOut > 0): ?><span class="amount out">−₺ <?= Helpers::money($dayOut) ?></span><?php endif; ?></span>
+            </div>
             <div class="list-groupx">
               <?php foreach ($items as $t):
                   $isGelir = $t['type'] === 'gelir';
@@ -275,6 +289,7 @@ require __DIR__ . '/partials/header.php';
             </div>
           </div>
         <?php endforeach; ?>
+        </div>
       <?php endif; ?>
 
       <?php // fable-029b (Ömer): "finansta gider ekle gözükmesin" — form varsayılan GİZLİ,
