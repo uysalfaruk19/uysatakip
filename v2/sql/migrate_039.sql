@@ -10,7 +10,7 @@
 CREATE TABLE IF NOT EXISTS `tedarikci_musteri_map` (
   `id`          INT AUTO_INCREMENT PRIMARY KEY,
   `tedarikci`   VARCHAR(190) NOT NULL COMMENT 'normalize firma anahtarı (Repo::normTedarikci)',
-  `customer_id` INT NOT NULL,
+  `customer_id` INT UNSIGNED NOT NULL,
   `created_at`  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY `uq_ted_cust` (`tedarikci`, `customer_id`),
   KEY `idx_tmm_ted` (`tedarikci`),
@@ -19,8 +19,8 @@ CREATE TABLE IF NOT EXISTS `tedarikci_musteri_map` (
 
 CREATE TABLE IF NOT EXISTS `personel_musteri_map` (
   `id`          INT AUTO_INCREMENT PRIMARY KEY,
-  `personel_id` INT NOT NULL,
-  `customer_id` INT NOT NULL,
+  `personel_id` INT UNSIGNED NOT NULL,
+  `customer_id` INT UNSIGNED NOT NULL,
   `created_at`  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY `uq_pers_cust` (`personel_id`, `customer_id`),
   KEY `idx_pmm_pers` (`personel_id`),
