@@ -469,6 +469,27 @@ CREATE TABLE IF NOT EXISTS personel_musteri (
 );
 CREATE INDEX IF NOT EXISTS idx_pm_personel ON personel_musteri(personel_id);
 
+-- ── fable-035: Tedarikçi/Personel → müşteri MALİYET EŞLEŞTİRMESİ ──────────
+-- Eşleşen tedarikçi faturaları / personel yüklü maliyeti seçili müşterilere o ayki KİŞİ
+-- oranında dağılır; tablolar boşken tüm dağıtım eskisiyle birebir (regresyon garantisi).
+CREATE TABLE IF NOT EXISTS tedarikci_musteri_map (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tedarikci TEXT NOT NULL,                    -- normalize firma anahtarı (Repo::normTedarikci)
+  customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(tedarikci, customer_id)
+);
+CREATE INDEX IF NOT EXISTS idx_tmm_ted ON tedarikci_musteri_map(tedarikci);
+
+CREATE TABLE IF NOT EXISTS personel_musteri_map (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  personel_id INTEGER NOT NULL REFERENCES personel(id) ON DELETE CASCADE,
+  customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(personel_id, customer_id)
+);
+CREATE INDEX IF NOT EXISTS idx_pmm_pers ON personel_musteri_map(personel_id);
+
 -- ── Push cihaz token'ları (migrate_021 + opus-021 user_id): müşteri app + admin ─
 CREATE TABLE IF NOT EXISTS push_tokens (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
