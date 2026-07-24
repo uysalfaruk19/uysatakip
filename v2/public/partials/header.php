@@ -25,8 +25,13 @@ $eyebrow = $eyebrow ?? ($selam . ' ' . ($u['display_name'] ?: $u['username']) . 
     <div class="d-flex align-items-center gap-3">
       <div class="brand-mark">U</div>
       <div class="brand-copy">
+        <?php if (!empty($homeBrand)): // fable-034b: anasayfa markalı — marka üstte, selamlama altta (mockup) ?>
+        <h1><?= Helpers::e($pageTitle) ?></h1>
+        <p class="eyebrow"><?= Helpers::e($eyebrow) ?></p>
+        <?php else: ?>
         <p class="eyebrow"><?= Helpers::e($eyebrow) ?></p>
         <h1><?= Helpers::e($pageTitle) ?></h1>
+        <?php endif; ?>
       </div>
     </div>
     <a class="icon-btn" href="logout.php" aria-label="Çıkış"><i class="bi bi-box-arrow-right"></i></a>

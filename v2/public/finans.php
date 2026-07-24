@@ -147,14 +147,6 @@ require __DIR__ . '/partials/header.php';
 ?>
       <?php if ($flash): ?><div class="flash <?= $flashOk ? 'ok' : 'err' ?>"><?= Helpers::e($flash) ?></div><?php endif; ?>
 
-      <div class="quick-tiles">
-        <a class="q-tile" href="faturalar.php"><i class="bi bi-receipt"></i> Faturalar</a>
-        <a class="q-tile" href="cari.php"><i class="bi bi-cash-coin"></i> Cari & tahsilat</a>
-        <?php if (Auth::isAdmin($u)): ?>
-        <a class="q-tile" href="fatura-kes.php"><i class="bi bi-receipt-cutoff"></i> Fatura Kes</a>
-        <?php endif; ?>
-      </div>
-
 <?php
       // fable-011: üst kartlar artık OPERASYONEL aylık kâr (Ömer isteği: işlenmiş satışlar
       // gelirde, personel + girilen giderler giderde). Sadece transactions'a bakan eski
@@ -195,11 +187,20 @@ require __DIR__ . '/partials/header.php';
             <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
             <input type="hidden" name="form" value="parasut_cek">
             <input type="hidden" name="ay" value="<?= Helpers::e($month) ?>">
-            <button class="btn-action btn-secondaryx flex-fill" type="submit"><i class="bi bi-cloud-download"></i> Paraşüt'ten getir</button>
+            <button class="btn-action btn-secondaryx flex-fill" type="submit" style="white-space:nowrap;font-size:12.5px;padding-inline:8px;gap:6px"><i class="bi bi-cloud-download"></i> Paraşüt'ten çek</button>
           </form>
           <?php endif; ?>
-          <button class="btn-action btn-primaryx flex-fill" type="button" onclick="toggleSheet('add-sheet')"><i class="bi bi-plus-lg"></i> Gelir / Gider ekle</button>
+          <button class="btn-action btn-primaryx flex-fill" type="button" onclick="toggleSheet('add-sheet')" style="white-space:nowrap;font-size:12.5px;padding-inline:8px;gap:6px"><i class="bi bi-plus-lg"></i> Gelir/gider ekle</button>
         </div>
+      </div>
+
+      <?php // fable-034b (denetim): modül çipleri artık tarih+AYIN ÖZETİ açılışının ALTINDA ?>
+      <div class="quick-tiles">
+        <a class="q-tile" href="faturalar.php"><i class="bi bi-receipt"></i> Faturalar</a>
+        <a class="q-tile" href="cari.php"><i class="bi bi-cash-coin"></i> Cari &amp; tahsilat</a>
+        <?php if (Auth::isAdmin($u)): ?>
+        <a class="q-tile" href="fatura-kes.php"><i class="bi bi-receipt-cutoff"></i> Fatura Kes</a>
+        <?php endif; ?>
       </div>
 
       <div class="cardx card-pad fin-detay" id="fin-gelir" style="display:none">

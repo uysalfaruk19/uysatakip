@@ -249,8 +249,20 @@ foreach ($rowsData as $r) {
 usort($barRows, static fn($a, $b) => $b['val'] <=> $a['val']);
 $barRows = array_slice($barRows, 0, 6);
 
-$pageTitle = 'Panel';
+// fable-034b (denetim): anasayfa üst barı MARKALI — "UYSA Kokpit" + saat bazlı selamlama (mockup).
+$pageTitle = 'UYSA Kokpit';
+$homeBrand = true;
 $active = 'bugun';
+
+// İrsaliye kesildi sayacı (mockup NABIZ mini) — basit COUNT, ağır sorgu yok.
+$irsaliyeKesildi = 0;
+try {
+    $stK = $pdo->prepare("SELECT COUNT(*) FROM parasut_irsaliye_log WHERE gun = ? AND durum = 'kesildi'");
+    $stK->execute([$date]);
+    $irsaliyeKesildi = (int) $stK->fetchColumn();
+} catch (\Throwable $e) {
+    // migrate_031 yoksa sessiz 0 (ana ekran çalışmaya devam)
+}
 require __DIR__ . '/partials/header.php';
 ?>
 <?php
@@ -294,71 +306,17 @@ require __DIR__ . '/partials/header.php';
             <div class="gt-ml">Toplam kişi</div>
           </div>
           <div>
+            <div class="gt-mn<?= $irsaliyeKesildi > 0 ? ' ok' : '' ?>"><?= $irsaliyeKesildi ?>/<?= $irsaliyeGirilen ?></div>
+            <div class="gt-ml">İrsaliye kesildi</div>
+          </div>
+          <div>
             <div class="gt-mn<?= $bekleyenSayi > 0 ? ' bad' : ' ok' ?>"><?= $bekleyenSayi ?></div>
             <div class="gt-ml">Bekleyen</div>
           </div>
-          <div>
-            <div class="gt-mn"><?= $total ?></div>
-            <div class="gt-ml">Aktif müşteri</div>
-          </div>
         </div>
       </div>
 
-      <div class="cardx card-pad">
-        <div class="gt-h"><i class="bi bi-grid-3x3-gap-fill"></i> HIZLI ERİŞİM</div>
-      <div class="mod-grid">
-        <a class="mod-card i-green" href="musteriler.php">
-          <div class="mico"><i class="bi bi-people"></i></div>
-          <div class="mt">Müşteriler</div>
-          <div class="md">Üretim / taşıma, birim fiyat, kâr</div>
-        </a>
-        <a class="mod-card i-amber" href="siparisler.php">
-          <?php if ($pendingCount > 0): ?><span class="soon-chip" style="background:var(--red-tint);color:var(--red)"><?= $pendingCount ?> yeni</span><?php endif; ?>
-          <div class="mico"><i class="bi bi-basket"></i></div>
-          <div class="mt">Siparişler</div>
-          <div class="md">Müşteri onay kuyruğu</div>
-        </a>
-        <a class="mod-card i-amber" href="personel.php">
-          <div class="mico"><i class="bi bi-person-badge"></i></div>
-          <div class="mt">Personel Giderleri</div>
-          <div class="md">Maaş / prim takibi</div>
-        </a>
-        <a class="mod-card i-green" href="menu.php">
-          <div class="mico"><i class="bi bi-card-list"></i></div>
-          <div class="mt">Menü</div>
-          <div class="md">Menü oluştur + hedefli yayınla</div>
-        </a>
-        <a class="mod-card i-blue" href="talepler.php">
-          <?php if ($openReqCount > 0): ?><span class="soon-chip" style="background:var(--red-tint);color:var(--red)"><?= $openReqCount ?> açık</span><?php endif; ?>
-          <div class="mico"><i class="bi bi-chat-left-text"></i></div>
-          <div class="mt">Talepler</div>
-          <div class="md">Şikayet · öneri · menü · mesaj takip</div>
-        </a>
-        <?php if ($irsaliyeYetkili): ?>
-        <a class="mod-card i-green" href="fatura-kes.php">
-          <div class="mico"><i class="bi bi-receipt-cutoff"></i></div>
-          <div class="mt">Fatura Kes</div>
-          <div class="md">Kesilen irsaliyelerden Paraşüt faturası</div>
-        </a>
-        <?php endif; ?>
-      </div>
-      </div><!-- /HIZLI ERİŞİM kartı (fable-034) -->
-
-      <?php if ($barRows): ?>
-      <div class="cardx card-pad">
-        <div class="gt-h"><i class="bi bi-bar-chart-fill"></i> BUGÜN ÜRETİM VEREN FİRMALAR</div>
-        <div class="barchart">
-          <?php foreach ($barRows as $b): $w = $barMax > 0 ? max(4, round($b['val'] / $barMax * 100)) : 4; ?>
-            <div class="bar-row">
-              <span class="bar-name"><?= Helpers::e($b['name']) ?></span>
-              <span class="bar-track"><span class="bar-fill" style="width: <?= $w ?>%"></span></span>
-              <span class="bar-val"><?= number_format($b['val'], 0, ',', '.') ?></span>
-            </div>
-          <?php endforeach; ?>
-        </div>
-      </div>
-      <?php endif; ?>
-
+      <?php // fable-034b (denetim): mockup sırası → MÜŞTERİ SAYILARI önce, HIZLI ERİŞİM sonra (aşağıda) ?>
       <form method="post" id="bugun-form">
         <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
         <input type="hidden" name="date" value="<?= Helpers::e($date) ?>">
@@ -435,6 +393,34 @@ require __DIR__ . '/partials/header.php';
           <button class="btn-action btn-primaryx flex-fill" type="submit"><i class="bi bi-check2"></i> Kaydet</button>
         </div>
       </form>
+
+      <!-- fable-034b (denetim): HIZLI ERİŞİM — mockup KOMPAKT 4'lü grid (ikon + tek satır), müşteri listesinin ALTINDA. Link seti korundu. -->
+      <div class="cardx card-pad">
+        <div class="gt-h"><i class="bi bi-grid-3x3-gap-fill"></i> HIZLI ERİŞİM</div>
+        <div class="gt-mods">
+          <a class="gt-mod" href="musteriler.php"><i class="bi bi-people"></i>Müşteriler</a>
+          <a class="gt-mod" href="siparisler.php"><?php if ($pendingCount > 0): ?><span class="gt-mod-dot"><?= $pendingCount ?></span><?php endif; ?><i class="bi bi-basket"></i>Siparişler</a>
+          <a class="gt-mod" href="menu.php"><i class="bi bi-card-list"></i>Menü</a>
+          <a class="gt-mod" href="talepler.php"><?php if ($openReqCount > 0): ?><span class="gt-mod-dot"><?= $openReqCount ?></span><?php endif; ?><i class="bi bi-chat-left-text"></i>Talepler</a>
+          <a class="gt-mod" href="personel.php"><i class="bi bi-person-badge"></i>Personel</a>
+          <?php if ($irsaliyeYetkili): ?><a class="gt-mod" href="fatura-kes.php"><i class="bi bi-receipt-cutoff"></i>Fatura Kes</a><?php endif; ?>
+        </div>
+      </div>
+
+      <?php if ($barRows): ?>
+      <div class="cardx card-pad">
+        <div class="gt-h"><i class="bi bi-bar-chart-fill"></i> BUGÜN ÜRETİM VEREN FİRMALAR</div>
+        <div class="barchart">
+          <?php foreach ($barRows as $b): $w = $barMax > 0 ? max(4, round($b['val'] / $barMax * 100)) : 4; ?>
+            <div class="bar-row">
+              <span class="bar-name"><?= Helpers::e($b['name']) ?></span>
+              <span class="bar-track"><span class="bar-fill" style="width: <?= $w ?>%"></span></span>
+              <span class="bar-val"><?= number_format($b['val'], 0, ',', '.') ?></span>
+            </div>
+          <?php endforeach; ?>
+        </div>
+      </div>
+      <?php endif; ?>
 
       <!-- fable-023a: öğün kırılımı penceresi — satırdaki gizli alanları doldurur, sonra formu gönderir -->
       <div class="meal-modal" id="meal-modal" hidden>

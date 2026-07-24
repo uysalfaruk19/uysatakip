@@ -2663,11 +2663,12 @@ body.meal-open {
   grid-template-columns: none;
 }
 .customer-row .cr-firm {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
 }
 .customer-row .counter {
-  flex: 0 0 auto;
+  flex: 0 0 116px;
+  width: 116px;
 }
 .customer-row.missing .gt-rank {
   background: var(--red-tint);
@@ -2683,5 +2684,53 @@ body.meal-open {
 @media (max-width: 400px) {
   .customer-row {
     grid-template-columns: none;
+  }
+}
+
+/* fable-034b (denetim): HIZLI ERİŞİM — mockup KOMPAKT 4'lü grid (.g-mods/.g-mod).
+   Küçük kutu: accent ikon + tek satır etiket; rozet köşe noktası. */
+.gt-mods {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 9px;
+}
+.gt-mod {
+  position: relative;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 11px 4px;
+  text-align: center;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--ink);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gt-mod i {
+  display: block;
+  font-size: 17px;
+  color: var(--accent);
+  margin-bottom: 5px;
+}
+.gt-mod-dot {
+  position: absolute;
+  top: 5px;
+  right: 6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--red);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 16px;
+  text-align: center;
+}
+@media (max-width: 380px) {
+  .gt-mods {
+    grid-template-columns: repeat(3, 1fr);
   }
 }
