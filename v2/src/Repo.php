@@ -1559,15 +1559,7 @@ final class Repo
         $st->execute([$month]);
         $grup = [];
         foreach ($st->fetchAll() as $r) {
-            if (($r['source'] ?? 'manuel') === 'parasut') {
-                $d = (string) ($r['description'] ?? '');
-                $firma = trim(explode(' · ', $d)[0] ?? '');
-                if ($firma === '') {
-                    $firma = 'Paraşüt (tedarikçi bilinmiyor)';
-                }
-            } else {
-                $firma = 'Elle girilen · ' . (trim((string) ($r['category'] ?? '')) ?: 'Diğer');
-            }
+            $firma = $this->txFirma($r);
             if (!isset($grup[$firma])) {
                 $grup[$firma] = ['firma' => $firma, 'adet' => 0, 'toplam' => 0.0];
             }
@@ -3424,6 +3416,9 @@ final class Repo
         }
         $uretimCustomers = array_map(static fn($c) => (int) $c['id'], $this->listCustomersByCategory('uretim'));
 
+        $eslesme = $this->personelEslestirmeler(); // fable-035: personel→müşteri override
+        $persons = null;                            // lazy: customerPersonsMap()
+
         $per = [];
         $dagitilmamis = 0.0;
         $toplam = 0.0;
@@ -3432,6 +3427,26 @@ final class Repo
             $yuklu = $this->personelYukluMaliyet($pid, $ay)['yuklu_toplam'];
             $toplam += $yuklu;
             if ($yuklu <= 0) {
+                continue;
+            }
+            // fable-035: eşleştirme VARSA → SADECE o müşterilere KİŞİ oranında (elle atamayı ezer).
+            if (!empty($eslesme[$pid])) {
+                $targets = $eslesme[$pid];
+                $persons ??= $this->customerPersonsMap($ay);
+                $sub = 0.0;
+                foreach ($targets as $cid) {
+                    $sub += $persons[$cid] ?? 0.0;
+                }
+                if ($sub > 0) {
+                    foreach ($targets as $cid) {
+                        $per[$cid] = ($per[$cid] ?? 0.0) + $yuklu * ($persons[$cid] ?? 0.0) / $sub;
+                    }
+                } else {
+                    $n = count($targets);
+                    foreach ($targets as $cid) {
+                        $per[$cid] = ($per[$cid] ?? 0.0) + $yuklu / $n;
+                    }
+                }
                 continue;
             }
             $atama = $this->personelAtama($pid);
@@ -3698,24 +3713,177 @@ final class Repo
         return $out;
     }
 
+    // ── fable-035: Tedarikçi/Personel → müşteri MALİYET EŞLEŞTİRMESİ ──────
     /**
-     * Gideri ciro oranında müşterilere dağıt (RAPOR ANINDA — ciro değişince güncellenir).
-     *   'genel' gider: o ayki TÜM müşterilere ciroları oranında.
-     *   'musteri' gider: hedef müşteri(ler)e kendi ciroları oranında (tek → %100).
-     *   Hedef cirosu 0 ise EŞİT böl (hedefler arası); hiç hedef/müşteri yoksa 'dagitilmamis'.
-     * 'Personel' kategorili gider HARİÇ (personel yüklü maliyetiyle çift sayımı önler — netKarlilik ile eş).
+     * Bir gider tx satırından FİRMA (tedarikçi) adını türet — giderFirmaOzet ile TEK KAYNAK.
+     * Paraşüt: description'ın ' · ' öncesi (senkron 'TEDARİKÇİ · faturaNo' yazar).
+     * Elle girilen: 'Elle girilen · {kategori}'. $r: source/category/description alanları.
+     */
+    private function txFirma(array $r): string
+    {
+        if (($r['source'] ?? 'manuel') === 'parasut') {
+            $d = (string) ($r['description'] ?? '');
+            $firma = trim(explode(' · ', $d)[0] ?? '');
+            return $firma !== '' ? $firma : 'Paraşüt (tedarikçi bilinmiyor)';
+        }
+        return 'Elle girilen · ' . (trim((string) ($r['category'] ?? '')) ?: 'Diğer');
+    }
+
+    /**
+     * Firma/tedarikçi adı eşleştirme ANAHTARI — TR-uyumlu upper + trim.
+     * mb_strtoupper 'i'↔'İ' / 'ı'↔'I' tuzağını çözmek için önce strtr ile TR harflerini
+     * büyük karşılığına çevirir (KIRMIZI 1 == kırmızı 1 == Kırmızı 1). Yazarken de okurken de aynı.
+     */
+    public static function normTedarikci(string $s): string
+    {
+        $s = trim($s);
+        $s = strtr($s, ['i' => 'İ', 'ı' => 'I']);
+        return mb_substr(mb_strtoupper($s, 'UTF-8'), 0, 190);
+    }
+
+    /** Kayıtlı tedarikçi→müşteri eşleştirmeleri. @return array<string,array<int,int>> normAnahtar→[customer_id,...] */
+    public function tedarikciEslestirmeler(): array
+    {
+        $out = [];
+        foreach ($this->pdo->query('SELECT tedarikci, customer_id FROM tedarikci_musteri_map ORDER BY id')->fetchAll() as $r) {
+            $out[(string) $r['tedarikci']][] = (int) $r['customer_id'];
+        }
+        return $out;
+    }
+
+    /** Bir tedarikçinin eşleştirmesini ayarla (sil+yaz; boş liste = eşleşmeyi kaldır). Anahtar normalize. */
+    public function tedarikciEslestirmeKaydet(string $tedarikci, array $customerIds): void
+    {
+        $key = self::normTedarikci($tedarikci);
+        if ($key === '') {
+            return;
+        }
+        $own = !$this->pdo->inTransaction();
+        if ($own) {
+            $this->pdo->beginTransaction();
+        }
+        try {
+            $this->pdo->prepare('DELETE FROM tedarikci_musteri_map WHERE tedarikci = ?')->execute([$key]);
+            $ins = $this->pdo->prepare('INSERT INTO tedarikci_musteri_map (tedarikci, customer_id) VALUES (?, ?)');
+            foreach (array_unique(array_map('intval', $customerIds)) as $cid) {
+                if ($cid > 0) {
+                    $ins->execute([$key, $cid]);
+                }
+            }
+            if ($own) {
+                $this->pdo->commit();
+            }
+        } catch (\Throwable $e) {
+            if ($own) {
+                $this->pdo->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    /** Kayıtlı personel→müşteri eşleştirmeleri. @return array<int,array<int,int>> personel_id→[customer_id,...] */
+    public function personelEslestirmeler(): array
+    {
+        $out = [];
+        foreach ($this->pdo->query('SELECT personel_id, customer_id FROM personel_musteri_map ORDER BY id')->fetchAll() as $r) {
+            $out[(int) $r['personel_id']][] = (int) $r['customer_id'];
+        }
+        return $out;
+    }
+
+    /** Bir personelin eşleştirmesini ayarla (sil+yaz; boş liste = eşleşmeyi kaldır). */
+    public function personelEslestirmeKaydet(int $personelId, array $customerIds): void
+    {
+        if ($personelId <= 0) {
+            return;
+        }
+        $own = !$this->pdo->inTransaction();
+        if ($own) {
+            $this->pdo->beginTransaction();
+        }
+        try {
+            $this->pdo->prepare('DELETE FROM personel_musteri_map WHERE personel_id = ?')->execute([$personelId]);
+            $ins = $this->pdo->prepare('INSERT INTO personel_musteri_map (personel_id, customer_id) VALUES (?, ?)');
+            foreach (array_unique(array_map('intval', $customerIds)) as $cid) {
+                if ($cid > 0) {
+                    $ins->execute([$personelId, $cid]);
+                }
+            }
+            if ($own) {
+                $this->pdo->commit();
+            }
+        } catch (\Throwable $e) {
+            if ($own) {
+                $this->pdo->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    /**
+     * O ay müşteri başına TOPLAM kişi sayısı (üretim günlük persons toplamı). Ciro ile aynı
+     * kaynak (monthProductionByCustomer) → maliyet dağıtımında kişi ağırlığı. @return array<int,int>
+     */
+    public function customerPersonsMap(string $ay): array
+    {
+        $out = [];
+        foreach ($this->monthProductionByCustomer($ay) as $r) {
+            $out[(int) $r['customer_id']] = (int) $r['persons'];
+        }
+        return $out;
+    }
+
+    /**
+     * Son N ayda gider tx'lerinde görülen distinct FİRMA listesi (eşleştirme ekranı için).
+     * normAnahtar ile tekilleştirilmiş; 'Personel'/'Taşıma alış' kategorileri HARİÇ (dağıtımda
+     * zaten dışlanır — matching etkisiz olurdu). @return array<int,array{key:string,label:string,adet:int,toplam:float}>
+     */
+    public function distinctGiderFirmalar(int $aySayisi = 6): array
+    {
+        $bas = date('Y-m-01', strtotime('-' . max(0, $aySayisi - 1) . ' months'));
+        $st = $this->pdo->prepare(
+            "SELECT source, category, description, amount FROM transactions
+             WHERE type = 'gider' AND tx_date >= ?
+               AND (category IS NULL OR category NOT IN ('Personel', 'Taşıma alış'))"
+        );
+        $st->execute([$bas]);
+        $grup = [];
+        foreach ($st->fetchAll() as $r) {
+            $firma = $this->txFirma($r);
+            $key = self::normTedarikci($firma);
+            if ($key === '') {
+                continue;
+            }
+            if (!isset($grup[$key])) {
+                $grup[$key] = ['key' => $key, 'label' => $firma, 'adet' => 0, 'toplam' => 0.0];
+            }
+            $grup[$key]['adet']++;
+            $grup[$key]['toplam'] += (float) $r['amount'];
+        }
+        usort($grup, static fn(array $a, array $b) => $b['toplam'] <=> $a['toplam']);
+        return array_values($grup);
+    }
+
+    /**
+     * Gideri müşterilere dağıt (RAPOR ANINDA — ciro/kişi değişince güncellenir).
+     *   'musteri' gider: hedef müşteri(ler)e kendi ciroları oranında (elle seçim her şeyi ezer).
+     *   tedarikçi eşleşmesi VARSA (fable-035): eşleşen müşterilere o ayki KİŞİ SAYISI oranında.
+     *   aksi halde 'genel' gider: o ayki TÜM müşterilere ciroları oranında.
+     *   Ağırlık toplamı 0 ise EŞİT böl; hiç hedef/müşteri yoksa 'dagitilmamis'.
+     * 'Personel' + 'Taşıma alış' kategorili gider HARİÇ (çift sayımı önler).
      * @return array{per_customer:array<int,float>,dagitilmamis:float,toplam:float}
      */
     public function giderDagitim(string $ay): array
     {
         $ciro = $this->customerCiroMap($ay);
-        $totalCiro = array_sum($ciro);
         $allIds = array_keys($ciro);
+        $tedMap = null;   // lazy: tedarikciEslestirmeler()
+        $persons = null;  // lazy: customerPersonsMap()
 
         // fable-031: 'Taşıma alış' (KIRMIZI 1) genel havuza GİRMEZ — taşıma kârında
         // gerçek alış maliyeti olarak mahsup edilir (çift sayım olmasın).
         $st = $this->pdo->prepare(
-            "SELECT id, amount, alloc_type FROM transactions
+            "SELECT id, amount, alloc_type, source, category, description FROM transactions
              WHERE type = 'gider' AND substr(tx_date,1,7) = ?
                AND (category IS NULL OR category NOT IN ('Personel', 'Taşıma alış'))"
         );
@@ -3728,10 +3896,20 @@ final class Repo
             $amt = (float) $t['amount'];
             $toplam += $amt;
 
+            $weights = $ciro; // varsayılan ağırlık = ciro
             if ($t['alloc_type'] === 'musteri') {
                 $targets = $this->transactionTargets((int) $t['id']);
             } else {
-                $targets = $allIds;
+                // fable-035: tedarikçi eşleşmesi → o müşterilere KİŞİ oranında
+                $tedMap ??= $this->tedarikciEslestirmeler();
+                $key = self::normTedarikci($this->txFirma($t));
+                if (!empty($tedMap[$key])) {
+                    $targets = $tedMap[$key];
+                    $persons ??= $this->customerPersonsMap($ay);
+                    $weights = $persons;
+                } else {
+                    $targets = $allIds;
+                }
             }
             if (!$targets) {
                 $dagitilmamis += $amt; // hedef/müşteri yok → dağıtılamaz
@@ -3739,22 +3917,21 @@ final class Repo
             }
             $sub = 0.0;
             foreach ($targets as $cid) {
-                $sub += $ciro[$cid] ?? 0.0;
+                $sub += $weights[$cid] ?? 0.0;
             }
             if ($sub > 0) {
                 foreach ($targets as $cid) {
-                    $w = ($ciro[$cid] ?? 0.0) / $sub;
+                    $w = ($weights[$cid] ?? 0.0) / $sub;
                     $per[$cid] = ($per[$cid] ?? 0.0) + $amt * $w;
                 }
             } else {
-                // Hedeflerin cirosu yok → eşit böl (kayıp önle)
+                // Ağırlık toplamı 0 → eşit böl (kayıp önle)
                 $n = count($targets);
                 foreach ($targets as $cid) {
                     $per[$cid] = ($per[$cid] ?? 0.0) + $amt / $n;
                 }
             }
         }
-        unset($totalCiro);
         return ['per_customer' => $per, 'dagitilmamis' => $dagitilmamis, 'toplam' => $toplam];
     }
 
