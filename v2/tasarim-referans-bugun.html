@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Kokpit — GTO dili</title>
+    <style>
+      /* GTO (gto.css) dili birebir: soft mavi-gri zemin, beyaz 16px kartlar, navy üst bar,
+   koca 800-900 rakamlar, uppercase ikonlu kart başlıkları, mini stat kutuları. */
+      :root {
+        --kesin: #16a34a;
+        --kararsiz: #f59e0b;
+        --rakip: #dc2626;
+        --accent: #2563eb;
+        --navy: #16306b;
+        --navy2: #0f2350;
+        --bg: #eef2f8;
+        --card: #fff;
+        --line: #e5e9f2;
+        --ink: #16233d;
+        --mut: #64748b;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+      }
+      body {
+        background: var(--bg);
+        color: var(--ink);
+        font-family:
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          sans-serif;
+        font-size: 14px;
+        padding-bottom: 0;
+      }
+      .g-top {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background: linear-gradient(120deg, var(--navy), var(--navy2));
+        color: #fff;
+        padding: 14px 16px;
+      }
+      .g-brand {
+        font-weight: 800;
+        font-size: 16px;
+        letter-spacing: 0.2px;
+        flex: 1;
+        line-height: 1.2;
+      }
+      .g-brand span {
+        color: #7cb2f0;
+        font-weight: 600;
+        font-size: 12px;
+        display: block;
+        margin-top: 1px;
+      }
+      .g-logout {
+        background: rgba(255, 255, 255, 0.14);
+        border: none;
+        color: #fff;
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
+        font-size: 16px;
+      }
+      .g-main {
+        padding: 14px 14px 8px;
+        max-width: 760px;
+        margin: 0 auto;
+        width: 100%;
+      }
+      .g-card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 15px;
+        margin-bottom: 13px;
+        box-shadow: 0 1px 3px rgba(22, 48, 107, 0.05);
+      }
+      .g-h {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.6px;
+        text-transform: uppercase;
+        color: var(--mut);
+        margin-bottom: 12px;
+      }
+      .g-h i {
+        color: var(--accent);
+        font-style: normal;
+        font-size: 13px;
+      }
+      .g-h .hr {
+        margin-left: auto;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--accent);
+        letter-spacing: 0;
+        text-transform: none;
+      }
+
+      /* tarih şeridi */
+      .g-date {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .g-date button {
+        width: 40px;
+        height: 40px;
+        border: 1px solid var(--line);
+        background: #f6f8fc;
+        border-radius: 11px;
+        font-size: 16px;
+        color: var(--navy);
+        font-weight: 800;
+      }
+      .g-date .dt {
+        flex: 1;
+        text-align: center;
+      }
+      .g-date .dt b {
+        display: block;
+        font-size: 15.5px;
+        font-weight: 800;
+        color: var(--navy);
+      }
+      .g-date .dt span {
+        font-size: 11.5px;
+        color: var(--mut);
+        font-weight: 600;
+      }
+
+      /* nabız */
+      .g-pulse {
+        text-align: center;
+        padding: 4px 0 2px;
+      }
+      .g-pulse-n {
+        font-size: 46px;
+        font-weight: 900;
+        line-height: 0.95;
+        color: var(--navy);
+        letter-spacing: -1px;
+        font-variant-numeric: tabular-nums;
+      }
+      .g-pulse-l {
+        font-size: 13px;
+        color: var(--mut);
+        font-weight: 600;
+        margin-top: 5px;
+      }
+      .g-prog {
+        margin: 15px 0 4px;
+      }
+      .g-prog-top {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12.5px;
+        color: var(--mut);
+        margin-bottom: 6px;
+        font-weight: 600;
+      }
+      .g-prog-top b {
+        color: var(--ink);
+        font-size: 13.5px;
+      }
+      .g-track {
+        height: 15px;
+        background: #eef1f7;
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .g-fill {
+        height: 100%;
+        width: 67%;
+        border-radius: 8px;
+        background: linear-gradient(90deg, #1d4ed8, #16a34a);
+      }
+      .g-mini {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 9px;
+        margin-top: 14px;
+      }
+      .g-mini > div {
+        background: #f6f8fc;
+        border-radius: 12px;
+        padding: 11px 8px;
+        text-align: center;
+      }
+      .g-mini .mn {
+        font-size: 23px;
+        font-weight: 800;
+        color: var(--navy);
+        line-height: 1;
+      }
+      .g-mini .mn.hot {
+        color: var(--kesin);
+      }
+      .g-mini .ml {
+        font-size: 11px;
+        color: var(--mut);
+        margin-top: 3px;
+        font-weight: 600;
+      }
+
+      /* müşteri satırları */
+      .g-kr {
+        border-top: 1px solid #f1f4f9;
+        padding: 11px 2px;
+        display: flex;
+        align-items: center;
+        gap: 11px;
+      }
+      .g-kr:first-child {
+        border-top: none;
+      }
+      .g-rank {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        background: #f6f8fc;
+        color: var(--navy);
+        font-size: 14px;
+        font-weight: 800;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+      .g-kr.warn .g-rank {
+        background: #fef2f2;
+        color: var(--rakip);
+      }
+      .g-kr-firm {
+        flex: 1;
+        min-width: 0;
+      }
+      .g-kr-ad {
+        font-size: 13.5px;
+        font-weight: 700;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .g-kr-sub {
+        font-size: 11.5px;
+        color: var(--mut);
+        margin-top: 1px;
+        font-weight: 600;
+      }
+      .g-kr.warn .g-kr-sub {
+        color: var(--rakip);
+      }
+      .g-count {
+        display: flex;
+        align-items: center;
+        border: 1px solid var(--line);
+        border-radius: 11px;
+        overflow: hidden;
+        flex-shrink: 0;
+        background: #fff;
+      }
+      .g-count b {
+        width: 34px;
+        height: 38px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 17px;
+        color: var(--navy);
+        background: #f6f8fc;
+        font-weight: 800;
+      }
+      .g-count input {
+        border: none;
+        width: 46px;
+        text-align: center;
+        font-weight: 800;
+        font-size: 15px;
+        color: var(--ink);
+        font-variant-numeric: tabular-nums;
+        outline: none;
+      }
+
+      /* modül butonları */
+      .g-mods {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 9px;
+      }
+      .g-mod {
+        background: #f6f8fc;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 11px 4px;
+        text-align: center;
+        font-size: 11.5px;
+        font-weight: 700;
+        color: var(--ink);
+      }
+      .g-mod i {
+        display: block;
+        font-style: normal;
+        font-size: 17px;
+        color: var(--accent);
+        margin-bottom: 5px;
+      }
+
+      /* alt aksiyon + tab */
+      .g-actions{
+        padding: 10px 14px;
+        background: linear-gradient(
+          180deg,
+          rgba(238, 242, 248, 0),
+          var(--bg) 40%
+        );
+      }
+      .g-actions .in {
+        max-width: 760px;
+        margin: 0 auto;
+        display: flex;
+        gap: 9px;
+      }
+      .g-act {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 13px;
+        font-weight: 700;
+        padding: 13px 6px;
+        border-radius: 11px;
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--ink);
+        box-shadow: 0 1px 3px rgba(22, 48, 107, 0.07);
+      }
+      .g-act.accent {
+        background: var(--navy);
+        border-color: var(--navy);
+        color: #fff;
+      }
+      .g-tabs{margin-top:10px;
+        background: #fff;
+        border-top: 1px solid var(--line);
+        display: flex;
+        padding: 7px 4px 10px;
+      }
+      .g-tab {
+        flex: 1;
+        text-align: center;
+        font-size: 10.5px;
+        font-weight: 700;
+        color: var(--mut);
+      }
+      .g-tab i {
+        display: block;
+        font-style: normal;
+        font-size: 18px;
+        margin-bottom: 2px;
+      }
+      .g-tab.on {
+        color: var(--navy);
+      }
+      .g-tab .plus {
+        width: 44px;
+        height: 44px;
+        margin: -14px auto 2px;
+        background: var(--navy);
+        color: #fff;
+        border-radius: 14px;
+        font-size: 22px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 6px 16px rgba(22, 48, 107, 0.35);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="g-top">
+      <div class="g-brand">UYSA Kokpit<span>Günaydın Ömer</span></div>
+      <button class="g-logout">⏻</button>
+    </div>
+    <div class="g-main">
+      <div class="g-card">
+        <div class="g-date">
+          <button>‹</button>
+          <div class="dt">
+            <b>23 Temmuz Perşembe</b><span>bugün · 4/6 müşteri girildi</span>
+          </div>
+          <button>›</button>
+        </div>
+      </div>
+
+      <div class="g-card">
+        <div class="g-h"><i>◉</i> GÜNÜN NABZI</div>
+        <div class="g-pulse">
+          <div class="g-pulse-n">₺56.965</div>
+          <div class="g-pulse-l">bugünkü ciro</div>
+        </div>
+        <div class="g-prog">
+          <div class="g-prog-top">
+            <span>Sayı girişi</span><b>4/6 müşteri</b>
+          </div>
+          <div class="g-track"><div class="g-fill"></div></div>
+        </div>
+        <div class="g-mini">
+          <div>
+            <div class="mn">220</div>
+            <div class="ml">Toplam kişi</div>
+          </div>
+          <div>
+            <div class="mn hot">6/6</div>
+            <div class="ml">İrsaliye kesildi</div>
+          </div>
+          <div>
+            <div class="mn" style="color: var(--rakip)">2</div>
+            <div class="ml">Bekleyen</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="g-card">
+        <div class="g-h">
+          <i>▤</i> MÜŞTERİ SAYILARI <span class="hr">İrsaliyelendir ›</span>
+        </div>
+        <div class="g-kr">
+          <div class="g-rank">B</div>
+          <div class="g-kr-firm">
+            <div class="g-kr-ad">BOMİ</div>
+            <div class="g-kr-sub">öğle</div>
+          </div>
+          <div class="g-count"><b>−</b><input value="75" /><b>+</b></div>
+        </div>
+        <div class="g-kr">
+          <div class="g-rank">C</div>
+          <div class="g-kr-firm">
+            <div class="g-kr-ad">CANTAŞ</div>
+            <div class="g-kr-sub">öğle</div>
+          </div>
+          <div class="g-count"><b>−</b><input value="70" /><b>+</b></div>
+        </div>
+        <div class="g-kr">
+          <div class="g-rank">E</div>
+          <div class="g-kr-firm">
+            <div class="g-kr-ad">ERMETAL</div>
+            <div class="g-kr-sub">12 öğlen · 5 akşam</div>
+          </div>
+          <div class="g-count"><b>−</b><input value="17" /><b>+</b></div>
+        </div>
+        <div class="g-kr warn">
+          <div class="g-rank">M</div>
+          <div class="g-kr-firm">
+            <div class="g-kr-ad">Marmara Teknik</div>
+            <div class="g-kr-sub">Bekliyor — sayı girilmedi</div>
+          </div>
+          <div class="g-count"><b>−</b><input value="" /><b>+</b></div>
+        </div>
+        <div class="g-kr">
+          <div class="g-rank">P</div>
+          <div class="g-kr-firm">
+            <div class="g-kr-ad">PENDORYA</div>
+            <div class="g-kr-sub">25 öğlen · 25 akşam · 8 kumanya</div>
+          </div>
+          <div class="g-count"><b>−</b><input value="58" /><b>+</b></div>
+        </div>
+        <div class="g-kr warn">
+          <div class="g-rank">T</div>
+          <div class="g-kr-firm">
+            <div class="g-kr-ad">TALAY LOJİSTİK</div>
+            <div class="g-kr-sub">Bekliyor — sayı girilmedi</div>
+          </div>
+          <div class="g-count"><b>−</b><input value="" /><b>+</b></div>
+        </div>
+      </div>
+
+      <div class="g-card">
+        <div class="g-h"><i>▦</i> HIZLI ERİŞİM</div>
+        <div class="g-mods">
+          <div class="g-mod"><i>👥</i>Müşteriler</div>
+          <div class="g-mod"><i>🧾</i>Fatura Kes</div>
+          <div class="g-mod"><i>🍲</i>Menü</div>
+          <div class="g-mod"><i>📋</i>Siparişler</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="g-actions">
+      <div class="in">
+        <div class="g-act">Cumayı kopyala</div>
+        <div class="g-act">Haftaya kopyala</div>
+        <div class="g-act accent">Kaydet</div>
+      </div>
+    </div>
+
+    <div class="g-tabs">
+      <div class="g-tab on"><i>⌂</i>Bugün</div>
+      <div class="g-tab"><i>👥</i>Müşteri</div>
+      <div class="g-tab"><div class="plus">+</div></div>
+      <div class="g-tab"><i>📈</i>Kâr/Zarar</div>
+      <div class="g-tab"><i>💼</i>Finans</div>
+    </div>
+  </body>
+</html>
