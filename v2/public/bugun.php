@@ -237,18 +237,6 @@ $critCount = count($repo->criticalStock());
 $supplyCount = $repo->openSupplyRequestsCount();
 $openReqCount = $repo->openRequestsCount();
 
-// Bar grafik verisi (girilen firmalar × kişi), broşür "Bugün Sipariş Veren Firmalar".
-$barRows = [];
-$barMax = 0;
-foreach ($rowsData as $r) {
-    if ($r['val'] > 0) {
-        $barRows[] = ['name' => $r['name'], 'val' => $r['val']];
-        $barMax = max($barMax, $r['val']);
-    }
-}
-usort($barRows, static fn($a, $b) => $b['val'] <=> $a['val']);
-$barRows = array_slice($barRows, 0, 6);
-
 // fable-034b (denetim): anasayfa üst barı MARKALI — "UYSA Kokpit" + saat bazlı selamlama (mockup).
 $pageTitle = 'UYSA Kokpit';
 $homeBrand = true;
@@ -406,21 +394,6 @@ require __DIR__ . '/partials/header.php';
           <?php if ($irsaliyeYetkili): ?><a class="gt-mod" href="fatura-kes.php"><i class="bi bi-receipt-cutoff"></i>Fatura Kes</a><?php endif; ?>
         </div>
       </div>
-
-      <?php if ($barRows): ?>
-      <div class="cardx card-pad">
-        <div class="gt-h"><i class="bi bi-bar-chart-fill"></i> BUGÜN ÜRETİM VEREN FİRMALAR</div>
-        <div class="barchart">
-          <?php foreach ($barRows as $b): $w = $barMax > 0 ? max(4, round($b['val'] / $barMax * 100)) : 4; ?>
-            <div class="bar-row">
-              <span class="bar-name"><?= Helpers::e($b['name']) ?></span>
-              <span class="bar-track"><span class="bar-fill" style="width: <?= $w ?>%"></span></span>
-              <span class="bar-val"><?= number_format($b['val'], 0, ',', '.') ?></span>
-            </div>
-          <?php endforeach; ?>
-        </div>
-      </div>
-      <?php endif; ?>
 
       <!-- fable-023a: öğün kırılımı penceresi — satırdaki gizli alanları doldurur, sonra formu gönderir -->
       <div class="meal-modal" id="meal-modal" hidden>
