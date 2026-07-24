@@ -4,7 +4,10 @@
 /** @var array $u  current user */
 use Uysa\Helpers;
 $pageTitle = $pageTitle ?? 'UYSA Kokpit';
-$eyebrow = $eyebrow ?? ('UYSA Kokpit · ' . ($u['display_name'] ?: $u['username']));
+// fable-034: GTO dili — üst bar lacivert; selamlama saat bazlı (mockup "Günaydın Ömer 👋").
+$h = (int) date('G');
+$selam = $h < 6 ? 'İyi geceler' : ($h < 11 ? 'Günaydın' : ($h < 18 ? 'İyi günler' : 'İyi akşamlar'));
+$eyebrow = $eyebrow ?? ($selam . ' ' . ($u['display_name'] ?: $u['username']) . ' 👋');
 ?><!doctype html>
 <html lang="tr">
 <head>
@@ -13,7 +16,7 @@ $eyebrow = $eyebrow ?? ('UYSA Kokpit · ' . ($u['display_name'] ?: $u['username'
 <meta name="theme-color" content="#f2f6fa">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <title>UYSA Kokpit · <?= Helpers::e($pageTitle) ?></title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+<link href="/assets/bootstrap-icons.css" rel="stylesheet">
 <link href="assets/app.css?v=<?= filemtime(__DIR__ . '/../assets/app.css') ?>" rel="stylesheet">
 </head>
 <body class="admin-page"><!-- fable-025: sabit-kabuk deseni (alt bar titremesi) admin'e de uygulandı -->
