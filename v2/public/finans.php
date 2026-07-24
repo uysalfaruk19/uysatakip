@@ -155,13 +155,7 @@ require __DIR__ . '/partials/header.php';
         <?php endif; ?>
       </div>
 
-      <form method="get" class="date-row">
-        <div class="date-pill"><i class="bi bi-calendar2-week"></i>
-          <input type="month" name="ay" value="<?= Helpers::e($month) ?>" onchange="this.form.submit()">
-        </div>
-      </form>
-
-      <?php
+<?php
       // fable-011: üst kartlar artık OPERASYONEL aylık kâr (Ömer isteği: işlenmiş satışlar
       // gelirde, personel + girilen giderler giderde). Sadece transactions'a bakan eski
       // "nakit" görünümü boş kalıyordu. Kaynak: üretim cirosu + taşıma + elle işlemler.
@@ -169,15 +163,43 @@ require __DIR__ . '/partials/header.php';
       $giderTop = $nk['personel'] + $nk['hammadde'] + $tasimaTot['alis'] + $tasimaTot['gider'];
       $netTop = $gelirTop - $giderTop;
       ?>
-      <?php /* fable-012: Gelir/Gider kartlarına dokununca kısa özet açılır (kalemler). */ ?>
-      <div class="summary-grid">
-        <div class="summary-card tint-green tap-card" role="button" tabindex="0" onclick="toggleFin('fin-gelir')">
-          <p class="label">Gelir (satışlar) <i class="bi bi-chevron-down chev"></i></p><p class="metric">₺ <?= Helpers::money($gelirTop) ?></p>
+      <div class="cardx card-pad">
+        <form method="get" class="gt-date">
+          <div class="dt" style="position:relative">
+            <b><?= Helpers::e(ay_label_tr($month)) ?></b>
+            <span>gelir / gider özeti</span>
+            <input type="month" name="ay" value="<?= Helpers::e($month) ?>" onchange="this.form.submit()"
+                   aria-label="Ay seç" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer">
+          </div>
+        </form>
+      </div>
+
+      <!-- fable-034: AYIN ÖZETİ (mockup birebir) — 3 mini + aksiyonlar. Gelir/Gider mini'ye
+           dokununca kalem dökümü açılır (fable-012 toggleFin korunur). -->
+      <div class="cardx card-pad">
+        <div class="gt-h"><i class="bi bi-broadcast"></i> AYIN ÖZETİ</div>
+        <div class="gt-mini" style="margin-top:2px">
+          <div class="tap-card" role="button" tabindex="0" onclick="toggleFin('fin-gelir')">
+            <div class="gt-mn ok">₺<?= number_format(round($gelirTop), 0, ',', '.') ?></div><div class="gt-ml">Gelir <i class="bi bi-chevron-down chev"></i></div>
+          </div>
+          <div class="tap-card" role="button" tabindex="0" onclick="toggleFin('fin-gider')">
+            <div class="gt-mn bad">₺<?= number_format(round($giderTop), 0, ',', '.') ?></div><div class="gt-ml">Gider <i class="bi bi-chevron-down chev"></i></div>
+          </div>
+          <div>
+            <div class="gt-mn"><?= $netTop < 0 ? '−' : '' ?>₺<?= number_format(round(abs($netTop)), 0, ',', '.') ?></div><div class="gt-ml">Net</div>
+          </div>
         </div>
-        <div class="summary-card tint-orange tap-card" role="button" tabindex="0" onclick="toggleFin('fin-gider')">
-          <p class="label">Gider (personel+işletme) <i class="bi bi-chevron-down chev"></i></p><p class="metric">₺ <?= Helpers::money($giderTop) ?></p>
+        <div class="gt-acts" style="margin-top:13px;display:flex;gap:9px">
+          <?php if (Auth::isAdmin($u)): ?>
+          <form method="post" style="flex:1;display:flex">
+            <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
+            <input type="hidden" name="form" value="parasut_cek">
+            <input type="hidden" name="ay" value="<?= Helpers::e($month) ?>">
+            <button class="btn-action btn-secondaryx flex-fill" type="submit"><i class="bi bi-cloud-download"></i> Paraşüt'ten getir</button>
+          </form>
+          <?php endif; ?>
+          <button class="btn-action btn-primaryx flex-fill" type="button" onclick="toggleSheet('add-sheet')"><i class="bi bi-plus-lg"></i> Gelir / Gider ekle</button>
         </div>
-        <div class="summary-card wide"><p class="label">Net kâr</p><p class="metric <?= $netTop < 0 ? 'neg' : '' ?>">₺ <?= Helpers::money($netTop) ?></p></div>
       </div>
 
       <div class="cardx card-pad fin-detay" id="fin-gelir" style="display:none">
@@ -210,22 +232,39 @@ require __DIR__ . '/partials/header.php';
         <i class="bi bi-chevron-right" style="font-size:18px;color:var(--primary)"></i>
       </a>
 
+      <?php
+      // fable-034: GİDER — FİRMA KARNESİ (mockup birebir). Her zaman görünür (kim bana ne kesiyor).
+      $firmaKarne = $repo->giderFirmaOzet($month);
+      $firmaMax = 0.0;
+      foreach ($firmaKarne as $f) { $firmaMax = max($firmaMax, (float) $f['toplam']); }
+      ?>
+      <?php if ($firmaKarne): ?>
+      <div class="cardx card-pad">
+        <div class="gt-h"><i class="bi bi-buildings-fill"></i> GİDER — FİRMA KARNESİ</div>
+        <?php foreach (array_slice($firmaKarne, 0, 6) as $f): $w = $firmaMax > 0 ? max(4, (int) round((float) $f['toplam'] / $firmaMax * 100)) : 4; ?>
+          <div class="gt-kr">
+            <div class="gt-kr-head">
+              <div class="gt-rank"><?= Helpers::e(mb_strtoupper(mb_substr((string) $f['firma'], 0, 1, 'UTF-8'), 'UTF-8')) ?></div>
+              <div class="gt-kr-firm">
+                <div class="gt-kr-ad"><?= Helpers::e($f['firma']) ?></div>
+                <div class="gt-kr-sub"><?= (int) $f['adet'] ?> fatura</div>
+              </div>
+              <div class="gt-kr-val bad">₺<?= Helpers::money((float) $f['toplam']) ?></div>
+            </div>
+            <div class="gt-bar"><i class="bad" style="width: <?= $w ?>%"></i></div>
+          </div>
+        <?php endforeach; ?>
+        <div class="gt-note">detay için firma bazında filtresine bak</div>
+      </div>
+      <?php endif; ?>
+
+      <div class="section-head"><div class="gt-h" style="margin:0"><i class="bi bi-list-ul"></i> SON HAREKETLER</div></div>
       <div class="segmented">
         <a class="chip <?= $filter === 'all' ? 'active' : '' ?>" href="finans.php?ay=<?= $month ?>&tur=all">Tümü</a>
         <a class="chip <?= $filter === 'gelir' ? 'active' : '' ?>" href="finans.php?ay=<?= $month ?>&tur=gelir">Gelir</a>
         <a class="chip <?= $filter === 'gider' ? 'active' : '' ?>" href="finans.php?ay=<?= $month ?>&tur=gider">Gider</a>
         <?php // fable-031 (Ömer): "firma firma bana ne fatura kesiyor" — aylık tedarikçi özeti ?>
         <a class="chip <?= $filter === 'firma' ? 'active' : '' ?>" href="finans.php?ay=<?= $month ?>&tur=firma">Firma bazında</a>
-        <?php // fable-029b (Ömer): form artık varsayılan GİZLİ — bu buton açar ?>
-        <button class="chip" type="button" onclick="toggleSheet('add-sheet')"><i class="bi bi-plus-lg"></i> Ekle</button>
-        <?php if (Auth::isAdmin($u)): // fable-030: giderler Paraşüt'ten tek dokunuş (Hikari deseni) ?>
-        <form method="post" style="display:inline">
-          <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
-          <input type="hidden" name="form" value="parasut_cek">
-          <input type="hidden" name="ay" value="<?= Helpers::e($month) ?>">
-          <button class="chip" type="submit"><i class="bi bi-cloud-download"></i> Paraşüt'ten getir</button>
-        </form>
-        <?php endif; ?>
       </div>
 
       <?php if ($filter === 'firma'): // fable-031: gider FİRMA özeti ?>
@@ -252,29 +291,25 @@ require __DIR__ . '/partials/header.php';
           Bu ay henüz kayıt yok.
           <div class="mt-3"><button class="btn-action btn-secondaryx" type="button" onclick="toggleSheet('add-sheet')">Gider / gelir ekle</button></div>
         </div>
-      <?php else: ?>
-        <?php foreach ($byDay as $day => $items): ?>
-          <div class="cardx card-pad">
-            <h2><?= Helpers::e(gun_label_tr($day)) ?></h2>
-            <div class="list-groupx">
-              <?php foreach ($items as $t):
-                  $isGelir = $t['type'] === 'gelir';
-                  $party = $t['customer_name'] ?: $t['supplier_name'] ?: '';
-                  $meta = $t['description'] ?: ($party ? ($isGelir ? 'Müşteri: ' : 'Tedarikçi: ') . $party : '');
-                  if ($t['file_id']) { $meta = trim($meta . ' · fatura fotoğrafı eklendi', ' ·'); }
-              ?>
-                <div class="flow-item">
-                  <span class="flow-icon <?= $isGelir ? '' : 'out' ?>"><i class="bi <?= $isGelir ? 'bi-arrow-down-left' : 'bi-arrow-up-right' ?>"></i></span>
-                  <div>
-                    <strong><?= Helpers::e($t['category'] ?: ($isGelir ? 'Gelir' : 'Gider')) ?><?= $party ? ' · ' . Helpers::e($party) : '' ?></strong>
-                    <p class="row-meta"><?= Helpers::e($meta ?: '—') ?></p>
-                  </div>
-                  <span class="amount <?= $isGelir ? 'in' : 'out' ?>">₺ <?= Helpers::money((float) $t['amount']) ?></span>
-                </div>
-              <?php endforeach; ?>
-            </div>
-          </div>
-        <?php endforeach; ?>
+      <?php else: // fable-034: gün gün son hareketler (mockup gt-tx) — tek kart ?>
+        <div class="cardx card-pad">
+          <?php foreach ($byDay as $day => $items): ?>
+            <div class="gt-day"><?= Helpers::e(gun_label_tr($day)) ?></div>
+            <?php foreach ($items as $t):
+                $isGelir = $t['type'] === 'gelir';
+                $party = $t['customer_name'] ?: $t['supplier_name'] ?: '';
+                $meta = $t['description'] ?: ($party ? ($isGelir ? 'Müşteri: ' : 'Tedarikçi: ') . $party : '');
+                if ($t['file_id']) { $meta = trim($meta . ' · fatura fotoğrafı eklendi', ' ·'); }
+                $baslik = ($t['category'] ?: ($isGelir ? 'Gelir' : 'Gider')) . ($party ? ' · ' . $party : '');
+            ?>
+              <div class="gt-tx">
+                <div class="gt-tx-ic <?= $isGelir ? 'in' : 'out' ?>"><i class="bi <?= $isGelir ? 'bi-arrow-down-left' : 'bi-arrow-up-right' ?>"></i></div>
+                <div class="gt-tn"><b><?= Helpers::e($baslik) ?></b><span><?= Helpers::e($meta ?: '—') ?></span></div>
+                <div class="gt-tv <?= $isGelir ? 'in' : 'out' ?>"><?= $isGelir ? '+' : '−' ?>₺<?= Helpers::money((float) $t['amount']) ?></div>
+              </div>
+            <?php endforeach; ?>
+          <?php endforeach; ?>
+        </div>
       <?php endif; ?>
 
       <?php // fable-029b (Ömer): "finansta gider ekle gözükmesin" — form varsayılan GİZLİ,

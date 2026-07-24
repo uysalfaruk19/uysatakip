@@ -253,43 +253,59 @@ $pageTitle = 'Panel';
 $active = 'bugun';
 require __DIR__ . '/partials/header.php';
 ?>
-      <div class="date-row">
-        <a class="icon-btn" href="bugun.php?date=<?= $prevDay ?>" aria-label="Önceki gün"><i class="bi bi-chevron-left"></i></a>
-        <form method="get" class="date-pill">
-          <i class="bi bi-calendar2-week"></i>
-          <input type="date" name="date" value="<?= Helpers::e($date) ?>" onchange="this.form.submit()">
-        </form>
-        <a class="icon-btn" href="bugun.php?date=<?= $nextDay ?>" aria-label="Sonraki gün"><i class="bi bi-chevron-right"></i></a>
+<?php
+        // fable-034: GTO dili — tarih şeridi kart içinde (mockup birebir)
+        $gunTr = ['Mon' => 'Pazartesi', 'Tue' => 'Salı', 'Wed' => 'Çarşamba', 'Thu' => 'Perşembe', 'Fri' => 'Cuma', 'Sat' => 'Cumartesi', 'Sun' => 'Pazar'];
+        $ayTr = [1 => 'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+        $ts = strtotime($date);
+        $trDate = (int) date('j', $ts) . ' ' . $ayTr[(int) date('n', $ts)] . ' ' . ($gunTr[date('D', $ts)] ?? '');
+        $bekleyenSayi = max(0, $total - $filled);
+        $progPct = $total > 0 ? (int) round($filled / $total * 100) : 0;
+        ?>
+      <div class="cardx card-pad">
+        <div class="gt-date">
+          <a class="nav" href="bugun.php?date=<?= $prevDay ?>" aria-label="Önceki gün">‹</a>
+          <form method="get" class="dt" style="position:relative">
+            <b><?= Helpers::e($trDate) ?></b>
+            <span><?= $date === Helpers::today() ? 'bugün · ' : '' ?><?= $filled ?>/<?= $total ?> müşteri girildi</span>
+            <input type="date" name="date" value="<?= Helpers::e($date) ?>" onchange="this.form.submit()"
+                   aria-label="Tarih seç" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer">
+          </form>
+          <a class="nav" href="bugun.php?date=<?= $nextDay ?>" aria-label="Sonraki gün">›</a>
+        </div>
       </div>
 
       <?php if ($flash): ?><div class="flash <?= $flashOk ? 'ok' : 'err' ?>"><?= Helpers::e($flash) ?></div><?php endif; ?>
 
-      <div class="stat-stack">
-        <div class="stat-card stat-green">
-          <div class="ico"><i class="bi bi-cash-stack"></i></div>
-          <div class="txt">
-            <p class="lbl"><?= $date === Helpers::today() ? 'Bugünkü toplam ciro' : Helpers::e(date('d.m', strtotime($date))) . ' toplam ciro' ?></p>
-            <p class="val">₺ <span id="sum-amount"><?= Helpers::money($sumA) ?></span></p>
+      <!-- fable-034: GÜNÜN NABZI (mockup birebir) — koca ciro + ilerleme + 3 mini stat -->
+      <div class="cardx card-pad">
+        <div class="gt-h"><i class="bi bi-broadcast"></i> GÜNÜN NABZI</div>
+        <div class="gt-pulse">
+          <div class="gt-pulse-n">₺<span id="sum-amount"><?= Helpers::money($sumA) ?></span></div>
+          <div class="gt-pulse-l"><?= $date === Helpers::today() ? 'bugünkü ciro' : Helpers::e(date('d.m', strtotime($date))) . ' cirosu' ?></div>
+        </div>
+        <div class="gt-prog">
+          <div class="gt-prog-top"><span>Sayı girişi</span><b id="sum-filled"><?= $filled ?>/<?= $total ?> girildi</b></div>
+          <div class="gt-track"><div class="gt-fill" style="width: <?= $progPct ?>%"></div></div>
+        </div>
+        <div class="gt-mini">
+          <div>
+            <div class="gt-mn" id="sum-persons"><?= number_format($sumP, 0, ',', '.') ?></div>
+            <div class="gt-ml">Toplam kişi</div>
+          </div>
+          <div>
+            <div class="gt-mn<?= $bekleyenSayi > 0 ? ' bad' : ' ok' ?>"><?= $bekleyenSayi ?></div>
+            <div class="gt-ml">Bekleyen</div>
+          </div>
+          <div>
+            <div class="gt-mn"><?= $total ?></div>
+            <div class="gt-ml">Aktif müşteri</div>
           </div>
         </div>
-        <div class="stat-card stat-orange">
-          <div class="ico"><i class="bi bi-people-fill"></i></div>
-          <div class="txt">
-            <p class="lbl"><?= $date === Helpers::today() ? 'Bugünkü toplam kişi' : Helpers::e(date('d.m', strtotime($date))) . ' toplam kişi' ?></p>
-            <p class="val" id="sum-persons"><?= number_format($sumP, 0, ',', '.') ?></p>
-          </div>
-        </div>
-        <a class="stat-card stat-blue" href="#musteri-sayilari" aria-label="Müşteri sayılarına git">
-          <div class="ico"><i class="bi bi-shop"></i></div>
-          <div class="txt">
-            <p class="lbl">Giriş yapılan müşteri</p>
-            <!-- fable-023a: JS recalc "x/y girildi" yazıyordu; ilk boyama da aynı olsun (zıplama yok) -->
-            <p class="val"><span id="sum-filled"><?= $filled ?>/<?= $total ?> girildi</span></p>
-          </div>
-        </a>
       </div>
 
-      <div class="section-head"><h2>Bölümler</h2></div>
+      <div class="cardx card-pad">
+        <div class="gt-h"><i class="bi bi-grid-3x3-gap-fill"></i> HIZLI ERİŞİM</div>
       <div class="mod-grid">
         <a class="mod-card i-green" href="musteriler.php">
           <div class="mico"><i class="bi bi-people"></i></div>
@@ -326,10 +342,11 @@ require __DIR__ . '/partials/header.php';
         </a>
         <?php endif; ?>
       </div>
+      </div><!-- /HIZLI ERİŞİM kartı (fable-034) -->
 
       <?php if ($barRows): ?>
       <div class="cardx card-pad">
-        <h2>Bugün üretim veren firmalar</h2>
+        <div class="gt-h"><i class="bi bi-bar-chart-fill"></i> BUGÜN ÜRETİM VEREN FİRMALAR</div>
         <div class="barchart">
           <?php foreach ($barRows as $b): $w = $barMax > 0 ? max(4, round($b['val'] / $barMax * 100)) : 4; ?>
             <div class="bar-row">
@@ -348,7 +365,7 @@ require __DIR__ . '/partials/header.php';
         <div class="cardx card-pad" id="musteri-sayilari" style="scroll-margin-top: 14px">
           <!-- fable-023b: başlık + İrsaliyelendir (Paraşüt e-İrsaliye); sayı girilmemişse pasif -->
           <div class="head-row">
-            <h2>Müşteri sayıları</h2>
+            <div class="gt-h" style="margin:0"><i class="bi bi-people-fill"></i> MÜŞTERİ SAYILARI</div>
             <?php if ($irsaliyeYetkili): ?>
             <button type="button" class="btn-chip" id="irs-open"<?= $irsaliyeGirilen === 0 ? ' disabled' : '' ?>
               aria-haspopup="dialog" title="<?= $irsaliyeGirilen === 0 ? 'Bugün için sayı girilmemiş' : 'Seçtiğin müşterilere Paraşüt\'ten irsaliye kes' ?>">
@@ -375,8 +392,9 @@ require __DIR__ . '/partials/header.php';
             ]), ENT_QUOTES);
           ?>
             <div class="customer-row <?= $missing ? 'missing' : '' ?> <?= $isFocus ? 'is-focus' : '' ?>"<?= $isFocus ? ' id="focus-row"' : '' ?> data-price="<?= $r['price'] ?>" data-cid="<?= $r['cid'] ?>" data-name="<?= Helpers::e($r['name']) ?>" data-base="<?= $base ?>">
-              <div>
-                <div class="row-title"><span class="status-dot <?= $missing ? 'warn' : '' ?>"></span>
+              <div class="gt-rank" aria-hidden="true"><?= Helpers::e(mb_strtoupper(mb_substr($r['name'], 0, 1, 'UTF-8'), 'UTF-8')) ?></div>
+              <div class="cr-firm">
+                <div class="row-title"><span class="status-dot <?= $missing ? 'warn' : '' ?>" hidden></span>
                   <!-- fable-023a: müşteri adı = öğün kırılımı penceresini açan buton -->
                   <button type="button" class="row-name-btn" data-meal-open aria-haspopup="dialog">
                     <strong><?= Helpers::e($r['name']) ?></strong><i class="bi bi-sliders2" aria-hidden="true"></i>
