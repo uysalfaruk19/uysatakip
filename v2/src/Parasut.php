@@ -419,6 +419,103 @@ final class Parasut
         return $adet > 0 ? ['adet' => $adet, 'net' => round($net, 2)] : null;
     }
 
+    /**
+     * fable-044: Gelen e-faturanın SATIR SATIR DÖKÜMÜ (ürün · miktar · birim · birim fiyat · tutar).
+     * eInvoiceLineTotals ile AYNI kaynak (signed_ubl zip → UBL XML) ama toplam yerine her satırı döner.
+     * gider_kalem senkronu bunu kullanır. Okunamazsa (zip yok / XML bozuk / satır yok) null.
+     * @return array<int,array{urun:string,miktar:?float,birim:?string,birim_fiyat:?float,tutar:float}>|null
+     */
+    public static function eInvoiceLines(string $eInvoiceId): ?array
+    {
+        $company = (string) Env::get('PARASUT_COMPANY_ID', '');
+        if ($company === '' || !class_exists(\ZipArchive::class)) {
+            return null;
+        }
+        $token = self::token();
+        $ch = curl_init(self::API_BASE . '/' . rawurlencode($company) . '/e_invoices/' . rawurlencode($eInvoiceId) . '/signed_ubl');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $token], CURLOPT_TIMEOUT => 40,
+        ]);
+        $bin = curl_exec($ch);
+        $st = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($bin === false || $st !== 200 || strlen((string) $bin) < 100) {
+            return null;
+        }
+        $tmp = tempnam(sys_get_temp_dir(), 'ubl');
+        file_put_contents($tmp, $bin);
+        $xmlStr = null;
+        $z = new \ZipArchive();
+        if ($z->open($tmp) === true) {
+            for ($i = 0; $i < $z->numFiles; $i++) {
+                if (preg_match('/\.xml$/i', (string) $z->getNameIndex($i))) {
+                    $xmlStr = $z->getFromIndex($i);
+                    break;
+                }
+            }
+            $z->close();
+        }
+        @unlink($tmp);
+        if (!$xmlStr) {
+            return null;
+        }
+        $lines = self::parseUblLines((string) $xmlStr);
+        return $lines === [] ? null : $lines;
+    }
+
+    /**
+     * fable-044: UBL InvoiceLine parse'ı — PÜR (ağ yok, test edilebilir; mock UBL ile doğrulanır).
+     * InvoiceLine → Item/Name (ürün), InvoicedQuantity (+unitCode=birim), Price/PriceAmount
+     * (birim fiyat), LineExtensionAmount (KDV hariç satır tutarı). Namespace'li XML (cac/cbc).
+     * Ürün adı boş satır atlanır; tutarı olmayan satır 0 kabul edilir (dürüstlük: kapsanmayan sayılır).
+     * @return array<int,array{urun:string,miktar:?float,birim:?string,birim_fiyat:?float,tutar:float}>
+     */
+    public static function parseUblLines(string $xmlStr): array
+    {
+        // DOMXPath (SimpleXML'in namespace re-register kaprisinden bağımsız, deterministik).
+        if (trim($xmlStr) === '') {
+            return [];
+        }
+        $dom = new \DOMDocument();
+        try {
+            if (!@$dom->loadXML($xmlStr)) {
+                return [];
+            }
+        } catch (\ValueError $e) {
+            return [];
+        }
+        $xp = new \DOMXPath($dom);
+        $xp->registerNamespace('cac', 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2');
+        $xp->registerNamespace('cbc', 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2');
+        $out = [];
+        foreach ($xp->query('//cac:InvoiceLine') as $L) {
+            $urun = trim((string) $xp->evaluate('string(.//cac:Item/cbc:Name)', $L));
+            if ($urun === '') {
+                continue; // adı olmayan satır (indirim/başlık) atlanır
+            }
+            $miktar = null;
+            $birim = null;
+            $qtyNode = $xp->query('./cbc:InvoicedQuantity', $L)->item(0);
+            if ($qtyNode !== null) {
+                $miktar = (float) $qtyNode->nodeValue;
+                $uc = $qtyNode instanceof \DOMElement ? trim((string) $qtyNode->getAttribute('unitCode')) : '';
+                $birim = $uc !== '' ? mb_substr($uc, 0, 20) : null;
+            }
+            $bfRaw = trim((string) $xp->evaluate('string(.//cac:Price/cbc:PriceAmount)', $L));
+            $birimFiyat = ($bfRaw !== '' && is_numeric($bfRaw)) ? round((float) $bfRaw, 2) : null;
+            $tutar = round((float) $xp->evaluate('string(./cbc:LineExtensionAmount)', $L), 2);
+            $out[] = [
+                'urun'        => mb_substr($urun, 0, 200),
+                'miktar'      => ($miktar !== null && $miktar > 0) ? $miktar : null,
+                'birim'       => $birim,
+                'birim_fiyat' => $birimFiyat,
+                'tutar'       => $tutar,
+            ];
+        }
+        return $out;
+    }
+
     // ── iç yardımcılar ───────────────────────────────────────────
 
     /** Token cache'i (istenleşen 5 dk emniyet payıyla) hâlâ taze mi? */

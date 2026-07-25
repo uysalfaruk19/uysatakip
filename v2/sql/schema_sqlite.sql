@@ -528,6 +528,20 @@ CREATE TABLE IF NOT EXISTS tedarikci_gida_map (
 );
 CREATE INDEX IF NOT EXISTS idx_tgm_kod ON tedarikci_gida_map(kirilim_kod);
 
+-- fable-044: gider faturalarının ÜRÜN SATIRLARI (top-10 harcama + birim fiyat).
+-- tx_id → transactions(id) ON DELETE CASCADE. Kaynak: Paraşüt UBL senkron VEYA CSV/elle yükleme.
+CREATE TABLE IF NOT EXISTS gider_kalem (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  tx_id       INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+  urun        TEXT NOT NULL,
+  miktar      REAL,                             -- NULL = miktar bilinmiyor (birim fiyat çıkmaz)
+  birim       TEXT,                             -- KG / ADET / LT ... (UBL unitCode)
+  birim_fiyat REAL,                             -- fatura satırındaki birim fiyat (bilgi amaçlı)
+  tutar       REAL NOT NULL,                    -- KDV hariç satır tutarı (LineExtensionAmount)
+  created_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_gk_tx ON gider_kalem(tx_id);
+
 -- ── Push cihaz token'ları (migrate_021 + opus-021 user_id): müşteri app + admin ─
 CREATE TABLE IF NOT EXISTS push_tokens (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -53,3 +53,13 @@ uysa_audit('gider_parasut', 'cron', $ay, json_encode([
 printf("Paraşüt gider senkronu (%s): %d yeni gider · ₺%s · %d zaten vardı · kaynak: %d içeri-alınmış + %d gelen-kutusu%s\n",
     $ay, $sonuc['yeni'], number_format($sonuc['tutar'], 2, ',', '.'), $sonuc['mevcut'],
     count($pb), count($eiBekleyen), $ei['iade'] > 0 ? ' · ' . $ei['iade'] . ' iade ATLANDI (elle düşün)' : '');
+
+// fable-044: gider tx'lerinin ÜRÜN SATIRLARINI (UBL) gider_kalem'e idempotent yaz (top-10 + birim fiyat).
+try {
+    $kalem = $repo->giderKalemSenkron($ay);
+    uysa_audit('gider_kalem_parasut', 'cron', $ay, json_encode($kalem, JSON_UNESCAPED_UNICODE), '');
+    printf("Ürün kalemi senkronu (%s): %d aday e-fatura · %d işlendi (%d satır) · %d zaten vardı · %d UBL okunamadı\n",
+        $ay, $kalem['aday'], $kalem['islenen'], $kalem['kalem'], $kalem['atlanan'], $kalem['okunamadi']);
+} catch (\Throwable $e) {
+    fwrite(STDERR, 'Ürün kalemi senkron hatası (gider senkronu tamam, sadece kalem atlandı): ' . $e->getMessage() . "\n");
+}

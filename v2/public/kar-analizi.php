@@ -30,6 +30,16 @@ function marj_pct(float $m): string
     return number_format($m * 100, 1, ',', '.') . '%';
 }
 
+/** fable-044: miktarı sade göster (3 haneye kadar, gereksiz sıfırları at). 1250,000 → 1.250 */
+function f044_miktar(float $m): string
+{
+    $s = number_format($m, 3, ',', '.');
+    if (str_contains($s, ',')) {
+        $s = rtrim(rtrim($s, '0'), ',');
+    }
+    return $s;
+}
+
 $eyebrow = ay_label_tr($month);
 $pageTitle = 'Kâr Analizi';
 $active = 'rapor';
@@ -104,20 +114,69 @@ require __DIR__ . '/partials/header.php';
         </div>
         <?php if ($gida['kirilimlar']): ?>
         <div id="gida-kirilim" style="display:none;margin-top:6px">
-          <?php foreach ($gida['kirilimlar'] as $g): $w = max(4, (int) round($g['oran'] * 100)); ?>
-            <div class="gt-kr">
+          <?php foreach ($gida['kirilimlar'] as $ki => $g): $w = max(4, (int) round($g['oran'] * 100));
+            // fable-044: bu kırılımda en çok para harcanan ürün kalemleri (top-10 + birim fiyat).
+            $uo = $repo->kirilimUrunOzet($month, $g['kod']);
+            $krId = 'kir-' . $ki; ?>
+            <div class="gt-kr gt-kr-exp" role="button" tabindex="0" onclick="toggleKir('<?= $krId ?>')" style="cursor:pointer">
               <div class="gt-kr-head">
                 <div class="gt-kr-firm">
-                  <div class="gt-kr-ad"><?= Helpers::e($g['ad']) ?></div>
+                  <div class="gt-kr-ad"><?= Helpers::e($g['ad']) ?> <i class="bi bi-chevron-down chev" style="font-size:.72em;opacity:.6"></i></div>
                   <div class="gt-kr-sub">kişi başı ₺<?= Helpers::money($g['kisi_basi']) ?></div>
                 </div>
                 <div class="gt-kr-val bad">₺<?= Helpers::money($g['tutar']) ?><small><?= number_format($g['oran'] * 100, 1, ',', '.') ?>%</small></div>
               </div>
               <div class="gt-bar"><i class="bad" style="width: <?= $w ?>%"></i></div>
+              <div id="<?= $krId ?>" class="gt-kr-detay" style="display:none" onclick="event.stopPropagation()">
+                <?php if ($uo['urunler']): ?>
+                  <?php foreach ($uo['urunler'] as $ui => $p): ?>
+                  <div class="uk-row">
+                    <div class="uk-firm">
+                      <div class="uk-ad"><span class="uk-no"><?= $ui + 1 ?>.</span> <?= Helpers::e($p['urun']) ?></div>
+                      <div class="uk-sub"><?php
+                        $parts = [];
+                        if ($p['miktar'] !== null) {
+                            $parts[] = f044_miktar((float) $p['miktar']) . ($p['birim'] ? ' ' . Helpers::e($p['birim']) : '');
+                        }
+                        if ($p['ort_birim_fiyat'] !== null) {
+                            $parts[] = 'ort ₺' . Helpers::money((float) $p['ort_birim_fiyat']) . ($p['birim'] ? '/' . Helpers::e($p['birim']) : '');
+                        }
+                        $parts[] = $p['fatura_adedi'] . ' fatura';
+                        echo implode(' · ', $parts);
+                      ?></div>
+                    </div>
+                    <div class="uk-val">₺<?= Helpers::money((float) $p['tutar']) ?></div>
+                  </div>
+                  <?php endforeach; ?>
+                  <?php if ($uo['urun_sayisi'] > count($uo['urunler'])): ?>
+                  <div class="uk-more">+<?= $uo['urun_sayisi'] - count($uo['urunler']) ?> ürün daha (en çok harcanan <?= count($uo['urunler']) ?> gösteriliyor)</div>
+                  <?php endif; ?>
+                  <?php if ($uo['kapsanmayan'] > 0.5): ?>
+                  <div class="uk-row uk-kaps">
+                    <div class="uk-firm"><div class="uk-ad">Kapsanmayan</div><div class="uk-sub">satır detayı çekilemeyen fatura + KDV</div></div>
+                    <div class="uk-val">₺<?= Helpers::money((float) $uo['kapsanmayan']) ?></div>
+                  </div>
+                  <?php endif; ?>
+                <?php else: ?>
+                  <div class="uk-empty">Satır detayı yok — bu kırılımın faturaları henüz kalem bazında çekilmedi (₺<?= Helpers::money((float) $uo['toplam']) ?> toplam).</div>
+                <?php endif; ?>
+              </div>
             </div>
           <?php endforeach; ?>
-          <div class="gt-note">gıda kırılımları · tedarikçi eşlemesi <a href="tedarikci-eslestirme.php" style="text-decoration:underline">Maliyet eşleştirme</a>'den değişir</div>
+          <div class="gt-note">gıda kırılımları · satıra dokun → en çok para harcanan ürünler · tedarikçi eşlemesi <a href="tedarikci-eslestirme.php" style="text-decoration:underline">Maliyet eşleştirme</a>'den değişir</div>
         </div>
+        <style>
+          .gt-kr-detay{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line-2)}
+          .uk-row{display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-bottom:1px solid var(--line)}
+          .uk-row:last-child{border-bottom:0}
+          .uk-firm{flex:1;min-width:0}
+          .uk-ad{font-size:13px;font-weight:600;word-break:break-word}
+          .uk-no{opacity:.5;font-weight:400}
+          .uk-sub{font-size:11px;opacity:.7;margin-top:1px}
+          .uk-val{font-size:13px;font-weight:700;white-space:nowrap;flex-shrink:0}
+          .uk-kaps .uk-ad,.uk-kaps .uk-val{opacity:.6;font-weight:600}
+          .uk-more,.uk-empty{font-size:11px;opacity:.65;padding:6px 0 2px}
+        </style>
         <?php else: ?>
         <div class="gt-note">Gıda kırılımı için tedarikçi eşlemesi yok. <a href="tedarikci-eslestirme.php" style="text-decoration:underline">Maliyet eşleştirme</a>'den ayarla.</div>
         <?php endif; ?>
@@ -260,6 +319,15 @@ require __DIR__ . '/partials/header.php';
           el.style.display = el.style.display === 'none' ? '' : 'none';
           var card = document.querySelector('[onclick="toggleGida()"]');
           if (card) card.classList.toggle('open', el.style.display !== 'none');
+        }
+        // fable-044: kırılım satırı → ürün kalemi listesi aç/kapat
+        function toggleKir(id){
+          var el = document.getElementById(id);
+          if (!el) return;
+          var open = el.style.display === 'none';
+          el.style.display = open ? '' : 'none';
+          var row = el.closest('.gt-kr-exp');
+          if (row) row.classList.toggle('open', open);
         }
       </script>
 <?php require __DIR__ . '/partials/footer.php'; ?>

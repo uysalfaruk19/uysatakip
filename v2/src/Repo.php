@@ -4242,6 +4242,190 @@ final class Repo
     }
 
     /**
+     * fable-044: Bir gıda kırılımının o ayki ÜRÜN KALEMLERİ — en çok para harcanan top-N.
+     * gidaCostOzet ile AYNI tx kümesi (kırılıma eşli tedarikçiler, aynı filtre → aynı toplam).
+     * Kalemler ürün adına göre gruplanır (TR-normalize anahtar; farklı yazımlar ayrı kalabilir,
+     * birleştirme zorlaması yok). Her grup: Σtutar, Σmiktar, ORTALAMA birim fiyat (Σtutar/Σmiktar;
+     * miktar eksikse boş), fatura adedi. 'kapsanmayan' = kırılım toplam − kalemli toplam (satırsız
+     * fatura + KDV farkı — dürüstlük satırı; ÖRS gibi satırı olmayanlar burada görünür).
+     * @return array{kirilim_kod:string,kirilim_ad:string,toplam:float,kalemli_toplam:float,
+     *   kapsanmayan:float,urun_sayisi:int,urunler:array<int,array{urun:string,miktar:?float,
+     *   birim:?string,ort_birim_fiyat:?float,tutar:float,fatura_adedi:int}>}
+     */
+    public function kirilimUrunOzet(string $ay, string $kirilimKod, int $limit = 10): array
+    {
+        $adMap = [];
+        foreach ($this->gidaKirilimlar() as $k) {
+            $adMap[(string) $k['kod']] = (string) $k['ad'];
+        }
+        $map = $this->tedarikciGidaMap();
+
+        // Bu kırılıma eşli gider tx'leri (gidaCostOzet ile AYNI filtre → toplam birebir tutar).
+        $st = $this->pdo->prepare(
+            "SELECT id, source, category, description, amount FROM transactions
+             WHERE type = 'gider' AND substr(tx_date,1,7) = ?
+               AND (category IS NULL OR category NOT IN ('Personel', 'Taşıma alış'))"
+        );
+        $st->execute([$ay]);
+        $txIds = [];
+        $toplam = 0.0;
+        foreach ($st->fetchAll() as $r) {
+            $key = self::normTedarikci($this->txFirma($r));
+            if (($map[$key] ?? null) !== $kirilimKod) {
+                continue;
+            }
+            $txIds[] = (int) $r['id'];
+            $toplam += (float) $r['amount'];
+        }
+
+        $bos = [
+            'kirilim_kod' => $kirilimKod, 'kirilim_ad' => $adMap[$kirilimKod] ?? $kirilimKod,
+            'toplam' => $toplam, 'kalemli_toplam' => 0.0, 'kapsanmayan' => max(0.0, $toplam),
+            'urun_sayisi' => 0, 'urunler' => [],
+        ];
+        if ($txIds === []) {
+            return $bos;
+        }
+
+        $ph = implode(',', array_fill(0, count($txIds), '?'));
+        $ks = $this->pdo->prepare(
+            "SELECT tx_id, urun, miktar, birim, birim_fiyat, tutar FROM gider_kalem WHERE tx_id IN ($ph)"
+        );
+        $ks->execute($txIds);
+
+        $grup = [];             // normAd → agregat
+        $kalemliToplam = 0.0;
+        foreach ($ks->fetchAll() as $k) {
+            $urun = trim((string) $k['urun']);
+            $nk = self::normTedarikci($urun); // trim + TR-upper (grup anahtarı)
+            $tutar = (float) $k['tutar'];
+            $kalemliToplam += $tutar;
+            if (!isset($grup[$nk])) {
+                $grup[$nk] = ['urun' => $urun !== '' ? $urun : '(adsız)', 'birim' => null,
+                    'tutar' => 0.0, 'miktar' => 0.0, 'miktar_tam' => true, 'tx' => []];
+            }
+            $grup[$nk]['tutar'] += $tutar;
+            if ($k['miktar'] === null || (float) $k['miktar'] <= 0) {
+                $grup[$nk]['miktar_tam'] = false;     // miktar eksik → ort. birim fiyat çıkmaz
+            } else {
+                $grup[$nk]['miktar'] += (float) $k['miktar'];
+                if ($grup[$nk]['birim'] === null && $k['birim'] !== null && (string) $k['birim'] !== '') {
+                    $grup[$nk]['birim'] = (string) $k['birim'];
+                }
+            }
+            $grup[$nk]['tx'][(int) $k['tx_id']] = true;
+        }
+
+        $urunler = [];
+        foreach ($grup as $g) {
+            $miktar = ($g['miktar_tam'] && $g['miktar'] > 0) ? $g['miktar'] : null;
+            $urunler[] = [
+                'urun'            => $g['urun'],
+                'miktar'          => $miktar,
+                'birim'           => $g['birim'],
+                'ort_birim_fiyat' => $miktar !== null ? $g['tutar'] / $miktar : null,
+                'tutar'           => $g['tutar'],
+                'fatura_adedi'    => count($g['tx']),
+            ];
+        }
+        usort($urunler, static fn(array $a, array $b) => $b['tutar'] <=> $a['tutar']);
+        $urunSayisi = count($urunler);
+        if ($limit > 0) {
+            $urunler = array_slice($urunler, 0, $limit);
+        }
+
+        return [
+            'kirilim_kod'    => $kirilimKod,
+            'kirilim_ad'     => $adMap[$kirilimKod] ?? $kirilimKod,
+            'toplam'         => $toplam,
+            'kalemli_toplam' => $kalemliToplam,
+            'kapsanmayan'    => max(0.0, $toplam - $kalemliToplam),
+            'urun_sayisi'    => $urunSayisi,
+            'urunler'        => $urunler,
+        ];
+    }
+
+    /**
+     * fable-044: Paraşüt GELEN KUTUSU ('ei-' önekli) gider tx'lerinin UBL satırlarını gider_kalem'e
+     * IDEMPOTENT yaz (tx'in kalemi zaten varsa atla). Satır ucu YALNIZ e-faturadan (signed_ubl)
+     * çıkar; purchase_bill / elle girilen tx'ler bu senkronda YOK (onlar CSV/elle yüklenir).
+     * $lineFetcher: test/mock için enjekte edilebilir (varsayılan Parasut::eInvoiceLines). UBL
+     * okunamayan tx atlanır (kalem yazılmaz) → sonraki senkronda yeniden denenir.
+     * @param null|callable(string):(?array) $lineFetcher eInvoiceId → satır listesi|null
+     * @return array{aday:int,islenen:int,atlanan:int,okunamadi:int,kalem:int}
+     */
+    public function giderKalemSenkron(string $ay, ?callable $lineFetcher = null): array
+    {
+        if (!preg_match('/^\d{4}-\d{2}$/', $ay)) {
+            throw new \InvalidArgumentException('ay=YYYY-MM bekleniyor.');
+        }
+        $lineFetcher ??= static fn(string $eid): ?array => Parasut::eInvoiceLines($eid);
+
+        $st = $this->pdo->prepare(
+            "SELECT id, parasut_id FROM transactions
+             WHERE type = 'gider' AND source = 'parasut' AND substr(tx_date,1,7) = ?
+               AND parasut_id LIKE 'ei-%'
+             ORDER BY id"
+        );
+        $st->execute([$ay]);
+        $txlar = $st->fetchAll();
+
+        $has = $this->pdo->prepare('SELECT 1 FROM gider_kalem WHERE tx_id = ? LIMIT 1');
+        $ins = $this->pdo->prepare(
+            'INSERT INTO gider_kalem (tx_id, urun, miktar, birim, birim_fiyat, tutar) VALUES (?, ?, ?, ?, ?, ?)'
+        );
+
+        $islenen = 0;
+        $atlanan = 0;
+        $okunamadi = 0;
+        $kalem = 0;
+        foreach ($txlar as $t) {
+            $txId = (int) $t['id'];
+            $has->execute([$txId]);
+            if ($has->fetchColumn() !== false) {
+                $atlanan++;                                  // idempotent: kalemi zaten var
+                continue;
+            }
+            $eid = substr((string) $t['parasut_id'], 3);     // 'ei-' önekini at
+            $lines = $lineFetcher($eid);
+            if (!is_array($lines) || $lines === []) {
+                $okunamadi++;                                // UBL okunamadı → yazma, sonra dene
+                continue;
+            }
+            // Bir tx'in TÜM satırları atomik yazılır (kısmi yazım → sahte "kalemli" durumu olmasın).
+            $own = !$this->pdo->inTransaction();
+            if ($own) {
+                $this->pdo->beginTransaction();
+            }
+            try {
+                foreach ($lines as $L) {
+                    $urun = mb_substr(trim((string) ($L['urun'] ?? '')), 0, 200);
+                    if ($urun === '') {
+                        continue;
+                    }
+                    $mik = (isset($L['miktar']) && $L['miktar'] !== null && (float) $L['miktar'] > 0) ? (float) $L['miktar'] : null;
+                    $bir = (isset($L['birim']) && $L['birim'] !== null && (string) $L['birim'] !== '') ? mb_substr((string) $L['birim'], 0, 20) : null;
+                    $bf  = (isset($L['birim_fiyat']) && $L['birim_fiyat'] !== null) ? round((float) $L['birim_fiyat'], 2) : null;
+                    $ins->execute([$txId, $urun, $mik, $bir, $bf, round((float) ($L['tutar'] ?? 0), 2)]);
+                    $kalem++;
+                }
+                if ($own) {
+                    $this->pdo->commit();
+                }
+            } catch (\Throwable $e) {
+                if ($own && $this->pdo->inTransaction()) {
+                    $this->pdo->rollBack();
+                }
+                throw $e;
+            }
+            $islenen++;
+        }
+
+        return ['aday' => count($txlar), 'islenen' => $islenen, 'atlanan' => $atlanan,
+            'okunamadi' => $okunamadi, 'kalem' => $kalem];
+    }
+
+    /**
      * fable-042 ek (Ömer): kişi başı PERSONEL (işveren YÜKLÜ) maliyeti — ÜRETİM tarafı.
      * Tutar = personelDagitim'in ÜRETİM kategorisi müşterilere düşen payı toplamı (kar-analizi
      * P&L 'Personel payı' üretim toplamıyla BİREBİR; yeni hesap icat edilmez, aynı zincir).
