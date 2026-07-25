@@ -33,10 +33,8 @@ $tabs = [
 <!-- fable-030 (Ömer: "+ çok kalabalık"): menü SIK işlere indi; kalan her şey "Diğer modüller"de.
      Kaldırılan link YOK — hepsi moduller.php'de yaşıyor (erişim kaybolmaz). -->
 <div class="fab-menu" id="fab-menu" role="menu">
-  <a href="bugun.php"><i class="bi bi-calendar2-check"></i> Üretim gir</a>
-  <a href="fatura-kes.php"><i class="bi bi-receipt-cutoff"></i> Fatura Kes</a>
-  <a href="finans.php"><i class="bi bi-plus-slash-minus"></i> Gider / Gelir</a>
-  <a href="cari.php"><i class="bi bi-cash-coin"></i> Tahsilat / Cari</a>
+  <?php // fable-047 (Ömer): + menüsü sadeleşti — üretim gir/fatura kes/gider-gelir/tahsilat
+        // hızlı erişim + alt sekmelerde zaten var; menü mükerrer link taşımaz. ?>
   <a href="ay-kapanisi.php"><i class="bi bi-calendar2-check"></i> Ay kapanışı</a>
   <a href="moduller.php"><i class="bi bi-grid-3x3-gap"></i> Diğer modüller…</a>
 </div>

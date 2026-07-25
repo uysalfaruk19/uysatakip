@@ -16,7 +16,6 @@ $gruplar = [
     'Operasyon' => [
         ['mutfak.php', 'bi-fire', 'Mutfak görünümü', 'Günün üretim listesi'],
         ['sevkiyat.php', 'bi-truck', 'Sevkiyat / teslimat', 'Teslimat takibi'],
-        ['haccp.php', 'bi-clipboard2-check', 'HACCP kontrol', 'Gıda güvenliği kayıtları'],
     ],
     'Yönetim' => [
         ['musteriler.php?yeni=1', 'bi-person-plus', 'Müşteri ekle', 'Yeni müşteri kartı'],
