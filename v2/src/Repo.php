@@ -5929,6 +5929,7 @@ final class Repo
         // GELİR DEĞİL, ALIŞ İADESİDİR → o tedarikçinin giderinden düşülür (negatif gider satırı).
         // Aksi halde hem gelir hem gider şişer, kâr/zarar iki yönlü yanlış çıkar.
         $tedSet = [];
+        $giderFirmaSet = [];   // fable-049e: firma KARNESİNİN kullandığı adlar — iade bu adla yazılmalı
         foreach ($this->pdo->query("SELECT name FROM suppliers")->fetchAll(PDO::FETCH_COLUMN) as $sn) {
             $tedSet[self::normTedarikci((string) $sn)] = true;
         }
@@ -5937,7 +5938,9 @@ final class Repo
              FROM transactions t LEFT JOIN suppliers s ON s.id = t.supplier_id
              WHERE t.type = 'gider'"
         )->fetchAll() as $gr) {
-            $tedSet[self::normTedarikci($this->txFirma($gr))] = true;
+            $fk = self::normTedarikci($this->txFirma($gr));
+            $tedSet[$fk] = true;
+            $giderFirmaSet[$fk] = true;
         }
         $iadeIns = $this->pdo->prepare(
             "INSERT INTO transactions (type, category, tx_date, amount, description, source, parasut_id, alloc_type)
@@ -5991,11 +5994,21 @@ final class Repo
                     $ilk = mb_strtoupper(mb_substr(trim($contactAd), 0, mb_strpos(trim($contactAd) . ' ', ' ')), 'UTF-8');
                     $giderAdi = $contactAd;
                     if ($ilk !== '') {
-                        foreach (array_keys($tedSet) as $tk) {
-                            if (str_starts_with((string) $tk, $ilk)) {
-                                $giderAdi = (string) $tk;
+                        // ÖNCE gider faturalarındaki adlar (karne onlardan besleniyor), en UZUN eşleşme
+                        // seçilir — kısa/eksik kayıt yerine gerçek fatura ünvanı kazansın.
+                        $enIyi = '';
+                        foreach ([$giderFirmaSet, $tedSet] as $kume) {
+                            foreach (array_keys($kume) as $tk) {
+                                if (str_starts_with((string) $tk, $ilk) && mb_strlen((string) $tk) > mb_strlen($enIyi)) {
+                                    $enIyi = (string) $tk;
+                                }
+                            }
+                            if ($enIyi !== '') {
                                 break;
                             }
+                        }
+                        if ($enIyi !== '') {
+                            $giderAdi = $enIyi;
                         }
                     }
                     $iadeIns->execute([
