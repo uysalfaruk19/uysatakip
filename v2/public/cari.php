@@ -131,7 +131,7 @@ $sekmeUrl = static fn(string $s): string => 'cari.php?sekme=' . $s;
         </div>
 
         <div class="cardx card-pad">
-          <div class="gt-h"><i class="bi bi-arrow-up-right-circle"></i> BORÇLARIM <span class="text-muted" style="font-size:12px;font-weight:600">(tedarikçi bazlı · Personel/Taşıma hariç)</span></div>
+          <div class="gt-h"><i class="bi bi-arrow-up-right-circle"></i> BORÇLARIM <span class="text-muted" style="font-size:12px;font-weight:600">(tedarikçi bazlı · tüm faturalar · personel maaşı hariç)</span></div>
           <?php if (!$detaylar): ?>
             <div class="empty-state">Kayıtlı gider faturası olan tedarikçi yok.</div>
           <?php else: ?>

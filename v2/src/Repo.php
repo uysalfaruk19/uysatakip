@@ -4982,6 +4982,9 @@ final class Repo
      * @return array<int,array{key:string,label:string,fatura:float,adet:int,odenen:float,devir:float,kalan:float}>
      *   kalan DESC (en çok borçlu üstte).
      */
+    // fable-049 (Ömer): "her fatura borçtur" — Taşıma alış (KIRMIZI) borç sorgularına DAHİL
+    // edildi (3 sorguda NOT IN listesinden çıktı). Personel hariç kalır: bordro fatura değil,
+    // maaş/avans takibi personel.php'de kendi akışında (çift takip olmasın).
     public function borclarimListe(): array
     {
         $grup = [];
@@ -4998,7 +5001,7 @@ final class Repo
              FROM transactions t
              LEFT JOIN suppliers s ON s.id = t.supplier_id
              WHERE t.type = 'gider'
-               AND (t.category IS NULL OR t.category NOT IN ('Personel', 'Taşıma alış'))"
+               AND (t.category IS NULL OR t.category NOT IN ('Personel'))"
         );
         foreach ($st->fetchAll() as $r) {
             $firma = $this->txFirma($r);
@@ -5062,7 +5065,7 @@ final class Repo
              FROM transactions t
              LEFT JOIN suppliers s ON s.id = t.supplier_id
              WHERE t.type = 'gider'
-               AND (t.category IS NULL OR t.category NOT IN ('Personel', 'Taşıma alış'))
+               AND (t.category IS NULL OR t.category NOT IN ('Personel'))
              ORDER BY t.tx_date DESC, t.id DESC"
         );
         foreach ($st->fetchAll() as $r) {
@@ -5132,7 +5135,7 @@ final class Repo
              FROM transactions t
              LEFT JOIN suppliers s ON s.id = t.supplier_id
              WHERE t.type = 'gider'
-               AND (t.category IS NULL OR t.category NOT IN ('Personel', 'Taşıma alış'))
+               AND (t.category IS NULL OR t.category NOT IN ('Personel'))
              ORDER BY t.tx_date DESC, t.id DESC"
         );
         foreach ($st->fetchAll() as $r) {
