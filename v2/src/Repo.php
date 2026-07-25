@@ -2305,9 +2305,22 @@ final class Repo
         $personelCount = count($this->listPersonel());
         $netDiff = abs((float) $nk['net'] - (float) $ka['toplam_net']);
 
+        // fable-047: statik liste → ANALİZ EDİLMİŞ maddeler. Her madde 'rows' taşır (tıklayınca
+        // açılan detay: hangi müşteri/gün/tutar + derin bağlantı). 'info' = bilgi, uyarı SAYILMAZ.
+        $eksikUretim = $this->ayEksikUretim($ay);
+        $sapma = $this->ayAnormalSapma($ay);
+        $belge = $this->ayBelgeDurumu($ay);
+        $giderCache = $this->giderTamlikCache($ay);
+        $eslesmeyen = $this->ayEslesmeyenTedarikci($ay);
+        $personelDurum = $this->ayPersonelDurumu($ay);
+        $tatilAnaliz = $this->ayTatilAnaliz($ay);
+
         $checks = [];
-        $add = static function (string $key, string $label, string $status, string $detail, string $link = '') use (&$checks): void {
-            $checks[] = compact('key', 'label', 'status', 'detail', 'link');
+        $add = static function (string $key, string $label, string $status, string $detail, string $link = '', array $rows = [], string $rowsBaslik = '') use (&$checks): void {
+            $checks[] = [
+                'key' => $key, 'label' => $label, 'status' => $status, 'detail' => $detail,
+                'link' => $link, 'rows' => $rows, 'rows_baslik' => $rowsBaslik,
+            ];
         };
 
         $add(
@@ -2320,18 +2333,149 @@ final class Repo
             'bugun.php?date=' . $ay . '-01'
         );
         $add(
-            'zero_price',
-            'Sıfır fiyat / tutar',
-            (!$zeroPriceRows && !$priceIssues) ? 'ok' : 'fail',
-            (!$zeroPriceRows && !$priceIssues) ? 'Fiyatı/tutarı sıfır görünen üretim yok.' : (count($zeroPriceRows) + count($priceIssues)) . ' kayıt/müşteri kontrol istiyor.',
-            'musteriler.php'
+            'uretim_eksik',
+            'Eksik üretim günü',
+            $eksikUretim['toplam'] === 0 ? 'ok' : 'warn',
+            $eksikUretim['toplam'] === 0
+                ? 'Geçmiş iş günlerinin tamamında sayı girilmiş.'
+                : $eksikUretim['toplam'] . ' gün eksik · ' . count($eksikUretim['rows']) . ' müşteri (resmi tatiller hariç).',
+            'rapor.php?ay=' . $ay,
+            array_map(static fn(array $r) => [
+                'ad'    => $r['name'],
+                'meta'  => 'ilk eksik: ' . date('d.m.Y', strtotime((string) $r['ilk'])),
+                'deger' => $r['eksik'] . ' gün',
+                'link'  => 'bugun.php?date=' . $r['ilk'] . '&focus=' . $r['customer_id'],
+                'link_ad' => 'Gir',
+            ], $eksikUretim['rows']),
+            'Sayı girilmemiş müşteri × gün'
+        );
+        $add(
+            'tatil',
+            'Tatil davranışı',
+            $tatilAnaliz['durum'],
+            $tatilAnaliz['ozet'],
+            'tatiller.php',
+            $tatilAnaliz['rows'],
+            'Resmi tatilde çalışan / çalışmayan'
+        );
+        $add(
+            'sapma',
+            'Anormal sayı davranışı',
+            $sapma['toplam'] === 0 ? 'ok' : 'warn',
+            $sapma['toplam'] === 0
+                ? 'Günlük ortalamadan %' . rtrim(rtrim(number_format($sapma['esik'], 1, ',', '.'), '0'), ',') . '+ sapan gün yok.'
+                : $sapma['toplam'] . ' gün ortalamadan %' . rtrim(rtrim(number_format($sapma['esik'], 1, ',', '.'), '0'), ',') . '+ sapıyor · ' . count($sapma['rows']) . ' müşteri.',
+            'rapor.php?ay=' . $ay,
+            (static function (array $rows): array {
+                $out = [];
+                foreach ($rows as $r) {
+                    foreach ($r['gunler'] as $g) {
+                        $out[] = [
+                            'ad'    => $r['name'],
+                            'meta'  => date('d.m.Y', strtotime($g['gun'])) . ' · ort. ' . number_format($r['ort'], 1, ',', '.') . ' kişi',
+                            'deger' => ($g['yon'] === 'dusuk' ? '↓ ' : '↑ ') . $g['kisi'] . ' kişi (%' . number_format($g['yuzde'], 1, ',', '.') . ')',
+                            'link'  => 'bugun.php?date=' . $g['gun'] . '&focus=' . $r['customer_id'],
+                            'link_ad' => 'Bak',
+                        ];
+                    }
+                }
+                return $out;
+            })($sapma['rows']),
+            'Ortalamadan sapan gün'
         );
         $add(
             'no_production',
             'Aktif müşteri sayımı',
             !$noProductionCustomers ? 'ok' : 'warn',
             !$noProductionCustomers ? 'Aktif müşterilerin tamamında bu ay kayıt var.' : count($noProductionCustomers) . ' aktif müşteride bu ay kayıt yok.',
-            'bugun.php?date=' . $ay . '-01'
+            'bugun.php?date=' . $ay . '-01',
+            array_map(static fn(array $r) => [
+                'ad'    => $r['name'],
+                'meta'  => $r['category'] === 'tasima' ? 'Taşıma' : 'Üretim',
+                'deger' => 'kayıt yok',
+                'link'  => 'bugun.php?date=' . $ay . '-01&focus=' . $r['customer_id'],
+                'link_ad' => 'Gir',
+            ], $noProductionCustomers),
+            'Bu ay hiç kaydı olmayan müşteri'
+        );
+        $add(
+            'zero_price',
+            'Sıfır fiyat / tutar',
+            (!$zeroPriceRows && !$priceIssues) ? 'ok' : 'fail',
+            (!$zeroPriceRows && !$priceIssues) ? 'Fiyatı/tutarı sıfır görünen üretim yok.' : (count($zeroPriceRows) + count($priceIssues)) . ' kayıt/müşteri kontrol istiyor.',
+            'musteriler.php',
+            array_merge(
+                array_map(static fn(array $r) => [
+                    'ad'    => (string) $r['name'],
+                    'meta'  => date('d.m.Y', strtotime((string) $r['prod_date'])) . ' · ' . (string) $r['meal'],
+                    'deger' => (int) $r['persons'] . ' kişi · ₺ ' . Helpers::money((float) $r['amount']),
+                    'link'  => 'bugun.php?date=' . (string) $r['prod_date'] . '&focus=' . (int) $r['customer_id'],
+                    'link_ad' => 'Bak',
+                ], $zeroPriceRows),
+                array_map(static fn(array $r) => [
+                    'ad'    => $r['name'],
+                    'meta'  => $r['category'] === 'tasima' ? 'Taşıma — satış/alış birimi eksik' : 'Üretim — birim fiyat girilmemiş',
+                    'deger' => 'fiyat yok',
+                    'link'  => 'musteriler.php?musteri=' . $r['customer_id'],
+                    'link_ad' => 'Düzelt',
+                ], $priceIssues)
+            ),
+            'Fiyatı/tutarı sıfır görünen kayıt'
+        );
+        $add(
+            'invoice',
+            'Fatura / irsaliye',
+            ((int) $fatura['adet'] > 0 && !$belge['fatura'] && $belge['irsaliye_eksik_gun'] === 0) ? 'ok' : 'warn',
+            (int) $fatura['adet'] === 0 && !$belge['fatura'] && $belge['irsaliye_eksik_gun'] === 0
+                ? 'Bu ay fatura kaydı yok.'
+                : (int) $fatura['adet'] . ' fatura kaydı, ' . (int) $fatura['kesildi'] . ' kesildi · '
+                    . count($belge['fatura']) . ' müşteride kesilmiş fatura yok · ' . $belge['irsaliye_eksik_gun'] . ' üretim günü irsaliyesiz.',
+            'faturalar.php?ay=' . $ay,
+            array_merge(
+                array_map(static fn(array $r) => [
+                    'ad'    => $r['name'],
+                    'meta'  => 'faturası kesilmemiş · ay cirosu',
+                    'deger' => '₺ ' . Helpers::money((float) $r['ciro']),
+                    'link'  => 'fatura-kes.php?musteri=' . $r['customer_id'],
+                    'link_ad' => 'Kes',
+                ], $belge['fatura']),
+                array_map(static fn(array $r) => [
+                    'ad'    => $r['name'],
+                    'meta'  => 'irsaliyesiz üretim günü · ilk: ' . date('d.m.Y', strtotime((string) $r['ilk'])),
+                    'deger' => $r['eksik'] . ' gün',
+                    'link'  => 'irsaliye.php?gun=' . $r['ilk'],
+                    'link_ad' => 'Kes',
+                ], $belge['irsaliye'])
+            ),
+            'Eksik belge'
+        );
+        $add(
+            'gider_tamlik',
+            'Gider tamlığı (Paraşüt)',
+            $giderCache === null ? 'info' : ($giderCache['eksik'] > 0 ? 'warn' : 'ok'),
+            $giderCache === null
+                ? 'Henüz kontrol edilmedi — Paraşüt sayısı butonla çekilir (sayfa açılışında API çağrılmaz).'
+                : ($giderCache['eksik'] > 0
+                    ? $giderCache['eksik'] . ' fatura Paraşüt\'te var, Kokpit\'te yok (Paraşüt ' . $giderCache['parasut'] . ' · Kokpit ' . $giderCache['kokpit'] . ' · ' . $giderCache['at'] . ').'
+                    : 'Paraşüt ' . $giderCache['parasut'] . ' fatura ↔ Kokpit ' . $giderCache['kokpit'] . ' gider — tam (' . $giderCache['at'] . ').'),
+            'finans.php?ay=' . $ay
+        );
+        $add(
+            'maliyet_esleme',
+            'Maliyet eşleştirme boşluğu',
+            !$eslesmeyen ? 'ok' : 'warn',
+            !$eslesmeyen
+                ? 'Bu ayın tüm tedarikçileri bir kırılıma/müşteriye eşlenmiş.'
+                : count($eslesmeyen) . ' tedarikçi hiçbir kırılıma/müşteriye eşlenmemiş.',
+            'tedarikci-eslestirme.php',
+            array_map(static fn(array $r) => [
+                'ad'    => $r['label'],
+                'meta'  => $r['adet'] . ' fatura · eşleşme yok',
+                'deger' => '₺ ' . Helpers::money((float) $r['toplam']),
+                'link'  => 'tedarikci-eslestirme.php',
+                'link_ad' => 'Eşle',
+            ], $eslesmeyen),
+            'Eşleşmemiş tedarikçi'
         );
         $add(
             'allocation',
@@ -2342,24 +2486,43 @@ final class Repo
         );
         $add(
             'personel',
-            'Personel maliyeti',
-            ((float) $nk['personel'] > 0 || $personelCount === 0) ? 'ok' : 'warn',
-            (float) $nk['personel'] > 0 ? 'Bu ay yüklü personel maliyeti: ₺ ' . Helpers::money((float) $nk['personel']) : 'Aktif personel var ama bu ay personel maliyeti sıfır görünüyor.',
-            'personel.php?ay=' . $ay
+            'Personel',
+            ((float) $nk['personel'] > 0 || $personelCount === 0) && !$personelDurum['odenmemis'] && !$personelDurum['atamasiz'] ? 'ok' : 'warn',
+            ((float) $nk['personel'] > 0 ? 'Yüklü maliyet ₺ ' . Helpers::money((float) $nk['personel']) : ($personelCount === 0 ? 'Aktif personel yok' : 'Bu ay personel maliyeti sıfır görünüyor'))
+                . ' · ' . count($personelDurum['odenmemis']) . ' maaş ödenmemiş · ' . count($personelDurum['atamasiz']) . ' atamasız.',
+            'personel.php?ay=' . $ay,
+            array_merge(
+                array_map(static fn(array $r) => [
+                    'ad'    => $r['ad'],
+                    'meta'  => $r['islenmis'] ? 'maaş işlendi, ÖDENMEDİ' : 'maaş kaydı hiç girilmemiş',
+                    'deger' => '₺ ' . Helpers::money((float) $r['ucret']),
+                    'link'  => 'personel.php?ay=' . $ay,
+                    'link_ad' => 'İşle',
+                ], $personelDurum['odenmemis']),
+                array_map(static fn(array $r) => [
+                    'ad'    => $r['ad'],
+                    'meta'  => 'müşteri ataması yok — maliyeti dağılmıyor',
+                    'deger' => 'atamasız',
+                    'link'  => 'tedarikci-eslestirme.php',
+                    'link_ad' => 'Ata',
+                ], $personelDurum['atamasiz'])
+            ),
+            'Kapanışı bekleyen personel'
         );
         $add(
             'negative_customers',
             'Negatif müşteri kârı',
             !$negativeCustomers ? 'ok' : 'warn',
             !$negativeCustomers ? 'Negatif net kâr veren müşteri yok.' : count($negativeCustomers) . ' müşteri negatifte.',
-            'kar-analizi.php?ay=' . $ay
-        );
-        $add(
-            'invoice',
-            'Fatura durumu',
-            (int) $fatura['adet'] > 0 ? 'ok' : 'warn',
-            (int) $fatura['adet'] > 0 ? (int) $fatura['adet'] . ' fatura kaydı, ' . (int) $fatura['kesildi'] . ' kesildi.' : 'Bu ay fatura kaydı yok.',
-            'faturalar.php?ay=' . $ay
+            'kar-analizi.php?ay=' . $ay,
+            array_map(static fn(array $r) => [
+                'ad'    => (string) $r['name'],
+                'meta'  => 'net kâr negatif',
+                'deger' => '₺ ' . Helpers::money((float) $r['net']),
+                'link'  => 'rapor.php?musteri=' . (int) $r['customer_id'] . '&ay=' . $ay,
+                'link_ad' => 'İncele',
+            ], $negativeCustomers),
+            'Zarar eden müşteri'
         );
         $add(
             'net_match',
@@ -2410,6 +2573,634 @@ final class Repo
             ],
         ];
     }
+    // ══ fable-047: RESMİ TATİL takvimi ═══════════════════════════════════════════════
+    // Tatil kaydı SİLİNMEZ (aktif=0 ile pasifleşir) — geçmiş tatil karşılaştırması bozulmasın.
+    // 'arefe' (yarim_gun=1) TAM tatil sayılmaz: sayı girilir ama düşük olabilir.
+
+    /**
+     * Resmi tatil listesi (tarih ASC). $aktifOnly=false → pasifler de gelir (yönetim ekranı).
+     * @return array<int,array{id:int,tarih:string,ad:string,tur:string,yarim_gun:int,aktif:int}>
+     */
+    public function resmiTatiller(bool $aktifOnly = true, ?string $bas = null, ?string $son = null): array
+    {
+        $sql = 'SELECT id, tarih, ad, tur, yarim_gun, aktif FROM resmi_tatil WHERE 1=1';
+        $params = [];
+        if ($aktifOnly) {
+            $sql .= ' AND aktif = 1';
+        }
+        if ($bas !== null) {
+            $sql .= ' AND tarih >= ?';
+            $params[] = $bas;
+        }
+        if ($son !== null) {
+            $sql .= ' AND tarih <= ?';
+            $params[] = $son;
+        }
+        $sql .= ' ORDER BY tarih ASC';
+        $st = $this->pdo->prepare($sql);
+        $st->execute($params);
+        return $st->fetchAll();
+    }
+
+    public function resmiTatil(int $id): ?array
+    {
+        $st = $this->pdo->prepare('SELECT id, tarih, ad, tur, yarim_gun, aktif FROM resmi_tatil WHERE id = ?');
+        $st->execute([$id]);
+        $r = $st->fetch();
+        return $r ?: null;
+    }
+
+    /** Bir ayın AKTİF tatilleri: 'YYYY-MM-DD' → satır (analizde hızlı bakış için). */
+    public function ayTatilleri(string $ay): array
+    {
+        $out = [];
+        foreach ($this->resmiTatiller(true, $ay . '-01', $ay . '-31') as $t) {
+            $out[(string) $t['tarih']] = $t;
+        }
+        return $out;
+    }
+
+    /**
+     * Tatil ekle/güncelle. tarih UNIQUE — $id yoksa aynı tarihli kayıt varsa ÜZERİNE yazar
+     * (mükerrer satır oluşmaz; pasifleştirilmiş kayıt yeniden girilince aktifleşir).
+     * @return int etkilenen kaydın id'si
+     */
+    public function upsertResmiTatil(string $tarih, string $ad, string $tur = 'resmi', bool $yarimGun = false, ?int $id = null): int
+    {
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $tarih)) {
+            throw new \InvalidArgumentException('Geçersiz tarih: ' . $tarih);
+        }
+        $ad = trim($ad);
+        if ($ad === '') {
+            throw new \InvalidArgumentException('Tatil adı zorunlu.');
+        }
+        if (!in_array($tur, ['resmi', 'dini', 'arefe'], true)) {
+            $tur = 'resmi';
+        }
+        $ad = mb_substr($ad, 0, 120);
+        if ($id === null || $id <= 0) {
+            $st = $this->pdo->prepare('SELECT id FROM resmi_tatil WHERE tarih = ?');
+            $st->execute([$tarih]);
+            $found = $st->fetchColumn();
+            $id = $found === false ? null : (int) $found;
+        }
+        if ($id !== null && $id > 0) {
+            $this->pdo->prepare('UPDATE resmi_tatil SET tarih = ?, ad = ?, tur = ?, yarim_gun = ?, aktif = 1 WHERE id = ?')
+                ->execute([$tarih, $ad, $tur, $yarimGun ? 1 : 0, $id]);
+            return $id;
+        }
+        $this->pdo->prepare('INSERT INTO resmi_tatil (tarih, ad, tur, yarim_gun, aktif) VALUES (?, ?, ?, ?, 1)')
+            ->execute([$tarih, $ad, $tur, $yarimGun ? 1 : 0]);
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    /** Tatili pasifleştir/aktifleştir (SİLME YOK — iz kalır). */
+    public function setResmiTatilAktif(int $id, bool $aktif): void
+    {
+        $this->pdo->prepare('UPDATE resmi_tatil SET aktif = ? WHERE id = ?')->execute([$aktif ? 1 : 0, $id]);
+    }
+
+    /**
+     * TAM $gunSonra gün sonraki aktif tatil (yoksa null). Sınır kesin: 2 ya da 4 gün sonrası DÖNMEZ.
+     * @param string|null $bugun test için 'YYYY-MM-DD'; null → APP_TODAY/gerçek tarih.
+     */
+    public function yaklasanTatil(int $gunSonra = 3, ?string $bugun = null): ?array
+    {
+        $bugun ??= $this->bugun();
+        $hedef = date('Y-m-d', strtotime($bugun . ' +' . max(0, $gunSonra) . ' day'));
+        $st = $this->pdo->prepare('SELECT id, tarih, ad, tur, yarim_gun, aktif FROM resmi_tatil WHERE tarih = ? AND aktif = 1');
+        $st->execute([$hedef]);
+        $r = $st->fetch();
+        return $r ?: null;
+    }
+
+    /** Verilen tarihten ÖNCEKİ en yakın aktif tatil (davranış kıyas tabanı). */
+    public function oncekiTatil(string $tarih): ?array
+    {
+        $st = $this->pdo->prepare(
+            'SELECT id, tarih, ad, tur, yarim_gun, aktif FROM resmi_tatil
+             WHERE aktif = 1 AND tarih < ? ORDER BY tarih DESC LIMIT 1'
+        );
+        $st->execute([$tarih]);
+        $r = $st->fetch();
+        return $r ?: null;
+    }
+
+    /** Bir günün müşteri bazlı TOPLAM kişi sayısı (tüm öğünler). customer_id → kişi. */
+    private function gunKisiByCustomer(string $gun): array
+    {
+        $st = $this->pdo->prepare(
+            'SELECT customer_id, COALESCE(SUM(persons),0) AS kisi FROM production
+             WHERE prod_date = ? GROUP BY customer_id'
+        );
+        $st->execute([$gun]);
+        $out = [];
+        foreach ($st->fetchAll() as $r) {
+            $out[(int) $r['customer_id']] = (int) $r['kisi'];
+        }
+        return $out;
+    }
+
+    /**
+     * TATİL DAVRANIŞI: o tatilde kim çalıştı / kimin sayısı girilmemiş + GEÇEN tatille kıyas.
+     *   gecmis = 'calisti'  → geçen tatilde persons>0
+     *           'calismadi' → geçen tatilde kaydı yoktu ama BAŞKA müşterilerin vardı (veri güvenilir)
+     *           'veri_yok'  → geçen tatil yok ya da o gün HİÇ kayıt yok (teyit gerek)
+     *   beklenmedik = geçen tatilde çalışmıştı ama bu tatile sayı GİRİLMEMİŞ (⚠ ay kapanışı + uyarı)
+     * @return array{tarih:string,ad:string,tur:string,yarim_gun:bool,onceki:?array,onceki_veri:bool,
+     *   rows:array<int,array>,calisan:int,kayitsiz:int,beklenmedik:int}
+     */
+    public function tatilDavranis(string $tarih): array
+    {
+        $st = $this->pdo->prepare('SELECT id, tarih, ad, tur, yarim_gun FROM resmi_tatil WHERE tarih = ?');
+        $st->execute([$tarih]);
+        $t = $st->fetch() ?: ['tarih' => $tarih, 'ad' => 'Tatil', 'tur' => 'resmi', 'yarim_gun' => 0];
+
+        $onceki = $this->oncekiTatil($tarih);
+        $bu = $this->gunKisiByCustomer($tarih);
+        $onc = $onceki ? $this->gunKisiByCustomer((string) $onceki['tarih']) : [];
+        $oncekiVeri = $onc !== [];
+
+        $rows = [];
+        $calisan = 0;
+        $kayitsiz = 0;
+        $beklenmedik = 0;
+        foreach ($this->activeCustomers() as $c) {
+            $cid = (int) $c['id'];
+            $kayit = array_key_exists($cid, $bu);
+            $kisi = (int) ($bu[$cid] ?? 0);
+            if (!$oncekiVeri) {
+                $gecmis = 'veri_yok';
+            } else {
+                $gecmis = (int) ($onc[$cid] ?? 0) > 0 ? 'calisti' : 'calismadi';
+            }
+            $bek = ($gecmis === 'calisti' && !$kayit);
+            if ($kisi > 0) {
+                $calisan++;
+            }
+            if (!$kayit) {
+                $kayitsiz++;
+            }
+            if ($bek) {
+                $beklenmedik++;
+            }
+            $rows[] = [
+                'customer_id'    => $cid,
+                'name'           => (string) $c['name'],
+                'kayit'          => $kayit,
+                'kisi'           => $kisi,
+                'onceki_kisi'    => $oncekiVeri ? (int) ($onc[$cid] ?? 0) : null,
+                'gecmis'         => $gecmis,
+                'beklenmedik'    => $bek,
+            ];
+        }
+        return [
+            'tarih'       => (string) $t['tarih'],
+            'ad'          => (string) $t['ad'],
+            'tur'         => (string) $t['tur'],
+            'yarim_gun'   => (int) ($t['yarim_gun'] ?? 0) === 1,
+            'onceki'      => $onceki,
+            'onceki_veri' => $oncekiVeri,
+            'rows'        => $rows,
+            'calisan'     => $calisan,
+            'kayitsiz'    => $kayitsiz,
+            'beklenmedik' => $beklenmedik,
+        ];
+    }
+
+    /**
+     * fable-047: AY KAPANIŞI "tatil davranışı" maddesi — o ayki resmi tatillerde kim çalıştı,
+     * kim çalışmadı, hangisi BEKLENMEDİK (geçen tatilde çalışmıştı ama bu sefer sayı yok).
+     * Yarım gün (arefe) tam tatil sayılmaz — sayı girilmesi normaldir, uyarı üretmez.
+     * @return array{durum:string,ozet:string,rows:array<int,array<string,string>>}
+     */
+    public function ayTatilAnaliz(string $ay): array
+    {
+        $tatiller = $this->ayTatilleri($ay);
+        if (!$tatiller) {
+            return ['durum' => 'info', 'ozet' => 'Bu ay resmi tatil yok.', 'rows' => []];
+        }
+
+        $gunAdi = ['Mon' => 'Pzt', 'Tue' => 'Sal', 'Wed' => 'Çar', 'Thu' => 'Per', 'Fri' => 'Cum', 'Sat' => 'Cmt', 'Sun' => 'Paz'];
+        $rows = [];
+        $beklenmedikTop = 0;
+        $veriYok = 0;
+        $ozetPars = [];
+        foreach ($tatiller as $tarih => $t) {
+            $d = $this->tatilDavranis((string) $tarih);
+            $gunTr = $gunAdi[date('D', strtotime((string) $tarih))] ?? '';
+            $etiket = $d['ad'] . ' (' . date('d.m', strtotime((string) $tarih)) . ' ' . $gunTr . ')';
+            $ozetPars[] = $etiket . ': ' . $d['calisan'] . ' çalıştı';
+
+            if (!$d['onceki_veri']) {
+                $veriYok++;
+                $rows[] = [
+                    'ad'      => $etiket,
+                    'meta'    => 'geçmiş tatil verisi yok — elle teyit et',
+                    'deger'   => $d['calisan'] . ' çalıştı',
+                    'link'    => 'bugun.php?date=' . $tarih,
+                    'link_ad' => 'Aç',
+                ];
+                continue;
+            }
+            // Yarım gün: çalışılması normal → beklenmedik üretme, bilgi satırı yeter.
+            if ($d['yarim_gun']) {
+                $rows[] = [
+                    'ad'      => $etiket,
+                    'meta'    => 'yarım gün (arefe) — sayı girilmesi normal',
+                    'deger'   => $d['calisan'] . ' çalıştı',
+                    'link'    => 'bugun.php?date=' . $tarih,
+                    'link_ad' => 'Aç',
+                ];
+                continue;
+            }
+            $beklenmedikTop += (int) $d['beklenmedik'];
+            foreach ($d['rows'] as $r) {
+                if (empty($r['beklenmedik'])) {
+                    continue;
+                }
+                $rows[] = [
+                    'ad'      => (string) $r['name'],
+                    'meta'    => $etiket . ' · geçen tatilde ' . (int) $r['onceki_kisi'] . ' kişi çalışmıştı',
+                    'deger'   => 'sayı girilmedi',
+                    'link'    => 'bugun.php?date=' . $tarih . '&focus=' . (int) $r['customer_id'],
+                    'link_ad' => 'Gir',
+                ];
+            }
+            if ((int) $d['beklenmedik'] === 0) {
+                $rows[] = [
+                    'ad'      => $etiket,
+                    'meta'    => 'geçen tatille aynı davranış',
+                    'deger'   => $d['calisan'] . ' çalıştı',
+                    'link'    => 'bugun.php?date=' . $tarih,
+                    'link_ad' => 'Aç',
+                ];
+            }
+        }
+
+        if ($beklenmedikTop > 0) {
+            $durum = 'warn';
+            $ozet = $beklenmedikTop . ' müşteri geçen tatilde çalışmıştı, bu tatilde sayı girilmemiş.';
+        } elseif ($veriYok > 0 && $veriYok === count($tatiller)) {
+            $durum = 'info';
+            $ozet = count($tatiller) . ' tatil · geçmiş tatil verisi yok, davranış kıyaslanamadı.';
+        } else {
+            $durum = 'ok';
+            $ozet = count($tatiller) . ' tatil · ' . implode(' · ', $ozetPars) . '.';
+        }
+        return ['durum' => $durum, 'ozet' => $ozet, 'rows' => $rows];
+    }
+
+    /**
+     * Bir tarihe düşen sipariş/teslimat kayıtları — tatil uyarısındaki "ekmek vb. siparişi
+     * iptal/güncelle" hatırlatmasının VERİ tarafı (yoksa genel hatırlatma metni kullanılır).
+     * @return array{siparis:array<int,array>,teslimat:array<int,array>}
+     */
+    public function tatilSiparisleri(string $tarih): array
+    {
+        $st = $this->pdo->prepare(
+            "SELECT o.customer_id, c.name, o.meal, o.persons, o.status
+             FROM orders o JOIN customers c ON c.id = o.customer_id
+             WHERE o.order_date = ? AND o.status <> 'reddedildi' AND o.persons > 0
+             ORDER BY c.name ASC, o.meal ASC"
+        );
+        $st->execute([$tarih]);
+        $siparis = $st->fetchAll();
+
+        $st = $this->pdo->prepare(
+            "SELECT t.customer_id, c.name, t.status
+             FROM teslimat t JOIN customers c ON c.id = t.customer_id
+             WHERE t.teslim_date = ? AND t.status <> 'teslim'
+             ORDER BY c.name ASC"
+        );
+        $st->execute([$tarih]);
+        return ['siparis' => $siparis, 'teslimat' => $st->fetchAll()];
+    }
+
+    // ══ fable-047: AY KAPANIŞI akıllı kontrol yardımcıları ════════════════════════════
+
+    /**
+     * Ayın iş günlerinde sayı GİRİLMEMİŞ müşteri×gün (rapor.php eksik-gün mantığı =
+     * customerWeeklyGrid; tek gerçek kaynak). Resmi tatil günleri HARİÇ — onlar "tatil
+     * davranışı" maddesinin işi (aynı gün iki maddede uyarı üretmesin).
+     * @return array{toplam:int,rows:array<int,array{customer_id:int,name:string,eksik:int,ilk:?string,gunler:array<int,string>}>}
+     */
+    public function ayEksikUretim(string $ay, ?string $today = null): array
+    {
+        $today ??= $this->bugun();
+        $tatiller = $this->ayTatilleri($ay);
+        $rows = [];
+        $toplam = 0;
+        foreach ($this->activeCustomers() as $c) {
+            $cid = (int) $c['id'];
+            $gunler = [];
+            foreach ($this->customerWeeklyGrid($cid, $ay, $today)['weeks'] as $w) {
+                foreach ($w['days'] as $d) {
+                    if ($d['missing'] && !isset($tatiller[$d['gun']])) {
+                        $gunler[] = (string) $d['gun'];
+                    }
+                }
+            }
+            if ($gunler === []) {
+                continue;
+            }
+            $toplam += count($gunler);
+            $rows[] = [
+                'customer_id' => $cid,
+                'name'        => (string) $c['name'],
+                'eksik'       => count($gunler),
+                'ilk'         => $gunler[0],
+                'gunler'      => $gunler,
+            ];
+        }
+        usort($rows, static fn(array $a, array $b) => $b['eksik'] <=> $a['eksik']);
+        return ['toplam' => $toplam, 'rows' => $rows];
+    }
+
+    /**
+     * ANORMAL SAYI DAVRANIŞI: müşteri bazında ayın günlük ortalamasından %eşik+ sapan günler
+     * (hem düşük hem yüksek). Eşik ayar tablosundan parametrik ('kapanis_sapma_esik', vars. 40).
+     * Tatil günleri ve gelecek günler hesaba GİRMEZ; 3 günden az kaydı olan müşteri atlanır
+     * (ortalama anlamsız → "veri yetersiz" sahte alarm üretmesin).
+     * @return array{esik:float,toplam:int,rows:array<int,array>}
+     */
+    public function ayAnormalSapma(string $ay, ?float $esik = null, ?string $today = null): array
+    {
+        $esik = $esik ?? $this->ayarNum('kapanis_sapma_esik', 40.0);
+        if ($esik <= 0) {
+            $esik = 40.0;
+        }
+        $today ??= $this->bugun();
+        $tatiller = $this->ayTatilleri($ay);
+
+        $st = $this->pdo->prepare(
+            "SELECT p.customer_id, c.name, p.prod_date, COALESCE(SUM(p.persons),0) AS kisi
+             FROM production p JOIN customers c ON c.id = p.customer_id
+             WHERE substr(p.prod_date,1,7) = ?
+             GROUP BY p.customer_id, c.name, p.prod_date
+             ORDER BY c.name ASC, p.prod_date ASC"
+        );
+        $st->execute([$ay]);
+
+        $byCustomer = [];
+        foreach ($st->fetchAll() as $r) {
+            $gun = (string) $r['prod_date'];
+            $kisi = (int) $r['kisi'];
+            if ($kisi <= 0 || $gun > $today || isset($tatiller[$gun])) {
+                continue;
+            }
+            $cid = (int) $r['customer_id'];
+            $byCustomer[$cid] ??= ['customer_id' => $cid, 'name' => (string) $r['name'], 'gunler' => []];
+            $byCustomer[$cid]['gunler'][$gun] = $kisi;
+        }
+
+        $rows = [];
+        $toplam = 0;
+        foreach ($byCustomer as $c) {
+            if (count($c['gunler']) < 3) {
+                continue;   // ortalama anlamsız — sahte alarm üretme
+            }
+            $ort = array_sum($c['gunler']) / count($c['gunler']);
+            if ($ort <= 0) {
+                continue;
+            }
+            $sapan = [];
+            foreach ($c['gunler'] as $gun => $kisi) {
+                $yuzde = abs($kisi - $ort) / $ort * 100;
+                if ($yuzde + 1e-9 < $esik) {
+                    continue;
+                }
+                $sapan[] = [
+                    'gun'   => (string) $gun,
+                    'kisi'  => $kisi,
+                    'yuzde' => round($yuzde, 1),
+                    'yon'   => $kisi < $ort ? 'dusuk' : 'yuksek',
+                ];
+            }
+            if ($sapan === []) {
+                continue;
+            }
+            $toplam += count($sapan);
+            $rows[] = [
+                'customer_id' => $c['customer_id'],
+                'name'        => $c['name'],
+                'ort'         => round($ort, 1),
+                'gun_sayisi'  => count($c['gunler']),
+                'gunler'      => $sapan,
+            ];
+        }
+        usort($rows, static fn(array $a, array $b) => count($b['gunler']) <=> count($a['gunler']));
+        return ['esik' => $esik, 'toplam' => $toplam, 'rows' => $rows];
+    }
+
+    /**
+     * BELGE TAMLIĞI: irsaliyesi kesilmemiş üretim günü + faturası kesilmemiş müşteri.
+     * İrsaliye kapsamı = customers.irsaliye_aktif=1 ve parasut_id dolu (irsaliyeAdaylari ile
+     * aynı tanım). Fatura = fatura tablosunda 'kesildi' VEYA parasut_fatura_log'da 'kesildi'.
+     * @return array{irsaliye_eksik_gun:int,irsaliye:array<int,array>,fatura:array<int,array>}
+     */
+    public function ayBelgeDurumu(string $ay): array
+    {
+        $st = $this->pdo->prepare(
+            "SELECT p.customer_id, c.name, p.prod_date, COALESCE(SUM(p.persons),0) AS kisi
+             FROM production p JOIN customers c ON c.id = p.customer_id
+             WHERE substr(p.prod_date,1,7) = ? AND c.irsaliye_aktif = 1
+               AND c.parasut_id IS NOT NULL AND c.parasut_id <> ''
+             GROUP BY p.customer_id, c.name, p.prod_date"
+        );
+        $st->execute([$ay]);
+        $uretimGunleri = $st->fetchAll();
+
+        $st = $this->pdo->prepare(
+            "SELECT customer_id, gun FROM parasut_irsaliye_log
+             WHERE substr(gun,1,7) = ? AND durum IN ('kesildi','bilinmiyor')"
+        );
+        $st->execute([$ay]);
+        $kesilen = [];
+        foreach ($st->fetchAll() as $r) {
+            $kesilen[(int) $r['customer_id'] . '|' . (string) $r['gun']] = true;
+        }
+
+        $irs = [];
+        $irsGun = 0;
+        foreach ($uretimGunleri as $r) {
+            if ((int) $r['kisi'] <= 0) {
+                continue;
+            }
+            $cid = (int) $r['customer_id'];
+            if (isset($kesilen[$cid . '|' . (string) $r['prod_date']])) {
+                continue;
+            }
+            $irs[$cid] ??= ['customer_id' => $cid, 'name' => (string) $r['name'], 'eksik' => 0, 'ilk' => null];
+            $irs[$cid]['eksik']++;
+            $irs[$cid]['ilk'] = min($irs[$cid]['ilk'] ?? '9999-99-99', (string) $r['prod_date']);
+            $irsGun++;
+        }
+        $irs = array_values($irs);
+        usort($irs, static fn(array $a, array $b) => $b['eksik'] <=> $a['eksik']);
+
+        // Faturası kesilmemiş müşteri: o ay üretimi var ama 'kesildi' fatura kaydı yok.
+        $st = $this->pdo->prepare("SELECT customer_id FROM fatura WHERE ay = ? AND durum = 'kesildi'");
+        $st->execute([$ay]);
+        $faturali = array_flip(array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN)));
+        $st = $this->pdo->prepare(
+            "SELECT DISTINCT customer_id FROM parasut_fatura_log
+             WHERE substr(donem_son,1,7) = ? AND durum = 'kesildi'"
+        );
+        $st->execute([$ay]);
+        foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $cid) {
+            $faturali[(int) $cid] = true;
+        }
+
+        $fat = [];
+        foreach ($this->monthProductionByCustomer($ay) as $r) {
+            $cid = (int) $r['customer_id'];
+            if (isset($faturali[$cid])) {
+                continue;
+            }
+            $fat[] = ['customer_id' => $cid, 'name' => (string) $r['name'], 'ciro' => (float) ($r['ciro'] ?? 0)];
+        }
+        return ['irsaliye_eksik_gun' => $irsGun, 'irsaliye' => $irs, 'fatura' => $fat];
+    }
+
+    /** Kokpit'e 'gider' olarak işlenmiş PARAŞÜT kaynaklı fatura adedi (o ay). */
+    public function ayParasutGiderAdet(string $ay): int
+    {
+        $st = $this->pdo->prepare(
+            "SELECT COUNT(*) FROM transactions
+             WHERE type = 'gider' AND source = 'parasut' AND substr(tx_date,1,7) = ?"
+        );
+        $st->execute([$ay]);
+        return (int) $st->fetchColumn();
+    }
+
+    /**
+     * GİDER TAMLIĞI CACHE — sayfa açılışında Paraşüt'e AĞIR API çağrısı YAPILMAZ (rate limit).
+     * Karşılaştırma butonla tetiklenir; sonuç ayar tablosunda saklanır, sayfa cache'i okur.
+     * @return array{parasut:int,kokpit:int,eksik:int,at:string}|null hiç kontrol edilmediyse null
+     */
+    public function giderTamlikCache(string $ay): ?array
+    {
+        $raw = $this->ayar('kapanis_gider_' . $ay);
+        if ($raw === null || $raw === '') {
+            return null;
+        }
+        $d = json_decode($raw, true);
+        if (!is_array($d) || !isset($d['parasut'], $d['kokpit'])) {
+            return null;
+        }
+        return [
+            'parasut' => (int) $d['parasut'],
+            'kokpit'  => (int) $d['kokpit'],
+            'eksik'   => max(0, (int) $d['parasut'] - (int) $d['kokpit']),
+            'at'      => (string) ($d['at'] ?? ''),
+        ];
+    }
+
+    /** Gider tamlığı karşılaştırmasını cache'e yaz (butonla tetiklenen SALT-OKUMA sonucu). */
+    public function giderTamlikKaydet(string $ay, int $parasutAdet, int $kokpitAdet): array
+    {
+        $d = [
+            'parasut' => max(0, $parasutAdet),
+            'kokpit'  => max(0, $kokpitAdet),
+            'at'      => date('Y-m-d H:i'),
+        ];
+        $this->ayarSet('kapanis_gider_' . $ay, (string) json_encode($d, JSON_UNESCAPED_UNICODE));
+        return $this->giderTamlikCache($ay) ?? $d;
+    }
+
+    /**
+     * MALİYET EŞLEŞTİRME BOŞLUĞU: o ay gideri olup hiçbir kırılıma/müşteriye eşlenmemiş tedarikçi.
+     * Eşlenmiş sayılır → tedarikci_musteri_map VEYA tedarikci_gida_map'te anahtarı var,
+     * ya da o aydaki TÜM faturaları fatura_musteri_map ile tek tek eşlenmiş.
+     * 'Personel' + 'Taşıma alış' hariç (distinctGiderFirmalar ile aynı tedarikçi tanımı).
+     * @return array<int,array{key:string,label:string,adet:int,toplam:float}> toplam DESC
+     */
+    public function ayEslesmeyenTedarikci(string $ay): array
+    {
+        $st = $this->pdo->prepare(
+            "SELECT t.id, t.source, t.category, t.description, t.amount, s.name AS supplier_name
+             FROM transactions t
+             LEFT JOIN suppliers s ON s.id = t.supplier_id
+             WHERE t.type = 'gider' AND substr(t.tx_date,1,7) = ?
+               AND (t.category IS NULL OR t.category NOT IN ('Personel', 'Taşıma alış'))"
+        );
+        $st->execute([$ay]);
+        $musteriMap = $this->tedarikciEslestirmeler();
+        $gidaMap = $this->tedarikciGidaMap();
+        $faturaMap = $this->faturaEslestirmeler($ay);
+
+        $grup = [];
+        foreach ($st->fetchAll() as $r) {
+            $firma = $this->txFirma($r);
+            $key = self::normTedarikci($firma);
+            if ($key === '') {
+                continue;
+            }
+            $grup[$key] ??= ['key' => $key, 'label' => $firma, 'adet' => 0, 'toplam' => 0.0, 'eslesmemis_fatura' => 0];
+            $grup[$key]['adet']++;
+            $grup[$key]['toplam'] += (float) $r['amount'];
+            if (empty($faturaMap[(int) $r['id']])) {
+                $grup[$key]['eslesmemis_fatura']++;
+            }
+        }
+
+        $out = [];
+        foreach ($grup as $key => $g) {
+            if (!empty($musteriMap[$key]) || array_key_exists($key, $gidaMap)) {
+                continue;                       // tedarikçi seviyesinde eşlenmiş
+            }
+            if ($g['eslesmemis_fatura'] === 0) {
+                continue;                       // her faturası tek tek eşlenmiş
+            }
+            unset($g['eslesmemis_fatura']);
+            $out[] = $g;
+        }
+        usort($out, static fn(array $a, array $b) => $b['toplam'] <=> $a['toplam']);
+        return $out;
+    }
+
+    /**
+     * PERSONEL kapanış durumu: o ay maaşı ödenmemiş/işlenmemiş + müşteri ataması olmayan personel.
+     * (Atamasız personel maliyeti hiçbir müşteriye dağılmaz → kâr analizi eksik çıkar.)
+     * @return array{odenmemis:array<int,array>,atamasiz:array<int,array>}
+     */
+    public function ayPersonelDurumu(string $ay): array
+    {
+        $st = $this->pdo->prepare(
+            'SELECT p.id, p.ad, p.aylik_ucret, m.maas_odendi
+             FROM personel p
+             LEFT JOIN personel_maas_ay m ON m.personel_id = p.id AND m.ay = ?
+             WHERE p.is_active = 1
+             ORDER BY p.ad ASC'
+        );
+        $st->execute([$ay]);
+        $liste = $st->fetchAll();
+
+        $atanan = [];
+        foreach ($this->pdo->query('SELECT DISTINCT personel_id FROM personel_musteri')->fetchAll(PDO::FETCH_COLUMN) as $pid) {
+            $atanan[(int) $pid] = true;
+        }
+
+        $odenmemis = [];
+        $atamasiz = [];
+        foreach ($liste as $p) {
+            $pid = (int) $p['id'];
+            if ($p['maas_odendi'] === null || (int) $p['maas_odendi'] !== 1) {
+                $odenmemis[] = [
+                    'personel_id' => $pid,
+                    'ad'          => (string) $p['ad'],
+                    'ucret'       => (float) $p['aylik_ucret'],
+                    'islenmis'    => $p['maas_odendi'] !== null,
+                ];
+            }
+            if (!isset($atanan[$pid])) {
+                $atamasiz[] = ['personel_id' => $pid, 'ad' => (string) $p['ad']];
+            }
+        }
+        return ['odenmemis' => $odenmemis, 'atamasiz' => $atamasiz];
+    }
+
     // ── Yayınlanan menü (M6, salt-gösterim) ───────────────────
     /** @return array<int,array> yayınlanan menü günleri (recipe adıyla). Boşsa []. */
     public function publishedMenu(string $from, string $to, string $meal = 'ogle'): array

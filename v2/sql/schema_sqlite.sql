@@ -456,7 +456,8 @@ INSERT OR IGNORE INTO ayar (anahtar, deger) VALUES
   ('kidem_tavan', '64948.77'),      -- 2026 H1 kıdem tazminatı aylık tavanı TL
   ('kidem_aylik_bolen', '12'),      -- yılda 30 gün → aylık tahakkuk = min(brüt,tavan)/12
   ('diger_maliyet_oran', '0'),      -- yemek/yol/ikramiye default oran (Ömer girer)
-  ('sgk_tesvik_orani', '0.175');    -- %5 teşvikli işveren SGK (bilgi amaçlı)
+  ('sgk_tesvik_orani', '0.175'),    -- %5 teşvikli işveren SGK (bilgi amaçlı)
+  ('kapanis_sapma_esik', '40');     -- fable-047: ay kapanışı anormal sayı sapma eşiği (%)
 
 -- ── Personel → müşteri dağıtım ataması (opus-014) ─
 -- genel=1 → o personelin yüklü maliyeti tüm üretim müşterilerine HACME oranlı dağıtılır (customer_id NULL).
@@ -566,6 +567,21 @@ CREATE TABLE IF NOT EXISTS tedarikci_devir (
   created_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ── fable-047: RESMİ TATİL takvimi ─────────────────────────────────────────────────────
+-- Tatil öncesi 3 gün uyarı (tools/tatil_uyari.php) + ay kapanışı "tatil davranışı" analizi.
+-- tur: 'resmi' | 'dini' | 'arefe'; yarim_gun=1 → tam tatil sayılmaz (sayı girilir ama düşük).
+-- SİLME YOK — aktif=0 ile pasifleşir (geçmiş tatil karşılaştırması bozulmasın).
+CREATE TABLE IF NOT EXISTS resmi_tatil (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  tarih      TEXT NOT NULL UNIQUE,               -- 'YYYY-MM-DD'
+  ad         TEXT NOT NULL,
+  tur        TEXT NOT NULL DEFAULT 'resmi' CHECK(tur IN ('resmi','dini','arefe')),
+  yarim_gun  INTEGER NOT NULL DEFAULT 0,
+  aktif      INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_rt_aktif ON resmi_tatil(aktif, tarih);
 
 -- ── Push cihaz token'ları (migrate_021 + opus-021 user_id): müşteri app + admin ─
 CREATE TABLE IF NOT EXISTS push_tokens (
