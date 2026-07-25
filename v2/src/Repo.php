@@ -1037,15 +1037,20 @@ final class Repo
      */
     public function tasimaAlisBirim(string $ay): ?float
     {
+        // fable-048i (canlı ders): YENİ çekilen faturanın UBL satırı birkaç saat gecikebilir.
+        // Eskiden TEK satırsız fatura tüm ayın kanıtlı birimini iptal edip ay-ortası yanıltan
+        // 'fatura-oran' moduna düşürüyordu (25 Tem: KIRMIZI 133.980 gelince birim 175 kayboldu).
+        // Artık birim SATIRI OLAN faturalardan hesaplanır (Σnet/Σqty) — satırsız fatura birimi
+        // bozmaz; satırı cron'la gelince Σ'ye kendiliğinden katılır.
         $st = $this->pdo->prepare(
-            "SELECT COUNT(*) AS n, COALESCE(SUM(qty),0) AS q, COALESCE(SUM(net_amount),0) AS net,
-                    SUM(CASE WHEN qty IS NULL OR qty <= 0 THEN 1 ELSE 0 END) AS satirsiz
+            "SELECT COALESCE(SUM(qty),0) AS q, COALESCE(SUM(net_amount),0) AS net
              FROM transactions
-             WHERE type = 'gider' AND category = 'Taşıma alış' AND substr(tx_date,1,7) = ?"
+             WHERE type = 'gider' AND category = 'Taşıma alış' AND substr(tx_date,1,7) = ?
+               AND qty IS NOT NULL AND qty > 0 AND net_amount IS NOT NULL"
         );
         $st->execute([$ay]);
         $r = $st->fetch();
-        if (!$r || (int) $r['n'] === 0 || (int) $r['satirsiz'] > 0 || (float) $r['q'] <= 0) {
+        if (!$r || (float) $r['q'] <= 0) {
             return null;
         }
         return round((float) $r['net'] / (float) $r['q'], 2);
