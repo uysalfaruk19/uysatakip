@@ -19,6 +19,8 @@ $flash = '';
 $flashOk = true;
 $formOpen = isset($_GET['yeni']) || isset($_GET['edit']);
 $editId = (int) ($_GET['edit'] ?? 0) ?: null;
+// fable-046: işlem sonrası hangi liste bloğu açık kalsın ('uretim' | 'tasima' | '').
+$acikPost = '';
 
 // ── Kaydet / pasifleştir ─────────────────────────────────────
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
@@ -29,6 +31,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     } elseif (($_POST['action'] ?? '') === 'pasif') {
         $pid = (int) ($_POST['id'] ?? 0);
         if ($pid > 0) {
+            $eski = $repo->customer($pid);
+            $acikPost = ($eski['category'] ?? 'uretim') === 'tasima' ? 'tasima' : 'uretim';
             $repo->setCustomerActive($pid, false);
             uysa_audit('musteri_pasif', $u['username'], (string) $pid, null, client_ip());
             $flash = 'Müşteri pasifleştirildi.';
@@ -116,6 +120,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 uysa_audit('musteri_kaydet', $u['username'], (string) $cid, json_encode(['cat' => $category]), client_ip());
                 $flash = 'Müşteri kaydedildi · ' . $name . $fiyatNotu;
                 $month = $postMonth;
+                $acikPost = $category;
             } catch (\Throwable $e) {
                 if ($pdo->inTransaction()) {
                     $pdo->rollBack();
@@ -130,6 +135,27 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
 $uretim = $repo->listCustomersByCategory('uretim');
 $tasima = $repo->listCustomersByCategory('tasima');
+
+// fable-046 (Ömer): listeler her zaman açık durmasın — önce ÖZET, tıklayınca liste.
+// Özet rakamları mevcut Repo metotlarından; yeni hesap YOK (tek kaynak korunur).
+$uretimCiro = 0.0;
+$uretimKisi = 0;
+foreach ($repo->monthProductionByCustomer($month, 'uretim') as $r) {
+    $uretimCiro += (float) $r['ciro'];
+    $uretimKisi += (int) $r['persons'];
+}
+// Taşıma kârı zaten satır satır tasimaProfit ile hesaplanıyordu; ÖNCE topla, listede yeniden çağırma.
+$tasimaKar = [];
+$tasimaAdet = 0.0;
+$tasimaNet = 0.0;
+foreach ($tasima as $c) {
+    $t = $repo->tasimaProfit((int) $c['id'], $month);
+    $tasimaKar[(int) $c['id']] = $t;
+    $tasimaAdet += (float) $t['adet'];
+    $tasimaNet += (float) $t['net'];
+}
+// Açık kalacak blok: POST'un dokunduğu kategori > ?ac= (deep-link) > kapalı.
+$acikBolum = $acikPost !== '' ? $acikPost : (string) ($_GET['ac'] ?? '');
 
 // Düzenlenen müşteri (form ön-dolum)
 $edit = $editId ? $repo->customer($editId) : null;
@@ -273,9 +299,21 @@ require __DIR__ . '/partials/header.php';
       </div>
       <?php endif; ?>
 
-      <!-- ÜRETİM müşterileri -->
-      <div class="section-head"><div class="gt-h" style="margin:0"><i class="bi bi-people-fill"></i> ÜRETİM MÜŞTERİLERİ</div><span class="text-muted" style="font-size:12px"><?= count($uretim) ?> firma</span></div>
+      <!-- ÜRETİM müşterileri — fable-046: önce özet, tıklayınca liste (native details/summary) -->
       <div class="cardx card-pad">
+        <details class="gt-katman"<?= $acikBolum === 'uretim' ? ' open' : '' ?>>
+          <summary>
+            <div class="gt-katman-top">
+              <div class="gt-h" style="margin:0"><i class="bi bi-people-fill"></i> ÜRETİM MÜŞTERİLERİ</div>
+              <span class="gt-katman-chev"><span class="ac">listeyi aç</span><span class="kap">kapat</span><i class="bi bi-chevron-down"></i></span>
+            </div>
+            <div class="gt-mini">
+              <div><div class="gt-mn"><?= count($uretim) ?></div><div class="gt-ml">Firma</div></div>
+              <div><div class="gt-mn"><?= number_format($uretimKisi, 0, ',', '.') ?></div><div class="gt-ml"><?= Helpers::e(ay_label_tr($month)) ?> kişi</div></div>
+              <div><div class="gt-mn">₺<?= number_format(round($uretimCiro), 0, ',', '.') ?></div><div class="gt-ml"><?= Helpers::e(ay_label_tr($month)) ?> ciro</div></div>
+            </div>
+          </summary>
+          <div class="gt-katman-liste">
         <?php if (!$uretim): ?>
           <div class="empty-state">Üretim müşterisi yok.</div>
         <?php else: foreach ($uretim as $c): ?>
@@ -297,15 +335,29 @@ require __DIR__ . '/partials/header.php';
             </div>
           </div>
         <?php endforeach; endif; ?>
+          </div>
+        </details>
       </div>
 
-      <!-- TAŞIMA müşterileri -->
-      <div class="section-head"><div class="gt-h" style="margin:0"><i class="bi bi-truck"></i> TAŞIMA MÜŞTERİLERİ</div><span class="text-muted" style="font-size:12px"><?= Helpers::e(ay_label_tr($month)) ?></span></div>
+      <!-- TAŞIMA müşterileri — fable-046: önce özet, tıklayınca liste -->
       <div class="cardx card-pad">
+        <details class="gt-katman"<?= $acikBolum === 'tasima' ? ' open' : '' ?>>
+          <summary>
+            <div class="gt-katman-top">
+              <div class="gt-h" style="margin:0"><i class="bi bi-truck"></i> TAŞIMA MÜŞTERİLERİ</div>
+              <span class="gt-katman-chev"><span class="ac">listeyi aç</span><span class="kap">kapat</span><i class="bi bi-chevron-down"></i></span>
+            </div>
+            <div class="gt-mini">
+              <div><div class="gt-mn"><?= count($tasima) ?></div><div class="gt-ml">Firma</div></div>
+              <div><div class="gt-mn"><?= number_format($tasimaAdet, 0, ',', '.') ?></div><div class="gt-ml"><?= Helpers::e(ay_label_tr($month)) ?> adet</div></div>
+              <div><div class="gt-mn <?= $tasimaNet < 0 ? 'bad' : 'ok' ?>">₺<?= number_format(round($tasimaNet), 0, ',', '.') ?></div><div class="gt-ml"><?= Helpers::e(ay_label_tr($month)) ?> kâr</div></div>
+            </div>
+          </summary>
+          <div class="gt-katman-liste">
         <?php if (!$tasima): ?>
           <div class="empty-state">Taşıma müşterisi yok.</div>
         <?php else: foreach ($tasima as $c):
-            $t = $repo->tasimaProfit((int) $c['id'], $month);
+            $t = $tasimaKar[(int) $c['id']];
             $adet = (float) $t['adet'];
             $kar = (float) $t['net']; ?>
           <div class="customer-row">
@@ -324,6 +376,8 @@ require __DIR__ . '/partials/header.php';
             </div>
           </div>
         <?php endforeach; endif; ?>
+          </div>
+        </details>
       </div>
 
       <script>

@@ -371,6 +371,56 @@ final class Repo
         )->execute([$parasutId, $bakiye, $syncAt, $customerId]);
     }
 
+    /**
+     * fable-046: periyodik bakiye senkronunun HEDEF listesi — Paraşüt cari'si bağlı AKTİF müşteriler.
+     * customersWithParasut()'tan farkı: orası "daha önce senkronlanmış"ları (sync_at) listeler,
+     * burası "senkronlanabilir"leri (parasut_id dolu) verir — hiç senkronlanmamış müşteri de gelir.
+     * @return array<int,array{id:int,name:string,parasut_id:string}>
+     */
+    public function customersForParasutBakiye(): array
+    {
+        $rows = $this->pdo->query(
+            "SELECT id, name, parasut_id FROM customers
+             WHERE is_active = 1 AND parasut_id IS NOT NULL AND parasut_id <> '' ORDER BY name"
+        )->fetchAll();
+        return array_map(static fn(array $r) => [
+            'id' => (int) $r['id'], 'name' => (string) $r['name'], 'parasut_id' => (string) $r['parasut_id'],
+        ], $rows);
+    }
+
+    /**
+     * fable-046: Paraşüt cari bakiyesi PERİYODİK senkronu (SALT-OKUMA — Paraşüt'e yazma YOK).
+     * Ağ katmanı dışarıda: $fetch = fn(string $parasutId): ?array{balance:float} (canlıda
+     * Parasut::contactBalance, testte mock) → bu metot saf DB tarafı, ağsız test edilir.
+     * DÜRÜSTLÜK: fetch null/hata dönerse o müşterinin CACHE'İ KORUNUR — 0 uydurulmaz, eski
+     * bakiye ezilmez (Alacaklarım ekranı "son senkron" zamanıyla birlikte gösterir).
+     * @param callable(string):?array $fetch
+     * @return array{hedef:int,guncel:int,atlanan:int,hata:int,detay:array<int,string>}
+     */
+    public function parasutBakiyeSenkron(callable $fetch, ?string $syncAt = null): array
+    {
+        $syncAt = $syncAt ?? date('Y-m-d H:i:s');
+        $sonuc = ['hedef' => 0, 'guncel' => 0, 'atlanan' => 0, 'hata' => 0, 'detay' => []];
+        foreach ($this->customersForParasutBakiye() as $c) {
+            $sonuc['hedef']++;
+            try {
+                $r = $fetch($c['parasut_id']);
+            } catch (\Throwable $e) {
+                $sonuc['hata']++;
+                $sonuc['detay'][] = $c['name'] . ': ' . $e->getMessage();
+                continue;
+            }
+            if (!is_array($r) || !isset($r['balance'])) {
+                $sonuc['atlanan']++;
+                $sonuc['detay'][] = $c['name'] . ': bakiye alanı gelmedi (cache korundu)';
+                continue;
+            }
+            $this->setParasutInfo($c['id'], null, (float) $r['balance'], $syncAt);
+            $sonuc['guncel']++;
+        }
+        return $sonuc;
+    }
+
     /** Paraşüt bakiyesi bağlı müşteriler (senkron durumu ekranı). */
     public function customersWithParasut(): array
     {
@@ -4184,6 +4234,84 @@ final class Repo
         unset($g);
         usort($grup, static fn(array $a, array $b) => $b['kalan'] <=> $a['kalan']);
         return array_values($grup);
+    }
+
+    /**
+     * fable-046: TÜM tedarikçilerin borç DETAYI tek geçişte (Cari > Borçlarım artık satırları
+     * inline açıyor — her satır için ayrı borclarimDetay() çağrısı N tam tarama demekti).
+     * Tanım/rakam borclarimDetay ile BİREBİR aynı; tek fark tarama sayısı. Sıra: kalan DESC.
+     * @return array<string,array{key:string,label:string,fatura:float,adet:int,odenen:float,devir:float,kalan:float,faturalar:array,odemeler:array}>
+     */
+    public function borclarimDetayTumu(): array
+    {
+        $det = [];
+        $ensure = static function (string $key, string $label) use (&$det): void {
+            if (!isset($det[$key])) {
+                $det[$key] = ['key' => $key, 'label' => $label !== '' ? $label : $key,
+                    'fatura' => 0.0, 'adet' => 0, 'odenen' => 0.0, 'devir' => 0.0, 'kalan' => 0.0,
+                    'faturalar' => [], 'odemeler' => []];
+            }
+        };
+
+        // 1) Faturalar — TÜM ZAMAN, Personel/Taşıma alış hariç (borclarimListe ile aynı tanım).
+        $st = $this->pdo->query(
+            "SELECT t.id, t.tx_date, t.amount, t.source, t.category, t.description, s.name AS supplier_name
+             FROM transactions t
+             LEFT JOIN suppliers s ON s.id = t.supplier_id
+             WHERE t.type = 'gider'
+               AND (t.category IS NULL OR t.category NOT IN ('Personel', 'Taşıma alış'))
+             ORDER BY t.tx_date DESC, t.id DESC"
+        );
+        foreach ($st->fetchAll() as $r) {
+            $firma = $this->txFirma($r);
+            $key = self::normTedarikci($firma);
+            if ($key === '') {
+                continue;
+            }
+            $ensure($key, $firma);
+            $desc = (string) ($r['description'] ?? '');
+            $parts = explode(' · ', $desc, 2);
+            $det[$key]['faturalar'][] = [
+                'id'       => (int) $r['id'],
+                'tx_date'  => (string) $r['tx_date'],
+                'amount'   => (float) $r['amount'],
+                'no'       => isset($parts[1]) ? trim($parts[1]) : trim($desc),
+                'kategori' => (string) ($r['category'] ?? ''),
+            ];
+            $det[$key]['fatura'] += (float) $r['amount'];
+            $det[$key]['adet']++;
+        }
+
+        // 2) Ödemeler (negatif düzeltmeler dahil).
+        foreach ($this->pdo->query('SELECT id, tedarikci, odeme_tarihi, tutar, note FROM tedarikci_odeme ORDER BY odeme_tarihi DESC, id DESC')->fetchAll() as $r) {
+            $key = (string) $r['tedarikci'];
+            if ($key === '') {
+                continue;
+            }
+            $ensure($key, $key);
+            $det[$key]['odemeler'][] = $r;
+            $det[$key]['odenen'] += (float) $r['tutar'];
+        }
+
+        // 3) Devir (açılış borcu).
+        foreach ($this->pdo->query('SELECT tedarikci, label, tutar FROM tedarikci_devir')->fetchAll() as $r) {
+            $key = (string) $r['tedarikci'];
+            if ($key === '') {
+                continue;
+            }
+            $ensure($key, trim((string) $r['label']));
+            $det[$key]['devir'] += (float) $r['tutar'];
+        }
+
+        foreach ($det as &$d) {
+            $d['fatura'] = round($d['fatura'], 2);
+            $d['odenen'] = round($d['odenen'], 2);
+            $d['devir'] = round($d['devir'], 2);
+            $d['kalan'] = round($d['devir'] + $d['fatura'] - $d['odenen'], 2);
+        }
+        unset($d);
+        uasort($det, static fn(array $a, array $b) => $b['kalan'] <=> $a['kalan']);
+        return $det;
     }
 
     /**

@@ -199,12 +199,12 @@ require __DIR__ . '/partials/header.php';
       </div>
 
       <?php // fable-034b (denetim): modül çipleri artık tarih+AYIN ÖZETİ açılışının ALTINDA ?>
-      <div class="quick-tiles">
-        <a class="q-tile" href="faturalar.php"><i class="bi bi-receipt"></i> Faturalar</a>
-        <a class="q-tile" href="cari.php"><i class="bi bi-cash-coin"></i> Cari &amp; tahsilat</a>
+      <div class="quick-tiles"><?php // fable-046 (Ömer): Fatura Kes EN ÜSTE — en sık kullanılan aksiyon ?>
         <?php if (Auth::isAdmin($u)): ?>
         <a class="q-tile" href="fatura-kes.php"><i class="bi bi-receipt-cutoff"></i> Fatura Kes</a>
         <?php endif; ?>
+        <a class="q-tile" href="faturalar.php"><i class="bi bi-receipt"></i> Faturalar</a>
+        <a class="q-tile" href="cari.php"><i class="bi bi-cash-coin"></i> Cari &amp; tahsilat</a>
       </div>
 
       <div class="cardx card-pad fin-detay" id="fin-gider" style="display:none">

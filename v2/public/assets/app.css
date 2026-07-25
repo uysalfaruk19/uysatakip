@@ -142,6 +142,11 @@ body.admin-page .bottom-tabs {
 
 /* fable-034: GTO lacivert üst bar — kabuk kenarına taşar (bleed), yapışkan.
    Ömer'in beğendiği kanıtlı örnek; KOYU TEMA değil, geri kalan her şey açık. */
+/* fable-046: üst bar ÇENTİK/ön-kamera hizasından kesiliyordu (Ömer, iPhone). viewport-fit=cover
+   olduğu için bar viewport'un en tepesine oturuyor ama safe-area payı YOKTU (sadece 14px).
+   16px taban + env(safe-area-inset-top): çentiksiz cihazda (masaüstü/Android) sadece +2px büyür,
+   çentikli iPhone'da marka+selamlama tamamen çentiğin altına iner. Bu kural partials/header.php
+   (ve m/header_m.php) üzerinden TÜM ekranlarda ortak. */
 .topbar {
   display: flex;
   align-items: center;
@@ -149,12 +154,15 @@ body.admin-page .bottom-tabs {
   gap: 12px;
   min-height: 48px;
   margin: -18px -15px 14px;
-  padding: 14px 16px;
+  padding: calc(16px + env(safe-area-inset-top)) 16px 14px;
   background: linear-gradient(120deg, var(--navy), var(--navy2));
   color: #fff;
   position: sticky;
   top: 0;
   z-index: 15;
+}
+.topbar .brand-copy .eyebrow:first-child {
+  margin-bottom: 3px; /* selamlama üstteyken başlıkla arasına nefes */
 }
 .brand-mark {
   width: 40px;
@@ -236,6 +244,13 @@ h3 {
 
 .screen-stack {
   display: grid;
+  /* fable-046: sütun AÇIKÇA minmax(0,1fr). Örtük `auto` track, en geniş kartın min-content'ine
+     göre büyüyordu (Bugün'de 3'lü buton satırı → track 462px, kabuk 345px) ve kartlar
+     app-shell'in overflow-x:hidden'ı altında SAĞDAN KESİLİYORDU (Kaydet butonu, sayaç, 5.
+     hızlı erişim kutusu). minmax(0,1fr) track'i kaba sabitler, içerik küçülerek sığar.
+     Yatay taşma HEAD'de de vardı (kanıt: aynı ölçüm pristine kopyada); jitter reçetesine
+     (fable-016/021/025) dokunulmadı — sadece track genişliği. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 13px;
 }
 .cardx {
@@ -2478,6 +2493,59 @@ body.meal-open {
   font-weight: 600;
 }
 
+/* fable-046: Bugün ekranındaki GÜNÜN NABZI kartının KOMPAKT sürümü (Ömer: "çok yer kaplıyor").
+   SADECE .gt-nabiz-sm taşıyan karta iner — kar-analizi/finans nabız kartları aynen kalır.
+   Rakam hâlâ 34px (okunaklı); kazanç dikey boşluklardan ve mini kutu padding'lerinden. */
+.cardx.card-pad.gt-nabiz-sm {
+  padding: 11px 14px 12px;
+}
+.gt-nabiz-sm .gt-h {
+  margin-bottom: 6px;
+}
+.gt-nabiz-sm .gt-pulse {
+  padding: 0;
+}
+.gt-nabiz-sm .gt-pulse-n {
+  font-size: 34px;
+  letter-spacing: -0.6px;
+}
+.gt-nabiz-sm .gt-pulse-l {
+  font-size: 12px;
+  margin-top: 2px;
+}
+.gt-nabiz-sm .gt-prog {
+  margin: 9px 0 0;
+}
+.gt-nabiz-sm .gt-prog-top {
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+.gt-nabiz-sm .gt-prog-top b {
+  font-size: 12.5px;
+}
+.gt-nabiz-sm .gt-track {
+  height: 10px;
+  border-radius: 6px;
+}
+.gt-nabiz-sm .gt-fill {
+  border-radius: 6px;
+}
+.gt-nabiz-sm .gt-mini {
+  margin-top: 9px;
+  gap: 8px;
+}
+.gt-nabiz-sm .gt-mini > div {
+  padding: 7px 6px;
+  border-radius: 10px;
+}
+.gt-nabiz-sm .gt-mn {
+  font-size: 16px;
+}
+.gt-nabiz-sm .gt-ml {
+  font-size: 10.5px;
+  margin-top: 2px;
+}
+
 /* Gelir-gider terazi çubuğu */
 .gt-scale {
   margin-top: 14px;
@@ -2729,8 +2797,98 @@ body.meal-open {
   line-height: 16px;
   text-align: center;
 }
+/* fable-046: 5. kutu (Fatura Kes — yalnız admin) tek başına öksüz satır bırakmasın; son sıraya
+   tam genişlikte otursun. Admin olmayanda 4 kutu kalır, kural devreye girmez. */
+.gt-mods > :nth-child(5):last-child {
+  grid-column: 1 / -1;
+}
 @media (max-width: 380px) {
   .gt-mods {
     grid-template-columns: repeat(3, 1fr);
   }
+}
+
+/* ── fable-046: "önce ÖZET, tıklayınca liste/detay" katmanı ───────────────────
+   Native <details>/<summary> (JS yok, personel.php avans deseninin aynısı).
+   Kullanıcı: Müşteriler (Üretim/Taşıma özeti) + Cari (tedarikçi/müşteri satırı). */
+.gt-katman > summary {
+  display: block; /* varsayılan list-item üçgenini kaldır */
+  cursor: pointer;
+  list-style: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.gt-katman > summary::-webkit-details-marker {
+  display: none;
+}
+.gt-katman-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.gt-katman-chev {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--primary);
+  white-space: nowrap;
+}
+.gt-katman-chev i {
+  font-size: 13px;
+  transition: transform 140ms ease;
+}
+.gt-katman[open] .gt-katman-chev i {
+  transform: rotate(180deg);
+}
+.gt-katman-chev .kap,
+.gt-katman[open] .gt-katman-chev .ac {
+  display: none;
+}
+.gt-katman[open] .gt-katman-chev .kap {
+  display: inline;
+}
+.gt-katman-liste {
+  margin-top: 12px;
+  padding-top: 4px;
+  border-top: 1px solid var(--line-2);
+}
+
+/* Cari: satır = özet (kapalı) → detay + form (açık). Karne satırı (.gt-kr) summary'nin içinde
+   yaşadığı için kendi :first-child border kuralı her satırda tetiklenir → çizgi .gt-satir'a taşındı. */
+.gt-satir {
+  border-top: 1px solid var(--line-2);
+}
+.gt-satir:first-of-type {
+  border-top: none;
+}
+.gt-satir > summary {
+  display: block;
+  cursor: pointer;
+  list-style: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.gt-satir > summary::-webkit-details-marker {
+  display: none;
+}
+.gt-satir > summary > .gt-kr {
+  border-top: none;
+}
+.gt-satir[open] > summary > .gt-kr {
+  background: var(--surface-2);
+  border-radius: 10px;
+}
+.gt-satir-detay {
+  padding: 2px 2px 14px;
+}
+.gt-satir-detay .gt-h {
+  margin: 14px 0 8px;
+}
+.gt-satir-detay .tablex {
+  font-size: 13px;
+}
+.gt-satir-detay .form-grid {
+  gap: 8px;
 }

@@ -283,8 +283,10 @@ require __DIR__ . '/partials/header.php';
 
       <?php if ($flash): ?><div class="flash <?= $flashOk ? 'ok' : 'err' ?>"><?= Helpers::e($flash) ?></div><?php endif; ?>
 
-      <!-- fable-034: GÜNÜN NABZI (mockup birebir) — koca ciro + ilerleme + 3 mini stat -->
-      <div class="cardx card-pad">
+      <!-- fable-034: GÜNÜN NABZI (mockup birebir) — koca ciro + ilerleme + 3 mini stat
+           fable-046: .gt-nabiz-sm = kompakt sürüm (Ömer: ekranın çok yerini kaplıyordu).
+           Sınıf SADECE bu kartta; kar-analizi/finans nabız kartları değişmedi. -->
+      <div class="cardx card-pad gt-nabiz-sm">
         <div class="gt-h"><i class="bi bi-broadcast"></i> GÜNÜN NABZI</div>
         <div class="gt-pulse">
           <div class="gt-pulse-n">₺<span id="sum-amount"><?= Helpers::money($sumA) ?></span></div>
@@ -390,15 +392,21 @@ require __DIR__ . '/partials/header.php';
         </div>
       </form>
 
-      <!-- fable-034b (denetim): HIZLI ERİŞİM — mockup KOMPAKT 4'lü grid (ikon + tek satır), müşteri listesinin ALTINDA. Link seti korundu. -->
+      <!-- fable-034b (denetim): HIZLI ERİŞİM — mockup KOMPAKT grid (ikon + tek satır), müşteri listesinin ALTINDA.
+           fable-046 (Ömer): Müşteriler ÇIKTI (alt sekme çubuğunda zaten var — mükerrer), Finans GİRDİ
+           ("Gider — Firma Karnesi" oradan açılıyor). Sıra: Personel, Finans, Sipariş & Talep, Menü, Fatura Kes.
+           Fatura Kes canlı muhasebeye yazar → yalnız admin görür (finans.php ile aynı kapı). -->
       <div class="cardx card-pad">
         <div class="gt-h"><i class="bi bi-grid-3x3-gap-fill"></i> HIZLI ERİŞİM</div>
         <div class="gt-mods">
-          <a class="gt-mod" href="musteriler.php"><i class="bi bi-people"></i>Müşteriler</a>
+          <a class="gt-mod" href="personel.php"><i class="bi bi-person-badge"></i>Personel</a>
+          <a class="gt-mod" href="finans.php"><i class="bi bi-wallet2"></i>Finans</a>
           <?php $stRozet = $pendingCount + $openReqCount; // Ömer: Siparişler+Talepler tek kutu ?>
           <a class="gt-mod" href="siparisler.php"><?php if ($stRozet > 0): ?><span class="gt-mod-dot"><?= $stRozet ?></span><?php endif; ?><i class="bi bi-basket"></i>Sipariş &amp; Talep</a>
           <a class="gt-mod" href="menu.php"><i class="bi bi-card-list"></i>Menü</a>
-          <a class="gt-mod" href="personel.php"><i class="bi bi-person-badge"></i>Personel</a>
+          <?php if (Auth::isAdmin($u)): ?>
+          <a class="gt-mod" href="fatura-kes.php"><i class="bi bi-receipt-cutoff"></i>Fatura Kes</a>
+          <?php endif; ?>
         </div>
       </div>
 
