@@ -272,7 +272,7 @@ require __DIR__ . '/partials/header.php';
 
 <?php if ($preview): ?>
       <div class="cardx card-pad">
-        <h2><i class="bi bi-file-earmark-excel"></i> Excel önizleme</h2>
+        <div class="gt-h"><i class="bi bi-file-earmark-excel"></i> EXCEL ÖNİZLEME</div>
         <p class="row-meta">
           <strong><?= count($preview['days']) ?> gün</strong> bulundu ·
           <?= date('d.m.Y', strtotime($preview['date_start'])) ?> – <?= date('d.m.Y', strtotime($preview['date_end'])) ?>
@@ -382,7 +382,7 @@ require __DIR__ . '/partials/header.php';
       </div>
 
       <!-- Gün × öğün yemek listesi -->
-      <div class="section-head mt-3"><h2>Günler & yemekler</h2><span class="text-muted" style="font-size:12px"><?= count($editItems) ?> gün</span></div>
+      <div class="section-head mt-3"><div class="gt-h" style="margin:0"><i class="bi bi-calendar2-week"></i> GÜNLER & YEMEKLER</div><span class="text-muted" style="font-size:12px"><?= count($editItems) ?> gün</span></div>
       <div class="cardx card-pad">
         <form method="post" class="form-grid">
           <input type="hidden" name="csrf" value="<?= Helpers::e($csrf) ?>">
@@ -465,7 +465,7 @@ require __DIR__ . '/partials/header.php';
       <?php endif; ?>
 
       <div class="fab-sheet" id="menu-form" style="<?= $formOpen ? '' : 'display:none' ?>">
-        <h2>Yeni menü</h2>
+        <div class="gt-h"><i class="bi bi-plus-circle"></i> YENİ MENÜ</div>
         <form method="post" class="form-grid">
           <input type="hidden" name="csrf" value="<?= Helpers::e($csrf) ?>">
           <input type="hidden" name="action" value="save_menu">
@@ -502,7 +502,7 @@ require __DIR__ . '/partials/header.php';
         </form>
       </div>
 
-      <div class="section-head mt-3"><h2>Menüler</h2><span class="text-muted" style="font-size:12px"><?= count($menus) ?> menü</span></div>
+      <div class="section-head mt-3"><div class="gt-h" style="margin:0"><i class="bi bi-card-list"></i> MENÜLER</div><span class="text-muted" style="font-size:12px"><?= count($menus) ?> menü</span></div>
       <?php if (!$menus): ?>
         <div class="empty-state">Henüz menü yok. "Yeni menü" ile başlayın.</div>
       <?php else: ?>

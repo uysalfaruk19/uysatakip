@@ -29,17 +29,71 @@ $pageTitle = 'Kâr Analizi';
 $active = 'rapor';
 require __DIR__ . '/partials/header.php';
 ?>
-      <form method="get" class="date-row">
-        <div class="date-pill"><i class="bi bi-calendar2-week"></i>
-          <input type="month" name="ay" value="<?= Helpers::e($month) ?>" onchange="this.form.submit()">
-        </div>
-      </form>
-
-      <div class="summary-grid">
-        <div class="summary-card tint-green"><p class="label">Toplam gelir</p><p class="metric">₺ <?= Helpers::money($ka['toplam_gelir']) ?></p></div>
-        <div class="summary-card <?= $ka['toplam_net'] < 0 ? 'tint-orange' : 'tint-green' ?>"><p class="label">Toplam net kâr</p><p class="metric <?= $ka['toplam_net'] < 0 ? 'neg' : '' ?>">₺ <?= Helpers::money($ka['toplam_net']) ?></p></div>
-        <div class="summary-card wide"><p class="label">Toplam marj</p><p class="metric small"><?= marj_pct($ka['toplam_marj']) ?></p></div>
+<?php
+      // fable-034: GTO dili — AYIN NABZI + MÜŞTERİ KARNESİ (mockup birebir)
+      $gider = $ka['toplam_gelir'] - $ka['toplam_net'];
+      $scalePct = $ka['toplam_gelir'] > 0 ? (int) round($ka['toplam_net'] / $ka['toplam_gelir'] * 100) : 0;
+      if ($scalePct < 4 && $ka['toplam_net'] > 0) { $scalePct = 4; }
+      if ($scalePct < 0) { $scalePct = 0; }
+      // Karne: üretim + taşıma satırlarını tek listede birleştir, net'e göre sırala
+      $karne = [];
+      foreach ($ka['uretim']['rows'] as $r) {
+          $karne[] = ['id' => $r['customer_id'], 'name' => $r['name'], 'gelir' => (float) $r['gelir'], 'net' => (float) $r['net'], 'marj' => (float) $r['marj'], 'tasima' => false];
+      }
+      foreach ($ka['tasima']['rows'] as $r) {
+          $karne[] = ['id' => $r['customer_id'], 'name' => $r['name'], 'gelir' => (float) $r['satis'], 'net' => (float) $r['net'], 'marj' => (float) $r['marj'], 'tasima' => true];
+      }
+      usort($karne, static fn($a, $b) => $b['net'] <=> $a['net']);
+      $netMax = 0.0;
+      foreach ($karne as $k) { $netMax = max($netMax, abs($k['net'])); }
+      ?>
+      <div class="cardx card-pad">
+        <form method="get" class="gt-date">
+          <div class="dt" style="position:relative">
+            <b><?= Helpers::e(ay_label_tr($month)) ?></b>
+            <span>üretim + taşıma kâr/zarar</span>
+            <input type="month" name="ay" value="<?= Helpers::e($month) ?>" onchange="this.form.submit()"
+                   aria-label="Ay seç" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer">
+          </div>
+        </form>
       </div>
+
+      <div class="cardx card-pad">
+        <div class="gt-h"><i class="bi bi-broadcast"></i> AYIN NABZI</div>
+        <div class="gt-pulse">
+          <div class="gt-pulse-n <?= $ka['toplam_net'] < 0 ? 'bad' : 'ok' ?>">₺<?= Helpers::money($ka['toplam_net']) ?></div>
+          <div class="gt-pulse-l">net kâr · marj <?= marj_pct($ka['toplam_marj']) ?></div>
+        </div>
+        <div class="gt-scale">
+          <div class="row"><span class="gl">Gelir ₺<?= Helpers::money($ka['toplam_gelir']) ?></span><span class="gd">Gider ₺<?= Helpers::money($gider) ?></span></div>
+          <div class="gt-track deficit"><div class="gt-fill left" style="width: <?= $scalePct ?>%"></div></div>
+        </div>
+        <div class="gt-mini">
+          <div><div class="gt-mn <?= $ka['uretim']['net'] < 0 ? 'bad' : 'ok' ?>">₺<?= number_format(round($ka['uretim']['net']), 0, ',', '.') ?></div><div class="gt-ml">Üretim kârı</div></div>
+          <div><div class="gt-mn <?= $ka['tasima']['net'] < 0 ? 'bad' : 'ok' ?>">₺<?= number_format(round($ka['tasima']['net']), 0, ',', '.') ?></div><div class="gt-ml">Taşıma kârı</div></div>
+          <div><div class="gt-mn"><?= marj_pct($ka['toplam_marj']) ?></div><div class="gt-ml">Toplam marj</div></div>
+        </div>
+      </div>
+
+      <?php if ($karne): ?>
+      <div class="cardx card-pad">
+        <div class="gt-h"><i class="bi bi-clipboard-data"></i> MÜŞTERİ KARNESİ</div>
+        <?php foreach ($karne as $k): $w = $netMax > 0 ? max(4, (int) round(abs($k['net']) / $netMax * 100)) : 4; $bad = $k['net'] < 0; ?>
+          <a class="gt-kr<?= $bad ? ' warn' : '' ?>" href="rapor.php?musteri=<?= (int) $k['id'] ?>&ay=<?= $month ?>" style="display:block">
+            <div class="gt-kr-head">
+              <div class="gt-rank"><?= Helpers::e(mb_strtoupper(mb_substr($k['name'], 0, 1, 'UTF-8'), 'UTF-8')) ?></div>
+              <div class="gt-kr-firm">
+                <div class="gt-kr-ad"><?= Helpers::e($k['name']) ?></div>
+                <div class="gt-kr-sub">gelir ₺<?= Helpers::money($k['gelir']) ?><?= $k['tasima'] ? ' · taşıma' : '' ?></div>
+              </div>
+              <div class="gt-kr-val <?= $bad ? 'bad' : 'ok' ?>"><?= $bad ? '−' : '' ?>₺<?= Helpers::money(abs($k['net'])) ?><small>marj <?= marj_pct($k['marj']) ?></small></div>
+            </div>
+            <div class="gt-bar"><i class="<?= $bad ? 'bad' : '' ?>" style="width: <?= $w ?>%"></i></div>
+          </a>
+        <?php endforeach; ?>
+        <div class="gt-note">satıra dokun → o müşterinin aylık dökümü açılır</div>
+      </div>
+      <?php endif; ?>
 
       <!-- ÜRETİM P&L -->
       <div class="section-head"><h2>Üretim</h2><span class="text-muted" style="font-size:12px">gelir − gider − personel = net</span></div>

@@ -237,7 +237,7 @@ require __DIR__ . '/partials/header.php';
         <?php
         $rows = $repo->allRequests(['type' => $fType, 'status' => $fStatus, 'customer_id' => $fCust ?: null]);
         ?>
-        <div class="section-head mt-3"><h2>Talepler</h2><span class="text-muted" style="font-size:12px"><?= count($rows) ?> kayıt</span></div>
+        <div class="section-head mt-3"><div class="gt-h" style="margin:0"><i class="bi bi-chat-left-text"></i> TALEPLER</div><span class="text-muted" style="font-size:12px"><?= count($rows) ?> kayıt</span></div>
         <?php if (!$rows): ?>
           <div class="empty-state">Filtreye uyan talep yok.</div>
         <?php else: ?>

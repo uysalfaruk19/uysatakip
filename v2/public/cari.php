@@ -85,7 +85,7 @@ require __DIR__ . '/partials/header.php';
 
         <?php if ($net): ?>
         <div class="cardx card-pad">
-          <h2>Net kâr <span class="text-muted" style="font-size:12px;font-weight:600">(personel + gider düşülmüş · <?= Helpers::e(ay_label_tr($month)) ?>)</span></h2>
+          <div class="gt-h"><i class="bi bi-cash-coin"></i> NET KÂR <span class="text-muted" style="font-size:12px;font-weight:600">(personel + gider düşülmüş · <?= Helpers::e(ay_label_tr($month)) ?>)</span></div>
           <table class="tablex">
             <tbody>
               <?php if ($net['category'] === 'tasima'): ?>
@@ -104,7 +104,7 @@ require __DIR__ . '/partials/header.php';
         <?php endif; ?>
 
         <div class="cardx card-pad">
-          <h2><?= Helpers::e(ay_label_tr($month)) ?> ekstresi</h2>
+          <div class="gt-h"><i class="bi bi-receipt"></i> <?= Helpers::e(ay_label_tr($month)) ?> EKSTRESİ</div>
           <?php if (!$statement): ?>
             <div class="empty-state">Bu ay hareket yok.</div>
           <?php else: ?>
@@ -124,7 +124,7 @@ require __DIR__ . '/partials/header.php';
         </div>
 
         <div class="cardx card-pad">
-          <h2>Tahsilat ekle</h2>
+          <div class="gt-h"><i class="bi bi-plus-circle"></i> TAHSİLAT EKLE</div>
           <form method="post" class="form-grid">
             <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
             <input type="hidden" name="customer_id" value="<?= $cid ?>">

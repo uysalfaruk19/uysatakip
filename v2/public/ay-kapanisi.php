@@ -75,7 +75,7 @@ require __DIR__ . '/partials/header.php';
         </div>
       </div>
 
-      <div class="section-head"><h2>Kontrol listesi</h2><span class="text-muted" style="font-size:12px"><?= Helpers::e(ay_label_tr($month)) ?></span></div>
+      <div class="section-head"><div class="gt-h" style="margin:0"><i class="bi bi-check2-square"></i> KONTROL LİSTESİ</div><span class="text-muted" style="font-size:12px"><?= Helpers::e(ay_label_tr($month)) ?></span></div>
       <div class="list-groupx">
         <?php foreach ($kapanis['checks'] as $check): ?>
           <div class="flow-item">
@@ -94,7 +94,7 @@ require __DIR__ . '/partials/header.php';
       </div>
 
       <div class="cardx card-pad">
-        <h2>Ay özeti</h2>
+        <div class="gt-h"><i class="bi bi-clipboard-data"></i> AY ÖZETİ</div>
         <table class="tablex">
           <tbody>
             <tr><td>Üretim cirosu</td><td class="num">₺ <?= Helpers::money((float) $sum['production_amount']) ?></td></tr>
@@ -109,7 +109,7 @@ require __DIR__ . '/partials/header.php';
 
       <?php if ($kapanis['negative_customers']): ?>
       <div class="cardx card-pad">
-        <h2>Negatif müşteri kârı</h2>
+        <div class="gt-h"><i class="bi bi-graph-down-arrow"></i> NEGATİF MÜŞTERİ KÂRI</div>
         <table class="tablex">
           <tbody>
           <?php foreach (array_slice($kapanis['negative_customers'], 0, 8) as $r): ?>
@@ -126,7 +126,7 @@ require __DIR__ . '/partials/header.php';
 
       <?php if ($kapanis['no_production_customers']): ?>
       <div class="cardx card-pad">
-        <h2>Bu ay kaydı olmayan aktif müşteriler</h2>
+        <div class="gt-h"><i class="bi bi-person-dash"></i> BU AY KAYDI OLMAYAN AKTİF MÜŞTERİLER</div>
         <div class="list-groupx">
           <?php foreach (array_slice($kapanis['no_production_customers'], 0, 10) as $c): ?>
             <div class="customer-row missing" style="grid-template-columns:minmax(0,1fr) auto">

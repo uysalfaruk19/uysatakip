@@ -38,7 +38,7 @@ $active = '';
 require __DIR__ . '/partials/header.php';
 ?>
       <?php foreach ($gruplar as $baslik => $items): ?>
-      <div class="section-head"><h2><?= Helpers::e($baslik) ?></h2></div>
+      <div class="section-head"><div class="gt-h" style="margin:0"><i class="bi bi-grid-3x3-gap"></i> <?= Helpers::e($baslik) ?></div></div>
       <div class="mod-grid">
         <?php foreach ($items as [$href, $ico, $ad, $aciklama]): ?>
         <a class="mod-card i-blue" href="<?= Helpers::e($href) ?>">

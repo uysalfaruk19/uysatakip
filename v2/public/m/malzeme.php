@@ -58,7 +58,7 @@ require __DIR__ . '/partials/header_m.php';
       <?php if ($flash): ?><div class="flash <?= $flashOk ? 'ok' : 'err' ?>"><?= Helpers::e($flash) ?></div><?php endif; ?>
 
       <div class="cardx card-pad">
-        <h2>Malzeme iste</h2>
+        <div class="gt-h"><i class="bi bi-box-seam"></i> MALZEME İSTE</div>
         <p class="row-meta mb-2">İhtiyacınız olan malzemeleri yazın (her satıra bir kalem yazabilirsiniz).</p>
         <form method="post" class="form-grid">
           <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
@@ -72,7 +72,7 @@ require __DIR__ . '/partials/header_m.php';
         </form>
       </div>
 
-      <div class="section-head mt-3"><h2>Bu ay gönderilenler (<?= Helpers::e(ay_label_tr(date('Y-m'))) ?>)</h2></div>
+      <div class="section-head mt-3"><div class="gt-h" style="margin:0"><i class="bi bi-send-check"></i> BU AY GÖNDERİLENLER (<?= Helpers::e(ay_label_tr(date('Y-m'))) ?>)</div></div>
       <?php if (!$monthReqs): ?>
         <div class="empty-state">Bu ay malzeme talebi olmadı.</div>
       <?php else: ?>
@@ -95,7 +95,7 @@ require __DIR__ . '/partials/header_m.php';
         </div>
       <?php endif; ?>
 
-      <div class="section-head mt-3"><h2>Geçmiş talepler</h2></div>
+      <div class="section-head mt-3"><div class="gt-h" style="margin:0"><i class="bi bi-clock-history"></i> GEÇMİŞ TALEPLER</div></div>
       <?php if (!$history): ?>
         <div class="empty-state">Henüz malzeme talebiniz yok.</div>
       <?php else: ?>

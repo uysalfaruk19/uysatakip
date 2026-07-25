@@ -50,7 +50,7 @@ if (isset($_GET['goster'])) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Menü PDF</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+<link href="/assets/bootstrap-icons.css" rel="stylesheet">
 <style>
   html,body{margin:0;height:100%;background:#33373d;font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif}
   .pdf-bar{position:fixed;top:0;left:0;right:0;height:calc(52px + env(safe-area-inset-top));padding-top:env(safe-area-inset-top);
@@ -236,7 +236,7 @@ require __DIR__ . '/partials/header_m.php';
         <?php if (!$days): ?>
           <div class="empty-state">Menülerde gün eklenmemiş.</div>
         <?php else: ?>
-          <div class="section-head mt-2"><h2>Günlere göre menü</h2><span class="text-muted" style="font-size:12px">yukarı: geçmiş · aşağı: ileri</span></div>
+          <div class="section-head mt-2"><div class="gt-h" style="margin:0"><i class="bi bi-calendar2-week"></i> GÜNLERE GÖRE MENÜ</div><span class="text-muted" style="font-size:12px">yukarı: geçmiş · aşağı: ileri</span></div>
           <div class="screen-stack">
             <?php foreach ($days as $d => $items): $isToday = $d === $today; ?>
               <div class="meal-card <?= $isToday ? 'today-card' : '' ?>" <?= $d === $anchorDate ? 'id="menu-today"' : '' ?> style="scroll-margin-top:80px">

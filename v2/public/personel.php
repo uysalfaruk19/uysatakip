@@ -287,7 +287,7 @@ require __DIR__ . '/partials/header.php';
 
       <!-- Mevzuat ayarları (SGK / kıdem tavan / diğer maliyet oranı) -->
       <div class="fab-sheet" id="ayar-form" style="<?= $ayarOpen ? '' : 'display:none' ?>">
-        <h2>Mevzuat ayarları</h2>
+        <div class="gt-h"><i class="bi bi-sliders"></i> MEVZUAT AYARLARI</div>
         <form method="post" class="form-grid">
           <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
           <input type="hidden" name="action" value="ayar">
@@ -309,7 +309,7 @@ require __DIR__ . '/partials/header.php';
 
       <?php if ($byType): ?>
       <div class="cardx card-pad">
-        <h2>Tür kırılımı <span class="text-muted" style="font-size:12px;font-weight:600"><?= Helpers::e(ay_label_tr($month)) ?></span></h2>
+        <div class="gt-h"><i class="bi bi-pie-chart"></i> TÜR KIRILIMI <span class="text-muted" style="font-size:12px;font-weight:600"><?= Helpers::e(ay_label_tr($month)) ?></span></div>
         <table class="tablex">
           <tbody>
           <?php foreach ($TUR_ETIKET as $k => $lbl): if (empty($byType[$k])) continue; ?>
@@ -323,7 +323,7 @@ require __DIR__ . '/partials/header.php';
 
       <!-- Personel ekle / düzenle -->
       <div class="fab-sheet" id="personel-form" style="<?= $formOpen ? '' : 'display:none' ?>">
-        <h2><?= $editP ? 'Personel düzenle' : 'Personel ekle' ?></h2>
+        <div class="gt-h"><i class="bi bi-person-badge"></i> <?= $editP ? 'PERSONEL DÜZENLE' : 'PERSONEL EKLE' ?></div>
         <form method="post" class="form-grid">
           <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
           <input type="hidden" name="action" value="personel">
@@ -368,7 +368,7 @@ require __DIR__ . '/partials/header.php';
 
       <!-- Gider ekle -->
       <div class="fab-sheet mt-3" id="gider-form" style="<?= $giderOpen ? '' : 'display:none' ?>">
-        <h2>Gider ekle</h2>
+        <div class="gt-h"><i class="bi bi-plus-circle"></i> GİDER EKLE</div>
         <form method="post" class="form-grid">
           <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
           <input type="hidden" name="action" value="gider">
@@ -408,7 +408,7 @@ require __DIR__ . '/partials/header.php';
       </div>
       <?php endif; ?>
 
-      <div class="section-head"><h2>Personel</h2><span class="text-muted" style="font-size:12px"><?= count($personeller) ?> kişi</span></div>
+      <div class="section-head"><div class="gt-h" style="margin:0"><i class="bi bi-person-badge"></i> PERSONEL</div><span class="text-muted" style="font-size:12px"><?= count($personeller) ?> kişi</span></div>
       <div class="cardx card-pad">
         <?php if (!$personeller): ?>
           <div class="empty-state">Henüz personel yok. <a href="personel.php?ay=<?= $month ?>&yeni=1" style="color:var(--primary);font-weight:700">Personel ekle →</a></div>
@@ -536,7 +536,7 @@ require __DIR__ . '/partials/header.php';
       </div>
 
       <?php if ($giderler): ?>
-      <div class="section-head"><h2>Bu ayki giderler</h2></div>
+      <div class="section-head"><div class="gt-h" style="margin:0"><i class="bi bi-cash-stack"></i> BU AYKİ GİDERLER</div></div>
       <div class="cardx card-pad">
         <div class="list-groupx">
           <?php foreach ($giderler as $g): ?>

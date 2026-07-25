@@ -68,7 +68,7 @@ if ($cariLive) {
         </div>
       </div>
 
-      <div class="section-head mt-3"><h2>Hareketler</h2></div>
+      <div class="section-head mt-3"><div class="gt-h" style="margin:0"><i class="bi bi-arrow-left-right"></i> HAREKETLER</div></div>
       <?php if (!$rows): ?>
         <div class="empty-state">Bu ay hareket yok.</div>
       <?php else: ?>

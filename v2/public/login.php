@@ -62,7 +62,7 @@ $csrf = Helpers::csrfToken();
 <meta name="theme-color" content="#f2f6fa">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <title>UYSA Kokpit · Giriş</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+<link href="/assets/bootstrap-icons.css" rel="stylesheet">
 <link href="assets/app.css?v=<?= filemtime(__DIR__ . '/assets/app.css') ?>" rel="stylesheet">
 </head>
 <body>
