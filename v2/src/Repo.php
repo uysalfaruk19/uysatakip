@@ -5693,7 +5693,7 @@ final class Repo
      * 'Personel' + 'Taşıma alış' kategorili gider HARİÇ (çift sayımı önler).
      * @return array{per_customer:array<int,float>,dagitilmamis:float,toplam:float}
      */
-    public function giderDagitim(string $ay): array
+    public function giderDagitim(string $ay, ?string $sonTarih = null): array
     {
         $ciro = $this->customerCiroMap($ay);
         $allIds = array_keys($ciro);
@@ -5701,16 +5701,24 @@ final class Repo
         $faturaMap = null;  // lazy: faturaEslestirmeler() — fable-037 en üst katman
         $persons = null;    // lazy: customerPersonsMap()
 
+        // fable-048: $sonTarih verilirse gider O TARİHE KADAR kırpılır. Fatura bazlı kâr/zarar
+        // için şart: gelir "21 Temmuz'a kadar kesilen faturalar" iken gider TÜM ay olursa
+        // elmayla armut kıyaslanır ve kâr suni ZARAR görünür (Fable denetimi: -%5,5 çıkıyordu).
+        // null = mevcut davranış (tüm ay) — üretim modu ve diğer çağrılar BİREBİR aynı kalır.
+        $tarihKosul = $sonTarih !== null
+            ? "t.tx_date >= ? AND t.tx_date <= ?"
+            : "substr(t.tx_date,1,7) = ?";
+
         // fable-031: 'Taşıma alış' (KIRMIZI 1) genel havuza GİRMEZ — taşıma kârında
         // gerçek alış maliyeti olarak mahsup edilir (çift sayım olmasın).
         $st = $this->pdo->prepare(
             "SELECT t.id, t.amount, t.alloc_type, t.source, t.category, t.description, s.name AS supplier_name
              FROM transactions t
              LEFT JOIN suppliers s ON s.id = t.supplier_id
-             WHERE t.type = 'gider' AND substr(t.tx_date,1,7) = ?
+             WHERE t.type = 'gider' AND " . $tarihKosul . "
                AND (t.category IS NULL OR t.category NOT IN ('Personel', 'Taşıma alış'))"
         );
-        $st->execute([$ay]);
+        $st->execute($sonTarih !== null ? [$ay . '-01', $sonTarih] : [$ay]);
 
         $per = [];
         $dagitilmamis = 0.0;
@@ -6059,11 +6067,15 @@ final class Repo
      */
     public function karAnaliziFatura(string $ay): array
     {
-        $giderD = $this->giderDagitim($ay);
+        $fatura = $this->satisFaturaOzet($ay);
+        // fable-048 (Fable denetimi): gideri de FATURALANAN DÖNEME kırp. Aksi halde gelir
+        // "21 Temmuz'a kadar kesilen faturalar", gider "tüm ay" olur → suni ZARAR görünür.
+        // Ömer 7 günde bir kesiyor; kapsam_son = son faturanın kapsadığı gün.
+        $kapsam = $fatura['kapsam_son'] ?? null;
+        $giderD = $this->giderDagitim($ay, $kapsam);
         $persD = $this->personelDagitim($ay);
         $giderMap = $giderD['per_customer'];
         $persMap = $persD['per_customer'];
-        $fatura = $this->satisFaturaOzet($ay);
         $faturaMap = $fatura['per_customer'];
         $adetMap = $fatura['per_customer_adet'];
 
