@@ -404,9 +404,7 @@ require __DIR__ . '/partials/header.php';
           <?php $stRozet = $pendingCount + $openReqCount; // Ömer: Siparişler+Talepler tek kutu ?>
           <a class="gt-mod" href="siparisler.php"><?php if ($stRozet > 0): ?><span class="gt-mod-dot"><?= $stRozet ?></span><?php endif; ?><i class="bi bi-basket"></i>Sipariş &amp; Talep</a>
           <a class="gt-mod" href="menu.php"><i class="bi bi-card-list"></i>Menü</a>
-          <?php if (Auth::isAdmin($u)): ?>
-          <a class="gt-mod" href="fatura-kes.php"><i class="bi bi-receipt-cutoff"></i>Fatura Kes</a>
-          <?php endif; ?>
+          <?php // fable-048a (Ömer): Fatura Kes hızlı erişimden çıktı → "+" menüsünde ?>
         </div>
       </div>
 

@@ -33,8 +33,11 @@ $tabs = [
 <!-- fable-030 (Ömer: "+ çok kalabalık"): menü SIK işlere indi; kalan her şey "Diğer modüller"de.
      Kaldırılan link YOK — hepsi moduller.php'de yaşıyor (erişim kaybolmaz). -->
 <div class="fab-menu" id="fab-menu" role="menu">
-  <?php // fable-047 (Ömer): + menüsü sadeleşti — üretim gir/fatura kes/gider-gelir/tahsilat
-        // hızlı erişim + alt sekmelerde zaten var; menü mükerrer link taşımaz. ?>
+  <?php // fable-048a (Ömer): hızlı erişimde/alt barda olmayan işler burada — Fatura Kes
+        // hızlı erişimden buraya taşındı; mutfak/sevkiyat da boş kalmasın diye eklendi. ?>
+  <a href="fatura-kes.php"><i class="bi bi-receipt-cutoff"></i> Fatura Kes</a>
+  <a href="mutfak.php"><i class="bi bi-fire"></i> Mutfak görünümü</a>
+  <a href="sevkiyat.php"><i class="bi bi-truck"></i> Sevkiyat / teslimat</a>
   <a href="ay-kapanisi.php"><i class="bi bi-calendar2-check"></i> Ay kapanışı</a>
   <a href="moduller.php"><i class="bi bi-grid-3x3-gap"></i> Diğer modüller…</a>
 </div>

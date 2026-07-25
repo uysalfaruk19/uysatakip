@@ -152,9 +152,12 @@ body.admin-page .bottom-tabs {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  min-height: 48px;
+  min-height: 44px;
   margin: -18px -15px 14px;
-  padding: calc(16px + env(safe-area-inset-top)) 16px 14px;
+  /* fable-048a (Ömer: "yazı alta geldi ama yukarısı çok mavi kaldı"): çentik payı korunur
+     (yazı status bar'ın altında kalsın) ama ÜSTÜNE eklenen boşluk 16→6px, alt 14→10px —
+     mavi bant ~14px inceldi. */
+  padding: calc(6px + env(safe-area-inset-top)) 16px 10px;
   background: linear-gradient(120deg, var(--navy), var(--navy2));
   color: #fff;
   position: sticky;
