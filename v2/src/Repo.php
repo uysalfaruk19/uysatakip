@@ -4116,6 +4116,180 @@ final class Repo
         return array_values($grup);
     }
 
+    // ── fable-045: BORÇLARIM — tedarikçi bazlı borç (AYDAN BAĞIMSIZ, kümülatif) ──────────
+    // Borç(tedarikçi) = devir(elle bir kere) + Σ(tüm zaman gider faturaları) − Σ(ödemeler).
+    // AY FİLTRESİ BORCU ETKİLEMEZ: sorgularda tarih/ay kısıtı YOK (testle kanıtlı).
+    // 'Personel' + 'Taşıma alış' HARİÇ — distinctGiderFirmalar/faturaListeleri ile birebir aynı
+    // "tedarikçi faturası" tanımı (personel maaşının kendi ödeme akışı var; çift-sayım önlenir).
+
+    /**
+     * Tüm tedarikçilerin GÜNCEL borç durumu (aydan bağımsız). Kaynak birleşimi:
+     *   gider faturaları (normTedarikci) ⊕ ödemeler (tedarikci_odeme) ⊕ devir (tedarikci_devir).
+     * Faturası olmayıp yalnız devir/ödemesi olan tedarikçi de listede kalır (yetim borç gizlenmez).
+     * @return array<int,array{key:string,label:string,fatura:float,adet:int,odenen:float,devir:float,kalan:float}>
+     *   kalan DESC (en çok borçlu üstte).
+     */
+    public function borclarimListe(): array
+    {
+        $grup = [];
+        $ensure = static function (string $key, string $label) use (&$grup): void {
+            if (!isset($grup[$key])) {
+                $grup[$key] = ['key' => $key, 'label' => $label !== '' ? $label : $key,
+                    'fatura' => 0.0, 'adet' => 0, 'odenen' => 0.0, 'devir' => 0.0, 'kalan' => 0.0];
+            }
+        };
+
+        // 1) Faturalar — TÜM ZAMAN (tarih kısıtı YOK), Personel/Taşıma alış hariç.
+        $st = $this->pdo->query(
+            "SELECT t.source, t.category, t.description, t.amount, s.name AS supplier_name
+             FROM transactions t
+             LEFT JOIN suppliers s ON s.id = t.supplier_id
+             WHERE t.type = 'gider'
+               AND (t.category IS NULL OR t.category NOT IN ('Personel', 'Taşıma alış'))"
+        );
+        foreach ($st->fetchAll() as $r) {
+            $firma = $this->txFirma($r);
+            $key = self::normTedarikci($firma);
+            if ($key === '') {
+                continue;
+            }
+            $ensure($key, $firma);
+            $grup[$key]['fatura'] += (float) $r['amount'];
+            $grup[$key]['adet']++;
+        }
+
+        // 2) Ödemeler (tedarikci_odeme; negatif düzeltmeler dahil toplam).
+        foreach ($this->pdo->query('SELECT tedarikci, COALESCE(SUM(tutar),0) AS odenen FROM tedarikci_odeme GROUP BY tedarikci')->fetchAll() as $r) {
+            $key = (string) $r['tedarikci'];
+            if ($key === '') {
+                continue;
+            }
+            $ensure($key, $key);
+            $grup[$key]['odenen'] += (float) $r['odenen'];
+        }
+
+        // 3) Devir (açılış borcu).
+        foreach ($this->pdo->query('SELECT tedarikci, label, tutar FROM tedarikci_devir')->fetchAll() as $r) {
+            $key = (string) $r['tedarikci'];
+            if ($key === '') {
+                continue;
+            }
+            $ensure($key, trim((string) $r['label']));
+            $grup[$key]['devir'] += (float) $r['tutar'];
+        }
+
+        foreach ($grup as &$g) {
+            $g['kalan'] = round($g['devir'] + $g['fatura'] - $g['odenen'], 2);
+        }
+        unset($g);
+        usort($grup, static fn(array $a, array $b) => $b['kalan'] <=> $a['kalan']);
+        return array_values($grup);
+    }
+
+    /**
+     * Bir tedarikçinin borç DETAYI: faturalar (tarih DESC) + ödemeler (tarih DESC) + devir + toplamlar.
+     * AYDAN BAĞIMSIZ (tarih kısıtı yok). @return array{key,label,fatura,adet,odenen,devir,kalan,faturalar,odemeler}
+     */
+    public function borclarimDetay(string $key): array
+    {
+        $key = self::normTedarikci($key);
+        $faturalar = [];
+        $label = '';
+        $fatura = 0.0;
+        $st = $this->pdo->query(
+            "SELECT t.id, t.tx_date, t.amount, t.source, t.category, t.description, s.name AS supplier_name
+             FROM transactions t
+             LEFT JOIN suppliers s ON s.id = t.supplier_id
+             WHERE t.type = 'gider'
+               AND (t.category IS NULL OR t.category NOT IN ('Personel', 'Taşıma alış'))
+             ORDER BY t.tx_date DESC, t.id DESC"
+        );
+        foreach ($st->fetchAll() as $r) {
+            $firma = $this->txFirma($r);
+            if (self::normTedarikci($firma) !== $key) {
+                continue;
+            }
+            if ($label === '') {
+                $label = $firma;
+            }
+            $desc = (string) ($r['description'] ?? '');
+            $parts = explode(' · ', $desc, 2);
+            $faturalar[] = [
+                'id'       => (int) $r['id'],
+                'tx_date'  => (string) $r['tx_date'],
+                'amount'   => (float) $r['amount'],
+                'no'       => isset($parts[1]) ? trim($parts[1]) : trim($desc),
+                'kategori' => (string) ($r['category'] ?? ''),
+            ];
+            $fatura += (float) $r['amount'];
+        }
+
+        $od = $this->pdo->prepare('SELECT id, odeme_tarihi, tutar, note FROM tedarikci_odeme WHERE tedarikci = ? ORDER BY odeme_tarihi DESC, id DESC');
+        $od->execute([$key]);
+        $odemeler = $od->fetchAll();
+        $odenen = 0.0;
+        foreach ($odemeler as $o) {
+            $odenen += (float) $o['tutar'];
+        }
+
+        $dv = $this->pdo->prepare('SELECT label, tutar FROM tedarikci_devir WHERE tedarikci = ?');
+        $dv->execute([$key]);
+        $drow = $dv->fetch();
+        $devir = $drow ? (float) $drow['tutar'] : 0.0;
+        if ($label === '' && $drow && trim((string) $drow['label']) !== '') {
+            $label = trim((string) $drow['label']);
+        }
+        if ($label === '') {
+            $label = $key;
+        }
+
+        return [
+            'key' => $key, 'label' => $label, 'fatura' => round($fatura, 2), 'adet' => count($faturalar),
+            'odenen' => round($odenen, 2), 'devir' => round($devir, 2),
+            'kalan' => round($devir + $fatura - $odenen, 2),
+            'faturalar' => $faturalar, 'odemeler' => $odemeler,
+        ];
+    }
+
+    /**
+     * Tedarikçiye ödeme işle (kısmi/tam) veya NEGATİF düzeltme kaydı. Silme YOK.
+     * Sıfır tutar reddedilir (0 döner). Tarih geçersizse bugüne düşer. @return int yeni id / 0.
+     */
+    public function tedarikciOdemeEkle(string $key, string $odemeTarihi, float $tutar, ?string $note = null): int
+    {
+        $key = self::normTedarikci($key);
+        if ($key === '' || abs($tutar) < 0.005) {
+            return 0;
+        }
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $odemeTarihi)) {
+            $odemeTarihi = date('Y-m-d');
+        }
+        $note = $note !== null ? mb_substr(trim($note), 0, 300) : '';
+        $this->pdo->prepare('INSERT INTO tedarikci_odeme (tedarikci, odeme_tarihi, tutar, note) VALUES (?, ?, ?, ?)')
+            ->execute([$key, $odemeTarihi, round($tutar, 2), $note !== '' ? $note : null]);
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    /** Tedarikçi devir (açılış) bakiyesi upsert (elle bir kere; güncellenebilir). label boşsa korunur. */
+    public function tedarikciDevirKaydet(string $key, string $label, float $tutar): void
+    {
+        $key = self::normTedarikci($key);
+        if ($key === '') {
+            return;
+        }
+        $label = mb_substr(trim($label), 0, 190);
+        $exists = $this->pdo->prepare('SELECT id FROM tedarikci_devir WHERE tedarikci = ?');
+        $exists->execute([$key]);
+        $id = $exists->fetchColumn();
+        if ($id !== false) {
+            $this->pdo->prepare("UPDATE tedarikci_devir SET tutar = ?, label = CASE WHEN ? <> '' THEN ? ELSE label END, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+                ->execute([round($tutar, 2), $label, $label, (int) $id]);
+        } else {
+            $this->pdo->prepare('INSERT INTO tedarikci_devir (tedarikci, label, tutar) VALUES (?, ?, ?)')
+                ->execute([$key, $label, round($tutar, 2)]);
+        }
+    }
+
     // ── fable-039: Kişi başı GIDA MALİYETİ kırılımları ───────────────────
     /**
      * Parametrik gıda kırılımları (sıra + kod + ad). @return array<int,array{kod:string,ad:string,sira:int}>

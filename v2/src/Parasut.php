@@ -242,6 +242,44 @@ final class Parasut
         return $out;
     }
 
+    /**
+     * fable-045 KANIT — tek contact'ın GÜNCEL bakiyesi (SALT-OKUMA; Alacaklarım müşteri bazlı senkron).
+     * Canlı doğrulama Fable'da: /contacts/{id} attributes.balance GERÇEKTEN geliyor mu.
+     * Ağ kısmı ince (get); asıl mantık parseContactBalance'ta (PÜR, mock'la test edilir).
+     * @return array{parasut_id:string,name:string,balance:float}|null  (id yok / balance alanı yoksa null)
+     */
+    public static function contactBalance(string $parasutId): ?array
+    {
+        $id = trim($parasutId);
+        if ($id === '') {
+            return null;
+        }
+        return self::parseContactBalance(self::get('/contacts/' . rawurlencode($id)));
+    }
+
+    /**
+     * PÜR: tek-contact JSON:API yanıtından bakiyeyi çıkar (ağ yok, test edilebilir).
+     * DÜRÜSTLÜK: attributes.balance ALANI YOKSA null döner — sessizce 0 UYDURMAZ (çağıran
+     * "Paraşüt bakiye vermedi" der, Kokpit bakiyesini EZMEZ). balance işaret korunur.
+     * @return array{parasut_id:string,name:string,balance:float}|null
+     */
+    public static function parseContactBalance(array $resp): ?array
+    {
+        $d = $resp['data'] ?? null;
+        if (!is_array($d) || !isset($d['id'])) {
+            return null;
+        }
+        $a = is_array($d['attributes'] ?? null) ? $d['attributes'] : [];
+        if (!array_key_exists('balance', $a)) {
+            return null;
+        }
+        return [
+            'parasut_id' => (string) $d['id'],
+            'name'       => trim((string) ($a['name'] ?? '')),
+            'balance'    => (float) $a['balance'],
+        ];
+    }
+
     // ── fable-030: Paraşüt GİDER okuma (Hikari kanıtlı deseni; SALT-OKUMA) ──────────
 
     /**

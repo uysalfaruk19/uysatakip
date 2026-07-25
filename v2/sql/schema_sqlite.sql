@@ -542,6 +542,31 @@ CREATE TABLE IF NOT EXISTS gider_kalem (
 );
 CREATE INDEX IF NOT EXISTS idx_gk_tx ON gider_kalem(tx_id);
 
+-- ── fable-045: BORÇLARIM — tedarikçi bazlı borç takibi (AYDAN BAĞIMSIZ, kümülatif) ──────
+-- Borç(tedarikçi) = devir(elle bir kere) + Σ(tüm zaman gider faturaları) − Σ(ödemeler).
+-- Anahtar = Repo::normTedarikci(txFirma) — gider tx'leri, ödemeler ve devir AYNI anahtarda hizalanır.
+-- Kayıt SİLİNMEZ: kısmi/tam ödeme = kayıt; düzeltme = NEGATİF tutarlı yeni kayıt (audit izi kalır).
+CREATE TABLE IF NOT EXISTS tedarikci_odeme (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  tedarikci     TEXT NOT NULL,                     -- normalize firma anahtarı (Repo::normTedarikci)
+  odeme_tarihi  TEXT NOT NULL,                     -- 'YYYY-MM-DD'
+  tutar         REAL NOT NULL,                     -- + ödeme / − düzeltme (silme yok)
+  note          TEXT,                              -- ör. havale/nakit (MySQL 'not' rezerve → 'note')
+  created_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_to_ted ON tedarikci_odeme(tedarikci);
+
+-- Tedarikçi başına OPSİYONEL devir bakiyesi (eski/sistemde olmayan faturaların açılış borcu;
+-- elle bir kere girilir, güncellenebilir). tedarikci UNIQUE → tek satır/tedarikçi (upsert).
+CREATE TABLE IF NOT EXISTS tedarikci_devir (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  tedarikci   TEXT NOT NULL UNIQUE,                -- normalize firma anahtarı (Repo::normTedarikci)
+  label       TEXT NOT NULL DEFAULT '',            -- görünen ad (faturasız/ödemesiz tedarikçi için)
+  tutar       REAL NOT NULL DEFAULT 0,             -- açılış borcu
+  created_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 -- ── Push cihaz token'ları (migrate_021 + opus-021 user_id): müşteri app + admin ─
 CREATE TABLE IF NOT EXISTS push_tokens (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

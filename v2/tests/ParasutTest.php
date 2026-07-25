@@ -54,6 +54,31 @@ final class ParasutTest extends TestCase
         $this->assertSame([], Parasut::parseContacts(['data' => 'x']));
     }
 
+    // ── 1b) fable-045 KANIT: tek-contact bakiye parse (balance alanı) ─
+    public function testParseContactBalanceExtractsField(): void
+    {
+        $resp = ['data' => ['id' => '555', 'type' => 'contacts', 'attributes' => [
+            'name' => 'CANTAŞ', 'balance' => 4200.75, 'account_type' => 'customer',
+        ]]];
+        $r = Parasut::parseContactBalance($resp);
+        $this->assertNotNull($r);
+        $this->assertSame('555', $r['parasut_id']);
+        $this->assertSame('CANTAŞ', $r['name']);
+        $this->assertSame(4200.75, $r['balance']);
+
+        // negatif bakiye (fazla ödeme) işaret korunur
+        $neg = Parasut::parseContactBalance(['data' => ['id' => '9', 'attributes' => ['balance' => -12.5]]]);
+        $this->assertSame(-12.5, $neg['balance']);
+    }
+
+    public function testParseContactBalanceNullWhenFieldMissing(): void
+    {
+        // DÜRÜSTLÜK: balance alanı gelmezse null (0 UYDURMAZ → Kokpit bakiyesini ezmez).
+        $this->assertNull(Parasut::parseContactBalance(['data' => ['id' => '5', 'attributes' => ['name' => 'X']]]));
+        $this->assertNull(Parasut::parseContactBalance(['data' => 'bozuk']));
+        $this->assertNull(Parasut::parseContactBalance([]));
+    }
+
     // ── 2) configured(): env eksikse false, tamsa true ────────────
     public function testConfiguredReflectsEnv(): void
     {
