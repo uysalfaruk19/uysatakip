@@ -149,21 +149,39 @@ body.admin-page .bottom-tabs {
    16px taban + env(safe-area-inset-top): çentiksiz cihazda (masaüstü/Android) sadece +2px büyür,
    çentikli iPhone'da marka+selamlama tamamen çentiğin altına iner. Bu kural partials/header.php
    (ve m/header_m.php) üzerinden TÜM ekranlarda ortak. */
+/* fable-048g (Ömer: "bar sabit, sayfa kayıyor, barın yukarısında da sayfa görünüyor"):
+   çentik/durum-çubuğu şeridi SABİT bir kapakla örtülür — sayfa oradan akıp görünmez.
+   Yükseklik env(safe-area-inset-top) → çentiksiz cihazda 0 (kapak yok, hiçbir etkisi yok). */
+body.admin-page::before,
+body.customer-page::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top);
+  background: var(--bg);
+  z-index: 20; /* .topbar (15) ÜSTÜNDE — bar da bu şeridin altından geçer */
+  pointer-events: none;
+}
+
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  min-height: 44px;
-  margin: -4px -15px 10px; /* fable-048e: kabuk üst boşluğuyla hizalı + alt nefes 14→10 */
+  min-height: 40px;
+  margin: -4px -15px 8px; /* fable-048e: kabuk üst boşluğuyla hizalı + alt nefes 14→10 */
   /* fable-048d (Ömer 2. kez: "mavisi yukarı doğru çok uzun"): çentik/durum-çubuğu payı artık
      MAVİ BARDA DEĞİL — kabuğun üstünde (sayfa zemini rengi). Bar sadece kendi içeriği kadar
      yer kaplar; sticky konumu da inset kadar aşağı kayar ki kaydırınca çentiğe girmesin. */
-  padding: 10px 16px;
+  padding: 8px 16px;
   background: linear-gradient(120deg, var(--navy), var(--navy2));
   color: #fff;
-  position: sticky;
-  top: env(safe-area-inset-top);
+  /* fable-048g (Ömer: "hâlâ bardan tarihi göremiyorum, az daha yukarı"): bar artık AKIŞTA —
+     sayfa kayınca yukarı gider, altındaki tarih kartını ÖRTMEZ. Çentik şeridini sabit kapak
+     (body::before) örttüğü için bar yukarı kayarken de üstte içerik görünmez. */
+  position: relative;
   z-index: 15;
 }
 .topbar .brand-copy .eyebrow:first-child {
