@@ -3955,6 +3955,173 @@ final class Repo
         return array_values($grup);
     }
 
+    // ── fable-039: Kişi başı GIDA MALİYETİ kırılımları ───────────────────
+    /**
+     * Parametrik gıda kırılımları (sıra + kod + ad). @return array<int,array{kod:string,ad:string,sira:int}>
+     */
+    public function gidaKirilimlar(): array
+    {
+        return $this->pdo->query('SELECT kod, ad, sira FROM gida_kirilim ORDER BY sira, id')->fetchAll();
+    }
+
+    /**
+     * Tedarikçi → gıda kırılım eşlemesi. Sadece kaydı olanlar döner (satır yok = gıda costu DIŞI).
+     * @return array<string,?string> normAnahtar → kirilim_kod (null olabilir = yine gıda costu dışı)
+     */
+    public function tedarikciGidaMap(): array
+    {
+        $out = [];
+        foreach ($this->pdo->query('SELECT tedarikci, kirilim_kod FROM tedarikci_gida_map ORDER BY id')->fetchAll() as $r) {
+            $out[(string) $r['tedarikci']] = $r['kirilim_kod'] !== null ? (string) $r['kirilim_kod'] : null;
+        }
+        return $out;
+    }
+
+    /**
+     * Bir tedarikçinin gıda kırılımını ayarla. $kirilimKod null/'' → eşleşmeyi kaldır (gıda costu dışı).
+     * Geçersiz kod → kaldır (sessiz düşme yerine güvenli varsayılan). Anahtar normalize.
+     */
+    public function tedarikciGidaKaydet(string $tedarikci, ?string $kirilimKod): void
+    {
+        $key = self::normTedarikci($tedarikci);
+        if ($key === '') {
+            return;
+        }
+        if ($kirilimKod !== null && $kirilimKod !== '') {
+            $valid = array_column($this->gidaKirilimlar(), 'kod');
+            if (!in_array($kirilimKod, $valid, true)) {
+                $kirilimKod = null;
+            }
+        } else {
+            $kirilimKod = null;
+        }
+        $own = !$this->pdo->inTransaction();
+        if ($own) {
+            $this->pdo->beginTransaction();
+        }
+        try {
+            $this->pdo->prepare('DELETE FROM tedarikci_gida_map WHERE tedarikci = ?')->execute([$key]);
+            if ($kirilimKod !== null) {
+                $this->pdo->prepare('INSERT INTO tedarikci_gida_map (tedarikci, kirilim_kod) VALUES (?, ?)')->execute([$key, $kirilimKod]);
+            }
+            if ($own) {
+                $this->pdo->commit();
+            }
+        } catch (\Throwable $e) {
+            if ($own) {
+                $this->pdo->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    /**
+     * Kişi başı gıda maliyeti özeti (bir ay). Tutar kaynağı: o ayki gider tx'lerinden
+     * (Personel/Taşıma alış HARİÇ, giderFirmaOzet ile tek kaynak) tedarikçisi bir gıda
+     * kırılımına EŞLİ olanların TAMAMI (dağıtımdan bağımsız BRÜT gıda alımı). Kişi = o ay
+     * ÜRETİM kategorisi müşterilerin toplam kişi sayısı (taşıma HARİÇ). Eşleşmeyen tedarikçi
+     * gıda costuna girmez → karAnalizi/netKarlilik sayılarını ETKİLEMEZ (ayrı görünüm katmanı).
+     * @return array{toplam:float,kisi_toplam:int,kisi_basi:float,kirilimlar:array<int,array{kod:string,ad:string,tutar:float,kisi_basi:float,oran:float}>}
+     */
+    public function gidaCostOzet(string $ay): array
+    {
+        $kirilimlar = $this->gidaKirilimlar();
+        $adMap = [];
+        $siraMap = [];
+        foreach ($kirilimlar as $i => $k) {
+            $adMap[(string) $k['kod']] = (string) $k['ad'];
+            $siraMap[(string) $k['kod']] = $i;
+        }
+        $map = $this->tedarikciGidaMap();
+
+        // Kişi = o ay ÜRETİM kategorisi müşterilerin toplam kişi sayısı (taşıma HARİÇ).
+        $kisiToplam = 0;
+        foreach ($this->monthProductionByCustomer($ay, 'uretim') as $r) {
+            $kisiToplam += (int) $r['persons'];
+        }
+
+        // Gıda kırılımına eşli gider tx'lerinin BRÜT toplamı (kırılım bazında).
+        $st = $this->pdo->prepare(
+            "SELECT source, category, description, amount FROM transactions
+             WHERE type = 'gider' AND substr(tx_date,1,7) = ?
+               AND (category IS NULL OR category NOT IN ('Personel', 'Taşıma alış'))"
+        );
+        $st->execute([$ay]);
+        $perKir = [];
+        $toplam = 0.0;
+        foreach ($st->fetchAll() as $r) {
+            $key = self::normTedarikci($this->txFirma($r));
+            $kod = $map[$key] ?? null;              // satır yok / null = gıda costu DIŞI
+            if ($kod === null || !isset($adMap[$kod])) {
+                continue;
+            }
+            $amt = (float) $r['amount'];
+            $perKir[$kod] = ($perKir[$kod] ?? 0.0) + $amt;
+            $toplam += $amt;
+        }
+
+        $rows = [];
+        foreach ($perKir as $kod => $tutar) {
+            $rows[] = [
+                'kod'       => $kod,
+                'ad'        => $adMap[$kod],
+                'tutar'     => $tutar,
+                'kisi_basi' => $kisiToplam > 0 ? $tutar / $kisiToplam : 0.0,
+                'oran'      => $toplam > 0 ? $tutar / $toplam : 0.0,
+            ];
+        }
+        usort($rows, static fn(array $a, array $b) => ($siraMap[$a['kod']] ?? 99) <=> ($siraMap[$b['kod']] ?? 99));
+
+        return [
+            'toplam'      => $toplam,
+            'kisi_toplam' => $kisiToplam,
+            'kisi_basi'   => $kisiToplam > 0 ? $toplam / $kisiToplam : 0.0,
+            'kirilimlar'  => $rows,
+        ];
+    }
+
+    /**
+     * Tedarikçi→kırılım VARSAYILANLARINI idempotent yükle (Fable deploy'da bir kez CLI ile).
+     * Canlı firma adları transactions.description'dan geldiği için LIKE değil, distinctGiderFirmalar
+     * listesinde ANAHTAR KELİME (ÖRS, ATILGAN, ...) geçen firmayı bulup TAM normalize anahtarla kaydeder.
+     * Zaten eşleşmesi olan tedarikçiyi EZMEZ (elle seçim korunur). @return array<string,string> anahtar→kod
+     */
+    public function gidaKirilimVarsayilanlariYukle(int $aySayisi = 12): array
+    {
+        // anahtar kelime (normalize) → kırılım kodu; TEKİNBEY/BOZDEMİR gibi TR harfli olanlar normTedarikci ile hizalı
+        $defaults = [
+            'ÖRS'        => 'kuru_gida',
+            'ATILGAN'    => 'kirmizi_et',
+            'TEKİNBEY'   => 'kirmizi_et',
+            'BALCI'      => 'hal',
+            'BOZDEMİR'   => 'hal',
+            'OGÜN'       => 'beyaz_et',
+            'KAR-UN-SAN' => 'ekmek',
+            'HALK EKMEK' => 'ekmek',
+            'POLATOĞLU'  => 'tatli',
+        ];
+        $normDefaults = [];
+        foreach ($defaults as $kw => $kod) {
+            $normDefaults[self::normTedarikci($kw)] = $kod;
+        }
+        $existing = $this->tedarikciGidaMap();
+        $applied = [];
+        foreach ($this->distinctGiderFirmalar($aySayisi) as $f) {
+            $key = (string) $f['key']; // zaten normTedarikci
+            if (array_key_exists($key, $existing)) {
+                continue; // elle/önceki seçim korunur (idempotent)
+            }
+            foreach ($normDefaults as $kw => $kod) {
+                if (mb_strpos($key, $kw) !== false) {
+                    $this->tedarikciGidaKaydet((string) $f['label'], $kod);
+                    $applied[$key] = $kod;
+                    break;
+                }
+            }
+        }
+        return $applied;
+    }
+
     /**
      * Gideri müşterilere dağıt (RAPOR ANINDA — ciro/kişi değişince güncellenir). Öncelik (üstten):
      *   fatura eşleşmesi VARSA (fable-037): o tx'in seçili müşterilerine KİŞİ SAYISI oranında (en üst).

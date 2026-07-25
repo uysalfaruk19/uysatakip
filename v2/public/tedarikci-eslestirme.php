@@ -32,8 +32,18 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         if ($action === 'ted_kaydet') {
             $firma = trim((string) ($_POST['firma'] ?? ''));
             if ($firma !== '') {
-                $repo->tedarikciEslestirmeKaydet($firma, $ids);
-                uysa_audit('tedarikci_eslestir', $u['username'], $firma, (string) count($ids) . ' müşteri', client_ip());
+                // fable-039: müşteri dağıtımı + gıda kırılımı ATOMİK tek POST (bağlı alanlar birlikte)
+                $gidaKir = trim((string) ($_POST['gida_kirilim'] ?? ''));
+                $pdo->beginTransaction();
+                try {
+                    $repo->tedarikciEslestirmeKaydet($firma, $ids);
+                    $repo->tedarikciGidaKaydet($firma, $gidaKir !== '' ? $gidaKir : null);
+                    $pdo->commit();
+                } catch (\Throwable $e) {
+                    $pdo->rollBack();
+                    throw $e;
+                }
+                uysa_audit('tedarikci_eslestir', $u['username'], $firma, count($ids) . ' müşteri · gıda:' . ($gidaKir ?: '-'), client_ip());
                 $ok = true;
                 $msg = $ids ? ($firma . ' → ' . count($ids) . ' müşteriye eşlendi.') : ($firma . ' eşleşmesi kaldırıldı.');
             }
@@ -65,6 +75,8 @@ unset($_SESSION['esl_flash']);
 
 $firmalar = $repo->distinctGiderFirmalar(6);
 $tedMap = $repo->tedarikciEslestirmeler();
+$gidaKirilimlar = $repo->gidaKirilimlar();   // fable-039: gıda kırılım listesi (parametrik)
+$gidaMap = $repo->tedarikciGidaMap();         // normAnahtar → kirilim_kod
 $faturaListeleri = $repo->faturaListeleri(6);   // firmaKey → [faturalar]
 $faturaMap = $repo->faturaEslestirmeler();       // tx_id → [customer_id,...]
 $personeller = $repo->listPersonel();
@@ -128,6 +140,17 @@ require __DIR__ . '/partials/header.php';
                         <?= Helpers::e($c['name']) ?>
                       </label>
                     <?php endforeach; ?>
+                  </div>
+                  <?php // fable-039: gıda cost kırılımı — "girmez" + kırılım listesi (parametrik) ?>
+                  <?php $gsel = $gidaMap[$f['key']] ?? null; ?>
+                  <div class="field" style="margin-bottom:8px;max-width:320px">
+                    <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Gıda kırılımı</label>
+                    <select class="selectx" name="gida_kirilim" style="width:100%">
+                      <option value="" <?= $gsel === null ? 'selected' : '' ?>>Gıda costuna girmez</option>
+                      <?php foreach ($gidaKirilimlar as $gk): ?>
+                        <option value="<?= Helpers::e($gk['kod']) ?>" <?= $gsel === $gk['kod'] ? 'selected' : '' ?>><?= Helpers::e($gk['ad']) ?></option>
+                      <?php endforeach; ?>
+                    </select>
                   </div>
                   <button class="btn-action btn-primaryx" type="submit"><i class="bi bi-check2"></i> Kaydet</button>
                 </form>

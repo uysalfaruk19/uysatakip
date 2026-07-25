@@ -125,6 +125,7 @@ function handleInvoiceUpload(array $file, Repo $repo, string $by, string &$flash
 $fin = $repo->monthFinanceTotals($month);
 $tasimaTot = $repo->monthTasimaTotals($month);
 $nk = $repo->netKarlilik($month);
+$gida = $repo->gidaCostOzet($month); // fable-039: kişi başı gıda maliyeti (Gelir/Net kutusu yerine)
 $txs = $repo->transactionsForMonth($month);
 $customers = $repo->activeCustomers();
 $suppliers = $repo->activeSuppliers();
@@ -148,12 +149,9 @@ require __DIR__ . '/partials/header.php';
       <?php if ($flash): ?><div class="flash <?= $flashOk ? 'ok' : 'err' ?>"><?= Helpers::e($flash) ?></div><?php endif; ?>
 
 <?php
-      // fable-011: üst kartlar artık OPERASYONEL aylık kâr (Ömer isteği: işlenmiş satışlar
-      // gelirde, personel + girilen giderler giderde). Sadece transactions'a bakan eski
-      // "nakit" görünümü boş kalıyordu. Kaynak: üretim cirosu + taşıma + elle işlemler.
-      $gelirTop = $nk['ciro'] + $tasimaTot['satis'] + $fin['gelir'];
+      // fable-011: Gider kutusu OPERASYONEL aylık gider (personel + hammadde + taşıma).
+      // fable-039: Gelir/Net kutuları kaldırıldı — yerine kişi başı gıda maliyeti geldi.
       $giderTop = $nk['personel'] + $nk['hammadde'] + $tasimaTot['alis'] + $tasimaTot['gider'];
-      $netTop = $gelirTop - $giderTop;
       ?>
       <div class="cardx card-pad">
         <form method="get" class="gt-date">
@@ -166,20 +164,17 @@ require __DIR__ . '/partials/header.php';
         </form>
       </div>
 
-      <!-- fable-034: AYIN ÖZETİ (mockup birebir) — 3 mini + aksiyonlar. Gelir/Gider mini'ye
-           dokununca kalem dökümü açılır (fable-012 toggleFin korunur). -->
+      <!-- fable-039: AYIN ÖZETİ — Gelir/Net kutuları kalktı; Gider (tap-özet korunur) +
+           kişi başı gıda maliyeti (kar-analizi üretim sekmesine derin bağlantı). -->
       <div class="cardx card-pad">
         <div class="gt-h"><i class="bi bi-broadcast"></i> AYIN ÖZETİ</div>
-        <div class="gt-mini" style="margin-top:2px">
-          <div class="tap-card" role="button" tabindex="0" onclick="toggleFin('fin-gelir')">
-            <div class="gt-mn ok">₺<?= number_format(round($gelirTop), 0, ',', '.') ?></div><div class="gt-ml">Gelir <i class="bi bi-chevron-down chev"></i></div>
-          </div>
+        <div class="gt-mini" style="margin-top:2px;grid-template-columns:repeat(2,1fr)">
           <div class="tap-card" role="button" tabindex="0" onclick="toggleFin('fin-gider')">
             <div class="gt-mn bad">₺<?= number_format(round($giderTop), 0, ',', '.') ?></div><div class="gt-ml">Gider <i class="bi bi-chevron-down chev"></i></div>
           </div>
-          <div>
-            <div class="gt-mn"><?= $netTop < 0 ? '−' : '' ?>₺<?= number_format(round(abs($netTop)), 0, ',', '.') ?></div><div class="gt-ml">Net</div>
-          </div>
+          <a class="tap-card" href="kar-analizi.php?ay=<?= $month ?>&tab=uretim" style="text-decoration:none">
+            <div class="gt-mn"><?= $gida['kisi_basi'] > 0 ? '₺' . Helpers::money($gida['kisi_basi']) : '—' ?></div><div class="gt-ml">1 kişilik gıda <i class="bi bi-chevron-right chev"></i></div>
+          </a>
         </div>
         <div class="gt-acts" style="margin-top:13px;display:flex;gap:9px">
           <?php if (Auth::isAdmin($u)): ?>
@@ -201,17 +196,6 @@ require __DIR__ . '/partials/header.php';
         <?php if (Auth::isAdmin($u)): ?>
         <a class="q-tile" href="fatura-kes.php"><i class="bi bi-receipt-cutoff"></i> Fatura Kes</a>
         <?php endif; ?>
-      </div>
-
-      <div class="cardx card-pad fin-detay" id="fin-gelir" style="display:none">
-        <h2>Gelir özeti</h2>
-        <table class="tablex"><tbody>
-          <tr><td>Üretim satışları (işlenmiş)</td><td class="num">₺ <?= Helpers::money($nk['ciro']) ?></td></tr>
-          <?php if ($tasimaTot['satis'] > 0): ?><tr><td>Taşıma satış</td><td class="num">₺ <?= Helpers::money($tasimaTot['satis']) ?></td></tr><?php endif; ?>
-          <?php if ($fin['gelir'] > 0): ?><tr><td>Elle girilen gelir</td><td class="num">₺ <?= Helpers::money($fin['gelir']) ?></td></tr><?php endif; ?>
-          <tr class="is-total"><td>Toplam gelir</td><td class="num">₺ <?= Helpers::money($gelirTop) ?></td></tr>
-        </tbody></table>
-        <p class="row-meta" style="margin-top:6px"><i class="bi bi-info-circle"></i> Üretim satışları o ay onaylanan/işlenen sayılardan otomatik gelir. <a href="rapor.php?ay=<?= $month ?>" style="text-decoration:underline">Firma bazlı detay</a></p>
       </div>
 
       <div class="cardx card-pad fin-detay" id="fin-gider" style="display:none">
@@ -376,12 +360,10 @@ require __DIR__ . '/partials/header.php';
       </div>
 
       <script>
-        // fable-012: Gelir/Gider kartı → kısa özet aç/kapat (akordeon)
+        // fable-039: Gider tap-özet aç/kapat (Gelir kutusu kalktı — fable-012 sadeleşti)
         function toggleFin(id){
           var el = document.getElementById(id);
           if (!el) return;
-          var other = document.getElementById(id === 'fin-gelir' ? 'fin-gider' : 'fin-gelir');
-          if (other) other.style.display = 'none';
           el.style.display = el.style.display === 'none' ? '' : 'none';
           document.querySelectorAll('.tap-card').forEach(function(c){ c.classList.remove('open'); });
           if (el.style.display !== 'none') {

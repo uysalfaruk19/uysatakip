@@ -502,6 +502,31 @@ CREATE TABLE IF NOT EXISTS fatura_musteri_map (
 );
 CREATE INDEX IF NOT EXISTS idx_fmm_tx ON fatura_musteri_map(tx_id);
 
+-- ── fable-039: Kişi başı GIDA MALİYETİ kırılımları ──────────────────────
+-- Gıda alım faturaları tedarikçi bazında kırılıma eşlenir; eşleşmeyen tedarikçi gıda
+-- costuna GİRMEZ (görünüm katmanı — karAnalizi/netKarlilik sayıları değişmez). Parametrik.
+CREATE TABLE IF NOT EXISTS gida_kirilim (
+  id   INTEGER PRIMARY KEY AUTOINCREMENT,
+  kod  TEXT NOT NULL UNIQUE,               -- stabil kod (kuru_gida, kirmizi_et, ...)
+  ad   TEXT NOT NULL,                      -- Türkçe görünen ad
+  sira INTEGER NOT NULL DEFAULT 0
+);
+INSERT OR IGNORE INTO gida_kirilim (kod, ad, sira) VALUES
+  ('kuru_gida', 'Kuru gıda', 1),
+  ('kirmizi_et', 'Kırmızı et', 2),
+  ('hal', 'Hal (sebze-meyve)', 3),
+  ('beyaz_et', 'Beyaz et', 4),
+  ('ekmek', 'Ekmek', 5),
+  ('tatli', 'Tatlı', 6);
+
+CREATE TABLE IF NOT EXISTS tedarikci_gida_map (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  tedarikci   TEXT NOT NULL UNIQUE,        -- normalize firma anahtarı (Repo::normTedarikci)
+  kirilim_kod TEXT REFERENCES gida_kirilim(kod) ON DELETE SET NULL ON UPDATE CASCADE, -- NULL/satır yok = gıda costu DIŞI
+  created_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_tgm_kod ON tedarikci_gida_map(kirilim_kod);
+
 -- ── Push cihaz token'ları (migrate_021 + opus-021 user_id): müşteri app + admin ─
 CREATE TABLE IF NOT EXISTS push_tokens (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

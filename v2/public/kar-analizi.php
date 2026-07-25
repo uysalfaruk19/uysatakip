@@ -15,8 +15,14 @@ if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
     $month = date('Y-m');
 }
 
+$tab = (string) ($_GET['tab'] ?? 'uretim');
+if (!in_array($tab, ['uretim', 'tasima'], true)) {
+    $tab = 'uretim';
+}
+
 $ka = $repo->karAnalizi($month);
 $nk = $repo->netKarlilik($month);
+$gida = $repo->gidaCostOzet($month); // fable-039: kişi başı gıda maliyeti (görünüm katmanı)
 
 /** Marjı yüzde göster. */
 function marj_pct(float $m): string
@@ -35,27 +41,39 @@ require __DIR__ . '/partials/header.php';
       $scalePct = $ka['toplam_gelir'] > 0 ? (int) round($ka['toplam_net'] / $ka['toplam_gelir'] * 100) : 0;
       if ($scalePct < 4 && $ka['toplam_net'] > 0) { $scalePct = 4; }
       if ($scalePct < 0) { $scalePct = 0; }
-      // Karne: üretim + taşıma satırlarını tek listede birleştir, net'e göre sırala
+      // fable-039: karne artık sekmeye göre AYRIK (üretim | taşıma).
       $karne = [];
-      foreach ($ka['uretim']['rows'] as $r) {
-          $karne[] = ['id' => $r['customer_id'], 'name' => $r['name'], 'gelir' => (float) $r['gelir'], 'net' => (float) $r['net'], 'marj' => (float) $r['marj'], 'tasima' => false];
-      }
-      foreach ($ka['tasima']['rows'] as $r) {
-          $karne[] = ['id' => $r['customer_id'], 'name' => $r['name'], 'gelir' => (float) $r['satis'], 'net' => (float) $r['net'], 'marj' => (float) $r['marj'], 'tasima' => true];
+      if ($tab === 'uretim') {
+          foreach ($ka['uretim']['rows'] as $r) {
+              $karne[] = ['id' => $r['customer_id'], 'name' => $r['name'], 'gelir' => (float) $r['gelir'], 'net' => (float) $r['net'], 'marj' => (float) $r['marj'], 'tasima' => false];
+          }
+      } else {
+          foreach ($ka['tasima']['rows'] as $r) {
+              $karne[] = ['id' => $r['customer_id'], 'name' => $r['name'], 'gelir' => (float) $r['satis'], 'net' => (float) $r['net'], 'marj' => (float) $r['marj'], 'tasima' => true];
+          }
       }
       usort($karne, static fn($a, $b) => $b['net'] <=> $a['net']);
       $netMax = 0.0;
       foreach ($karne as $k) { $netMax = max($netMax, abs($k['net'])); }
+      $karneCiroToplam = 0.0;
+      foreach ($karne as $k) { $karneCiroToplam += $k['gelir']; }
       ?>
       <div class="cardx card-pad">
         <form method="get" class="gt-date">
+          <input type="hidden" name="tab" value="<?= Helpers::e($tab) ?>">
           <div class="dt" style="position:relative">
             <b><?= Helpers::e(ay_label_tr($month)) ?></b>
-            <span>üretim + taşıma kâr/zarar</span>
+            <span><?= $tab === 'tasima' ? 'taşıma kâr/zarar' : 'üretim kâr/zarar + gıda maliyeti' ?></span>
             <input type="month" name="ay" value="<?= Helpers::e($month) ?>" onchange="this.form.submit()"
                    aria-label="Ay seç" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer">
           </div>
         </form>
+      </div>
+
+      <!-- fable-039: Kâr/Zarar → Üretim | Taşıma ayrımı -->
+      <div class="segmented" style="margin-bottom:12px">
+        <a class="chip <?= $tab === 'uretim' ? 'active' : '' ?>" href="kar-analizi.php?ay=<?= $month ?>&tab=uretim">Üretim</a>
+        <a class="chip <?= $tab === 'tasima' ? 'active' : '' ?>" href="kar-analizi.php?ay=<?= $month ?>&tab=tasima">Taşıma</a>
       </div>
 
       <div class="cardx card-pad">
@@ -75,6 +93,35 @@ require __DIR__ . '/partials/header.php';
         </div>
       </div>
 
+      <?php if ($tab === 'uretim'): ?>
+      <?php // fable-039: KİŞİ BAŞI GIDA MALİYETİ — büyük rakam + tıklayınca kırılım ?>
+      <div class="cardx card-pad">
+        <div class="gt-h"><i class="bi bi-basket3-fill"></i> KİŞİ BAŞI GIDA MALİYETİ</div>
+        <div class="gt-pulse tap-card" role="button" tabindex="0" onclick="toggleGida()" style="cursor:<?= $gida['kirilimlar'] ? 'pointer' : 'default' ?>">
+          <div class="gt-pulse-n"><?= $gida['kisi_basi'] > 0 ? '₺' . Helpers::money($gida['kisi_basi']) : '—' ?></div>
+          <div class="gt-pulse-l">1 kişilik gıda maliyeti · gıda alımları ₺<?= Helpers::money($gida['toplam']) ?> · üretim <?= number_format($gida['kisi_toplam'], 0, ',', '.') ?> kişi<?= $gida['kirilimlar'] ? ' <i class="bi bi-chevron-down chev"></i>' : '' ?></div>
+        </div>
+        <?php if ($gida['kirilimlar']): ?>
+        <div id="gida-kirilim" style="display:none;margin-top:6px">
+          <?php foreach ($gida['kirilimlar'] as $g): $w = max(4, (int) round($g['oran'] * 100)); ?>
+            <div class="gt-kr">
+              <div class="gt-kr-head">
+                <div class="gt-kr-firm">
+                  <div class="gt-kr-ad"><?= Helpers::e($g['ad']) ?></div>
+                  <div class="gt-kr-sub">kişi başı ₺<?= Helpers::money($g['kisi_basi']) ?></div>
+                </div>
+                <div class="gt-kr-val bad">₺<?= Helpers::money($g['tutar']) ?><small><?= number_format($g['oran'] * 100, 1, ',', '.') ?>%</small></div>
+              </div>
+              <div class="gt-bar"><i class="bad" style="width: <?= $w ?>%"></i></div>
+            </div>
+          <?php endforeach; ?>
+          <div class="gt-note">gıda kırılımları · tedarikçi eşlemesi <a href="tedarikci-eslestirme.php" style="text-decoration:underline">Maliyet eşleştirme</a>'den değişir</div>
+        </div>
+        <?php else: ?>
+        <div class="gt-note">Gıda kırılımı için tedarikçi eşlemesi yok. <a href="tedarikci-eslestirme.php" style="text-decoration:underline">Maliyet eşleştirme</a>'den ayarla.</div>
+        <?php endif; ?>
+      </div>
+
       <?php if ($karne): ?>
       <div class="cardx card-pad">
         <div class="gt-h"><i class="bi bi-clipboard-data"></i> MÜŞTERİ KARNESİ</div>
@@ -91,6 +138,13 @@ require __DIR__ . '/partials/header.php';
             <div class="gt-bar"><i class="<?= $bad ? 'bad' : '' ?>" style="width: <?= $w ?>%"></i></div>
           </a>
         <?php endforeach; ?>
+        <?php // fable-039: karnenin EN ALTINA toplam ciro satırı (taşıma bölümündeki toplam kalıbı) ?>
+        <div class="gt-kr" style="border-top:2px solid var(--line-2)">
+          <div class="gt-kr-head">
+            <div class="gt-kr-firm"><div class="gt-kr-ad">Toplam ciro</div></div>
+            <div class="gt-kr-val">₺<?= Helpers::money($karneCiroToplam) ?></div>
+          </div>
+        </div>
         <div class="gt-note">satıra dokun → o müşterinin aylık dökümü açılır</div>
       </div>
       <?php endif; ?>
@@ -128,9 +182,13 @@ require __DIR__ . '/partials/header.php';
           </div>
         <?php endif; ?>
       </div>
+      <?php endif; // tab uretim ?>
 
       <!-- TAŞIMA P&L -->
-      <?php if ($ka['tasima']['rows']): ?>
+      <?php if ($tab === 'tasima'): ?>
+      <?php if (!$ka['tasima']['rows']): ?>
+        <div class="cardx card-pad"><div class="empty-state">Bu ay taşıma kaydı yok.</div></div>
+      <?php else: ?>
       <div class="section-head"><h2>Taşıma</h2><span class="text-muted" style="font-size:12px">satış − alış − sabit − gider − personel = net</span></div>
       <div class="cardx card-pad">
         <div style="overflow-x:auto">
@@ -163,7 +221,8 @@ require __DIR__ . '/partials/header.php';
         </table>
         </div>
       </div>
-      <?php endif; ?>
+      <?php endif; // tasima rows ?>
+      <?php endif; // tab tasima ?>
 
       <!-- TOPLAM -->
       <div class="cardx card-pad">
@@ -180,4 +239,14 @@ require __DIR__ . '/partials/header.php';
         </table>
         <p class="row-meta" style="margin-top:8px"><i class="bi bi-check2-circle"></i> Finans net karlılık ile birebir: ₺ <?= Helpers::money($nk['net']) ?></p>
       </div>
+      <script>
+        // fable-039: gıda maliyeti kartı → kırılım aç/kapat
+        function toggleGida(){
+          var el = document.getElementById('gida-kirilim');
+          if (!el) return;
+          el.style.display = el.style.display === 'none' ? '' : 'none';
+          var card = document.querySelector('[onclick="toggleGida()"]');
+          if (card) card.classList.toggle('open', el.style.display !== 'none');
+        }
+      </script>
 <?php require __DIR__ . '/partials/footer.php'; ?>
