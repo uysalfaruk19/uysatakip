@@ -5439,6 +5439,104 @@ final class Repo
     }
 
     /**
+     * fable-048 (Ömer): "gider firma karnesinde tedarikçiye tıklayınca ürünsel kırılım açılsın".
+     * kirilimUrunOzet'in TEDARİKÇİ bazlı kardeşi — kırılım eşleşmesi değil, doğrudan firma anahtarı.
+     *
+     * Kapsam giderFirmaOzet ile BİREBİR aynı (kategori süzgeci YOK) → açılan detayın 'toplam'ı
+     * karne satırındaki rakamla aynı çıkar (senkronizasyon: aynı sayı iki yerde aynı görünür).
+     * Ürünler ad bazında gruplanır (TR-normalize anahtar): Σtutar DESC, Σmiktar + birim,
+     * ortalama birim fiyat (Σtutar/Σmiktar; miktar kısmen eksikse NULL), fatura adedi.
+     * 'kapsanmayan' = tedarikçi ay toplamı − kalemli toplam (satırı olmayan fatura + KDV payı).
+     *
+     * @param string $tedarikciKey normalize EDİLMEMİŞ de olabilir (içeride normTedarikci uygulanır)
+     * @return array{tedarikci:string,toplam:float,kalemli_toplam:float,kapsanmayan:float,
+     *   fatura_adedi:int,kalemli_fatura:int,urun_sayisi:int,urunler:array<int,array{urun:string,
+     *   miktar:?float,birim:?string,ort_birim_fiyat:?float,tutar:float,fatura_adedi:int}>}
+     */
+    public function tedarikciUrunOzet(string $ay, string $tedarikciKey, int $limit = 15): array
+    {
+        $key = self::normTedarikci($tedarikciKey);
+
+        // giderFirmaOzet ile AYNI sorgu/filtre — toplamlar birebir tutsun.
+        $st = $this->pdo->prepare(
+            "SELECT t.id, t.source, t.category, t.description, t.amount, s.name AS supplier_name
+             FROM transactions t
+             LEFT JOIN suppliers s ON s.id = t.supplier_id
+             WHERE t.type = 'gider' AND substr(t.tx_date,1,7) = ?"
+        );
+        $st->execute([$ay]);
+        $txIds = [];
+        $toplam = 0.0;
+        foreach ($st->fetchAll() as $r) {
+            if (self::normTedarikci($this->txFirma($r)) !== $key) {
+                continue;
+            }
+            $txIds[] = (int) $r['id'];
+            $toplam += (float) $r['amount'];
+        }
+
+        $out = [
+            'tedarikci' => $key, 'toplam' => $toplam, 'kalemli_toplam' => 0.0,
+            'kapsanmayan' => max(0.0, $toplam), 'fatura_adedi' => count($txIds),
+            'kalemli_fatura' => 0, 'urun_sayisi' => 0, 'urunler' => [],
+        ];
+        if ($txIds === []) {
+            return $out;
+        }
+
+        $ph = implode(',', array_fill(0, count($txIds), '?'));
+        $ks = $this->pdo->prepare(
+            "SELECT tx_id, urun, miktar, birim, birim_fiyat, tutar FROM gider_kalem WHERE tx_id IN ($ph)"
+        );
+        $ks->execute($txIds);
+
+        $grup = [];
+        $kalemliToplam = 0.0;
+        $kalemliTx = [];
+        foreach ($ks->fetchAll() as $k) {
+            $urun = trim((string) $k['urun']);
+            $nk = self::normTedarikci($urun);
+            $tutar = (float) $k['tutar'];
+            $kalemliToplam += $tutar;
+            $kalemliTx[(int) $k['tx_id']] = true;
+            if (!isset($grup[$nk])) {
+                $grup[$nk] = ['urun' => $urun !== '' ? $urun : '(adsız)', 'birim' => null,
+                    'tutar' => 0.0, 'miktar' => 0.0, 'miktar_tam' => true, 'tx' => []];
+            }
+            $grup[$nk]['tutar'] += $tutar;
+            if ($k['miktar'] === null || (float) $k['miktar'] <= 0) {
+                $grup[$nk]['miktar_tam'] = false;
+            } else {
+                $grup[$nk]['miktar'] += (float) $k['miktar'];
+                if ($grup[$nk]['birim'] === null && $k['birim'] !== null && (string) $k['birim'] !== '') {
+                    $grup[$nk]['birim'] = (string) $k['birim'];
+                }
+            }
+            $grup[$nk]['tx'][(int) $k['tx_id']] = true;
+        }
+
+        $urunler = [];
+        foreach ($grup as $g) {
+            $miktar = ($g['miktar_tam'] && $g['miktar'] > 0) ? $g['miktar'] : null;
+            $urunler[] = [
+                'urun'            => $g['urun'],
+                'miktar'          => $miktar,
+                'birim'           => $g['birim'],
+                'ort_birim_fiyat' => $miktar !== null ? $g['tutar'] / $miktar : null,
+                'tutar'           => $g['tutar'],
+                'fatura_adedi'    => count($g['tx']),
+            ];
+        }
+        usort($urunler, static fn(array $a, array $b) => $b['tutar'] <=> $a['tutar']);
+        $out['urun_sayisi'] = count($urunler);
+        $out['urunler'] = $limit > 0 ? array_slice($urunler, 0, $limit) : $urunler;
+        $out['kalemli_toplam'] = $kalemliToplam;
+        $out['kapsanmayan'] = max(0.0, $toplam - $kalemliToplam);
+        $out['kalemli_fatura'] = count($kalemliTx);
+        return $out;
+    }
+
+    /**
      * fable-044: Paraşüt GELEN KUTUSU ('ei-' önekli) gider tx'lerinin UBL satırlarını gider_kalem'e
      * IDEMPOTENT yaz (tx'in kalemi zaten varsa atla). Satır ucu YALNIZ e-faturadan (signed_ubl)
      * çıkar; purchase_bill / elle girilen tx'ler bu senkronda YOK (onlar CSV/elle yüklenir).

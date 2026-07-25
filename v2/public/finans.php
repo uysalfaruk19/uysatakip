@@ -130,6 +130,16 @@ function handleInvoiceUpload(array $file, Repo $repo, string $by, string &$flash
     return $repo->addFile($safe, $orig, $mime, (int) $file['size'], $by, 'fatura');
 }
 
+/** fable-048: miktarı sade göster (3 haneye kadar, gereksiz sıfırları at). 1250,000 → 1.250 */
+function f048_miktar(float $m): string
+{
+    $s = number_format($m, 3, ',', '.');
+    if (str_contains($s, ',')) {
+        $s = rtrim(rtrim($s, '0'), ',');
+    }
+    return $s;
+}
+
 $fin = $repo->monthFinanceTotals($month);
 $tasimaTot = $repo->monthTasimaTotals($month);
 $nk = $repo->netKarlilik($month);
@@ -242,20 +252,77 @@ require __DIR__ . '/partials/header.php';
       <div class="cardx card-pad">
         <div class="gt-h"><i class="bi bi-buildings-fill"></i> GİDER — FİRMA KARNESİ
           <span class="gt-hr"><?= $firmaFaturaAdet ?> fatura · ₺<?= Helpers::money($firmaGenelToplam) ?></span></div>
-        <?php foreach (array_slice($firmaKarne, 0, 6) as $f): $w = $firmaMax > 0 ? max(4, (int) round((float) $f['toplam'] / $firmaMax * 100)) : 4; ?>
-          <div class="gt-kr">
-            <div class="gt-kr-head">
-              <div class="gt-rank"><?= Helpers::e(mb_strtoupper(mb_substr((string) $f['firma'], 0, 1, 'UTF-8'), 'UTF-8')) ?></div>
-              <div class="gt-kr-firm">
-                <div class="gt-kr-ad"><?= Helpers::e($f['firma']) ?></div>
-                <div class="gt-kr-sub"><?= (int) $f['adet'] ?> fatura</div>
+        <?php // fable-048 (Ömer): satır artık TIKLANABİLİR — açılınca o tedarikçiden alınan ÜRÜNLER
+              // (cari.php'nin <details class="gt-satir"> deseni birebir; JS yok, native açılır). ?>
+        <?php foreach (array_slice($firmaKarne, 0, 6) as $fi => $f):
+            $w = $firmaMax > 0 ? max(4, (int) round((float) $f['toplam'] / $firmaMax * 100)) : 4;
+            $uo = $repo->tedarikciUrunOzet($month, (string) $f['firma']);
+            $acikTed = (string) ($_GET['ted'] ?? '');
+            $anchor = 'ft-' . md5((string) $f['firma']);
+        ?>
+          <details class="gt-satir" id="<?= $anchor ?>"<?= $acikTed !== '' && Repo::normTedarikci($acikTed) === $uo['tedarikci'] ? ' open' : '' ?>>
+            <summary>
+              <div class="gt-kr">
+                <div class="gt-kr-head">
+                  <div class="gt-rank"><?= Helpers::e(mb_strtoupper(mb_substr((string) $f['firma'], 0, 1, 'UTF-8'), 'UTF-8')) ?></div>
+                  <div class="gt-kr-firm">
+                    <div class="gt-kr-ad"><?= Helpers::e($f['firma']) ?></div>
+                    <div class="gt-kr-sub"><?= (int) $f['adet'] ?> fatura<?= $uo['urun_sayisi'] > 0 ? ' · ' . $uo['urun_sayisi'] . ' ürün' : '' ?></div>
+                  </div>
+                  <div class="gt-kr-val bad">₺<?= Helpers::money((float) $f['toplam']) ?></div>
+                </div>
+                <div class="gt-bar"><i class="bad" style="width: <?= $w ?>%"></i></div>
               </div>
-              <div class="gt-kr-val bad">₺<?= Helpers::money((float) $f['toplam']) ?></div>
+            </summary>
+            <div class="gt-satir-detay">
+              <?php if ($uo['urunler']): ?>
+                <?php foreach ($uo['urunler'] as $ui => $p): ?>
+                <div class="uk-row">
+                  <div class="uk-firm">
+                    <div class="uk-ad"><span class="uk-no"><?= $ui + 1 ?>.</span> <?= Helpers::e($p['urun']) ?></div>
+                    <div class="uk-sub"><?php
+                      $parts = [];
+                      if ($p['miktar'] !== null) {
+                          $parts[] = f048_miktar((float) $p['miktar']) . ($p['birim'] ? ' ' . Helpers::e((string) $p['birim']) : '');
+                      }
+                      if ($p['ort_birim_fiyat'] !== null) {
+                          $parts[] = 'ort ₺' . Helpers::money((float) $p['ort_birim_fiyat']) . ($p['birim'] ? '/' . Helpers::e((string) $p['birim']) : '');
+                      }
+                      $parts[] = $p['fatura_adedi'] . ' fatura';
+                      echo implode(' · ', $parts);
+                    ?></div>
+                  </div>
+                  <div class="uk-val">₺<?= Helpers::money((float) $p['tutar']) ?></div>
+                </div>
+                <?php endforeach; ?>
+                <?php if ($uo['urun_sayisi'] > count($uo['urunler'])): ?>
+                <div class="uk-more">+<?= $uo['urun_sayisi'] - count($uo['urunler']) ?> ürün daha (en çok harcanan <?= count($uo['urunler']) ?> gösteriliyor)</div>
+                <?php endif; ?>
+                <?php if ($uo['kapsanmayan'] > 0.5): ?>
+                <div class="uk-row uk-kaps">
+                  <div class="uk-firm"><div class="uk-ad">Kapsanmayan</div><div class="uk-sub">satır detayı çekilemeyen fatura + KDV</div></div>
+                  <div class="uk-val">₺<?= Helpers::money((float) $uo['kapsanmayan']) ?></div>
+                </div>
+                <?php endif; ?>
+              <?php else: ?>
+                <div class="uk-empty">Satır detayı yok — bu tedarikçinin faturaları Paraşüt'e kalem bazında düşmüyor (₺<?= Helpers::money((float) $uo['toplam']) ?> toplam).</div>
+              <?php endif; ?>
             </div>
-            <div class="gt-bar"><i class="bad" style="width: <?= $w ?>%"></i></div>
-          </div>
+          </details>
         <?php endforeach; ?>
-        <div class="gt-note">detay için firma bazında filtresine bak</div>
+        <div class="gt-note">satıra dokun → o tedarikçiden alınan ürünler · tümü için <a href="finans.php?ay=<?= $month ?>&amp;tur=firma" style="text-decoration:underline">firma bazında</a></div>
+        <style>
+          /* fable-048: ürün kalemi satırları (kar-analizi.php'deki fable-044 deseniyle aynı dil) */
+          .uk-row{display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-bottom:1px solid var(--line)}
+          .uk-row:last-child{border-bottom:0}
+          .uk-firm{flex:1;min-width:0}
+          .uk-ad{font-size:13px;font-weight:600;word-break:break-word}
+          .uk-no{opacity:.5;font-weight:400}
+          .uk-sub{font-size:11px;opacity:.7;margin-top:1px}
+          .uk-val{font-size:13px;font-weight:700;white-space:nowrap;flex-shrink:0}
+          .uk-kaps .uk-ad,.uk-kaps .uk-val{opacity:.6;font-weight:600}
+          .uk-more,.uk-empty{font-size:11px;opacity:.65;padding:6px 0 2px}
+        </style>
       </div>
       <?php endif; ?>
 
