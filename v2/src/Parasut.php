@@ -157,6 +157,11 @@ final class Parasut
      */
     public static function get(string $path, array $query = []): array
     {
+        // fable-048h (KÖK FİX — "PARASUT_COMPANY_ID tanımlı değil" sınıfı): company_id şifreli
+        // dosyada yaşıyor; çözme adımı token()/configured() İÇİNDEYDİ ama company okuması ondan
+        // ÖNCE geliyordu. configured() çağrılmadan get()'e gelen her yol (CLI, bazı sayfa
+        // akışları) bu hatayı alıyordu — ÖRS kanıtı + Ömer'in "Paraşüt'ten çek" hatası aynı kök.
+        self::loadEncryptedCreds();
         $company = (string) Env::get('PARASUT_COMPANY_ID', '');
         if ($company === '') {
             throw new \RuntimeException('PARASUT_COMPANY_ID tanımlı değil.');
