@@ -988,14 +988,17 @@ final class Repo
     // tasima_aylik tablosu ARTIK KULLANILMIYOR (opus-011 modeli terk edildi, tablo atıl).
 
     /** Bir müşterinin o ay production.persons toplamı = taşıma adedi (Bugün sayımlarından). */
-    public function monthProductionPersons(int $customerId, string $ay): float
+    public function monthProductionPersons(int $customerId, string $ay, ?string $sonTarih = null): float
     {
         $ar = $this->ayAralik($ay); // fable-042: cari ayda MTD
+        // fable-048d: fatura modunda adet de FATURALANAN DÖNEME kırpılır (yoksa satış 21 Tem'e
+        // kadar faturalı, alış 25 Tem'e kadar hesaplı olur → taşımada SAHTE zarar görünür).
+        $son = $sonTarih !== null && $sonTarih < $ar['son'] ? $sonTarih : $ar['son'];
         $st = $this->pdo->prepare(
             'SELECT COALESCE(SUM(persons),0) FROM production
              WHERE customer_id = ? AND prod_date BETWEEN ? AND ?'
         );
-        $st->execute([$customerId, $ar['bas'], $ar['son']]);
+        $st->execute([$customerId, $ar['bas'], $son]);
         return (float) $st->fetchColumn();
     }
 
@@ -1057,7 +1060,7 @@ final class Repo
         return (int) $st->fetchColumn();
     }
 
-    public function tasimaProfit(int $customerId, string $ay): array
+    public function tasimaProfit(int $customerId, string $ay, ?string $sonTarih = null): array
     {
         $c = $this->customer($customerId);
         // opus-017: satış/alış/sabit o AY için priceFor'dan (ay-bazlı; current değil).
@@ -1066,7 +1069,7 @@ final class Repo
         $alis  = $pr['maliyet_birim'];
         $sabit = $pr['tasima_sabit_gider'];
         $note  = $c['tasima_not'] ?? null;
-        $adet  = $this->monthProductionPersons($customerId, $ay);
+        $adet  = $this->monthProductionPersons($customerId, $ay, $sonTarih);
 
         // fable-031/031b (Ömer): 'Taşıma alış' faturası (KIRMIZI 1) varsa GERÇEK maliyet esas.
         // ÖNCELİK: fatura satırından okunan BİRİM (KDV hariç; satışla elmayla elma — 175,00 kanıtı).
@@ -6113,7 +6116,8 @@ final class Repo
         $tSatis = 0.0; $tAlis = 0.0; $tSabit = 0.0; $tGider = 0.0; $tPers = 0.0; $tNet = 0.0;
         foreach ($this->listCustomersByCategory('tasima') as $c) {
             $cid = (int) $c['id'];
-            $t = $this->tasimaProfit($cid, $ay);
+            // fable-048d: alış/adet de faturalanan döneme kırpılır (elmayla elma).
+            $t = $this->tasimaProfit($cid, $ay, $kapsam);
             $satis = (float) ($faturaMap[$cid] ?? 0.0);   // GERÇEK: kesilen fatura
             $alis = (float) $t['toplam_alis'];
             $sabit = (float) $t['sabit'];
