@@ -54,6 +54,25 @@ if (!function_exists('ay_label_tr')) {
     }
 }
 
+if (!function_exists('ay_span_tr')) {
+    /**
+     * fable-042: CARİ ay ise MTD aralığı '1–25 Temmuz', değilse '' (geçmiş/gelecek ayda kesim yok).
+     * Üretim/gelir hesapları cari ayda ay başı..bugün'den geldiği için tarih şeridinde gösterilir.
+     */
+    function ay_span_tr(string $ym, ?string $bugun = null): string
+    {
+        $bugun ??= (getenv('APP_TODAY') ?: date('Y-m-d'));
+        if ($ym !== substr($bugun, 0, 7)) {
+            return '';
+        }
+        $aylar = [1 => 'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
+            'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+        $m = (int) substr($ym, 5, 2);
+        $gun = (int) substr($bugun, 8, 2);
+        return '1–' . $gun . ' ' . ($aylar[$m] ?? '');
+    }
+}
+
 if (!function_exists('gun_label_tr')) {
     /** 'YYYY-MM-DD' → '03 Temmuz Cuma' (bugün/dün kısayolu) */
     function gun_label_tr(string $d): string

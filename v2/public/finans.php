@@ -157,7 +157,8 @@ require __DIR__ . '/partials/header.php';
         <form method="get" class="gt-date">
           <div class="dt" style="position:relative">
             <b><?= Helpers::e(ay_label_tr($month)) ?></b>
-            <span>gelir / gider özeti</span>
+            <?php $mtdSpan = ay_span_tr($month); ?>
+            <span>gelir / gider özeti<?= $mtdSpan ? ' · üretim ' . Helpers::e($mtdSpan) . ' (ay içi)' : '' ?></span>
             <input type="month" name="ay" value="<?= Helpers::e($month) ?>" onchange="this.form.submit()"
                    aria-label="Ay seç" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer">
           </div>

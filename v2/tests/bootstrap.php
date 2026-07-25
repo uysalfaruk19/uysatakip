@@ -6,6 +6,9 @@ declare(strict_types=1);
 putenv('DB_DRIVER=sqlite');
 putenv('DB_NAME=:memory:');
 putenv('API_TOKEN=test-token-123');
+// fable-042: "bugün"ü uzak geleceğe dondur → mevcut testlerin tüm ayları GEÇMİŞ = TAM ay
+// (cari-ay MTD kesimi tetiklenmez; birebir regresyon). MTD testleri Repo::setBugun ile override eder.
+putenv('APP_TODAY=2099-12-31');
 $_ENV['DB_DRIVER'] = 'sqlite';
 
 require __DIR__ . '/../src/bootstrap.php';

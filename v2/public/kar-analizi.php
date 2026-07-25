@@ -63,7 +63,8 @@ require __DIR__ . '/partials/header.php';
           <input type="hidden" name="tab" value="<?= Helpers::e($tab) ?>">
           <div class="dt" style="position:relative">
             <b><?= Helpers::e(ay_label_tr($month)) ?></b>
-            <span><?= $tab === 'tasima' ? 'taşıma kâr/zarar' : 'üretim kâr/zarar + gıda maliyeti' ?></span>
+            <?php $mtdSpan = ay_span_tr($month); ?>
+            <span><?= $tab === 'tasima' ? 'taşıma kâr/zarar' : 'üretim kâr/zarar + gıda maliyeti' ?><?= $mtdSpan ? ' · ' . Helpers::e($mtdSpan) . ' (ay içi)' : '' ?></span>
             <input type="month" name="ay" value="<?= Helpers::e($month) ?>" onchange="this.form.submit()"
                    aria-label="Ay seç" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer">
           </div>
@@ -120,6 +121,16 @@ require __DIR__ . '/partials/header.php';
         <?php else: ?>
         <div class="gt-note">Gıda kırılımı için tedarikçi eşlemesi yok. <a href="tedarikci-eslestirme.php" style="text-decoration:underline">Maliyet eşleştirme</a>'den ayarla.</div>
         <?php endif; ?>
+      </div>
+
+      <?php // fable-042 ek: KİŞİ BAŞI PERSONEL MALİYETİ — gıda kartıyla aynı desen, tek kalem (kırılım yok) ?>
+      <?php $pc = $repo->personelCostOzetUretim($month); ?>
+      <div class="cardx card-pad">
+        <div class="gt-h"><i class="bi bi-people-fill"></i> KİŞİ BAŞI PERSONEL MALİYETİ</div>
+        <div class="gt-pulse">
+          <div class="gt-pulse-n"><?= $pc['kisi_basi'] > 0 ? '₺' . Helpers::money($pc['kisi_basi']) : '—' ?></div>
+          <div class="gt-pulse-l">personel (işveren maliyeti) ₺<?= Helpers::money($pc['toplam']) ?> · üretim <?= number_format($pc['kisi_toplam'], 0, ',', '.') ?> kişi</div>
+        </div>
       </div>
 
       <?php if ($karne): ?>

@@ -11,8 +11,48 @@ use PDO;
  */
 final class Repo
 {
+    /** fable-042: "bugün" (YYYY-MM-DD) — cari-ay MTD kesimi için. Set edilmezse APP_TODAY env / gerçek tarih. */
+    private ?string $bugun = null;
+
     public function __construct(private PDO $pdo)
     {
+    }
+
+    /** fable-042: test/enjeksiyon — "bugün"ü sabitle (MTD sınır testleri). null → gerçek tarihe döner. */
+    public function setBugun(?string $bugun): void
+    {
+        $this->bugun = $bugun;
+    }
+
+    /** fable-042: aktif "bugün" (YYYY-MM-DD). Enjekte edilmişse o; yoksa APP_TODAY env; yoksa gerçek tarih. */
+    private function bugun(): string
+    {
+        if ($this->bugun !== null && $this->bugun !== '') {
+            return $this->bugun;
+        }
+        $e = getenv('APP_TODAY');
+        return ($e !== false && $e !== '') ? $e : date('Y-m-d');
+    }
+
+    /**
+     * fable-042: Bir ayın ÜRETİM/GELİR hesap aralığı [bas, son] (YYYY-MM-DD, ikisi de dahil).
+     *   CARİ ay  → ay başı .. BUGÜN (month-to-date): ileri günlere önceden girilen sayılar cari ay
+     *              gelir/kişi toplamını ŞİŞİRMESİN (Ömer: "gelir yüksek gider düşük çıkmasın").
+     *   Geçmiş/gelecek ay → TAM ay (değişmez; birebir regresyon).
+     * SADECE üretim/gelir/kişi sorguları kullanır. FATURA-KES bunu KULLANMAZ (fatura tam dönem;
+     * customerMealsRange/faturaAdaylari kendi bas/son'unu alır). Gider (tx_date) hiç dokunulmaz.
+     * @return array{bas:string,son:string}
+     */
+    public function ayAralik(string $ay, ?string $bugun = null): array
+    {
+        $bas = $ay . '-01';
+        $bugun ??= $this->bugun();
+        if ($ay === substr($bugun, 0, 7)) {
+            return ['bas' => $bas, 'son' => $bugun];          // cari ay → MTD (bugün dahil)
+        }
+        [$y, $m] = array_map('intval', explode('-', $ay));
+        $son = sprintf('%s-%02d', $ay, (int) date('t', mktime(0, 0, 0, $m, 1, $y)));
+        return ['bas' => $bas, 'son' => $son];                // geçmiş/gelecek → tam ay
     }
 
     // ── Müşteriler ────────────────────────────────────────────
@@ -900,11 +940,12 @@ final class Repo
     /** Bir müşterinin o ay production.persons toplamı = taşıma adedi (Bugün sayımlarından). */
     public function monthProductionPersons(int $customerId, string $ay): float
     {
+        $ar = $this->ayAralik($ay); // fable-042: cari ayda MTD
         $st = $this->pdo->prepare(
             'SELECT COALESCE(SUM(persons),0) FROM production
-             WHERE customer_id = ? AND substr(prod_date,1,7) = ?'
+             WHERE customer_id = ? AND prod_date BETWEEN ? AND ?'
         );
-        $st->execute([$customerId, $ay]);
+        $st->execute([$customerId, $ar['bas'], $ar['son']]);
         return (float) $st->fetchColumn();
     }
 
@@ -956,12 +997,13 @@ final class Repo
     /** O ay TÜM taşıma müşterilerinin toplam adedi (gerçek alışı adet-oranlı dağıtmak için). */
     public function tasimaToplamAdet(string $ay): int
     {
+        $ar = $this->ayAralik($ay); // fable-042: cari ayda MTD
         $st = $this->pdo->prepare(
             "SELECT COALESCE(SUM(p.persons),0) FROM production p
              JOIN customers c ON c.id = p.customer_id
-             WHERE c.category = 'tasima' AND substr(p.prod_date,1,7) = ?"
+             WHERE c.category = 'tasima' AND p.prod_date BETWEEN ? AND ?"
         );
-        $st->execute([$ay]);
+        $st->execute([$ar['bas'], $ar['son']]);
         return (int) $st->fetchColumn();
     }
 
@@ -2372,12 +2414,14 @@ final class Repo
     // ── Rapor / Özet ──────────────────────────────────────────
     public function monthProductionByCustomer(string $month, ?string $category = null): array
     {
+        // fable-042: cari ayda ay başı..bugün (MTD); geçmiş/gelecek ayda tam ay.
+        $ar = $this->ayAralik($month);
         $sql = "SELECT c.id AS customer_id, c.name, c.category, c.fatura_kisi_haftaici,
                     COALESCE(SUM(p.persons),0) AS persons, COALESCE(SUM(p.amount),0) AS ciro,
                     COUNT(p.id) AS gun
              FROM customers c
-             LEFT JOIN production p ON p.customer_id = c.id AND substr(p.prod_date,1,7) = ?";
-        $params = [$month];
+             LEFT JOIN production p ON p.customer_id = c.id AND p.prod_date BETWEEN ? AND ?";
+        $params = [$ar['bas'], $ar['son']];
         if ($category !== null) {
             $sql .= ' WHERE c.category = ?';
             $params[] = $category;
@@ -3657,10 +3701,11 @@ final class Repo
     /** Aylık üretim cirosu (TÜM production tutar toplamı — kategori ayrımsız). */
     public function monthProductionTotal(string $ay): float
     {
+        $ar = $this->ayAralik($ay); // fable-042: cari ayda MTD
         $st = $this->pdo->prepare(
-            'SELECT COALESCE(SUM(amount),0) FROM production WHERE substr(prod_date,1,7) = ?'
+            'SELECT COALESCE(SUM(amount),0) FROM production WHERE prod_date BETWEEN ? AND ?'
         );
-        $st->execute([$ay]);
+        $st->execute([$ar['bas'], $ar['son']]);
         return (float) $st->fetchColumn();
     }
 
@@ -3670,12 +3715,13 @@ final class Repo
      */
     public function monthUretimCiro(string $ay): float
     {
+        $ar = $this->ayAralik($ay); // fable-042: cari ayda MTD (netKarlilik gelir tarafı)
         $st = $this->pdo->prepare(
             "SELECT COALESCE(SUM(p.amount),0)
              FROM production p JOIN customers c ON c.id = p.customer_id
-             WHERE c.category = 'uretim' AND substr(p.prod_date,1,7) = ?"
+             WHERE c.category = 'uretim' AND p.prod_date BETWEEN ? AND ?"
         );
-        $st->execute([$ay]);
+        $st->execute([$ar['bas'], $ar['son']]);
         return (float) $st->fetchColumn();
     }
 
@@ -4153,6 +4199,31 @@ final class Repo
             'kisi_toplam' => $kisiToplam,
             'kisi_basi'   => $kisiToplam > 0 ? $toplam / $kisiToplam : 0.0,
             'kirilimlar'  => $rows,
+        ];
+    }
+
+    /**
+     * fable-042 ek (Ömer): kişi başı PERSONEL (işveren YÜKLÜ) maliyeti — ÜRETİM tarafı.
+     * Tutar = personelDagitim'in ÜRETİM kategorisi müşterilere düşen payı toplamı (kar-analizi
+     * P&L 'Personel payı' üretim toplamıyla BİREBİR; yeni hesap icat edilmez, aynı zincir).
+     * Kişi = o ay üretim kategorisi toplam kişi (MTD payda — gıda kartıyla birebir). Taşıma
+     * müşterisine (personel_musteri_map ile) düşen personel payı DAHİL DEĞİL (üretim rows dışı).
+     * @return array{toplam:float,kisi_toplam:int,kisi_basi:float}
+     */
+    public function personelCostOzetUretim(string $ay): array
+    {
+        $persMap = $this->personelDagitim($ay)['per_customer'];
+        $toplam = 0.0;
+        $kisiToplam = 0;
+        foreach ($this->monthProductionByCustomer($ay, 'uretim') as $r) {
+            $cid = (int) $r['customer_id'];
+            $toplam += (float) ($persMap[$cid] ?? 0.0);
+            $kisiToplam += (int) $r['persons'];
+        }
+        return [
+            'toplam'      => $toplam,
+            'kisi_toplam' => $kisiToplam,
+            'kisi_basi'   => $kisiToplam > 0 ? $toplam / $kisiToplam : 0.0,
         ];
     }
 

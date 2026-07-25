@@ -187,6 +187,8 @@ require __DIR__ . '/partials/header.php';
         <div class="date-pill"><i class="bi bi-calendar2-week"></i>
           <input type="month" name="ay" value="<?= Helpers::e($month) ?>" onchange="this.form.submit()">
         </div>
+        <?php $mtdSpan = ay_span_tr($month); ?>
+        <?php if ($mtdSpan): ?><span class="text-muted" style="font-size:12px;font-weight:600;align-self:center">üretim/gelir <?= Helpers::e($mtdSpan) ?> (ay içi)</span><?php endif; ?>
       </form>
 
       <div class="summary-grid">
