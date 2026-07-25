@@ -162,7 +162,10 @@ $sekmeUrl = static fn(string $s): string => 'cari.php?sekme=' . $s;
                   <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
                   <input type="hidden" name="action" value="ted_odeme">
                   <input type="hidden" name="ted" value="<?= Helpers::e($b['key']) ?>">
-                  <div class="field"><label>Tutar (₺)</label><input class="inputx" name="tutar" inputmode="decimal" placeholder="0,00" required></div>
+                  <?php // fable-049b (Ömer): varsayılan = KALAN BORCUN TAMAMI (tam ödeme tek dokunuş;
+                        // kısmi ödemede silip yazar). Borç kapanmışsa boş gelir. ?>
+                  <div class="field"><label>Tutar (₺)</label><input class="inputx" name="tutar" inputmode="decimal"
+                    value="<?= $b['kalan'] > 0 ? Helpers::money((float) $b['kalan']) : '' ?>" placeholder="0,00" required></div>
                   <div class="field"><label>Tarih</label><input class="inputx" type="date" name="odeme_tarihi" value="<?= Helpers::e(Helpers::today()) ?>"></div>
                   <div class="field"><label>Not</label><input class="inputx" name="note" placeholder="ör. havale"></div>
                   <label class="check-row" style="grid-column:1/-1"><input type="checkbox" name="duzeltme" value="1"> Düzeltme (geri alma — negatif kayıt)</label>
