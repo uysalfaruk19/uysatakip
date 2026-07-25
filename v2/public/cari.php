@@ -120,11 +120,14 @@ $sekmeUrl = static fn(string $s): string => 'cari.php?sekme=' . $s;
         $toplamOdenen += $b['odenen'];
     }
 ?>
-        <div class="summary-grid">
-          <div class="summary-card"><p class="label">Toplam borç (kalan)</p><p class="metric <?= $toplamKalan > 0 ? 'neg' : '' ?>">₺ <?= Helpers::money($toplamKalan) ?></p></div>
-          <div class="summary-card"><p class="label">Ödenen</p><p class="metric">₺ <?= Helpers::money($toplamOdenen) ?></p></div>
-          <div class="summary-card wide"><p class="label">Tedarikçi</p><p class="metric"><?= count($detaylar) ?> firma · fatura+devir ₺ <?= Helpers::money($toplamFatura) ?></p>
-            <span class="delta"><i class="bi bi-info-circle"></i> Aydan bağımsız · tüm zaman kümülatif</span></div>
+        <?php // fable-046b (Fable denetimi): 3 kart alt alta ekranı yiyordu → tek kart, 3'lü mini ?>
+        <div class="cardx card-pad">
+          <div class="gt-mini">
+            <div><div class="gt-mn<?= $toplamKalan > 0 ? ' bad' : '' ?>">₺<?= Helpers::money($toplamKalan) ?></div><div class="gt-ml">Kalan borç</div></div>
+            <div><div class="gt-mn">₺<?= Helpers::money($toplamOdenen) ?></div><div class="gt-ml">Ödenen</div></div>
+            <div><div class="gt-mn"><?= count($detaylar) ?></div><div class="gt-ml">Tedarikçi</div></div>
+          </div>
+          <p class="row-meta" style="text-align:center;margin-top:8px">fatura+devir ₺<?= Helpers::money($toplamFatura) ?> · aydan bağımsız, tüm zaman kümülatif</p>
         </div>
 
         <div class="cardx card-pad">
@@ -269,19 +272,21 @@ $sekmeUrl = static fn(string $s): string => 'cari.php?sekme=' . $s;
         ];
     }
 ?>
-        <div class="summary-grid">
-          <div class="summary-card"><p class="label">Toplam alacak</p><p class="metric <?= $toplamAlacak < 0 ? 'neg' : '' ?>">₺ <?= Helpers::money($toplamAlacak) ?></p></div>
-          <div class="summary-card"><p class="label">Müşteri</p><p class="metric"><?= count($satirlar) ?></p></div>
+        <?php // fable-046b (Fable denetimi): Borçlarım ile aynı kompakt düzen ?>
+        <div class="cardx card-pad">
+          <div class="gt-mini">
+            <div><div class="gt-mn<?= $toplamAlacak < 0 ? ' bad' : '' ?>">₺<?= Helpers::money($toplamAlacak) ?></div><div class="gt-ml">Kokpit alacak</div></div>
+            <div><div class="gt-mn"><?= count($satirlar) ?></div><div class="gt-ml">Müşteri</div></div>
+            <?php if ($parasutAdet > 0): ?>
+            <div><div class="gt-mn<?= $toplamParasut < 0 ? ' bad' : '' ?>">₺<?= Helpers::money($toplamParasut) ?></div><div class="gt-ml">Paraşüt bakiye</div></div>
+            <?php else: ?>
+            <div><div class="gt-mn">—</div><div class="gt-ml">Paraşüt bağlı yok</div></div>
+            <?php endif; ?>
+          </div>
           <?php if ($parasutAdet > 0): ?>
-          <div class="summary-card wide tint-blue"><p class="label">Paraşüt bakiyesi (muhasebe · <?= $parasutAdet ?> müşteri)</p>
-            <p class="metric <?= $toplamParasut < 0 ? 'neg' : '' ?>">₺ <?= Helpers::money($toplamParasut) ?></p>
-            <span class="delta"><i class="bi bi-shield-check"></i> <?= $sonSenkron
-                ? Helpers::e(date('d.m.Y H:i', strtotime($sonSenkron))) . "'te güncellendi"
-                : 'henüz senkronlanmadı' ?></span></div>
-          <?php else: ?>
-          <div class="summary-card wide"><p class="label"><?= Helpers::e(ay_label_tr($month)) ?></p>
-            <p class="metric">cari hareket</p>
-            <span class="delta"><i class="bi bi-info-circle"></i> Paraşüt cari'si bağlı müşteri yok</span></div>
+          <p class="row-meta" style="text-align:center;margin-top:8px"><i class="bi bi-shield-check"></i> Paraşüt: <?= $parasutAdet ?> müşteri · <?= $sonSenkron
+              ? Helpers::e(date('d.m.Y H:i', strtotime($sonSenkron))) . "'te güncellendi"
+              : 'henüz senkronlanmadı' ?></p>
           <?php endif; ?>
         </div>
 
