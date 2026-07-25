@@ -43,11 +43,15 @@ final class Repo
      * customerMealsRange/faturaAdaylari kendi bas/son'unu alır). Gider (tx_date) hiç dokunulmaz.
      * @return array{bas:string,son:string}
      */
-    public function ayAralik(string $ay, ?string $bugun = null): array
+    public function ayAralik(string $ay, ?string $bugun = null, bool $mtd = false): array
     {
         $bas = $ay . '-01';
         $bugun ??= $this->bugun();
-        if ($ay === substr($bugun, 0, 7)) {
+        // fable-048f (Ömer): "fatura/üretim ayırdık madem, ÜRETİM tarafı TÜM AYI kapsasın" →
+        // varsayılan artık TAM AY (ileri günlere girilen sayılar da tahakkukta görünür).
+        // MTD yalnız BİRİM MALİYET kartlarında ($mtd=true): gider bugüne kadar olduğu için
+        // payda da bugüne kadar olmalı, yoksa kişi başı gıda/personel suni DÜŞÜK çıkar.
+        if ($mtd && $ay === substr($bugun, 0, 7)) {
             return ['bas' => $bas, 'son' => $bugun];          // cari ay → MTD (bugün dahil)
         }
         [$y, $m] = array_map('intval', explode('-', $ay));
@@ -3258,10 +3262,10 @@ final class Repo
     }
 
     // ── Rapor / Özet ──────────────────────────────────────────
-    public function monthProductionByCustomer(string $month, ?string $category = null): array
+    public function monthProductionByCustomer(string $month, ?string $category = null, bool $mtd = false): array
     {
         // fable-042: cari ayda ay başı..bugün (MTD); geçmiş/gelecek ayda tam ay.
-        $ar = $this->ayAralik($month);
+        $ar = $this->ayAralik($month, null, $mtd);
         $sql = "SELECT c.id AS customer_id, c.name, c.category, c.fatura_kisi_haftaici,
                     COALESCE(SUM(p.persons),0) AS persons, COALESCE(SUM(p.amount),0) AS ciro,
                     COUNT(p.id) AS gun
@@ -5293,7 +5297,7 @@ final class Repo
 
         // Kişi = o ay ÜRETİM kategorisi müşterilerin toplam kişi sayısı (taşıma HARİÇ).
         $kisiToplam = 0;
-        foreach ($this->monthProductionByCustomer($ay, 'uretim') as $r) {
+        foreach ($this->monthProductionByCustomer($ay, 'uretim', true) as $r) {
             $kisiToplam += (int) $r['persons'];
         }
 
@@ -5632,7 +5636,7 @@ final class Repo
         $persMap = $this->personelDagitim($ay)['per_customer'];
         $toplam = 0.0;
         $kisiToplam = 0;
-        foreach ($this->monthProductionByCustomer($ay, 'uretim') as $r) {
+        foreach ($this->monthProductionByCustomer($ay, 'uretim', true) as $r) {
             $cid = (int) $r['customer_id'];
             $toplam += (float) ($persMap[$cid] ?? 0.0);
             $kisiToplam += (int) $r['persons'];
@@ -6048,7 +6052,8 @@ final class Repo
         $out['eslesmemis'] = array_values($eslesmemisGrup);
 
         if ($out['kapsam_son'] !== null) {
-            $ar = $this->ayAralik($ay);           // cari ayda BUGÜN, geçmiş ayda ay sonu
+            // fable-048f: gecikme BUGÜNE göre ölçülür → mtd=true (ayAralik varsayılanı artık tam ay).
+            $ar = $this->ayAralik($ay, null, true);   // cari ayda BUGÜN, geçmiş ayda ay sonu
             $fark = (int) floor((strtotime($ar['son']) - strtotime($out['kapsam_son'])) / 86400);
             $out['gecikme_gun'] = max(0, $fark);
             $out['uyari'] = $out['gecikme_gun'] >= $out['esik'];

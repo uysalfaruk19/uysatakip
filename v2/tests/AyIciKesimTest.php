@@ -12,7 +12,14 @@ use Uysa\Repo;
  *
  * "Bugün" Repo::setBugun ile enjekte edilir (bootstrap APP_TODAY=2099 → aksi belirtilmezse tam ay).
  */
-final class AyIciKesimTest extends TestCase
+final /**
+ * fable-048f (Ömer, 26 Tem): "fatura/üretim ayırdık madem ÜRETİM tarafı TÜM AYI kapsasın"
+ * → fable-042'nin MTD kırpması ÜRETİM/CİRO tarafından KALDIRILDI (varsayılan tam ay).
+ * MTD yalnız BİRİM MALİYET kartlarında yaşıyor (gidaCostOzet / personelCostOzetUretim):
+ * gider bugüne kadar olduğu için payda da bugüne kadar — kişi başı suni düşük çıkmasın.
+ * Aşağıdaki testler bu YENİ kurala göre yeniden yazıldı.
+ */
+class AyIciKesimTest extends TestCase
 {
     private PDO $pdo;
     private Repo $repo;
@@ -26,9 +33,11 @@ final class AyIciKesimTest extends TestCase
     // ── ayAralik yardımcı: cari ay MTD, geçmiş/gelecek tam ay ──────
     public function testAyAralikMtdVeTamAy(): void
     {
-        // Cari ay (bugün 2026-07-15) → son = bugün
+        // fable-048f: VARSAYILAN artık TAM AY (üretim/tahakkuk tüm ayı kapsar)
         $this->repo->setBugun('2026-07-15');
-        $this->assertSame(['bas' => '2026-07-01', 'son' => '2026-07-15'], $this->repo->ayAralik('2026-07'));
+        $this->assertSame(['bas' => '2026-07-01', 'son' => '2026-07-31'], $this->repo->ayAralik('2026-07'));
+        // MTD yalnız açıkça istenince (birim maliyet kartları)
+        $this->assertSame(['bas' => '2026-07-01', 'son' => '2026-07-15'], $this->repo->ayAralik('2026-07', null, true));
         // Geçmiş ay → tam ay (Haziran 30 gün)
         $this->assertSame(['bas' => '2026-06-01', 'son' => '2026-06-30'], $this->repo->ayAralik('2026-06'));
         // Gelecek ay → tam ay (Ağustos 31 gün); ileri-ay önceden giriş cari-ay değil, tam kalır
@@ -36,23 +45,23 @@ final class AyIciKesimTest extends TestCase
         // Şubat 2026 (28 gün) — geçmiş ay son gün doğru
         $this->assertSame(['bas' => '2026-02-01', 'son' => '2026-02-28'], $this->repo->ayAralik('2026-02'));
         // Opsiyonel $bugun paramı property'yi ezer
-        $this->assertSame('2026-07-09', $this->repo->ayAralik('2026-07', '2026-07-09')['son']);
+        $this->assertSame('2026-07-09', $this->repo->ayAralik('2026-07', '2026-07-09', true)['son']);
     }
 
-    // ── Cari ay MTD: kişi/ciro haritaları ileri günü HARİÇ tutar ──
-    public function testCariAyKisiCiroMtd(): void
+    // ── fable-048f: kişi/ciro haritaları TÜM AYI kapsar (ileri gün DAHİL) ──
+    public function testCariAyKisiCiroTamAy(): void
     {
         $u = seed_customer($this->pdo, 'DEMİR', 100.0);
         $this->repo->upsertProduction($u, '2026-07-05', 100, 100.0, 'ogle'); // bugüne kadar
         $this->repo->upsertProduction($u, '2026-07-31', 100, 100.0, 'ogle'); // İLERİ GÜN (önceden girili)
 
-        // Cari ay, bugün 15 → sadece 07-05 sayılır
+        // Cari ay, bugün 15 → ileri gün DE sayılır (Ömer: tahakkuk tüm ay)
         $this->repo->setBugun('2026-07-15');
-        $this->assertSame(100, $this->repo->customerPersonsMap('2026-07')[$u], 'MTD kişi ileri günü dışlar');
-        $this->assertEqualsWithDelta(10000.0, $this->repo->customerCiroMap('2026-07')[$u], 0.001, 'MTD ciro ileri günü dışlar');
-        $this->assertEqualsWithDelta(10000.0, $this->repo->monthUretimCiro('2026-07'), 0.001, 'netKarlilik gelir MTD');
+        $this->assertSame(200, $this->repo->customerPersonsMap('2026-07')[$u], 'tahakkuk ileri günü DAHİL eder');
+        $this->assertEqualsWithDelta(20000.0, $this->repo->customerCiroMap('2026-07')[$u], 0.001, 'ciro tüm ay');
+        $this->assertEqualsWithDelta(20000.0, $this->repo->monthUretimCiro('2026-07'), 0.001, 'netKarlilik gelir tüm ay');
 
-        // Bugün ayın SONU (31) → tam ay (200 / 20000) — geçmiş-ay eşdeğeri
+        // Ay sonunda da aynı sonuç
         $this->repo->setBugun('2026-07-31');
         $this->assertSame(200, $this->repo->customerPersonsMap('2026-07')[$u], 'ay sonu = tam ay');
         $this->assertEqualsWithDelta(20000.0, $this->repo->monthUretimCiro('2026-07'), 0.001);
@@ -80,8 +89,11 @@ final class AyIciKesimTest extends TestCase
         $this->repo->upsertProduction($u, '2026-07-02', 60, 100.0, 'ogle');
 
         $this->repo->setBugun('2026-07-01');
-        $this->assertSame(['bas' => '2026-07-01', 'son' => '2026-07-01'], $this->repo->ayAralik('2026-07'));
-        $this->assertSame(40, $this->repo->customerPersonsMap('2026-07')[$u], 'ayın 1inde sadece 01 sayılır');
+        // fable-048f: varsayılan tam ay → ayın 1'inde bile tüm ay sayılır (tahakkuk)
+        $this->assertSame(['bas' => '2026-07-01', 'son' => '2026-07-31'], $this->repo->ayAralik('2026-07'));
+        $this->assertSame(100, $this->repo->customerPersonsMap('2026-07')[$u], 'tahakkuk tüm ay');
+        // MTD istenirse ayın 1'i sınırı hâlâ doğru (birim maliyet kartları için)
+        $this->assertSame(['bas' => '2026-07-01', 'son' => '2026-07-01'], $this->repo->ayAralik('2026-07', null, true));
     }
 
     // ── Gıda kişi-başı paydası MTD (üretim kişi ileri günü hariç) ─
@@ -98,20 +110,19 @@ final class AyIciKesimTest extends TestCase
     }
 
     // ── Taşıma adet MTD (monthProductionPersons + tasimaToplamAdet) ─
-    public function testTasimaAdetMtd(): void
+    public function testTasimaAdetTamAy(): void
     {
         $t = $this->repo->upsertCustomer('KARGO', 120.0, 'tasima', null, null, null, null, 80.0, 0.0);
         $this->repo->upsertProduction($t, '2026-07-03', 300, 120.0, 'ogle');
         $this->repo->upsertProduction($t, '2026-07-28', 300, 120.0, 'ogle'); // ileri gün
 
         $this->repo->setBugun('2026-07-15');
-        $this->assertEqualsWithDelta(300.0, $this->repo->monthProductionPersons($t, '2026-07'), 0.001, 'taşıma adet MTD');
-        $this->assertSame(300, $this->repo->tasimaToplamAdet('2026-07'), 'toplam taşıma adet MTD');
-        // Taşıma kârı da MTD adetten: 300×(120−80) = 12000
-        $this->assertEqualsWithDelta(12000.0, (float) $this->repo->tasimaProfit($t, '2026-07')['net'], 0.001);
-
-        $this->repo->setBugun('2026-07-31');
-        $this->assertSame(600, $this->repo->tasimaToplamAdet('2026-07'), 'ay sonu tam');
+        // fable-048f: tahakkuk tüm ay → ileri gün DAHİL
+        $this->assertEqualsWithDelta(600.0, $this->repo->monthProductionPersons($t, '2026-07'), 0.001, 'taşıma adet tüm ay');
+        $this->assertSame(600, $this->repo->tasimaToplamAdet('2026-07'), 'toplam taşıma adet tüm ay');
+        $this->assertEqualsWithDelta(24000.0, (float) $this->repo->tasimaProfit($t, '2026-07')['net'], 0.001);
+        // fable-048d: fatura modu için dönem kırpması hâlâ çalışır ($sonTarih)
+        $this->assertEqualsWithDelta(300.0, $this->repo->monthProductionPersons($t, '2026-07', '2026-07-15'), 0.001, 'kırpma parametresi çalışır');
     }
 
     // ── FATURA-KES tam dönem: MTD'ye GEÇMEZ (ileri günü sayar) ────
@@ -123,9 +134,11 @@ final class AyIciKesimTest extends TestCase
         $this->repo->upsertProduction($u, '2026-07-05', 100, 100.0, 'ogle');
         $this->repo->upsertProduction($u, '2026-07-31', 100, 100.0, 'ogle'); // ileri gün
 
-        // Bugün ayın ORTASI → üretim MTD 100 AMA fatura TAM dönem 200 olmalı
+        // fable-048f: üretim/tahakkuk da artık TAM AY; fatura-kes zaten tam dönemdi (ikisi 200)
         $this->repo->setBugun('2026-07-15');
-        $this->assertSame(100, $this->repo->customerPersonsMap('2026-07')[$u], 'üretim MTD');
+        $this->assertSame(200, $this->repo->customerPersonsMap('2026-07')[$u], 'tahakkuk tüm ay');
+        // Birim maliyet kartlarının paydası hâlâ MTD (gider dönemiyle uyumlu)
+        $this->assertSame(100, (int) $this->repo->gidaCostOzet('2026-07')['kisi_toplam'], 'gıda paydası MTD kalır');
 
         // Fatura girdileri tam dönem (bas..ay sonu) → 200 (ileri gün dahil)
         $this->assertSame(200, $this->repo->customerMonthProduction($u, '2026-07')['persons'], 'fatura input tam ay');

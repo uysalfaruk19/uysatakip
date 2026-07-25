@@ -311,9 +311,9 @@ final class FaturaBazliKarTest extends TestCase
         $ka = $this->repo->karAnaliziFatura('2026-07');
         $this->assertEqualsWithDelta(90000.0, $ka['uretim']['gelir'], 0.01, 'fatura tarihi gerçekleşmiş olay → MTD kırpılmaz');
 
-        // Üretim modunda ileri tarihli ÜRETİM hâlâ MTD ile kırpılır (fable-042 korunur)
+        // fable-048f (Ömer): üretim modu da artık TÜM AYI kapsar → ileri tarihli üretim GELİRE girer
         $this->repo->upsertProduction(1, '2026-07-28', 100, 200.0, 'ogle');
-        $this->assertEqualsWithDelta(0.0, $this->repo->karAnalizi('2026-07')['uretim']['gelir'], 0.01);
+        $this->assertEqualsWithDelta(20000.0, $this->repo->karAnalizi('2026-07')['uretim']['gelir'], 0.01);
     }
 
     /**
