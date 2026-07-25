@@ -29,6 +29,7 @@ $gruplar = [
         ['parasut.php', 'bi-shield-check', 'Paraşüt cari', 'Muhasebe bakiyeleri'],
         ['islemler.php', 'bi-list-check', 'İşlem kaydı', 'Denetim izi (audit)'],
         ['tedarikci-eslestirme.php', 'bi-diagram-3', 'Maliyet eşleştirme', 'Tedarikçi/personel → müşteri dağıtım'],
+        ['rapor.php', 'bi-graph-up-arrow', 'Üretim raporu', 'Günlük/aylık üretim + eksik gün takibi'],
     ],
 ];
 

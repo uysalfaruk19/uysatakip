@@ -18,8 +18,11 @@ $tabs = [
     <div class="fab-slot">
       <button class="fab" type="button" aria-label="Hızlı işlem" onclick="toggleFabMenu()"><i class="bi bi-plus-lg"></i></button>
     </div>
-  <?php else: [$label, $icon] = $meta; ?>
-    <a class="tab-item <?= $active === $key ? 'active' : '' ?>" href="<?= $key ?>.php">
+  <?php else: [$label, $icon] = $meta;
+    // fable-041a (Ömer): Kâr/Zarar sekmesi artık kar-analizi'ne iner (Üretim|Taşıma + gıda
+    // maliyeti orada); günlük üretim raporu (rapor.php) moduller'den erişilir.
+    $href = $key === 'rapor' ? 'kar-analizi.php' : $key . '.php'; ?>
+    <a class="tab-item <?= $active === $key ? 'active' : '' ?>" href="<?= $href ?>">
       <i class="bi <?= $icon ?>"></i><?= $label ?>
     </a>
   <?php endif; ?>
