@@ -5925,6 +5925,28 @@ final class Repo
      */
     public function satisFaturaIsle(array $faturalar): array
     {
+        // fable-049d (Ömer: "balcıya iade kestim"): contact'ı TEDARİKÇİ olan satış faturası
+        // GELİR DEĞİL, ALIŞ İADESİDİR → o tedarikçinin giderinden düşülür (negatif gider satırı).
+        // Aksi halde hem gelir hem gider şişer, kâr/zarar iki yönlü yanlış çıkar.
+        $tedSet = [];
+        foreach ($this->pdo->query("SELECT name FROM suppliers")->fetchAll(PDO::FETCH_COLUMN) as $sn) {
+            $tedSet[self::normTedarikci((string) $sn)] = true;
+        }
+        foreach ($this->pdo->query(
+            "SELECT DISTINCT t.source, t.category, t.description, s.name AS supplier_name
+             FROM transactions t LEFT JOIN suppliers s ON s.id = t.supplier_id
+             WHERE t.type = 'gider'"
+        )->fetchAll() as $gr) {
+            $tedSet[self::normTedarikci($this->txFirma($gr))] = true;
+        }
+        $iadeIns = $this->pdo->prepare(
+            "INSERT INTO transactions (type, category, tx_date, amount, description, source, parasut_id, alloc_type)
+             VALUES ('gider', ?, ?, ?, ?, 'parasut', ?, 'genel')"
+        );
+        $iadeVar = $this->pdo->prepare('SELECT COUNT(*) FROM transactions WHERE parasut_id = ?');
+        $iadeSayi = 0;
+        $iadeTutar = 0.0;
+
         $custMap = [];
         foreach ($this->pdo->query("SELECT id, parasut_id FROM customers WHERE parasut_id IS NOT NULL AND parasut_id <> ''")->fetchAll() as $c) {
             $custMap[(string) $c['parasut_id']] = (int) $c['id'];
@@ -5954,6 +5976,26 @@ final class Repo
             }
             $contactId = trim((string) ($f['contact_id'] ?? ''));
             $cid = $contactId !== '' ? ($custMap[$contactId] ?? null) : null;
+
+            // fable-049d: müşteriye bağlanmayan fatura TEDARİKÇİ carisine kesilmişse → ALIŞ İADESİ
+            $contactAd = trim((string) ($f['contact_ad'] ?? ''));
+            if ($cid === null && $contactAd !== '' && isset($tedSet[self::normTedarikci($contactAd)])) {
+                $iadePid = 'iade-' . $pid;
+                $iadeVar->execute([$iadePid]);
+                if ((int) $iadeVar->fetchColumn() === 0) {
+                    $iadeIns->execute([
+                        'Tedarikçi faturası',
+                        $tarih,
+                        -1 * round((float) ($f['toplam'] ?? 0), 2),   // KDV dahil, NEGATİF
+                        $contactAd . ' · İADE ' . trim((string) ($f['fatura_no'] ?? '')),
+                        $iadePid,
+                    ]);
+                }
+                $iadeSayi++;
+                $iadeTutar += round((float) ($f['toplam'] ?? 0), 2);
+                continue; // satis_faturasi'na YAZILMAZ (gelir değil)
+            }
+
             $cid === null ? $eslesmemis++ : $eslesen++;
             $vals = [
                 $cid, $contactId !== '' ? $contactId : null,
@@ -5988,7 +6030,8 @@ final class Repo
             }
         }
         return ['yeni' => $yeni, 'guncellenen' => $guncellenen, 'mevcut' => $mevcut,
-            'tutar' => round($tutar, 2), 'eslesen' => $eslesen, 'eslesmemis' => $eslesmemis];
+            'tutar' => round($tutar, 2), 'eslesen' => $eslesen, 'eslesmemis' => $eslesmemis,
+            'alis_iadesi' => $iadeSayi, 'alis_iadesi_tutar' => round($iadeTutar, 2)];
     }
 
     /**

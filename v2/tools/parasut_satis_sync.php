@@ -82,6 +82,13 @@ printf("Paraşüt satış senkronu (%s): %d yeni · %d güncellendi · %d deği�
     $si['iade'] > 0 ? ' · ' . $si['iade'] . ' iade/iptal ATLANDI' : '',
     $si['atlanan'] > 0 ? ' · ' . $si['atlanan'] . ' fatura-dışı belge atlandı' : '');
 
+// fable-049d: tedarikçiye kesilen fatura = ALIŞ İADESİ → gelire değil, gidere (negatif) yazıldı.
+if ((int) ($sonuc['alis_iadesi'] ?? 0) > 0) {
+    printf("↩ %d ALIŞ İADESİ (₺%s) tedarikçi giderinden DÜŞÜLDÜ (gelire yazılmadı).
+",
+        $sonuc['alis_iadesi'], number_format((float) $sonuc['alis_iadesi_tutar'], 2, ',', '.'));
+}
+
 if ($sonuc['eslesmemis'] > 0) {
     printf("⚠ %d fatura Kokpit müşterisiyle EŞLEŞMEDİ (₺%s) — kâr/zararda 'eşleşmemiş gelir' olarak ayrı durur.\n",
         $ozet['eslesmemis_adet'], number_format($ozet['eslesmemis_net'], 2, ',', '.'));
