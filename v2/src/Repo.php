@@ -6080,14 +6080,22 @@ final class Repo
         $adetMap = $fatura['per_customer_adet'];
 
         $uretimRows = [];
+        $faturasizMusteri = [];
         $uGelir = 0.0; $uGider = 0.0; $uPers = 0.0; $uNet = 0.0;
         foreach ($this->listCustomersByCategory('uretim') as $c) {
             $cid = (int) $c['id'];
             $gelir = (float) ($faturaMap[$cid] ?? 0.0);
             $pg = $giderMap[$cid] ?? 0.0;
             $pp = $persMap[$cid] ?? 0.0;
-            if ($gelir <= 0 && $pg <= 0 && $pp <= 0) {
-                continue; // bu ay ne faturası ne maliyeti var → satır açma
+            if ($gelir <= 0) {
+                // fable-048 (Fable denetimi): FATURASI HENÜZ KESİLMEMİŞ müşteri hesaba GİRMEZ —
+                // ne geliri ne maliyeti. Aksi halde ay sonu faturalanan müşteriler (CANTAŞ,
+                // Marmara) maliyetiyle girip gelirsiz kaldığı için tablo suni ZARAR gösterir.
+                // Ekranda "N müşteri henüz faturalanmadı" olarak ayrıca bildirilir.
+                if ($pg > 0 || $pp > 0) {
+                    $faturasizMusteri[] = ['name' => (string) $c['name'], 'maliyet' => $pg + $pp];
+                }
+                continue;
             }
             $net = $gelir - $pg - $pp;
             $uretimRows[] = [
@@ -6111,7 +6119,11 @@ final class Repo
             $sabit = (float) $t['sabit'];
             $pg = $giderMap[$cid] ?? 0.0;
             $pp = $persMap[$cid] ?? 0.0;
-            if ($satis <= 0 && (float) $t['adet'] <= 0) {
+            if ($satis <= 0) {
+                // fable-048: faturası kesilmemiş taşıma müşterisi de hesaba girmez (bkz. üretim).
+                if ($pg > 0 || $pp > 0 || (float) $t['toplam_alis'] > 0) {
+                    $faturasizMusteri[] = ['name' => (string) $c['name'], 'maliyet' => $pg + $pp + (float) $t['toplam_alis']];
+                }
                 continue;
             }
             $net = $satis - $alis - $sabit - $pg - $pp;
@@ -6148,6 +6160,7 @@ final class Repo
             'toplam_net' => $toplamNet,
             'toplam_marj' => $toplamGelir > 0 ? $toplamNet / $toplamGelir : 0.0,
             'kaynak' => 'fatura',
+            'faturasiz_musteri' => $faturasizMusteri,
             'fatura' => $fatura,
             'eslesmemis_gelir' => $eslesmemis,
         ];

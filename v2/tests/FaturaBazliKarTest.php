@@ -316,23 +316,25 @@ final class FaturaBazliKarTest extends TestCase
         $this->assertEqualsWithDelta(0.0, $this->repo->karAnalizi('2026-07')['uretim']['gelir'], 0.01);
     }
 
-    public function testFaturasiOlmayanMusteriGelirsizAmaMaliyetliGorunur(): void
+    /**
+     * fable-048c (Fable denetimi — DAVRANIŞ DEĞİŞTİ): faturası HENÜZ kesilmemiş müşteri
+     * kâr tablosuna hiç girmez (ne geliri ne maliyeti). Eski davranışta girip "gelir 0 /
+     * maliyet var" diye SUNİ ZARAR üretiyordu: canlıda CANTAŞ+Marmara ay sonu faturalandığı
+     * için Temmuz −%3,9 zarar görünüyordu. Artık ayrı 'faturasiz_musteri' listesinde bildirilir.
+     */
+    public function testFaturasiKesilmemisMusteriHesabaGirmez(): void
     {
         $this->sahne();
         $this->musteri(2, 'MARMARA LOJİSTİK', 'c-200');
         $this->repo->upsertProduction(2, '2026-07-02', 50, 200.0, 'ogle');
 
         $ka = $this->repo->karAnaliziFatura('2026-07');
-        $satir = null;
         foreach ($ka['uretim']['rows'] as $r) {
-            if ($r['name'] === 'MARMARA LOJİSTİK') {
-                $satir = $r;
-            }
+            $this->assertNotSame('MARMARA LOJİSTİK', $r['name'], 'faturasız müşteri kâr satırı açmaz');
         }
-        $this->assertNotNull($satir, 'gider payı olan müşteri satırı kaybolmaz');
-        $this->assertEqualsWithDelta(0.0, $satir['gelir'], 0.01, 'faturası yok → gelir 0 (uydurma yok)');
-        $this->assertSame(0, $satir['fatura_adedi']);
-        $this->assertLessThan(0.0, $satir['net'], 'maliyet var gelir yok → zarar görünür (dürüst)');
+        $adlar = array_column($ka['faturasiz_musteri'] ?? [], 'name');
+        $this->assertContains('MARMARA LOJİSTİK', $adlar, 'faturasız müşteri AYRI listede bildirilir (gizlenmez)');
+        $this->assertGreaterThan(0.0, $ka['toplam_net'], 'faturalanan işin kârı suni zarara dönüşmez');
     }
 
     public function testEslesmemisGelirToplamaAyriGirer(): void
