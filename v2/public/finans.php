@@ -237,11 +237,18 @@ require __DIR__ . '/partials/header.php';
       // fable-034: GİDER — FİRMA KARNESİ (mockup birebir). Her zaman görünür (kim bana ne kesiyor).
       $firmaKarne = $repo->giderFirmaOzet($month);
       $firmaMax = 0.0;
-      foreach ($firmaKarne as $f) { $firmaMax = max($firmaMax, (float) $f['toplam']); }
+      $firmaGenelToplam = 0.0;
+      $firmaFaturaAdet = 0;
+      foreach ($firmaKarne as $f) {
+          $firmaMax = max($firmaMax, (float) $f['toplam']);
+          $firmaGenelToplam += (float) $f['toplam'];
+          $firmaFaturaAdet += (int) $f['adet'];
+      }
       ?>
       <?php if ($firmaKarne): ?>
       <div class="cardx card-pad">
-        <div class="gt-h"><i class="bi bi-buildings-fill"></i> GİDER — FİRMA KARNESİ</div>
+        <div class="gt-h"><i class="bi bi-buildings-fill"></i> GİDER — FİRMA KARNESİ
+          <span class="gt-hr"><?= $firmaFaturaAdet ?> fatura · ₺<?= Helpers::money($firmaGenelToplam) ?></span></div>
         <?php foreach (array_slice($firmaKarne, 0, 6) as $f): $w = $firmaMax > 0 ? max(4, (int) round((float) $f['toplam'] / $firmaMax * 100)) : 4; ?>
           <div class="gt-kr">
             <div class="gt-kr-head">
