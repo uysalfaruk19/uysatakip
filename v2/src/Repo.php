@@ -5923,7 +5923,7 @@ final class Repo
      * @param array<int,array<string,mixed>> $faturalar Parasut::salesInvoicesForMonth çıktısı
      * @return array{yeni:int,guncellenen:int,mevcut:int,tutar:float,eslesen:int,eslesmemis:int}
      */
-    public function satisFaturaIsle(array $faturalar): array
+    public function satisFaturaIsle(array $faturalar, array $tedarikciContactIds = []): array
     {
         // fable-049d (Ömer: "balcıya iade kestim"): contact'ı TEDARİKÇİ olan satış faturası
         // GELİR DEĞİL, ALIŞ İADESİDİR → o tedarikçinin giderinden düşülür (negatif gider satırı).
@@ -5979,7 +5979,9 @@ final class Repo
 
             // fable-049d: müşteriye bağlanmayan fatura TEDARİKÇİ carisine kesilmişse → ALIŞ İADESİ
             $contactAd = trim((string) ($f['contact_ad'] ?? ''));
-            if ($cid === null && $contactAd !== '' && isset($tedSet[self::normTedarikci($contactAd)])) {
+            $tedarikciCari = ($contactId !== '' && isset($tedarikciContactIds[$contactId]))
+                || ($contactAd !== '' && isset($tedSet[self::normTedarikci($contactAd)]));
+            if ($cid === null && $tedarikciCari) {
                 $iadePid = 'iade-' . $pid;
                 $iadeVar->execute([$iadePid]);
                 if ((int) $iadeVar->fetchColumn() === 0) {

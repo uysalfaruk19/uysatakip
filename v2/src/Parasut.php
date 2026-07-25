@@ -195,6 +195,35 @@ final class Parasut
      * Tüm müşteri (account_type=customer) contact'ları — sayfalı çekilir, düzleştirilir.
      * @return array<int,array{parasut_id:string,name:string,balance:float,tax_number:string,tax_office:string,email:string,phone:string}>
      */
+    /**
+     * fable-049d: Paraşüt'te TEDARİKÇİ (account_type=supplier) carilerinin id kümesi.
+     * Satış faturasının contact'ı bu kümedeyse fatura GELİR değil ALIŞ İADESİDİR
+     * (Ömer: "balcıya iade kestim"). İsim benzerliğine güvenmek YANLIŞ eşleşme üretir —
+     * canlı kanıt: gider tarafında "BALCI BALCI BALCI TİCARET…", faturada "balcı ticaret…".
+     * @return array<string,true> contact_id => true
+     */
+    public static function supplierContactIds(): array
+    {
+        $out = [];
+        for ($page = 1; $page <= self::MAX_PAGES; $page++) {
+            $resp = self::get('/contacts', [
+                'filter[account_type]' => 'supplier',
+                'page[size]'           => self::PAGE_SIZE,
+                'page[number]'         => $page,
+            ]);
+            foreach ((array) ($resp['data'] ?? []) as $row) {
+                $id = trim((string) ($row['id'] ?? ''));
+                if ($id !== '') {
+                    $out[$id] = true;
+                }
+            }
+            if (count($resp['data'] ?? []) < self::PAGE_SIZE) {
+                break;
+            }
+        }
+        return $out;
+    }
+
     public static function contacts(): array
     {
         $out = [];

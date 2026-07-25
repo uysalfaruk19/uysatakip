@@ -67,7 +67,16 @@ if ($kuru) {
 }
 
 $repo = new Repo(Db::pdo());
-$sonuc = $repo->satisFaturaIsle($si['invoices']);
+// fable-049d: tedarikçi carileri (account_type=supplier) — bunlara kesilen fatura ALIŞ İADESİDİR.
+// Ağ hatası olursa iade tespiti ad eşleşmesine düşer (senkron durmaz).
+$tedContactIds = [];
+try {
+    $tedContactIds = Uysa\Parasut::supplierContactIds();
+} catch (\Throwable $e) {
+    fwrite(STDERR, "uyarı: tedarikçi carileri okunamadı (" . $e->getMessage() . ") — iade tespiti ad bazlı
+");
+}
+$sonuc = $repo->satisFaturaIsle($si['invoices'], $tedContactIds);
 $ozet = $repo->satisFaturaOzet($ay);
 
 uysa_audit('satis_parasut', 'cron', $ay, json_encode([
