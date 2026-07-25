@@ -5985,11 +5985,24 @@ final class Repo
                 $iadePid = 'iade-' . $pid;
                 $iadeVar->execute([$iadePid]);
                 if ((int) $iadeVar->fetchColumn() === 0) {
+                    // fable-049e: iade, gider tarafındaki firma ADIYLA yazılır — yoksa firma
+                    // karnesinde ayrı satır açar ("balcı ticaret…" ≠ "BALCI BALCI BALCI TİCARET…").
+                    // Eşleşme ilk anlamlı kelimeden; bulunamazsa contact adı kullanılır (kayıp yok).
+                    $ilk = mb_strtoupper(mb_substr(trim($contactAd), 0, mb_strpos(trim($contactAd) . ' ', ' ')), 'UTF-8');
+                    $giderAdi = $contactAd;
+                    if ($ilk !== '') {
+                        foreach (array_keys($tedSet) as $tk) {
+                            if (str_starts_with((string) $tk, $ilk)) {
+                                $giderAdi = (string) $tk;
+                                break;
+                            }
+                        }
+                    }
                     $iadeIns->execute([
                         'Tedarikçi faturası',
                         $tarih,
                         -1 * round((float) ($f['toplam'] ?? 0), 2),   // KDV dahil, NEGATİF
-                        $contactAd . ' · İADE ' . trim((string) ($f['fatura_no'] ?? '')),
+                        $giderAdi . ' · İADE ' . trim((string) ($f['fatura_no'] ?? '')),
                         $iadePid,
                     ]);
                 }
@@ -6143,7 +6156,9 @@ final class Repo
         $uretimRows = [];
         $faturasizMusteri = [];
         $uGelir = 0.0; $uGider = 0.0; $uPers = 0.0; $uNet = 0.0;
-        foreach ($this->listCustomersByCategory('uretim') as $c) {
+        // fable-049e (Fable denetimi): faturası kesilmiş müşteri PASİF olsa da gelire girer —
+        // AKILLI ÇÖZÜMLER pasife alınınca 31.725 TL'lik faturası kâr/zarardan DÜŞMÜŞTÜ.
+        foreach ($this->listCustomersByCategory('uretim', false) as $c) {
             $cid = (int) $c['id'];
             $gelir = (float) ($faturaMap[$cid] ?? 0.0);
             $pg = $giderMap[$cid] ?? 0.0;
@@ -6172,7 +6187,7 @@ final class Repo
 
         $tasimaRows = [];
         $tSatis = 0.0; $tAlis = 0.0; $tSabit = 0.0; $tGider = 0.0; $tPers = 0.0; $tNet = 0.0;
-        foreach ($this->listCustomersByCategory('tasima') as $c) {
+        foreach ($this->listCustomersByCategory('tasima', false) as $c) {
             $cid = (int) $c['id'];
             // fable-048d: alış/adet de faturalanan döneme kırpılır (elmayla elma).
             $t = $this->tasimaProfit($cid, $ay, $kapsam);
