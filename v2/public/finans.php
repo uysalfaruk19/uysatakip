@@ -241,7 +241,7 @@ require __DIR__ . '/partials/header.php';
       ?>
       <?php if ($firmaKarne): ?>
       <div class="cardx card-pad">
-        <div class="gt-h"><i class="bi bi-buildings-fill"></i> GİDER — FİRMA KARNESİ <a class="gt-hr" href="#add-sheet" onclick="giderEsle();return false"><i class="bi bi-plus-lg"></i> Gider eşle</a></div>
+        <div class="gt-h"><i class="bi bi-buildings-fill"></i> GİDER — FİRMA KARNESİ</div>
         <?php foreach (array_slice($firmaKarne, 0, 6) as $f): $w = $firmaMax > 0 ? max(4, (int) round((float) $f['toplam'] / $firmaMax * 100)) : 4; ?>
           <div class="gt-kr">
             <div class="gt-kr-head">
@@ -381,16 +381,6 @@ require __DIR__ . '/partials/header.php';
             var card = document.querySelector('[onclick="toggleFin(\'' + id + '\')"]');
             if (card) card.classList.add('open');
           }
-        }
-        // fable-034d (Ömer): "+ Gider eşle" — gider ekle formunu doğrudan "belirli müşteriye
-        // eşle" modunda açar (gideri müşteriye/tedarikçiye bağlama akışı tek dokunuş).
-        function giderEsle(){
-          var s = document.getElementById('add-sheet'); if (!s) return;
-          s.style.display = 'block';
-          var tG = s.querySelector('button[onclick*="setType(this,\'gider\')"]'); if (tG) setType(tG, 'gider');
-          var aM = s.querySelector('button[onclick*="setAlloc(this,\'musteri\')"]'); if (aM) setAlloc(aM, 'musteri');
-          s.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          var amt = s.querySelector('input[name=amount]'); if (amt) amt.focus();
         }
         function setType(btn, v){
           document.getElementById('tx-type').value = v;
