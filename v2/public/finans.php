@@ -64,6 +64,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $desc = trim((string) ($_POST['description'] ?? ''));
         $customerId = (int) ($_POST['customer_id'] ?? 0) ?: null;
         $supplierId = (int) ($_POST['supplier_id'] ?? 0) ?: null;
+        // fable-043: elle gider tedarikçi bazlı — listeden seç YA DA yeni ad yaz (ekle-veya-bul).
+        $supplierName = trim((string) ($_POST['supplier_name'] ?? ''));
         // opus-015: gider dağıtım hedefi (genel / seçili müşteri(ler))
         $allocType = in_array($_POST['alloc_type'] ?? 'genel', ['genel', 'musteri'], true) ? $_POST['alloc_type'] : 'genel';
         $allocIds = array_map('intval', (array) ($_POST['alloc_customer'] ?? []));
@@ -71,7 +73,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         if ($amount <= 0) {
             $flash = 'Tutar sıfırdan büyük olmalı.';
             $flashOk = false;
+        } elseif ($type === 'gider' && $supplierName === '') {
+            $flash = 'Gider için tedarikçi seçin ya da yeni ad yazın.';
+            $flashOk = false;
         } else {
+            if ($type === 'gider' && $supplierName !== '') {
+                $supplierId = $repo->ensureSupplier($supplierName) ?: null;
+            }
             $fileId = null;
             if (!empty($_FILES['photo']['name']) && $_FILES['photo']['error'] === UPLOAD_ERR_OK) {
                 $fileId = handleInvoiceUpload($_FILES['photo'], $repo, $u['username'], $flash);
@@ -321,6 +329,14 @@ require __DIR__ . '/partials/header.php';
 
           <!-- opus-015: gider → neresi için (ciro oranında dağılır) -->
           <div class="gider-only">
+            <!-- fable-043: elle gider tedarikçi bazlı — listeden seç ya da yeni ad yaz -->
+            <div class="field"><label>Tedarikçi</label>
+              <input class="inputx" name="supplier_name" id="supplier-name" list="suppliers-list" placeholder="Seç ya da yeni ad yaz" autocomplete="off" required>
+              <datalist id="suppliers-list">
+                <?php foreach ($suppliers as $s): ?><option value="<?= Helpers::e($s['name']) ?>"><?php endforeach; ?>
+              </datalist>
+              <p class="row-meta">Firma karnesi ve maliyet eşleştirmesi bu tedarikçiye göre gruplar. Listede yoksa yeni adı yaz — otomatik eklenir.</p>
+            </div>
             <div class="field"><label>Neresi için</label>
               <div class="segmented">
                 <button class="chip active" type="button" onclick="setAlloc(this,'genel')">Genel (tüm müşteriler)</button>
@@ -378,6 +394,8 @@ require __DIR__ . '/partials/header.php';
           btn.classList.add('active');
           document.querySelectorAll('.gider-only').forEach(function(e){e.style.display = v === 'gider' ? '' : 'none';});
           document.querySelectorAll('.gelir-only').forEach(function(e){e.style.display = v === 'gelir' ? '' : 'none';});
+          // fable-043: tedarikçi sadece gider için zorunlu — gelir'e geçince required kalksın (gizli required submit'i bloklar)
+          var sup = document.getElementById('supplier-name'); if (sup) sup.required = (v === 'gider');
           var h = document.querySelector('#add-sheet h2'); if (h) h.textContent = v === 'gider' ? 'Gider ekle' : 'Gelir ekle';
         }
         function setAlloc(btn, v){

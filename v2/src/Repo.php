@@ -1647,8 +1647,10 @@ final class Repo
     public function giderFirmaOzet(string $month): array
     {
         $st = $this->pdo->prepare(
-            "SELECT source, category, description, amount FROM transactions
-             WHERE type = 'gider' AND substr(tx_date,1,7) = ?"
+            "SELECT t.source, t.category, t.description, t.amount, s.name AS supplier_name
+             FROM transactions t
+             LEFT JOIN suppliers s ON s.id = t.supplier_id
+             WHERE t.type = 'gider' AND substr(t.tx_date,1,7) = ?"
         );
         $st->execute([$month]);
         $grup = [];
@@ -2869,6 +2871,33 @@ final class Repo
         return (int) $this->pdo->lastInsertId();
     }
 
+    /**
+     * fable-043: Ad ile tedarikçi bul; yoksa oluştur. upsertSupplier'dan farkı: mevcut
+     * kaydın contact'ına DOKUNMAZ (elle gider formu için "ekle-veya-bul"). TR-normalize eşleşme
+     * ile 'KIRMIZI'=='kırmızı' dup önlenir. @return id (boş ad → 0).
+     */
+    public function ensureSupplier(string $name): int
+    {
+        $name = trim($name);
+        if ($name === '') {
+            return 0;
+        }
+        $st = $this->pdo->prepare('SELECT id FROM suppliers WHERE name = ?');
+        $st->execute([$name]);
+        $found = $st->fetchColumn();
+        if ($found !== false) {
+            return (int) $found;
+        }
+        $norm = self::normTedarikci($name);
+        foreach ($this->pdo->query('SELECT id, name FROM suppliers')->fetchAll() as $s) {
+            if (self::normTedarikci((string) $s['name']) === $norm) {
+                return (int) $s['id'];
+            }
+        }
+        $this->pdo->prepare('INSERT INTO suppliers (name, contact) VALUES (?, NULL)')->execute([$name]);
+        return (int) $this->pdo->lastInsertId();
+    }
+
     public function setSupplierActive(int $id, bool $active): void
     {
         $this->pdo->prepare('UPDATE suppliers SET is_active = ? WHERE id = ?')->execute([$active ? 1 : 0, $id]);
@@ -3824,6 +3853,12 @@ final class Repo
             $firma = trim(explode(' · ', $d)[0] ?? '');
             return $firma !== '' ? $firma : 'Paraşüt (tedarikçi bilinmiyor)';
         }
+        // fable-043: elle girilen + tedarikçi seçili → tedarikçi ADI (firma karnesi/eşleştirme/gıda
+        // hepsi bu tek kaynaktan; supplier yoksa eski 'Elle girilen · kategori' fallback korunur).
+        $sup = trim((string) ($r['supplier_name'] ?? ''));
+        if ($sup !== '') {
+            return $sup;
+        }
         return 'Elle girilen · ' . (trim((string) ($r['category'] ?? '')) ?: 'Diğer');
     }
 
@@ -3983,10 +4018,12 @@ final class Repo
     {
         $bas = date('Y-m-01', strtotime('-' . max(0, $aySayisi - 1) . ' months'));
         $st = $this->pdo->prepare(
-            "SELECT id, tx_date, amount, source, category, description FROM transactions
-             WHERE type = 'gider' AND tx_date >= ?
-               AND (category IS NULL OR category NOT IN ('Personel', 'Taşıma alış'))
-             ORDER BY tx_date DESC, id DESC"
+            "SELECT t.id, t.tx_date, t.amount, t.source, t.category, t.description, s.name AS supplier_name
+             FROM transactions t
+             LEFT JOIN suppliers s ON s.id = t.supplier_id
+             WHERE t.type = 'gider' AND t.tx_date >= ?
+               AND (t.category IS NULL OR t.category NOT IN ('Personel', 'Taşıma alış'))
+             ORDER BY t.tx_date DESC, t.id DESC"
         );
         $st->execute([$bas]);
         $out = [];
@@ -4055,9 +4092,11 @@ final class Repo
     {
         $bas = date('Y-m-01', strtotime('-' . max(0, $aySayisi - 1) . ' months'));
         $st = $this->pdo->prepare(
-            "SELECT source, category, description, amount FROM transactions
-             WHERE type = 'gider' AND tx_date >= ?
-               AND (category IS NULL OR category NOT IN ('Personel', 'Taşıma alış'))"
+            "SELECT t.source, t.category, t.description, t.amount, s.name AS supplier_name
+             FROM transactions t
+             LEFT JOIN suppliers s ON s.id = t.supplier_id
+             WHERE t.type = 'gider' AND t.tx_date >= ?
+               AND (t.category IS NULL OR t.category NOT IN ('Personel', 'Taşıma alış'))"
         );
         $st->execute([$bas]);
         $grup = [];
@@ -4290,9 +4329,11 @@ final class Repo
         // fable-031: 'Taşıma alış' (KIRMIZI 1) genel havuza GİRMEZ — taşıma kârında
         // gerçek alış maliyeti olarak mahsup edilir (çift sayım olmasın).
         $st = $this->pdo->prepare(
-            "SELECT id, amount, alloc_type, source, category, description FROM transactions
-             WHERE type = 'gider' AND substr(tx_date,1,7) = ?
-               AND (category IS NULL OR category NOT IN ('Personel', 'Taşıma alış'))"
+            "SELECT t.id, t.amount, t.alloc_type, t.source, t.category, t.description, s.name AS supplier_name
+             FROM transactions t
+             LEFT JOIN suppliers s ON s.id = t.supplier_id
+             WHERE t.type = 'gider' AND substr(t.tx_date,1,7) = ?
+               AND (t.category IS NULL OR t.category NOT IN ('Personel', 'Taşıma alış'))"
         );
         $st->execute([$ay]);
 
