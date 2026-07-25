@@ -144,6 +144,18 @@ require __DIR__ . '/partials/header.php';
             if (count($fbilgi['eslesmemis']) > 4) { echo ' · +' . (count($fbilgi['eslesmemis']) - 4); } ?>
           </div>
           <?php endif; ?>
+          <?php // fable-048c (Fable): faturası henüz kesilmemiş müşteri hesaba GİRMEZ — gizlemek
+                // yerine burada bildirilir (yoksa "kârım neden düşük" sorusu cevapsız kalır). ?>
+          <?php $fsz = $ka['faturasiz_musteri'] ?? []; if ($fsz): ?>
+          <div class="row-meta" style="margin-top:5px">
+            <i class="bi bi-hourglass-split"></i> <?= count($fsz) ?> müşteri bu ay HENÜZ faturalanmadı —
+            hesaba katılmadı (ne geliri ne maliyeti):
+            <?php $fa = [];
+            foreach (array_slice($fsz, 0, 4) as $m) { $fa[] = $m['name'] . ' (maliyet ₺' . Helpers::money((float) $m['maliyet']) . ')'; }
+            echo Helpers::e(implode(' · ', $fa));
+            if (count($fsz) > 4) { echo ' · +' . (count($fsz) - 4); } ?>
+          </div>
+          <?php endif; ?>
         <?php else: ?>
           <div style="font-size:12.5px;font-weight:600"><i class="bi bi-exclamation-triangle" style="color:var(--red)"></i> Bu ay için kayıtlı satış faturası yok.</div>
           <div class="row-meta" style="margin-top:4px">Paraşüt satış senkronu henüz çalışmadıysa gelir boş görünür — gerçek rakam için
