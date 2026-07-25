@@ -29,6 +29,7 @@ $gruplar = [
         ['islemler.php', 'bi-list-check', 'İşlem kaydı', 'Denetim izi (audit)'],
         ['tedarikci-eslestirme.php', 'bi-diagram-3', 'Maliyet eşleştirme', 'Tedarikçi/personel → müşteri dağıtım'],
         ['rapor.php', 'bi-graph-up-arrow', 'Üretim raporu', 'Günlük/aylık üretim + eksik gün takibi'],
+        ['tatiller.php', 'bi-calendar-event', 'Resmi tatiller', 'Tatil takvimi + 3 gün önce uyarı'],
     ],
 ];
 
