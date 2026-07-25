@@ -92,7 +92,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $contact = trim((string) ($_POST['contact'] ?? '')) ?: null;
                 $phone = trim((string) ($_POST['phone'] ?? '')) ?: null;
                 $email = trim((string) ($_POST['email'] ?? '')) ?: null;
-                $cid = $repo->upsertCustomer($name, $unitPrice, $category, $id, $contact, $phone, null, $maliyet, $gider, $tnot, $email);
+                // fable-040: fatura kişisi (hafta içi). Boş = kural yok (null). Taşımada anlamsız → null.
+                $fkRaw = trim((string) ($_POST['fatura_kisi_haftaici'] ?? ''));
+                $faturaKisi = ($category === 'tasima' || $fkRaw === '') ? null : max(0, (int) $fkRaw);
+                $cid = $repo->upsertCustomer($name, $unitPrice, $category, $id, $contact, $phone, null, $maliyet, $gider, $tnot, $email, $faturaKisi);
                 // Reaktif ilke: karttaki fiyat da seçili aydan itibaren AY-BAZLI uygulanır.
                 // Yoksa ay kaydı olan müşteride carry-forward current default'u her zaman
                 // ezdiğinden karttan girilen fiyat hiçbir hesaba yansımaz (ölü alan tuzağı).
@@ -135,6 +138,8 @@ $fCat = $edit['category'] ?? 'uretim';
 $fContact = $edit['contact'] ?? '';
 $fPhone = $edit['phone'] ?? '';
 $fEmail = $edit['email'] ?? '';
+// fable-040: hafta içi sabit fatura kişisi (üretim ≠ fatura; boş = üretimle aynı)
+$fFaturaKisi = ($edit && $edit['fatura_kisi_haftaici'] !== null) ? (int) $edit['fatura_kisi_haftaici'] : '';
 // opus-017: seçilen ayın ay-bazlı fiyatı (o ay > carry-forward > current default).
 // Kart da bu değeri gösterir — ekranda görünen fiyat = hesaplarda geçerli fiyat.
 $ayFiyat = $edit ? $repo->priceFor($editId, $month) : null;
@@ -189,6 +194,13 @@ require __DIR__ . '/partials/header.php';
           <div class="field"><label id="lbl-price"><span id="lbl-price-txt"><?= $fCat === 'tasima' ? 'Birim fiyat — SATIŞ (₺ / adet)' : 'Birim fiyat (₺ / kişi)' ?></span></label>
             <input class="inputx" name="unit_price" id="f-satis" inputmode="decimal" value="<?= $fPrice > 0 ? Helpers::money($fPrice) : '' ?>" placeholder="0,00" oninput="calcKar()">
             <p class="text-muted" style="font-size:11px;margin:4px 0 0"><strong><?= Helpers::e(ay_label_tr($month)) ?></strong> fiyatı — değiştirirsen bu aydan itibaren geçerli olur; geçmiş ayları aşağıdaki <em>Aylık fiyat</em> bölümünden düzelt.</p>
+          </div>
+
+          <!-- fable-040: fatura kişisi (hafta içi sabit) — üretim müşterisi; boş = üretimle aynı (kural yok) -->
+          <div class="field" id="uretim-fatura-field" style="<?= $fCat === 'tasima' ? 'display:none' : '' ?>">
+            <label>Fatura kişisi — hafta içi (opsiyonel)</label>
+            <input class="inputx" name="fatura_kisi_haftaici" id="f-fatura-kisi" type="number" min="0" inputmode="numeric" value="<?= $fFaturaKisi === '' ? '' : (int) $fFaturaKisi ?>" placeholder="boş = üretimle aynı">
+            <p class="text-muted" style="font-size:11px;margin:4px 0 0">Üretim sayısı ≠ fatura ise (ör. <strong>CANTAŞ 50 üretim · 70 fatura</strong>): hafta içi ciro/fatura bu kişiden hesaplanır; üretim maliyeti gerçek sayıdan kalır. Cumartesi/pazar uygulanmaz.</p>
           </div>
 
           <div id="tasima-fields" style="<?= $fCat === 'tasima' ? '' : 'display:none' ?>; display:grid; gap:11px;">
@@ -320,6 +332,8 @@ require __DIR__ . '/partials/header.php';
           btn.parentNode.querySelectorAll('.chip').forEach(function(c){c.classList.remove('active');});
           btn.classList.add('active');
           document.getElementById('tasima-fields').style.display = (cat === 'tasima') ? 'grid' : 'none';
+          var uf = document.getElementById('uretim-fatura-field'); // fable-040: fatura kişisi yalnız üretim
+          if (uf) uf.style.display = (cat === 'tasima') ? 'none' : '';
           document.getElementById('lbl-price-txt').textContent =
             (cat === 'tasima') ? 'Birim fiyat — SATIŞ (₺ / adet)' : 'Birim fiyat (₺ / kişi)';
           calcKar();

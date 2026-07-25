@@ -161,7 +161,9 @@ require __DIR__ . '/partials/header.php';
             <tbody>
             <?php foreach ($ka['uretim']['rows'] as $r): ?>
               <tr>
-                <td><a href="rapor.php?musteri=<?= (int) $r['customer_id'] ?>&ay=<?= $month ?>" style="color:var(--primary);font-weight:700"><?= Helpers::e($r['name']) ?></a></td>
+                <td><a href="rapor.php?musteri=<?= (int) $r['customer_id'] ?>&ay=<?= $month ?>" style="color:var(--primary);font-weight:700"><?= Helpers::e($r['name']) ?></a><?php
+                  // fable-040: fatura kişi kuralı olan müşteride "üretim · fatura" rozeti (gelir fatura kişisinden)
+                  if (($r['fatura_kisi'] ?? null) !== null): ?><span class="text-muted" style="display:block;font-size:11px;font-weight:600"><?= $r['uretim_gunluk'] !== null ? (int) $r['uretim_gunluk'] : '—' ?> üretim · <?= (int) $r['fatura_kisi'] ?> fatura <span style="opacity:.7">(hafta içi/gün)</span></span><?php endif; ?></td>
                 <td class="num">₺ <?= Helpers::money($r['gelir']) ?></td>
                 <td class="num">− ₺ <?= Helpers::money($r['gider']) ?></td>
                 <td class="num">− ₺ <?= Helpers::money($r['personel']) ?></td>

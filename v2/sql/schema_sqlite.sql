@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS customers (
   fatura_vade_gun INTEGER NOT NULL DEFAULT 1,   -- fable-024: fatura vadesi = issue + N gün (PENDORYA 7)
   fatura_mail TEXT,                             -- fable-024: fatura mail paylaşım adresleri (virgülle çoklu; boş başlar)
   fatura_bolusum TEXT,                          -- fable-024: aylık faturayı N contact'a bölme config'i (JSON [{key,ad}]; key=ayar contact id anahtarı). CANTAŞ 3'lü; boş=tek fatura
+  fatura_kisi_haftaici INTEGER DEFAULT NULL,    -- fable-040: hafta içi SABİT fatura kişisi (üretim ≠ fatura; NULL=kural yok, ciro=üretim). CANTAŞ 50 üretim/70 fatura. Cmt-Paz uygulanmaz.
   is_active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

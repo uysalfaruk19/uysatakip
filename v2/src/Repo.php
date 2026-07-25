@@ -20,7 +20,7 @@ final class Repo
     public function activeCustomers(): array
     {
         return $this->pdo->query(
-            'SELECT id, name, unit_price, category, contact, phone, contract_note
+            'SELECT id, name, unit_price, category, contact, phone, contract_note, fatura_kisi_haftaici
              FROM customers WHERE is_active = 1 ORDER BY name'
         )->fetchAll();
     }
@@ -84,11 +84,15 @@ final class Repo
         ?float $maliyetBirim = null,
         ?float $tasimaSabitGider = null,
         ?string $tasimaNot = null,
-        ?string $email = null
+        ?string $email = null,
+        int|null $faturaKisiHaftaici = -1 // sentinel: -1 = dokunma; null = kuralı kaldır; >0 = kural
     ): int {
         if (!in_array($category, ['uretim', 'tasima'], true)) {
             $category = 'uretim';
         }
+        // fable-040: fatura kişisi 0/negatif = kural yok (null); INT UNSIGNED sütununa -1 girmez.
+        $touchFatura = $faturaKisiHaftaici !== -1;
+        $faturaVal = ($faturaKisiHaftaici !== null && $faturaKisiHaftaici > 0) ? $faturaKisiHaftaici : null;
         if ($id === null) {
             $st = $this->pdo->prepare('SELECT id FROM customers WHERE name = ?');
             $st->execute([$name]);
@@ -96,23 +100,30 @@ final class Repo
             $id = $found !== false ? (int) $found : null;
         }
         if ($id !== null) {
-            $this->pdo->prepare(
-                'UPDATE customers SET name = ?, unit_price = ?, category = ?,
+            $sql = 'UPDATE customers SET name = ?, unit_price = ?, category = ?,
                  contact = COALESCE(?, contact), phone = COALESCE(?, phone), email = COALESCE(?, email),
                  contract_note = COALESCE(?, contract_note),
                  maliyet_birim = COALESCE(?, maliyet_birim),
                  tasima_sabit_gider = COALESCE(?, tasima_sabit_gider),
-                 tasima_not = COALESCE(?, tasima_not) WHERE id = ?'
-            )->execute([$name, $unitPrice, $category, $contact, $phone, $email, $note,
-                $maliyetBirim, $tasimaSabitGider, $tasimaNot, $id]);
+                 tasima_not = COALESCE(?, tasima_not)';
+            $args = [$name, $unitPrice, $category, $contact, $phone, $email, $note,
+                $maliyetBirim, $tasimaSabitGider, $tasimaNot];
+            if ($touchFatura) {
+                // Doğrudan atama (COALESCE değil) — boş bırakınca kural KALDIRILABİLSİN.
+                $sql .= ', fatura_kisi_haftaici = ?';
+                $args[] = $faturaVal;
+            }
+            $sql .= ' WHERE id = ?';
+            $args[] = $id;
+            $this->pdo->prepare($sql)->execute($args);
             return $id;
         }
         $this->pdo->prepare(
             'INSERT INTO customers (name, unit_price, category, contact, phone, email, contract_note,
-                 maliyet_birim, tasima_sabit_gider, tasima_not)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                 maliyet_birim, tasima_sabit_gider, tasima_not, fatura_kisi_haftaici)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
         )->execute([$name, $unitPrice, $category, $contact, $phone, $email, $note,
-            $maliyetBirim ?? 0.0, $tasimaSabitGider ?? 0.0, $tasimaNot]);
+            $maliyetBirim ?? 0.0, $tasimaSabitGider ?? 0.0, $tasimaNot, $touchFatura ? $faturaVal : null]);
         return (int) $this->pdo->lastInsertId();
     }
 
@@ -1078,7 +1089,11 @@ final class Repo
     }
 
     // ── Üretim (Bugün) ────────────────────────────────────────
-    /** Tek müşteri×gün×öğün üretim upsert. Tutar = kişi × birim fiyat snapshot. */
+    /**
+     * Tek müşteri×gün×öğün üretim upsert. Tutar = kişi × birim fiyat snapshot.
+     * fable-040: $amountOverride verilirse tutar bundan yazılır (fatura kişi kuralı — üretim ≠
+     *   fatura; persons GERÇEK kalır, ciro fatura kişisinden). Kural saveDayMeals'ta uygulanır.
+     */
     public function upsertProduction(
         int $customerId,
         string $prodDate,
@@ -1087,9 +1102,10 @@ final class Repo
         string $meal = 'ogle',
         string $enteredBy = 'uysa',
         ?int $orderId = null,
-        ?string $note = null
+        ?string $note = null,
+        ?float $amountOverride = null
     ): array {
-        $amount = round($persons * $unitPrice, 2);
+        $amount = round($amountOverride ?? ($persons * $unitPrice), 2);
         $driver = $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
         $onConf = $driver === 'sqlite'
             ? 'ON CONFLICT(customer_id, prod_date, meal) DO UPDATE SET
@@ -1184,7 +1200,7 @@ final class Repo
     public function dayGridAllMeals(string $prodDate): array
     {
         $st = $this->pdo->prepare(
-            'SELECT c.id AS customer_id, c.name, c.unit_price,
+            'SELECT c.id AS customer_id, c.name, c.unit_price, c.fatura_kisi_haftaici,
                     p.meal, p.persons, p.amount
              FROM customers c
              LEFT JOIN production p
@@ -1201,6 +1217,8 @@ final class Repo
                     'customer_id' => $cid,
                     'name' => (string) $r['name'],
                     'unit_price' => (float) $r['unit_price'],
+                    // fable-040: fatura kişi kuralı (hafta içi sabit; null = kural yok) — ciro bundan
+                    'fatura_kisi' => $r['fatura_kisi_haftaici'] !== null ? (int) $r['fatura_kisi_haftaici'] : null,
                     'ogle' => 0, 'aksam' => 0, 'kumanya' => 0,
                     'toplam' => 0, 'tutar' => 0.0,
                 ];
@@ -1238,8 +1256,26 @@ final class Repo
     }
 
     /**
+     * fable-040: Bir müşteri×gün için FATURA KİŞİSİ (ciro/fatura bu sayıdan). Kural
+     * (customers.fatura_kisi_haftaici) VARSA + gün HAFTA İÇİ (Pzt–Cum) + gerçek üretim>0 ise
+     * kural sayısı; aksi (kuralsız / cumartesi-pazar / üretim yok) gerçek toplam. persons GERÇEK
+     * üretim kalır (maliyet/kişi-başı bundan); yalnız amount/ciro bu sayıdan hesaplanır.
+     */
+    public static function faturaKisiToplam(int $gercekToplam, ?int $kuralHaftaici, string $prodDate): int
+    {
+        if ($gercekToplam <= 0 || $kuralHaftaici === null || $kuralHaftaici <= 0) {
+            return $gercekToplam;
+        }
+        $dow = (int) date('N', strtotime($prodDate)); // 1=Pzt … 7=Paz
+        return $dow <= 5 ? $kuralHaftaici : $gercekToplam;
+    }
+
+    /**
      * fable-023a: 3 öğünü tek işlemde yaz — >0 upsert, 0/eksik ise sil.
      * Bağlı alanlar atomik gider: çağıran tek transaction içinde çağırır.
+     * fable-040: $faturaKisiHaftaici verilirse (hafta içi) gün TOPLAM cirosu kuraldan; fark
+     *   (fatura − üretim) birincil öğünün (öğle > akşam > kumanya) amount'una biner — persons
+     *   dokunulmaz. Tek öğünlü (CANTAŞ) da çok öğünlü kurallı müşteri de tek noktadan doğru.
      * @param array<string,int> $meals ['ogle'=>..,'aksam'=>..,'kumanya'=>..]
      * @return array{ogle:int,aksam:int,kumanya:int,toplam:int} yazılan (normalize) değerler
      */
@@ -1248,14 +1284,30 @@ final class Repo
         string $prodDate,
         array $meals,
         float $unitPrice,
-        string $enteredBy = 'uysa'
+        string $enteredBy = 'uysa',
+        ?int $faturaKisiHaftaici = null
     ): array {
+        $norm = [];
+        foreach (self::MEALS as $meal) {
+            $norm[$meal] = self::normalizePersons($meals[$meal] ?? 0);
+        }
+        $realTotal = $norm['ogle'] + $norm['aksam'] + $norm['kumanya'];
+        $billTotal = self::faturaKisiToplam($realTotal, $faturaKisiHaftaici, $prodDate);
+        $fark = $billTotal - $realTotal;
+        // Farkı taşıyacak birincil öğün (var olan ilki: öğle, sonra akşam, sonra kumanya).
+        $absorb = null;
+        if ($fark !== 0) {
+            foreach (self::MEALS as $meal) {
+                if ($norm[$meal] > 0) { $absorb = $meal; break; }
+            }
+        }
         $written = [];
         foreach (self::MEALS as $meal) {
-            $p = self::normalizePersons($meals[$meal] ?? 0);
+            $p = $norm[$meal];
             $written[$meal] = $p;
             if ($p > 0) {
-                $this->upsertProduction($customerId, $prodDate, $p, $unitPrice, $meal, $enteredBy);
+                $override = $meal === $absorb ? ($p + $fark) * $unitPrice : null;
+                $this->upsertProduction($customerId, $prodDate, $p, $unitPrice, $meal, $enteredBy, null, null, $override);
             } else {
                 $this->deleteProduction($customerId, $prodDate, $meal);
             }
@@ -2320,7 +2372,7 @@ final class Repo
     // ── Rapor / Özet ──────────────────────────────────────────
     public function monthProductionByCustomer(string $month, ?string $category = null): array
     {
-        $sql = "SELECT c.id AS customer_id, c.name, c.category,
+        $sql = "SELECT c.id AS customer_id, c.name, c.category, c.fatura_kisi_haftaici,
                     COALESCE(SUM(p.persons),0) AS persons, COALESCE(SUM(p.amount),0) AS ciro,
                     COUNT(p.id) AS gun
              FROM customers c
@@ -2330,7 +2382,7 @@ final class Repo
             $sql .= ' WHERE c.category = ?';
             $params[] = $category;
         }
-        $sql .= " GROUP BY c.id, c.name, c.category HAVING gun > 0 ORDER BY ciro DESC";
+        $sql .= " GROUP BY c.id, c.name, c.category, c.fatura_kisi_haftaici HAVING gun > 0 ORDER BY ciro DESC";
         $st = $this->pdo->prepare($sql);
         $st->execute($params);
         return $st->fetchAll();
@@ -3925,6 +3977,30 @@ final class Repo
     }
 
     /**
+     * fable-040: Bir üretim müşterisinin o ay GERÇEK üretim GÜNLÜK ORTALAMASI (yalnız hafta
+     * içi günler; kural hafta içine uygulanır). Kar-analizi "50 üretim · 70 fatura" rozetinin
+     * "üretim" tarafı. Hafta içi kayıt yoksa null. Gün başına persons (öğün toplamı) ortalanır.
+     */
+    public function uretimGunlukOrtalama(int $customerId, string $ay): ?int
+    {
+        $st = $this->pdo->prepare(
+            'SELECT prod_date, SUM(persons) AS p FROM production
+             WHERE customer_id = ? AND substr(prod_date,1,7) = ?
+             GROUP BY prod_date'
+        );
+        $st->execute([$customerId, $ay]);
+        $tot = 0; $gun = 0;
+        foreach ($st->fetchAll() as $r) {
+            if ((int) date('N', strtotime((string) $r['prod_date'])) >= 6) {
+                continue; // cumartesi/pazar kural dışı → ortalamaya girmez
+            }
+            $tot += (int) $r['p'];
+            $gun++;
+        }
+        return $gun > 0 ? (int) round($tot / $gun) : null;
+    }
+
+    /**
      * Son N ayda gider tx'lerinde görülen distinct FİRMA listesi (eşleştirme ekranı için).
      * normAnahtar ile tekilleştirilmiş; 'Personel'/'Taşıma alış' kategorileri HARİÇ (dağıtımda
      * zaten dışlanır — matching etkisiz olurdu). @return array<int,array{key:string,label:string,adet:int,toplam:float}>
@@ -4264,10 +4340,15 @@ final class Repo
             $pg = $giderMap[$cid] ?? 0.0;
             $pp = $persMap[$cid] ?? 0.0;
             $net = $ciro - $pg - $pp;
+            // fable-040: fatura kişi kuralı olan müşteride "üretim · fatura" rozeti (gelir 70-bazlı
+            //   iken gider dağıtımı 50-bazlı kalır — Ömer: günlük ciro eksik gözükmesin).
+            $faturaKisi = $r['fatura_kisi_haftaici'] !== null ? (int) $r['fatura_kisi_haftaici'] : null;
             $uretimRows[] = [
                 'customer_id' => $cid, 'name' => $r['name'],
                 'gelir' => $ciro, 'gider' => $pg, 'personel' => $pp,
                 'net' => $net, 'marj' => $ciro > 0 ? $net / $ciro : 0.0,
+                'fatura_kisi' => $faturaKisi,
+                'uretim_gunluk' => $faturaKisi !== null ? $this->uretimGunlukOrtalama($cid, $ay) : null,
             ];
             $uGelir += $ciro; $uGider += $pg; $uPers += $pp; $uNet += $net;
         }

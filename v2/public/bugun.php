@@ -72,7 +72,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 // opus-017: girilen günün ayına ait fiyat (ay-bazlı; current default değil)
                 $price = $toplam > 0 ? $repo->priceFor($cid, substr($date, 0, 7))['unit_price'] : 0.0;
                 // Bağlı alanlar atomik: 3 öğün tek transaction içinde tek metotla yazılır/silinir.
-                $repo->saveDayMeals($cid, $date, $meals, $price, 'uysa');
+                // fable-040: fatura kişi kuralı (hafta içi) → ciro fatura kişisinden (persons gerçek).
+                $fk = $c['fatura_kisi_haftaici'] !== null ? (int) $c['fatura_kisi_haftaici'] : null;
+                $repo->saveDayMeals($cid, $date, $meals, $price, 'uysa', $fk);
                 if ($toplam > 0) {
                     $saved++;
                 }
@@ -103,9 +105,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                             }
                             $nMusteri++;
                             $meals = ['ogle' => (int) $r['ogle'], 'aksam' => (int) $r['aksam'], 'kumanya' => (int) $r['kumanya']];
+                            $fk = $r['fatura_kisi'] ?? null; // fable-040: hedef günler hep hafta içi (Pzt–Cum)
                             foreach ($hedefler as $gun) {
                                 $price = $repo->priceFor((int) $r['customer_id'], substr($gun, 0, 7))['unit_price'];
-                                $repo->saveDayMeals((int) $r['customer_id'], $gun, $meals, $price, 'uysa');
+                                $repo->saveDayMeals((int) $r['customer_id'], $gun, $meals, $price, 'uysa', $fk);
                             }
                         }
                         $pdo->commit();
@@ -185,7 +188,10 @@ foreach ($grid as $r) {
     $val = $meals['ogle'] + $meals['aksam'] + $meals['kumanya'];
     // opus-017: bu ayın fiyatı (ay-bazlı) — girilmiş satırlar zaten snapshot'lı, boşlar bu fiyatı gösterir
     $price = $repo->priceFor($cid, $priceMonth)['unit_price'];
-    $amt = $val * $price;
+    // fable-040: günlük ciro FATURA kişisinden (hafta içi kural varsa 70), toplam kişi GERÇEK (50).
+    $fkRow = $r['fatura_kisi'] ?? null;
+    $billVal = Repo::faturaKisiToplam($val, $fkRow, $date);
+    $amt = $billVal * $price;
     if ($val > 0) { $sumP += $val; $sumA += $amt; $filled++; }
     // Kırılım etiketi yalnız akşam/kumanya varken görünür (tek öğünlü müşteride gürültü olmasın)
     $splitLabel = '';
@@ -200,7 +206,7 @@ foreach ($grid as $r) {
     }
     $rowsData[] = [
         'cid' => $cid, 'name' => $r['name'], 'price' => $price, 'val' => $val, 'amt' => $amt,
-        'meals' => $meals, 'split' => $splitLabel,
+        'meals' => $meals, 'split' => $splitLabel, 'fk' => $fkRow, // fable-040: fatura kişi kuralı
     ];
 }
 $total = count($rowsData);
@@ -304,6 +310,8 @@ require __DIR__ . '/partials/header.php';
         </div>
       </div>
 
+      <?php // fable-040: günlük ciro nabzı fatura kişisinden — kural yalnız hafta içi (Pzt–Cum) uygulanır ?>
+      <script>window.BUGUN_HAFTA_ICI = <?= ((int) date('N', strtotime($date)) <= 5) ? 'true' : 'false' ?>;</script>
       <?php // fable-034b (denetim): mockup sırası → MÜŞTERİ SAYILARI önce, HIZLI ERİŞİM sonra (aşağıda) ?>
       <form method="post" id="bugun-form">
         <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
@@ -337,7 +345,7 @@ require __DIR__ . '/partials/header.php';
                 'ogle' => (int) $taban['ogle'], 'aksam' => (int) $taban['aksam'], 'kumanya' => (int) $taban['kumanya'],
             ]), ENT_QUOTES);
           ?>
-            <div class="customer-row <?= $missing ? 'missing' : '' ?> <?= $isFocus ? 'is-focus' : '' ?>"<?= $isFocus ? ' id="focus-row"' : '' ?> data-price="<?= $r['price'] ?>" data-cid="<?= $r['cid'] ?>" data-name="<?= Helpers::e($r['name']) ?>" data-base="<?= $base ?>">
+            <div class="customer-row <?= $missing ? 'missing' : '' ?> <?= $isFocus ? 'is-focus' : '' ?>"<?= $isFocus ? ' id="focus-row"' : '' ?> data-price="<?= $r['price'] ?>" data-cid="<?= $r['cid'] ?>" data-name="<?= Helpers::e($r['name']) ?>" data-base="<?= $base ?>" data-fatura-kisi="<?= $r['fk'] !== null ? (int) $r['fk'] : '' ?>">
               <div class="gt-rank" aria-hidden="true"><?= Helpers::e(mb_strtoupper(mb_substr($r['name'], 0, 1, 'UTF-8'), 'UTF-8')) ?></div>
               <div class="cr-firm">
                 <div class="row-title"><span class="status-dot <?= $missing ? 'warn' : '' ?>" hidden></span>

@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS `customers` (
   `fatura_vade_gun`    INT          NOT NULL DEFAULT 1 COMMENT 'fatura vadesi = issue + N gün (fable-024)',
   `fatura_mail`        VARCHAR(255)          DEFAULT NULL COMMENT 'fatura mail paylaşım adresleri (fable-024)',
   `fatura_bolusum`     TEXT                  DEFAULT NULL COMMENT 'aylık faturayı N contact a bölme config JSON [{key,ad}] (fable-024)',
+  `fatura_kisi_haftaici` INT UNSIGNED        DEFAULT NULL COMMENT 'fable-040: hafta içi SABİT fatura kişisi (üretim ≠ fatura; NULL=kural yok). CANTAŞ 50 üretim/70 fatura; cmt-paz uygulanmaz',
   `is_active`     TINYINT(1)   NOT NULL DEFAULT 1,
   `created_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),

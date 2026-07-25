@@ -97,7 +97,11 @@
       var input = row.querySelector(".count-input");
       var price = parseFloat(row.getAttribute("data-price")) || 0;
       var p = parseInt(input.value, 10) || 0;
-      var amt = p * price;
+      // fable-040: günlük ciro FATURA kişisinden — hafta içi kural varsa (data-fatura-kisi)
+      //   ciro fatura kişisinden hesaplanır; "Toplam kişi" ise GERÇEK üretim (p) kalır.
+      var fk = parseInt(row.getAttribute("data-fatura-kisi"), 10) || 0;
+      var billP = window.BUGUN_HAFTA_ICI && fk > 0 && p > 0 ? fk : p;
+      var amt = billP * price;
       var amtEl = row.querySelector(".row-amt");
       // fable-030 (Ömer): satırda para GÖSTERİLMEZ — sadece "girilmedi" uyarısı
       if (amtEl) amtEl.textContent = p > 0 ? "" : "girilmedi";
