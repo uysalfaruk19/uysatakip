@@ -387,11 +387,10 @@ require __DIR__ . '/partials/header.php';
         <div class="gt-h"><i class="bi bi-grid-3x3-gap-fill"></i> HIZLI ERİŞİM</div>
         <div class="gt-mods">
           <a class="gt-mod" href="musteriler.php"><i class="bi bi-people"></i>Müşteriler</a>
-          <a class="gt-mod" href="siparisler.php"><?php if ($pendingCount > 0): ?><span class="gt-mod-dot"><?= $pendingCount ?></span><?php endif; ?><i class="bi bi-basket"></i>Siparişler</a>
+          <?php $stRozet = $pendingCount + $openReqCount; // Ömer: Siparişler+Talepler tek kutu ?>
+          <a class="gt-mod" href="siparisler.php"><?php if ($stRozet > 0): ?><span class="gt-mod-dot"><?= $stRozet ?></span><?php endif; ?><i class="bi bi-basket"></i>Sipariş &amp; Talep</a>
           <a class="gt-mod" href="menu.php"><i class="bi bi-card-list"></i>Menü</a>
-          <a class="gt-mod" href="talepler.php"><?php if ($openReqCount > 0): ?><span class="gt-mod-dot"><?= $openReqCount ?></span><?php endif; ?><i class="bi bi-chat-left-text"></i>Talepler</a>
           <a class="gt-mod" href="personel.php"><i class="bi bi-person-badge"></i>Personel</a>
-          <?php if ($irsaliyeYetkili): ?><a class="gt-mod" href="fatura-kes.php"><i class="bi bi-receipt-cutoff"></i>Fatura Kes</a><?php endif; ?>
         </div>
       </div>
 
