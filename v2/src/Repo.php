@@ -5884,7 +5884,282 @@ final class Repo
             'toplam_gelir' => $toplamGelir,
             'toplam_net' => $toplamNet,
             'toplam_marj' => $toplamGelir > 0 ? $toplamNet / $toplamGelir : 0.0,
+            'kaynak' => 'uretim', // fable-048: tahakkuk modu (production.amount)
         ];
+    }
+
+    // ── fable-048: GERÇEK (fatura bazlı) kâr/zarar ────────────────────────────
+    /**
+     * Paraşüt satış faturalarını satis_faturasi'na IDEMPOTENT yaz (parasutGiderIsle deseni).
+     * parasut_id UNIQUE kalkanı: aynı fatura ikinci kez GİRMEZ; değişmişse (tutar düzeltildi,
+     * müşteri sonradan eşleşti) GÜNCELLENİR — ayna Paraşüt'ün gerçeğini izler, mükerrer üretmez.
+     * PARAŞÜT'E YAZMA YOK — bu metot sadece yerel DB'ye yazar.
+     *
+     * Müşteri eşleşmesi: fatura contact_id ↔ customers.parasut_id. Eşleşmezse customer_id NULL
+     * kalır (kayıt yine girer) → ekranda "eşleşmemiş gelir" olarak AYRI görünür.
+     * @param array<int,array<string,mixed>> $faturalar Parasut::salesInvoicesForMonth çıktısı
+     * @return array{yeni:int,guncellenen:int,mevcut:int,tutar:float,eslesen:int,eslesmemis:int}
+     */
+    public function satisFaturaIsle(array $faturalar): array
+    {
+        $custMap = [];
+        foreach ($this->pdo->query("SELECT id, parasut_id FROM customers WHERE parasut_id IS NOT NULL AND parasut_id <> ''")->fetchAll() as $c) {
+            $custMap[(string) $c['parasut_id']] = (int) $c['id'];
+        }
+        $mevcutRows = [];
+        foreach ($this->pdo->query('SELECT * FROM satis_faturasi')->fetchAll() as $r) {
+            $mevcutRows[(string) $r['parasut_id']] = $r;
+        }
+
+        $ins = $this->pdo->prepare(
+            'INSERT INTO satis_faturasi (parasut_id, customer_id, contact_id, contact_ad, fatura_no,
+                fatura_tarihi, donem_bas, donem_son, net_tutar, kdv, toplam, aciklama)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        );
+        $upd = $this->pdo->prepare(
+            'UPDATE satis_faturasi SET customer_id = ?, contact_id = ?, contact_ad = ?, fatura_no = ?,
+                fatura_tarihi = ?, donem_bas = ?, donem_son = ?, net_tutar = ?, kdv = ?, toplam = ?,
+                aciklama = ? WHERE parasut_id = ?'
+        );
+
+        $yeni = 0; $guncellenen = 0; $mevcut = 0; $tutar = 0.0; $eslesen = 0; $eslesmemis = 0;
+        foreach ($faturalar as $f) {
+            $pid = trim((string) ($f['parasut_id'] ?? ''));
+            $tarih = (string) ($f['fatura_tarihi'] ?? '');
+            if ($pid === '' || !Helpers::isDate($tarih)) {
+                continue; // kimliksiz/tarihsiz kayıt yazılmaz (uydurma yok)
+            }
+            $contactId = trim((string) ($f['contact_id'] ?? ''));
+            $cid = $contactId !== '' ? ($custMap[$contactId] ?? null) : null;
+            $cid === null ? $eslesmemis++ : $eslesen++;
+            $vals = [
+                $cid, $contactId !== '' ? $contactId : null,
+                mb_substr(trim((string) ($f['contact_ad'] ?? '')), 0, 200) ?: null,
+                mb_substr(trim((string) ($f['fatura_no'] ?? '')), 0, 60) ?: null,
+                $tarih,
+                Helpers::isDate((string) ($f['donem_bas'] ?? '')) ? (string) $f['donem_bas'] : null,
+                Helpers::isDate((string) ($f['donem_son'] ?? '')) ? (string) $f['donem_son'] : null,
+                round((float) ($f['net_tutar'] ?? 0), 2),
+                round((float) ($f['kdv'] ?? 0), 2),
+                round((float) ($f['toplam'] ?? 0), 2),
+                mb_substr(trim((string) ($f['aciklama'] ?? '')), 0, 300) ?: null,
+            ];
+            $tutar += (float) $vals[7];
+
+            $eski = $mevcutRows[$pid] ?? null;
+            if ($eski === null) {
+                $ins->execute(array_merge([$pid], $vals));
+                $yeni++;
+                continue;
+            }
+            $degisti = ((int) ($eski['customer_id'] ?? 0) ?: null) !== $vals[0]
+                || (string) ($eski['fatura_tarihi'] ?? '') !== $vals[4]
+                || abs((float) ($eski['net_tutar'] ?? 0) - (float) $vals[7]) > 0.004
+                || abs((float) ($eski['kdv'] ?? 0) - (float) $vals[8]) > 0.004
+                || abs((float) ($eski['toplam'] ?? 0) - (float) $vals[9]) > 0.004;
+            if ($degisti) {
+                $upd->execute(array_merge($vals, [$pid]));
+                $guncellenen++;
+            } else {
+                $mevcut++;
+            }
+        }
+        return ['yeni' => $yeni, 'guncellenen' => $guncellenen, 'mevcut' => $mevcut,
+            'tutar' => round($tutar, 2), 'eslesen' => $eslesen, 'eslesmemis' => $eslesmemis];
+    }
+
+    /**
+     * Bir ayın SATIŞ FATURASI özeti — gerçek gelir tablosu + KAPSAM DÜRÜSTLÜĞÜ.
+     * Ömer 7 günde bir + ay sonu fatura kesiyor → ay ortasında gelir EKSİK görünür; bu yüzden
+     * özet "son fatura ne zaman, hangi tarihe kadar kapsandı, kaç gün faturalanmadı" der.
+     * kapsam_son = max(donem_son, aksi halde fatura_tarihi). gecikme_gun = referans − kapsam_son
+     * (referans: cari ayda BUGÜN, geçmiş ayda ay sonu). uyari = gecikme_gun ≥ ayar eşiği.
+     * @return array{adet:int,net:float,kdv:float,dahil:float,per_customer:array<int,float>,
+     *   per_customer_adet:array<int,int>,eslesen_net:float,eslesmemis_net:float,eslesmemis_adet:int,
+     *   eslesmemis:array<int,array{ad:string,net:float,adet:int}>,ilk_fatura:?string,son_fatura:?string,
+     *   kapsam_son:?string,gecikme_gun:?int,uyari:bool,esik:int}
+     */
+    public function satisFaturaOzet(string $ay): array
+    {
+        $out = [
+            'adet' => 0, 'net' => 0.0, 'kdv' => 0.0, 'dahil' => 0.0,
+            'per_customer' => [], 'per_customer_adet' => [],
+            'eslesen_net' => 0.0, 'eslesmemis_net' => 0.0, 'eslesmemis_adet' => 0, 'eslesmemis' => [],
+            'ilk_fatura' => null, 'son_fatura' => null, 'kapsam_son' => null,
+            'gecikme_gun' => null, 'uyari' => false, 'tablo_yok' => false,
+            'esik' => (int) ($this->ayar('fatura_gecikme_uyari_gun', '3') ?? 3),
+        ];
+
+        // migrate_047 uygulanmadıysa ekran ÇÖKMESİN: tablo yok bilgisiyle boş özet dön
+        // (çağıran üretim moduna düşer + kullanıcıya "senkron kurulmadı" der — sessiz 0 gelir YOK).
+        try {
+            $st = $this->pdo->prepare(
+                "SELECT customer_id, contact_ad, fatura_tarihi, donem_son, net_tutar, kdv, toplam
+                 FROM satis_faturasi WHERE substr(fatura_tarihi,1,7) = ?"
+            );
+            $st->execute([$ay]);
+            $rows = $st->fetchAll();
+        } catch (\PDOException $e) {
+            $out['tablo_yok'] = true;
+            return $out;
+        }
+
+        $eslesmemisGrup = [];
+        foreach ($rows as $r) {
+            $net = (float) $r['net_tutar'];
+            $out['adet']++;
+            $out['net'] += $net;
+            $out['kdv'] += (float) $r['kdv'];
+            $out['dahil'] += (float) $r['toplam'];
+            $tarih = (string) $r['fatura_tarihi'];
+            $out['ilk_fatura'] = $out['ilk_fatura'] === null ? $tarih : min($out['ilk_fatura'], $tarih);
+            $out['son_fatura'] = $out['son_fatura'] === null ? $tarih : max($out['son_fatura'], $tarih);
+            $kapsam = (string) ($r['donem_son'] ?? '') !== '' ? (string) $r['donem_son'] : $tarih;
+            $out['kapsam_son'] = $out['kapsam_son'] === null ? $kapsam : max($out['kapsam_son'], $kapsam);
+
+            $cid = $r['customer_id'] !== null ? (int) $r['customer_id'] : 0;
+            if ($cid > 0) {
+                $out['per_customer'][$cid] = ($out['per_customer'][$cid] ?? 0.0) + $net;
+                $out['per_customer_adet'][$cid] = ($out['per_customer_adet'][$cid] ?? 0) + 1;
+                $out['eslesen_net'] += $net;
+            } else {
+                $ad = trim((string) ($r['contact_ad'] ?? '')) ?: 'Bilinmeyen cari';
+                if (!isset($eslesmemisGrup[$ad])) {
+                    $eslesmemisGrup[$ad] = ['ad' => $ad, 'net' => 0.0, 'adet' => 0];
+                }
+                $eslesmemisGrup[$ad]['net'] += $net;
+                $eslesmemisGrup[$ad]['adet']++;
+                $out['eslesmemis_net'] += $net;
+                $out['eslesmemis_adet']++;
+            }
+        }
+        usort($eslesmemisGrup, static fn(array $a, array $b) => $b['net'] <=> $a['net']);
+        $out['eslesmemis'] = array_values($eslesmemisGrup);
+
+        if ($out['kapsam_son'] !== null) {
+            $ar = $this->ayAralik($ay);           // cari ayda BUGÜN, geçmiş ayda ay sonu
+            $fark = (int) floor((strtotime($ar['son']) - strtotime($out['kapsam_son'])) / 86400);
+            $out['gecikme_gun'] = max(0, $fark);
+            $out['uyari'] = $out['gecikme_gun'] >= $out['esik'];
+        }
+        return $out;
+    }
+
+    /**
+     * GERÇEK (fatura bazlı) kâr analizi — karAnalizi ile AYNI yapı, tek farkı GELİR kaynağı:
+     *   gelir  = o ay KESİLEN satış faturaları (satis_faturasi, KDV hariç net_tutar)
+     *   gider  = mevcut fatura bazlı gider dağıtımı (DEĞİŞMEZ — üretim modundakiyle birebir)
+     * MTD kırpması UYGULANMAZ (fatura tarihi zaten gerçekleşmiş olayı işaret eder); üretim modu
+     * kendi MTD davranışını aynen korur. Kişi başı gıda/personel kartları ÜRETİM kişisinden
+     * hesaplanmaya devam eder (fable-040/042 kuralları bu metotla değişmez).
+     *
+     * Müşterisi eşleşmeyen faturalar hiçbir müşteri satırına KARIŞMAZ; 'eslesmemis_gelir' olarak
+     * ayrı durur ve toplam gelire/nete ayrı satır olarak girer (gizleme/uydurma yok).
+     * @return array aynı anahtarlar + 'kaynak'='fatura', 'fatura'=satisFaturaOzet, 'eslesmemis_gelir'
+     */
+    public function karAnaliziFatura(string $ay): array
+    {
+        $giderD = $this->giderDagitim($ay);
+        $persD = $this->personelDagitim($ay);
+        $giderMap = $giderD['per_customer'];
+        $persMap = $persD['per_customer'];
+        $fatura = $this->satisFaturaOzet($ay);
+        $faturaMap = $fatura['per_customer'];
+        $adetMap = $fatura['per_customer_adet'];
+
+        $uretimRows = [];
+        $uGelir = 0.0; $uGider = 0.0; $uPers = 0.0; $uNet = 0.0;
+        foreach ($this->listCustomersByCategory('uretim') as $c) {
+            $cid = (int) $c['id'];
+            $gelir = (float) ($faturaMap[$cid] ?? 0.0);
+            $pg = $giderMap[$cid] ?? 0.0;
+            $pp = $persMap[$cid] ?? 0.0;
+            if ($gelir <= 0 && $pg <= 0 && $pp <= 0) {
+                continue; // bu ay ne faturası ne maliyeti var → satır açma
+            }
+            $net = $gelir - $pg - $pp;
+            $uretimRows[] = [
+                'customer_id' => $cid, 'name' => $c['name'],
+                'gelir' => $gelir, 'gider' => $pg, 'personel' => $pp,
+                'net' => $net, 'marj' => $gelir > 0 ? $net / $gelir : 0.0,
+                'fatura_adedi' => (int) ($adetMap[$cid] ?? 0),
+                'fatura_kisi' => null, 'uretim_gunluk' => null, // rozet fatura modunda yok
+            ];
+            $uGelir += $gelir; $uGider += $pg; $uPers += $pp; $uNet += $net;
+        }
+        usort($uretimRows, static fn(array $a, array $b) => $b['gelir'] <=> $a['gelir']);
+
+        $tasimaRows = [];
+        $tSatis = 0.0; $tAlis = 0.0; $tSabit = 0.0; $tGider = 0.0; $tPers = 0.0; $tNet = 0.0;
+        foreach ($this->listCustomersByCategory('tasima') as $c) {
+            $cid = (int) $c['id'];
+            $t = $this->tasimaProfit($cid, $ay);
+            $satis = (float) ($faturaMap[$cid] ?? 0.0);   // GERÇEK: kesilen fatura
+            $alis = (float) $t['toplam_alis'];
+            $sabit = (float) $t['sabit'];
+            $pg = $giderMap[$cid] ?? 0.0;
+            $pp = $persMap[$cid] ?? 0.0;
+            if ($satis <= 0 && (float) $t['adet'] <= 0) {
+                continue;
+            }
+            $net = $satis - $alis - $sabit - $pg - $pp;
+            $tasimaRows[] = [
+                'customer_id' => $cid, 'name' => $c['name'],
+                'satis' => $satis, 'alis' => $alis, 'sabit' => $sabit,
+                'gider' => $pg, 'personel' => $pp,
+                'net' => $net, 'marj' => $satis > 0 ? $net / $satis : 0.0,
+                'fatura_adedi' => (int) ($adetMap[$cid] ?? 0),
+            ];
+            $tSatis += $satis; $tAlis += $alis; $tSabit += $sabit;
+            $tGider += $pg; $tPers += $pp; $tNet += $net;
+        }
+
+        $eslesmemis = (float) $fatura['eslesmemis_net'];
+        $dagitilmamis = $giderD['dagitilmamis'] + $persD['dagitilmamis'];
+        $toplamGelir = $uGelir + $tSatis + $eslesmemis;
+        $toplamNet = $uNet + $tNet + $eslesmemis - $dagitilmamis;
+
+        return [
+            'uretim' => [
+                'rows' => $uretimRows,
+                'gelir' => $uGelir, 'gider' => $uGider, 'personel' => $uPers,
+                'net' => $uNet, 'marj' => $uGelir > 0 ? $uNet / $uGelir : 0.0,
+            ],
+            'tasima' => [
+                'rows' => $tasimaRows,
+                'satis' => $tSatis, 'alis' => $tAlis, 'sabit' => $tSabit,
+                'gider' => $tGider, 'personel' => $tPers,
+                'net' => $tNet, 'marj' => $tSatis > 0 ? $tNet / $tSatis : 0.0,
+            ],
+            'dagitilmamis' => $dagitilmamis,
+            'toplam_gelir' => $toplamGelir,
+            'toplam_net' => $toplamNet,
+            'toplam_marj' => $toplamGelir > 0 ? $toplamNet / $toplamGelir : 0.0,
+            'kaynak' => 'fatura',
+            'fatura' => $fatura,
+            'eslesmemis_gelir' => $eslesmemis,
+        ];
+    }
+
+    /**
+     * Kâr analizi veri kaynağı seçici: 'fatura' (gerçek, VARSAYILAN) | 'uretim' (tahakkuk).
+     * Bilinmeyen değer → ayardaki varsayılan. Üretim modu ESKİ hesabı BİREBİR döndürür.
+     */
+    public function karAnaliziKaynak(string $ay, ?string $kaynak = null): array
+    {
+        $k = $kaynak !== null && in_array($kaynak, ['fatura', 'uretim'], true)
+            ? $kaynak
+            : (string) ($this->ayar('kar_kaynak_varsayilan', 'fatura') ?? 'fatura');
+        if ($k === 'uretim') {
+            return $this->karAnalizi($ay);
+        }
+        if (!empty($this->satisFaturaOzet($ay)['tablo_yok'])) {
+            // migrate_047 henüz uygulanmadı → tahakkuk hesabına düş, ekranda AÇIKÇA söyle.
+            $ka = $this->karAnalizi($ay);
+            $ka['fatura_devre_disi'] = true;
+            return $ka;
+        }
+        return $this->karAnaliziFatura($ay);
     }
 
     /**

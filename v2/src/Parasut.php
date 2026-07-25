@@ -401,6 +401,171 @@ final class Parasut
         return ['bills' => $rows, 'iade' => $iade];
     }
 
+    // ── fable-048: SATIŞ FATURASI okuma (GERÇEK gelir; SALT-OKUMA) ─────────────────
+
+    /**
+     * Kesilen satış faturaları (sales_invoices) — hedef ayın kayıtları.
+     * PARAŞÜT'E YAZMA YOK: yalnız GET. Alış tarafının (purchaseBillsForMonth) deseni birebir:
+     * sunucu filtresine güvenilmez (ay süzgeci istemcide), page[size]≤25, -issue_date sıralı,
+     * eskiye geçince dur. Farkı: 429'da bekleyip yeniden dener (ay sonu toplu senkron kotayı zorlar).
+     *
+     * AYIKLANANLAR (sayısı raporlanır, sessizce yutulmaz):
+     *   item_type ∈ {invoice, export_invoice} DIŞI (estimate/teklif, refund/iade, tahsilat) → 'atlanan'
+     *   iade (refund / refund_of_id dolu) ve İPTAL (cancelled_at dolu) → 'iade'
+     * @return array{invoices:array<int,array<string,mixed>>,iade:int,atlanan:int}
+     */
+    public static function salesInvoicesForMonth(string $ym): array
+    {
+        if (!preg_match('/^\d{4}-\d{2}$/', $ym)) {
+            throw new \InvalidArgumentException('ay=YYYY-MM bekleniyor.');
+        }
+        $rows = [];
+        $iade = 0;
+        $atlanan = 0;
+        $seen = 0;
+        $total = null;
+        for ($page = 1; $page <= self::MAX_PAGES; $page++) {
+            $resp = self::getWithBackoff('/sales_invoices', [
+                'include' => 'contact', 'sort' => '-issue_date',
+                'page[size]' => self::PAGE_SIZE, 'page[number]' => $page,
+            ]);
+            $data = $resp['data'] ?? [];
+            if (!is_array($data) || $data === []) {
+                break;
+            }
+            $parsed = self::parseSalesInvoices($resp, $ym);
+            foreach ($parsed['invoices'] as $r) {
+                $rows[] = $r;
+            }
+            $iade += $parsed['iade'];
+            $atlanan += $parsed['atlanan'];
+            $seen += count($data);
+            $total ??= isset($resp['meta']['total_count']) ? (int) $resp['meta']['total_count'] : null;
+            if ($parsed['eskiye_gecti'] || ($total !== null && $seen >= $total)
+                || ($total === null && count($data) < self::PAGE_SIZE)) {
+                break;
+            }
+        }
+        return ['invoices' => $rows, 'iade' => $iade, 'atlanan' => $atlanan];
+    }
+
+    /**
+     * PÜR: sales_invoices JSON:API sayfasını sade satırlara çevir (ağ yok, mock'la test edilir).
+     *
+     * TUTAR KONVANSİYONU (alış tarafında kanıtlanan Paraşüt dili — Fable canlıda doğrulayacak):
+     *   gross_total = KDV HARİÇ ara toplam · total_vat = KDV · net_total = KDV DAHİL genel toplam.
+     *   toplam    = net_total (yoksa gross_total + total_vat)
+     *   net_tutar = toplam − kdv  (kâr/zarar geliri; üretim cirosuyla AYNI baz)
+     * Tutarı olmayan/0 fatura ATLANMAZ ama net_tutar 0 kalır — uydurma yok.
+     *
+     * @return array{invoices:array<int,array<string,mixed>>,iade:int,atlanan:int,eskiye_gecti:bool}
+     */
+    public static function parseSalesInvoices(array $resp, string $ym): array
+    {
+        $names = [];
+        foreach (($resp['included'] ?? []) as $i) {
+            if (is_array($i)) {
+                $names[($i['type'] ?? '') . ':' . ($i['id'] ?? '')] = (string) ($i['attributes']['name'] ?? '');
+            }
+        }
+        $rows = [];
+        $iade = 0;
+        $atlanan = 0;
+        $eskiyeGecti = false;
+        foreach (($resp['data'] ?? []) as $r) {
+            if (!is_array($r)) {
+                continue;
+            }
+            $a = is_array($r['attributes'] ?? null) ? $r['attributes'] : [];
+            $gun = (string) ($a['issue_date'] ?? '');
+            if ($gun !== '' && $gun < $ym . '-01') {
+                $eskiyeGecti = true;   // -issue_date sıralı → bundan sonrası hep eski
+                break;
+            }
+            if (!str_starts_with($gun, $ym)) {
+                continue;              // gelecek ay (sıralamanın başı) → atla, saymadan
+            }
+            // İPTAL / İADE: kâr/zarara girmez (alış tarafındaki disiplinin aynısı).
+            if (!empty($a['cancelled_at']) || !empty($a['refund_of_id']) || (string) ($a['item_type'] ?? '') === 'refund') {
+                $iade++;
+                continue;
+            }
+            $tip = (string) ($a['item_type'] ?? 'invoice');
+            if (!in_array($tip, ['invoice', 'export_invoice'], true)) {
+                $atlanan++;            // teklif/tahsilat/tekrarlayan şablon → gelir DEĞİL
+                continue;
+            }
+            $vat = round((float) ($a['total_vat'] ?? 0), 2);
+            $net = round((float) ($a['net_total'] ?? 0), 2);       // Paraşüt: KDV DAHİL genel toplam
+            $gross = round((float) ($a['gross_total'] ?? 0), 2);   // Paraşüt: KDV HARİÇ ara toplam
+            $toplam = $net > 0 ? $net : round($gross + $vat, 2);
+            $haric = round($toplam - $vat, 2);
+            if ($haric <= 0 && $gross > 0) {
+                $haric = $gross;
+            }
+            $cRef = $r['relationships']['contact']['data'] ?? null;
+            $contactId = is_array($cRef) ? (string) ($cRef['id'] ?? '') : '';
+            $aciklama = trim((string) ($a['description'] ?? ''));
+            $donem = self::donemCikar($aciklama);
+            $rows[] = [
+                'parasut_id'    => (string) ($r['id'] ?? ''),
+                'fatura_no'     => (string) ($a['invoice_no'] ?? ''),
+                'fatura_tarihi' => $gun,
+                'contact_id'    => $contactId,
+                'contact_ad'    => $contactId !== '' ? (string) ($names['contacts:' . $contactId] ?? '') : '',
+                'net_tutar'     => max(0.0, $haric),
+                'kdv'           => $vat,
+                'toplam'        => $toplam,
+                'donem_bas'     => $donem['bas'],
+                'donem_son'     => $donem['son'],
+                'aciklama'      => $aciklama,
+            ];
+        }
+        return ['invoices' => $rows, 'iade' => $iade, 'atlanan' => $atlanan, 'eskiye_gecti' => $eskiyeGecti];
+    }
+
+    /**
+     * fable-048: Fatura açıklamasından hizmet DÖNEMİ çıkar (Ömer '01.07.2026-07.07.2026' /
+     * '2026-07-01 – 2026-07-07' gibi yazıyor). Çıkmazsa [null,null] — TAHMİN YOK.
+     * @return array{bas:?string,son:?string}
+     */
+    public static function donemCikar(string $aciklama): array
+    {
+        if ($aciklama === '') {
+            return ['bas' => null, 'son' => null];
+        }
+        // 01.07.2026 - 07.07.2026  (nokta/slash ayraçlı, TR sırası)
+        if (preg_match('/(\d{2})[.\/](\d{2})[.\/](\d{4})\s*[-–—]\s*(\d{2})[.\/](\d{2})[.\/](\d{4})/u', $aciklama, $m)) {
+            return ['bas' => "$m[3]-$m[2]-$m[1]", 'son' => "$m[6]-$m[5]-$m[4]"];
+        }
+        // 2026-07-01 - 2026-07-07 (ISO)
+        if (preg_match('/(\d{4}-\d{2}-\d{2})\s*[-–—]\s*(\d{4}-\d{2}-\d{2})/u', $aciklama, $m)) {
+            return ['bas' => $m[1], 'son' => $m[2]];
+        }
+        return ['bas' => null, 'son' => null];
+    }
+
+    /**
+     * fable-048: 429 (rate limit) görürsek bekleyip yeniden dener — ay sonu toplu senkronda
+     * Paraşüt kotası dolabiliyor. En fazla 3 deneme, üstel bekleme (2s, 4s) + tavan 8sn;
+     * hâlâ 429 ise hata YUKARI atılır (sessiz eksik veri YOK).
+     */
+    private static function getWithBackoff(string $path, array $query = [], int $deneme = 3): array
+    {
+        $bekle = 2;
+        for ($i = 1; ; $i++) {
+            try {
+                return self::get($path, $query);
+            } catch (\RuntimeException $e) {
+                if ($i >= $deneme || !str_contains($e->getMessage(), 'HTTP 429')) {
+                    throw $e;
+                }
+                sleep(min(8, $bekle));
+                $bekle *= 2;
+            }
+        }
+    }
+
     /**
      * fable-031b: Gelen e-faturanın SATIRLARI (miktar × birim) — API'de satır ucu yok,
      * imzalı UBL zip'i indirilip XML'den okunur (KIRMIZI 1 kanıtı: 568×175=99.400).

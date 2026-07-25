@@ -700,3 +700,31 @@ INSERT OR IGNORE INTO ayar (anahtar, deger) VALUES
   ('irsaliye_urun_ogle', '1063984872'),
   ('irsaliye_urun_aksam', '1063985050'),
   ('irsaliye_urun_kumanya', '1063985150');
+
+-- ── fable-048: KESİLEN SATIŞ FATURALARI (gerçek gelir aynası; MySQL eşi migrate_047.sql) ──
+-- Paraşüt /sales_invoices SALT-OKUMA senkronu buraya yazar. parasut_id UNIQUE = mükerrer kalkanı.
+-- customer_id NULL = "eşleşmemiş gelir" (contact Kokpit müşterisi değil) — gizlenmez, ayrı gösterilir.
+-- net_tutar KDV HARİÇ (kâr/zarar geliri; üretim cirosuyla aynı baz) · toplam KDV DAHİL (cari dili).
+CREATE TABLE IF NOT EXISTS satis_faturasi (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  parasut_id    TEXT NOT NULL UNIQUE,
+  customer_id   INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+  contact_id    TEXT,
+  contact_ad    TEXT,
+  fatura_no     TEXT,
+  fatura_tarihi TEXT NOT NULL,                -- 'YYYY-MM-DD'
+  donem_bas     TEXT,
+  donem_son     TEXT,
+  net_tutar     REAL NOT NULL DEFAULT 0,
+  kdv           REAL NOT NULL DEFAULT 0,
+  toplam        REAL NOT NULL DEFAULT 0,
+  aciklama      TEXT,
+  created_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_sf_tarih ON satis_faturasi(fatura_tarihi);
+CREATE INDEX IF NOT EXISTS idx_sf_cust ON satis_faturasi(customer_id, fatura_tarihi);
+
+INSERT OR IGNORE INTO ayar (anahtar, deger) VALUES
+  ('kar_kaynak_varsayilan', 'fatura'),
+  ('fatura_gecikme_uyari_gun', '3');
