@@ -2,8 +2,9 @@
 declare(strict_types=1);
 
 /**
- * GET /api/kar?ay=YYYY-MM  → Kâr Analizi (üretim/taşıma grup net + toplam net + marj).
- * karAnalizi()'yi sarar — kar-analizi.php ekranıyla BİREBİR (yeni hesap yok).
+ * GET /api/kar?ay=YYYY-MM[&kaynak=fatura|uretim]  → Kâr Analizi.
+ * fable-048: ekran artık VARSAYILAN olarak fatura (gerçek) kaynağını gösteriyor — bot da
+ * aynı kapıdan geçsin (karAnaliziKaynak), yoksa bot ile ekran FARKLI rakam söyler.
  */
 
 require __DIR__ . '/_boot.php';
@@ -15,7 +16,8 @@ if (!preg_match('/^\d{4}-\d{2}$/', $ay)) {
     Helpers::json(['ok' => false, 'error' => 'Geçersiz ay (YYYY-MM)'], 400);
 }
 
-$ka = $repo->karAnalizi($ay);
+$kaynakIstek = isset($_GET['kaynak']) ? (string) $_GET['kaynak'] : null;
+$ka = $repo->karAnaliziKaynak($ay, $kaynakIstek);
 
 // Müşteri kırılımı (bot isterse "en kârlı/zararlı müşteri" için) — ekranla aynı satırlar.
 $uretimRows = [];
@@ -42,6 +44,8 @@ foreach ($ka['tasima']['rows'] as $r) {
 Helpers::json([
     'ok'  => true,
     'ay'  => $ay,
+    // fable-048: bot hangi kaynaktan konuştuğunu bilsin (fatura = gerçek kesilen faturalar).
+    'kaynak' => (string) ($ka['kaynak'] ?? 'uretim'),
     'toplam' => [
         'gelir' => round((float) $ka['toplam_gelir'], 2),
         'net'   => round((float) $ka['toplam_net'], 2),
