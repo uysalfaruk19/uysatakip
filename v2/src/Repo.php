@@ -3820,6 +3820,97 @@ final class Repo
         }
     }
 
+    // ── fable-037: FATURA bazlı → müşteri MALİYET EŞLEŞTİRMESİ ───────────
+    /**
+     * Kayıtlı fatura(tx)→müşteri eşleştirmeleri. En üst öncelik katmanı (tedarikçi/genel'i ezer).
+     * $ay verilirse sadece o aya ait tx'ler döner (UI için); yoksa TÜMÜ (giderDagitim için).
+     * @return array<int,array<int,int>> tx_id → [customer_id,...]
+     */
+    public function faturaEslestirmeler(?string $ay = null): array
+    {
+        if ($ay !== null) {
+            $st = $this->pdo->prepare(
+                'SELECT m.tx_id, m.customer_id FROM fatura_musteri_map m
+                 JOIN transactions t ON t.id = m.tx_id
+                 WHERE substr(t.tx_date,1,7) = ? ORDER BY m.id'
+            );
+            $st->execute([$ay]);
+            $rows = $st->fetchAll();
+        } else {
+            $rows = $this->pdo->query('SELECT tx_id, customer_id FROM fatura_musteri_map ORDER BY id')->fetchAll();
+        }
+        $out = [];
+        foreach ($rows as $r) {
+            $out[(int) $r['tx_id']][] = (int) $r['customer_id'];
+        }
+        return $out;
+    }
+
+    /** Bir faturanın (tx) eşleştirmesini ayarla (sil+yaz; boş liste = özel dağıtımı kaldır). */
+    public function faturaEslestirmeKaydet(int $txId, array $customerIds): void
+    {
+        if ($txId <= 0) {
+            return;
+        }
+        $own = !$this->pdo->inTransaction();
+        if ($own) {
+            $this->pdo->beginTransaction();
+        }
+        try {
+            $this->pdo->prepare('DELETE FROM fatura_musteri_map WHERE tx_id = ?')->execute([$txId]);
+            $ins = $this->pdo->prepare('INSERT INTO fatura_musteri_map (tx_id, customer_id) VALUES (?, ?)');
+            foreach (array_unique(array_map('intval', $customerIds)) as $cid) {
+                if ($cid > 0) {
+                    $ins->execute([$txId, $cid]);
+                }
+            }
+            if ($own) {
+                $this->pdo->commit();
+            }
+        } catch (\Throwable $e) {
+            if ($own) {
+                $this->pdo->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    /**
+     * Son N aydaki gider faturalarını FİRMA anahtarına göre grupla (UI "fatura bazlı" modu için).
+     * distinctGiderFirmalar ile AYNI kaynak/filtre ('Personel'/'Taşıma alış' hariç, txFirma tek kaynak).
+     * @return array<string,array<int,array{id:int,tx_date:string,amount:float,description:string,no:string}>>
+     *   firmaKey → faturalar (tarih DESC).
+     */
+    public function faturaListeleri(int $aySayisi = 6): array
+    {
+        $bas = date('Y-m-01', strtotime('-' . max(0, $aySayisi - 1) . ' months'));
+        $st = $this->pdo->prepare(
+            "SELECT id, tx_date, amount, source, category, description FROM transactions
+             WHERE type = 'gider' AND tx_date >= ?
+               AND (category IS NULL OR category NOT IN ('Personel', 'Taşıma alış'))
+             ORDER BY tx_date DESC, id DESC"
+        );
+        $st->execute([$bas]);
+        $out = [];
+        foreach ($st->fetchAll() as $r) {
+            $key = self::normTedarikci($this->txFirma($r));
+            if ($key === '') {
+                continue;
+            }
+            $desc = (string) ($r['description'] ?? '');
+            $parts = explode(' · ', $desc, 2);
+            $no = isset($parts[1]) ? trim($parts[1]) : trim($desc);
+            $out[$key][] = [
+                'id'          => (int) $r['id'],
+                'tx_date'     => (string) $r['tx_date'],
+                'amount'      => (float) $r['amount'],
+                'description' => $desc,
+                'no'          => $no,
+            ];
+        }
+        return $out;
+    }
+
     /**
      * O ay müşteri başına TOPLAM kişi sayısı (üretim günlük persons toplamı). Ciro ile aynı
      * kaynak (monthProductionByCustomer) → maliyet dağıtımında kişi ağırlığı. @return array<int,int>
@@ -3865,8 +3956,9 @@ final class Repo
     }
 
     /**
-     * Gideri müşterilere dağıt (RAPOR ANINDA — ciro/kişi değişince güncellenir).
-     *   'musteri' gider: hedef müşteri(ler)e kendi ciroları oranında (elle seçim her şeyi ezer).
+     * Gideri müşterilere dağıt (RAPOR ANINDA — ciro/kişi değişince güncellenir). Öncelik (üstten):
+     *   fatura eşleşmesi VARSA (fable-037): o tx'in seçili müşterilerine KİŞİ SAYISI oranında (en üst).
+     *   'musteri' gider: hedef müşteri(ler)e kendi ciroları oranında (elle seçim tedarikçi/genel'i ezer).
      *   tedarikçi eşleşmesi VARSA (fable-035): eşleşen müşterilere o ayki KİŞİ SAYISI oranında.
      *   aksi halde 'genel' gider: o ayki TÜM müşterilere ciroları oranında.
      *   Ağırlık toplamı 0 ise EŞİT böl; hiç hedef/müşteri yoksa 'dagitilmamis'.
@@ -3877,8 +3969,9 @@ final class Repo
     {
         $ciro = $this->customerCiroMap($ay);
         $allIds = array_keys($ciro);
-        $tedMap = null;   // lazy: tedarikciEslestirmeler()
-        $persons = null;  // lazy: customerPersonsMap()
+        $tedMap = null;     // lazy: tedarikciEslestirmeler()
+        $faturaMap = null;  // lazy: faturaEslestirmeler() — fable-037 en üst katman
+        $persons = null;    // lazy: customerPersonsMap()
 
         // fable-031: 'Taşıma alış' (KIRMIZI 1) genel havuza GİRMEZ — taşıma kârında
         // gerçek alış maliyeti olarak mahsup edilir (çift sayım olmasın).
@@ -3897,8 +3990,17 @@ final class Repo
             $toplam += $amt;
 
             $weights = $ciro; // varsayılan ağırlık = ciro
-            if ($t['alloc_type'] === 'musteri') {
-                $targets = $this->transactionTargets((int) $t['id']);
+            // fable-037: FATURA eşleşmesi EN ÜST katman — elle 'musteri'yi de tedarikçiyi de ezer.
+            //   Eşleşen müşterilere o ayki KİŞİ oranında (kişi 0 → aşağıda eşit böl). Tablo boşken
+            //   bu blok hiç girmez → dağıtım fable-035 ile birebir (regresyon garantisi).
+            $faturaMap ??= $this->faturaEslestirmeler();
+            $txId = (int) $t['id'];
+            if (!empty($faturaMap[$txId])) {
+                $targets = $faturaMap[$txId];
+                $persons ??= $this->customerPersonsMap($ay);
+                $weights = $persons;
+            } elseif ($t['alloc_type'] === 'musteri') {
+                $targets = $this->transactionTargets($txId);
             } else {
                 // fable-035: tedarikçi eşleşmesi → o müşterilere KİŞİ oranında
                 $tedMap ??= $this->tedarikciEslestirmeler();

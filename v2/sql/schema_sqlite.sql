@@ -490,6 +490,18 @@ CREATE TABLE IF NOT EXISTS personel_musteri_map (
 );
 CREATE INDEX IF NOT EXISTS idx_pmm_pers ON personel_musteri_map(personel_id);
 
+-- ── fable-037: FATURA → müşteri MALİYET EŞLEŞTİRMESİ ─────────────────────
+-- Tek bir gider faturası (tx), tedarikçi eşleşmesinden FARKLI müşterilere kişi oranında
+-- dağıtılabilsin; en ÜST öncelik katmanı. Tablo boşken tüm dağıtım fable-035 ile birebir.
+CREATE TABLE IF NOT EXISTS fatura_musteri_map (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tx_id INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+  customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(tx_id, customer_id)
+);
+CREATE INDEX IF NOT EXISTS idx_fmm_tx ON fatura_musteri_map(tx_id);
+
 -- ── Push cihaz token'ları (migrate_021 + opus-021 user_id): müşteri app + admin ─
 CREATE TABLE IF NOT EXISTS push_tokens (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

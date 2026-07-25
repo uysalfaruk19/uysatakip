@@ -204,4 +204,131 @@ final class MaliyetEslestirmeTest extends TestCase
         // AKSU tümü CANTAŞ'a, personel tümü OPAK'a
         $this->assertEqualsWithDelta(5000.0 + 3000.0 * (32800.0 / 42800.0), $this->repo->giderDagitim('2026-07')['per_customer'][$c], 0.01);
     }
+
+    // ══ fable-037: FATURA bazlı eşleştirme ═══════════════════════════════════
+
+    // ── Fatura eşleşmesi TEDARİKÇİ eşleşmesini EZER ──────────────
+    public function testFaturaEzerTedarikci(): void
+    {
+        $a = seed_customer($this->pdo, 'A', 1.0);
+        $b = seed_customer($this->pdo, 'B', 1.0);
+        $this->repo->upsertProduction($a, '2026-07-01', 30, 1.0, 'ogle');
+        $this->repo->upsertProduction($b, '2026-07-01', 70, 1.0, 'ogle');
+        // Tedarikçi AKSU → A'ya eşli; ama tek fatura B'ye özel dağıtılıyor.
+        $tx = $this->parasutGider('AKSU GIDA', '2026-07-05', 100.0);
+        $this->repo->tedarikciEslestirmeKaydet('AKSU GIDA', [$a]);
+        $this->repo->faturaEslestirmeKaydet($tx, [$b]);
+
+        $d = $this->repo->giderDagitim('2026-07');
+        $this->assertEqualsWithDelta(100.0, $d['per_customer'][$b], 0.001, 'fatura hedef B → %100');
+        $this->assertArrayNotHasKey($a, $d['per_customer'], 'tedarikçi eşleşmesi A ezildi');
+    }
+
+    // ── Fatura eşleşmesi KİŞİ oranlı 30/70 ───────────────────────
+    public function testFaturaKisiOrani3070(): void
+    {
+        $a = seed_customer($this->pdo, 'A', 1.0);
+        $b = seed_customer($this->pdo, 'B', 1.0);
+        $this->repo->upsertProduction($a, '2026-07-01', 30, 1.0, 'ogle');
+        $this->repo->upsertProduction($b, '2026-07-01', 70, 1.0, 'ogle');
+        $tx = $this->parasutGider('AKSU GIDA', '2026-07-05', 100.0);
+        $this->repo->faturaEslestirmeKaydet($tx, [$a, $b]);
+
+        $d = $this->repo->giderDagitim('2026-07');
+        $this->assertEqualsWithDelta(30.0, $d['per_customer'][$a], 0.001, 'A: 30 kişi → 30 TL');
+        $this->assertEqualsWithDelta(70.0, $d['per_customer'][$b], 0.001, 'B: 70 kişi → 70 TL');
+        $this->assertEqualsWithDelta(0.0, $d['dagitilmamis'], 0.001);
+    }
+
+    // ── Eşleşmesi OLMAYAN faturalar tedarikçi kuralında kalır ────
+    public function testFaturaOzelYoksaTedarikciKurali(): void
+    {
+        $a = seed_customer($this->pdo, 'A', 1.0);
+        $b = seed_customer($this->pdo, 'B', 1.0);
+        $this->repo->upsertProduction($a, '2026-07-01', 30, 1.0, 'ogle');
+        $this->repo->upsertProduction($b, '2026-07-01', 70, 1.0, 'ogle');
+        // Aynı tedarikçiden 2 fatura; sadece BİRİ özel (B'ye). Diğeri tedarikçi kuralı (A).
+        $tx1 = $this->parasutGider('AKSU GIDA', '2026-07-05', 100.0);
+        $tx2 = $this->parasutGider('AKSU GIDA', '2026-07-06', 200.0);
+        $this->repo->tedarikciEslestirmeKaydet('AKSU GIDA', [$a]); // tedarikçi → A
+        $this->repo->faturaEslestirmeKaydet($tx1, [$b]);           // tx1 özel → B
+
+        $d = $this->repo->giderDagitim('2026-07');
+        // tx1 (100) → B özel; tx2 (200) → A tedarikçi kuralı
+        $this->assertEqualsWithDelta(200.0, $d['per_customer'][$a], 0.001, 'tx2 tedarikçi kuralı A');
+        $this->assertEqualsWithDelta(100.0, $d['per_customer'][$b], 0.001, 'tx1 özel B');
+    }
+
+    // ── alloc='musteri' + fatura eşleşmesi AYNI tx → fatura kazanır ─
+    public function testFaturaEzerMusteriAlloc(): void
+    {
+        $a = seed_customer($this->pdo, 'A', 1.0);
+        $b = seed_customer($this->pdo, 'B', 1.0);
+        $this->repo->upsertProduction($a, '2026-07-01', 30, 1.0, 'ogle');
+        $this->repo->upsertProduction($b, '2026-07-01', 70, 1.0, 'ogle');
+        // Elle 'musteri' hedef A (ciro oranlı) AMA aynı tx'e fatura eşleşmesi B (kişi oranlı) → fatura kazanır
+        $tx = $this->parasutGider('AKSU GIDA', '2026-07-05', 100.0, 'Gıda', 'musteri');
+        $this->pdo->prepare('INSERT INTO transaction_customer (transaction_id, customer_id) VALUES (?, ?)')->execute([$tx, $a]);
+        $this->repo->faturaEslestirmeKaydet($tx, [$b]);
+
+        $d = $this->repo->giderDagitim('2026-07');
+        $this->assertEqualsWithDelta(100.0, $d['per_customer'][$b], 0.001, 'fatura katmanı B kazandı');
+        $this->assertArrayNotHasKey($a, $d['per_customer'], 'elle musteri A ezildi');
+    }
+
+    // ── Fatura kişi 0 → eşit böl ─────────────────────────────────
+    public function testFaturaKisiSifirEsitBol(): void
+    {
+        $a = seed_customer($this->pdo, 'A', 1.0);
+        $b = seed_customer($this->pdo, 'B', 1.0);
+        $tx = $this->parasutGider('AKSU GIDA', '2026-07-05', 100.0); // o ay üretim yok → kişi 0
+        $this->repo->faturaEslestirmeKaydet($tx, [$a, $b]);
+
+        $d = $this->repo->giderDagitim('2026-07');
+        $this->assertEqualsWithDelta(50.0, $d['per_customer'][$a], 0.001, 'kişi 0 → eşit');
+        $this->assertEqualsWithDelta(50.0, $d['per_customer'][$b], 0.001, 'kişi 0 → eşit');
+    }
+
+    // ── REGRESYON: fatura_musteri_map BOŞken sonuç fable-035 ile birebir ─
+    public function testFaturaBosRegresyon(): void
+    {
+        // testKarAnaliziEslesmeliTutarlilik senaryosunun aynısı — fatura tablosuna DOKUNMA.
+        $c = seed_customer($this->pdo, 'CANTAŞ', 328.0);
+        $this->repo->upsertProduction($c, '2026-07-01', 100, 328.0, 'ogle');
+        $d2 = seed_customer($this->pdo, 'OPAK', 250.0);
+        $this->repo->upsertProduction($d2, '2026-07-02', 40, 250.0, 'ogle');
+        $this->parasutGider('AKSU GIDA', '2026-07-05', 5000.0, 'Gıda');
+        $this->repo->tedarikciEslestirmeKaydet('AKSU GIDA', [$c]);
+        $this->parasutGider('BAK ET', '2026-07-06', 3000.0, 'Et');
+
+        // fatura tablosu BOŞ → fable-035 ile birebir aynı sonuç
+        $this->assertSame([], $this->repo->faturaEslestirmeler(), 'fatura tablosu boş');
+        $g = $this->repo->giderDagitim('2026-07');
+        $this->assertEqualsWithDelta(5000.0 + 3000.0 * (32800.0 / 42800.0), $g['per_customer'][$c], 0.01, 'CANTAŞ fable-035 ile birebir');
+        $this->assertEqualsWithDelta(3000.0 * (10000.0 / 42800.0), $g['per_customer'][$d2], 0.01, 'OPAK fable-035 ile birebir');
+        $this->assertEqualsWithDelta(0.0, $g['dagitilmamis'], 0.01);
+    }
+
+    // ── faturaEslestirmeKaydet: sil+yaz, boş = kaldır; faturaEslestirmeler(ay) filtresi ─
+    public function testFaturaKaydetSilYazVeAyFiltre(): void
+    {
+        $a = seed_customer($this->pdo, 'A', 1.0);
+        $b = seed_customer($this->pdo, 'B', 1.0);
+        $txTem = $this->parasutGider('AKSU GIDA', '2026-07-05', 100.0);
+        $txAgu = $this->parasutGider('AKSU GIDA', '2026-08-05', 100.0);
+        $this->repo->faturaEslestirmeKaydet($txTem, [$a, $b]);
+        $this->repo->faturaEslestirmeKaydet($txAgu, [$a]);
+
+        $this->assertSame([$a, $b], $this->repo->faturaEslestirmeler()[$txTem]);
+        // ay filtresi: Temmuz sadece txTem döner
+        $tem = $this->repo->faturaEslestirmeler('2026-07');
+        $this->assertArrayHasKey($txTem, $tem);
+        $this->assertArrayNotHasKey($txAgu, $tem, 'Ağustos tx Temmuz filtresinde yok');
+        // yeniden yaz → sadece A
+        $this->repo->faturaEslestirmeKaydet($txTem, [$a]);
+        $this->assertSame([$a], $this->repo->faturaEslestirmeler()[$txTem]);
+        // boş → kaldır
+        $this->repo->faturaEslestirmeKaydet($txTem, []);
+        $this->assertArrayNotHasKey($txTem, $this->repo->faturaEslestirmeler());
+    }
 }
