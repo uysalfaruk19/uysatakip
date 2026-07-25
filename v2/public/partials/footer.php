@@ -36,6 +36,7 @@ $tabs = [
   <?php // fable-048a (Ömer): hızlı erişimde/alt barda olmayan işler burada — Fatura Kes
         // hızlı erişimden buraya taşındı; mutfak/sevkiyat da boş kalmasın diye eklendi. ?>
   <a href="fatura-kes.php"><i class="bi bi-receipt-cutoff"></i> Fatura Kes</a>
+  <a href="cari.php?sekme=borclarim"><i class="bi bi-arrow-up-right-circle"></i> Borçlarım</a>
   <a href="mutfak.php"><i class="bi bi-fire"></i> Mutfak görünümü</a>
   <a href="sevkiyat.php"><i class="bi bi-truck"></i> Sevkiyat / teslimat</a>
   <a href="ay-kapanisi.php"><i class="bi bi-calendar2-check"></i> Ay kapanışı</a>

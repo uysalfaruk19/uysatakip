@@ -238,8 +238,24 @@ $sekmeUrl = static fn(string $s): string => 'cari.php?sekme=' . $s;
         $parasutMap[(int) $r['id']] = $r;
     }
     $liste = [];
+    $eklendi = [];
     foreach ($repo->activeCustomers() as $c) {
         $liste[] = $parasutMap[(int) $c['id']] ?? $c;
+        $eklendi[(int) $c['id']] = true;
+    }
+    // fable-049c (Ömer: "alacaklarımı Paraşüt'ten çekip kontrol et, eksik"): ÜRETİM AKIŞINDA
+    // OLMAYAN ama Paraşüt'te BAKİYESİ duran cariler de burada görünür (yoksa alacak gizli kalır).
+    // Bugün ekranını kirletmesinler diye pasifler; alacak takibi kaybolmasın diye burada varlar.
+    foreach ($pdo->query(
+        "SELECT id, name, unit_price, category, parasut_id, parasut_bakiye, parasut_sync_at
+         FROM customers
+         WHERE is_active = 0 AND parasut_bakiye IS NOT NULL AND ABS(parasut_bakiye) > 0.01
+         ORDER BY name"
+    )->fetchAll() as $c) {
+        if (!isset($eklendi[(int) $c['id']])) {
+            $c['pasif_bakiyeli'] = true;
+            $liste[] = $c;
+        }
     }
 
     // Pay hesapları TEK sefer (customerNetKarlilik toplu çağrı deseni).
