@@ -160,7 +160,8 @@ final class BorclarimTest extends TestCase
     }
 
     // ── 8) Personel/Taşıma alış borca GİRMEZ (kendi akışı var) ─────
-    public function testPersonelTasimaHaric(): void
+    /** fable-049 (Ömer: "her fatura borçtur"): Taşıma alış borca dahil; yalnız Personel hariç. */
+    public function testYalnizPersonelHaric(): void
     {
         $s = $this->seedSupplier('KIRMIZI');
         $this->giderElle($s, '2026-07-01', 1000.0, 'Taşıma alış');
@@ -170,7 +171,7 @@ final class BorclarimTest extends TestCase
         $key = Repo::normTedarikci('KIRMIZI');
         $row = $this->byKey($this->repo->borclarimListe(), $key);
         $this->assertNotNull($row);
-        $this->assertEqualsWithDelta(200.0, $row['fatura'], 0.001, 'yalnız Gıda faturası; Taşıma alış hariç');
+        $this->assertEqualsWithDelta(1200.0, $row['fatura'], 0.001, 'Gıda 200 + Taşıma alış 1000 — her fatura borç (fable-049)');
         // Personel kategorisi hiç tedarikçi üretmez
         $this->assertNull($this->byKey($this->repo->borclarimListe(), Repo::normTedarikci('maaş')));
     }

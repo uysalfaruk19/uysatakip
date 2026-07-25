@@ -121,7 +121,8 @@ final class ArayuzCilasiTest extends TestCase
     }
 
     // ── 4) Personel/Taşıma alış hariç kuralı tek geçişte de geçerli ──
-    public function testDetayTumuPersonelVeTasimaAlisiDislar(): void
+    /** fable-049 (Ömer: "her fatura borçtur"): Taşıma alış artık borçta; yalnız Personel dışlanır. */
+    public function testDetayTumuYalnizPersoneliDislar(): void
     {
         $p = $this->seedSupplier('MAAŞ');
         $this->giderElle($p, '2026-07-01', 5000.0, 'Personel');
@@ -131,8 +132,8 @@ final class ArayuzCilasiTest extends TestCase
         $this->giderElle($g, '2026-07-01', 1000.0, 'Gıda');
 
         $tumu = $this->repo->borclarimDetayTumu();
-        $this->assertArrayNotHasKey(Repo::normTedarikci('MAAŞ'), $tumu);
-        $this->assertArrayNotHasKey(Repo::normTedarikci('TAŞIYICI'), $tumu);
+        $this->assertArrayNotHasKey(Repo::normTedarikci('MAAŞ'), $tumu, 'Personel borç değil (bordro)');
+        $this->assertArrayHasKey(Repo::normTedarikci('TAŞIYICI'), $tumu, 'fable-049: Taşıma alış BORÇTUR');
         $this->assertArrayHasKey(Repo::normTedarikci('METRO'), $tumu);
     }
 
