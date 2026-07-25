@@ -158,7 +158,7 @@ require __DIR__ . '/partials/header.php';
       <?php endif; ?>
 
       <div class="fab-sheet" id="musteri-form" style="<?= $formOpen ? '' : 'display:none' ?>">
-        <h2><?= $edit ? 'Müşteri düzenle' : 'Yeni müşteri' ?></h2>
+        <div class="gt-h"><i class="bi bi-person-plus"></i> <?= $edit ? 'MÜŞTERİ DÜZENLE' : 'YENİ MÜŞTERİ' ?></div>
         <form method="post" class="form-grid">
           <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
           <?php if ($edit): ?><input type="hidden" name="id" value="<?= (int) $edit['id'] ?>"><?php endif; ?>
@@ -223,7 +223,7 @@ require __DIR__ . '/partials/header.php';
       <?php if ($edit): ?>
       <!-- opus-017: AYLIK FİYAT — o ayın fiyatını gör/düzenle; kaydedince o ay her yerde güncellenir -->
       <div class="cardx card-pad" id="aylik-fiyat">
-        <h2>Aylık fiyat</h2>
+        <div class="gt-h"><i class="bi bi-tag"></i> AYLIK FİYAT</div>
         <p class="text-muted" style="font-size:12px">
           Fiyatlar aya göre değişir (zam). Bir ayın fiyatını değiştirince <strong>o ayın</strong>
           cirosu, kâr analizi ve carisi her yerde güncellenir; diğer aylar sabit kalır.
@@ -262,7 +262,7 @@ require __DIR__ . '/partials/header.php';
       <?php endif; ?>
 
       <!-- ÜRETİM müşterileri -->
-      <div class="section-head"><h2>Üretim müşterileri</h2><span class="text-muted" style="font-size:12px"><?= count($uretim) ?> firma</span></div>
+      <div class="section-head"><div class="gt-h" style="margin:0"><i class="bi bi-people-fill"></i> ÜRETİM MÜŞTERİLERİ</div><span class="text-muted" style="font-size:12px"><?= count($uretim) ?> firma</span></div>
       <div class="cardx card-pad">
         <?php if (!$uretim): ?>
           <div class="empty-state">Üretim müşterisi yok.</div>
@@ -288,7 +288,7 @@ require __DIR__ . '/partials/header.php';
       </div>
 
       <!-- TAŞIMA müşterileri -->
-      <div class="section-head"><h2>Taşıma müşterileri</h2><span class="text-muted" style="font-size:12px"><?= Helpers::e(ay_label_tr($month)) ?></span></div>
+      <div class="section-head"><div class="gt-h" style="margin:0"><i class="bi bi-truck"></i> TAŞIMA MÜŞTERİLERİ</div><span class="text-muted" style="font-size:12px"><?= Helpers::e(ay_label_tr($month)) ?></span></div>
       <div class="cardx card-pad">
         <?php if (!$tasima): ?>
           <div class="empty-state">Taşıma müşterisi yok.</div>

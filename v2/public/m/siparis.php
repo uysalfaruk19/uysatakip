@@ -184,7 +184,7 @@ require __DIR__ . '/partials/header_m.php';
         </form>
       </div>
 
-      <div class="section-head mt-3"><h2>Geçmiş bildirimler</h2></div>
+      <div class="section-head mt-3"><div class="gt-h" style="margin:0"><i class="bi bi-clock-history"></i> GEÇMİŞ BİLDİRİMLER</div></div>
       <?php if (!$history): ?>
         <div class="empty-state">Henüz sayı bildirmediniz.</div>
       <?php else: ?>

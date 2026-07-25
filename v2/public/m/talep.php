@@ -189,7 +189,7 @@ require __DIR__ . '/partials/header_m.php';
         </div>
       <?php else: ?>
         <div class="cardx card-pad">
-          <h2>Yeni talep</h2>
+          <div class="gt-h"><i class="bi bi-plus-circle"></i> YENİ TALEP</div>
           <form method="post" enctype="multipart/form-data" class="form-grid">
             <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
             <input type="hidden" name="action" value="new">
@@ -205,7 +205,7 @@ require __DIR__ . '/partials/header_m.php';
           </form>
         </div>
 
-        <div class="section-head mt-3"><h2>Taleplerim</h2></div>
+        <div class="section-head mt-3"><div class="gt-h" style="margin:0"><i class="bi bi-chat-left-text"></i> TALEPLERİM</div></div>
         <?php if (!$requests): ?>
           <div class="empty-state">Henüz talebiniz yok.</div>
         <?php else: ?>

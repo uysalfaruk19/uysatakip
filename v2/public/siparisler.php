@@ -148,7 +148,7 @@ require __DIR__ . '/partials/header.php';
         </div>
       </div>
 
-      <div class="section-head mt-3"><h2>Onay kuyruğu</h2></div>
+      <div class="section-head mt-3"><div class="gt-h" style="margin:0"><i class="bi bi-hourglass-split"></i> ONAY KUYRUĞU</div></div>
       <?php if (!$pending): ?>
         <div class="empty-state">Onay bekleyen müşteri siparişi yok.</div>
       <?php else: ?>
@@ -184,7 +184,7 @@ require __DIR__ . '/partials/header.php';
         </div>
       <?php endif; ?>
 
-      <div class="section-head mt-3"><h2>Geçmiş</h2></div>
+      <div class="section-head mt-3"><div class="gt-h" style="margin:0"><i class="bi bi-clock-history"></i> GEÇMİŞ</div></div>
       <?php if (!$decided): ?>
         <div class="empty-state">Henüz karar verilmiş sipariş yok.</div>
       <?php else: ?>

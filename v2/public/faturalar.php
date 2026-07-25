@@ -70,7 +70,7 @@ require __DIR__ . '/partials/header.php';
       <?php if ($flash): ?><div class="flash <?= $flashOk ? 'ok' : 'err' ?>"><?= Helpers::e($flash) ?></div><?php endif; ?>
 
       <form method="get" class="cardx card-pad fatura-filtre">
-        <h2>Fatura oluştur</h2>
+        <div class="gt-h"><i class="bi bi-plus-circle"></i> FATURA OLUŞTUR</div>
         <div class="form-grid">
           <div class="field"><label>Müşteri</label>
             <select class="selectx" name="musteri" onchange="this.form.submit()" required>
@@ -155,7 +155,7 @@ require __DIR__ . '/partials/header.php';
         <?php endif; ?>
       <?php endif; ?>
 
-      <div class="section-head fatura-gecmis"><h2>Kesilen faturalar</h2></div>
+      <div class="section-head fatura-gecmis"><div class="gt-h" style="margin:0"><i class="bi bi-receipt"></i> KESİLEN FATURALAR</div></div>
       <div class="cardx card-pad fatura-gecmis">
         <?php if (!$faturalar): ?>
           <div class="empty-state">Henüz fatura oluşturulmadı.</div>

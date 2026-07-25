@@ -236,7 +236,7 @@ require __DIR__ . '/partials/header_m.php';
         <?php if (!$days): ?>
           <div class="empty-state">Menülerde gün eklenmemiş.</div>
         <?php else: ?>
-          <div class="section-head mt-2"><h2>Günlere göre menü</h2><span class="text-muted" style="font-size:12px">yukarı: geçmiş · aşağı: ileri</span></div>
+          <div class="section-head mt-2"><div class="gt-h" style="margin:0"><i class="bi bi-calendar2-week"></i> GÜNLERE GÖRE MENÜ</div><span class="text-muted" style="font-size:12px">yukarı: geçmiş · aşağı: ileri</span></div>
           <div class="screen-stack">
             <?php foreach ($days as $d => $items): $isToday = $d === $today; ?>
               <div class="meal-card <?= $isToday ? 'today-card' : '' ?>" <?= $d === $anchorDate ? 'id="menu-today"' : '' ?> style="scroll-margin-top:80px">
