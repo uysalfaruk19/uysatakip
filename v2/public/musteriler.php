@@ -264,7 +264,7 @@ require __DIR__ . '/partials/header.php';
             <p class="text-muted" style="font-size:11px;margin:4px 0 0">Üretim sayısı ≠ fatura ise (ör. <strong>CANTAŞ 50 üretim · 70 fatura</strong>): hafta içi ciro/fatura bu kişiden hesaplanır; üretim maliyeti gerçek sayıdan kalır. Cumartesi/pazar uygulanmaz.</p>
           </div>
 
-          <div id="tasima-fields" style="<?= $fCat === 'tasima' ? '' : 'display:none' ?>; display:grid; gap:11px;">
+          <div id="tasima-fields" style="display:<?= $fCat === 'tasima' ? 'grid' : 'none' ?>; gap:11px;">
             <div class="text-muted" style="font-size:12px;font-weight:600">Taşıma kartı · aylık kâr = aydaki satış adedi × birim kâr − sabit gider</div>
             <div class="field"><label>Maliyet birim fiyat (₺ — alış / tedarik)</label>
               <input class="inputx" name="maliyet_birim" id="f-alis" inputmode="decimal" value="<?= $fAlis > 0 ? Helpers::money($fAlis) : '' ?>" placeholder="0,00" oninput="calcKar()">
