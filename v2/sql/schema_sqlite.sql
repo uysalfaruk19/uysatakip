@@ -119,6 +119,29 @@ CREATE TABLE IF NOT EXISTS production (
   UNIQUE(customer_id, prod_date, meal)
 );
 
+-- ── fable-051: ALT FİRMA bölüşüm deseni (MySQL eşi migrate_048.sql) ────────────────────
+-- Bir müşterinin faturası N ayrı ŞİRKETE kesiliyorsa (CANTAŞ = HC Isıtma · İç-Dış · Bakır)
+-- fatura kesiminde 3'lü bölüşüm bu DESENDEN gün gün hesaplanır (günlük giriş ekranı YOK).
+-- Desen: hafta içi sabit kotalı firmalar (haftaici_sabit) sıra ile pay alır, KALAN varsayılana;
+--        cumartesi/pazar TAMAMI varsayılana (Ömer kuralı). Hesap FATURA kişisi üzerinden.
+-- haftaici_sabit NULL = kalanı alan firma (varsayılan). Değerler burada → koda gömülü değil.
+-- kod = customers.fatura_bolusum JSON'daki key ile aynı → bölüşüm kutuları otomatik dolar.
+-- SİLME YOK: aktif=0 ile pasifleşir (geçmiş fatura izi bozulmaz).
+CREATE TABLE IF NOT EXISTS musteri_altfirma (
+  id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id        INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  kod                TEXT NOT NULL,                   -- ör. 'fatura_cantas_hc'
+  ad                 TEXT NOT NULL,                   -- ör. 'HC Isıtma'
+  parasut_contact_id TEXT,                            -- boşsa ayar tablosundaki key'den çözülür
+  varsayilan         INTEGER NOT NULL DEFAULT 0,      -- 1 = kalan + hafta sonu bu firmaya (CANTAŞ→HC)
+  haftaici_sabit     INTEGER,                         -- hafta içi günlük sabit kota (NULL = kalanı alır)
+  sira               INTEGER NOT NULL DEFAULT 0,
+  aktif              INTEGER NOT NULL DEFAULT 1,
+  created_at         TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(customer_id, kod)
+);
+CREATE INDEX IF NOT EXISTS idx_maf_cust ON musteri_altfirma(customer_id, aktif, sira);
+
 CREATE TABLE IF NOT EXISTS requests (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,

@@ -941,10 +941,17 @@ final class Repo
                 'tip'         => 'aylik',
                 'parasut_id'  => $parasutId,
                 'adet'        => $adet,
+                // fable-051: dönemin FATURA kişisi (ciro/birim fiyat) — fable-040 kuralı olan
+                // müşteride üretimden FARKLIDIR (CANTAŞ 50/70). Bölüşüm hedefi budur; 'adet'
+                // (gerçek üretim) semantiği DEĞİŞMEDİ — bölüşümsüz aylık fatura ondan kesilir.
+                'fatura_adet' => array_sum($this->gunFaturaKisiMap($cid, $bas, $son)),
                 'birim'       => $birim,
                 'vade_gun'    => (int) ($c['fatura_vade_gun'] ?? 1),
                 'bolusum'     => $bolusum,
                 'son_bolusum' => $bolusum !== null ? $this->faturaSonBolusum($cid) : null,
+                // fable-051: desen bazlı 3'lü bölüşüm (gün gün hesaplanır) — pencere DOLU gelsin.
+                // Boş dizi = alt firma tanımlı değil → eski davranış (son ayın oranları) sürer.
+                'altfirma'    => $bolusum !== null ? $this->altFirmaDagilim($cid, $bas, $son) : [],
                 'secilebilir' => $secilebilir,
                 'sebep'       => $sebep,
             ];
@@ -982,6 +989,245 @@ final class Repo
             }
         }
         return $out ?: null;
+    }
+
+    // ── fable-051: ALT FİRMA bölüşüm deseni ───────────────────────
+    // NEDEN: CANTAŞ tek müşteri gibi görünür ama faturası 3 AYRI ŞİRKETE kesilir
+    // (HC Isıtma · CANTAŞ İç-Dış · CANTAŞ Bakır). Dağılım Excel'de elle tutuluyor, ay sonunda
+    // Ömer 3 rakamı fatura penceresine elle giriyordu. Artık DESENDEN gün gün hesaplanıp
+    // pencereye DOLU geliyor (elle değiştirme hakkı korunur — Ömer son sözü söyler).
+    //
+    // Desen (parametrik, musteri_altfirma.haftaici_sabit — koda gömülü DEĞİL):
+    //   hafta içi → sabit kotalı firmalar `sira` düzeninde payını alır, KALAN varsayılana;
+    //   cumartesi/pazar → TAMAMI varsayılana (Ömer: "cumartesiler default'ta HC'ye").
+    // Hesap FATURA kişisi üzerinden (fable-040) — üretim persons'tan DEĞİL.
+
+    /**
+     * Müşterinin alt firmaları (varsayılan: yalnız aktif, sıralı). Paraşüt cari id kayıtta boşsa
+     * `ayar` tablosundan `kod` anahtarıyla çözülür (fatura_bolusum ile aynı kaynak).
+     * Tablo henüz yoksa (migrate_048 uygulanmadıysa) BOŞ döner — ekranlar çalışmaya devam eder.
+     * @return list<array{id:int,kod:string,ad:string,contact_id:string,varsayilan:bool,haftaici_sabit:?int,sira:int,aktif:bool}>
+     */
+    public function altFirmalar(int $customerId, bool $aktifOnly = true): array
+    {
+        $sql = 'SELECT id, kod, ad, parasut_contact_id, varsayilan, haftaici_sabit, sira, aktif
+                FROM musteri_altfirma WHERE customer_id = ?';
+        if ($aktifOnly) {
+            $sql .= ' AND aktif = 1';
+        }
+        $sql .= ' ORDER BY sira, id';
+        try {
+            $st = $this->pdo->prepare($sql);
+            $st->execute([$customerId]);
+            $rows = $st->fetchAll();
+        } catch (\PDOException $e) {
+            error_log('[UYSA v2 altFirmalar] okunamadı (migrate_048?): ' . $e->getMessage());
+            return [];
+        }
+        $out = [];
+        foreach ($rows as $r) {
+            $kod = (string) $r['kod'];
+            $cid = trim((string) ($r['parasut_contact_id'] ?? ''));
+            $out[] = [
+                'id'             => (int) $r['id'],
+                'kod'            => $kod,
+                'ad'             => (string) $r['ad'],
+                'contact_id'     => $cid !== '' ? $cid : trim((string) $this->ayar($kod, '')),
+                'varsayilan'     => (int) $r['varsayilan'] === 1,
+                'haftaici_sabit' => $r['haftaici_sabit'] !== null ? (int) $r['haftaici_sabit'] : null,
+                'sira'           => (int) $r['sira'],
+                'aktif'          => (int) $r['aktif'] === 1,
+            ];
+        }
+        return $out;
+    }
+
+    /** Kalanı + hafta sonunu alan firma (işaretli > sabit kotası olmayan ilk > sonuncu). */
+    public function altFirmaVarsayilan(int $customerId): ?array
+    {
+        $f = $this->altFirmalar($customerId);
+        if (!$f) {
+            return null;
+        }
+        $kod = self::altFirmaVarsayilanKod($f);
+        foreach ($f as $x) {
+            if ($x['kod'] === $kod) {
+                return $x;
+            }
+        }
+        return null;
+    }
+
+    /** @param list<array<string,mixed>> $firmalar */
+    private static function altFirmaVarsayilanKod(array $firmalar): string
+    {
+        foreach ($firmalar as $f) {
+            if (!empty($f['varsayilan'])) {
+                return (string) $f['kod'];
+            }
+        }
+        foreach ($firmalar as $f) {
+            if (($f['haftaici_sabit'] ?? null) === null) {
+                return (string) $f['kod']; // işaret yoksa "kalanı alan" firma = kotasız olan
+            }
+        }
+        return (string) $firmalar[count($firmalar) - 1]['kod'];
+    }
+
+    /**
+     * Alt firma ekle/düzenle (kod = customers.fatura_bolusum key'i ile aynı olmalı).
+     * Aynı müşteride aynı kod ikinci kez girilmez (UNIQUE) — mevcut kayıt güncellenir.
+     * $varsayilan=true verilirse müşterinin diğer firmalarının işareti kaldırılır (tek varsayılan).
+     */
+    public function upsertAltFirma(
+        int $customerId,
+        string $kod,
+        string $ad,
+        ?string $contactId = null,
+        bool $varsayilan = false,
+        ?int $haftaiciSabit = null,
+        int $sira = 0,
+        ?int $id = null
+    ): int {
+        $kod = trim($kod);
+        $ad = trim($ad);
+        if ($kod === '' || $ad === '') {
+            throw new \InvalidArgumentException('Alt firma kodu ve adı zorunlu.');
+        }
+        $contactId = ($contactId !== null && trim($contactId) !== '') ? trim($contactId) : null;
+        $haftaiciSabit = ($haftaiciSabit !== null && $haftaiciSabit >= 0) ? $haftaiciSabit : null;
+        if ($id === null) {
+            $st = $this->pdo->prepare('SELECT id FROM musteri_altfirma WHERE customer_id = ? AND kod = ?');
+            $st->execute([$customerId, $kod]);
+            $found = $st->fetchColumn();
+            $id = $found !== false ? (int) $found : null;
+        }
+        if ($id === null) {
+            $this->pdo->prepare(
+                'INSERT INTO musteri_altfirma
+                   (customer_id, kod, ad, parasut_contact_id, varsayilan, haftaici_sabit, sira)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)'
+            )->execute([$customerId, $kod, $ad, $contactId, $varsayilan ? 1 : 0, $haftaiciSabit, $sira]);
+            $id = (int) $this->pdo->lastInsertId();
+        } else {
+            $this->pdo->prepare(
+                'UPDATE musteri_altfirma
+                    SET kod = ?, ad = ?, parasut_contact_id = ?, varsayilan = ?, haftaici_sabit = ?, sira = ?, aktif = 1
+                  WHERE id = ? AND customer_id = ?'
+            )->execute([$kod, $ad, $contactId, $varsayilan ? 1 : 0, $haftaiciSabit, $sira, $id, $customerId]);
+        }
+        if ($varsayilan) {
+            $this->pdo->prepare('UPDATE musteri_altfirma SET varsayilan = 0 WHERE customer_id = ? AND id <> ?')
+                ->execute([$customerId, $id]);
+        }
+        return $id;
+    }
+
+    /** Alt firma pasifleştir/geri aç — SİLME YOK (geçmiş fatura izi bozulmasın). */
+    public function setAltFirmaAktif(int $id, bool $aktif): void
+    {
+        $this->pdo->prepare('UPDATE musteri_altfirma SET aktif = ? WHERE id = ?')->execute([$aktif ? 1 : 0, $id]);
+    }
+
+    /**
+     * DESEN: bir günün FATURA kişisini alt firmalara böl.
+     *   Cmt/Paz → tamamı varsayılana. Hafta içi → sabit kotalar `sira` düzeninde, KALAN varsayılana.
+     *   Kişi azsa kota sondan kısılır (min ile kırpma) → hiçbir firma NEGATİFE düşmez.
+     *   Sabit kotası olmayan ve varsayılan da olmayan firma hafta içi 0 alır (tek "kalan" sahibi var).
+     * @param list<array<string,mixed>> $firmalar altFirmalar() çıktısı (sıralı)
+     * @return array<string,int> kod => kişi
+     */
+    public static function altFirmaGunDagit(int $faturaKisi, string $gun, array $firmalar): array
+    {
+        $out = [];
+        foreach ($firmalar as $f) {
+            $out[(string) $f['kod']] = 0;
+        }
+        if (!$firmalar || $faturaKisi <= 0) {
+            return $out;
+        }
+        $vars = self::altFirmaVarsayilanKod($firmalar);
+        if ((int) date('N', strtotime($gun)) >= 6) {
+            $out[$vars] = $faturaKisi; // Ömer kuralı: cumartesi/pazar TAMAMI varsayılan firmaya
+            return $out;
+        }
+        $kalan = $faturaKisi;
+        foreach ($firmalar as $f) {
+            $kod = (string) $f['kod'];
+            $sabit = $f['haftaici_sabit'] ?? null;
+            if ($kod === $vars || $sabit === null) {
+                continue;
+            }
+            $pay = min(max(0, (int) $sabit), $kalan);
+            $out[$kod] = $pay;
+            $kalan -= $pay;
+        }
+        $out[$vars] = $kalan;
+        return $out;
+    }
+
+    /**
+     * Gün => FATURA kişisi (ciro / birim fiyat). fable-040 farkı amount'a bindiği için
+     * fatura kişisinin TEK doğru kaynağı budur (persons GERÇEK üretimdir, 50; fatura 70).
+     * Fiyat snapshot'ı 0 ise (eski/bozuk kayıt) gerçek üretime düşülür — 0'a bölme yok.
+     * @return array<string,int>
+     */
+    public function gunFaturaKisiMap(int $customerId, string $bas, string $son): array
+    {
+        $st = $this->pdo->prepare(
+            'SELECT prod_date, persons, unit_price_snap, amount FROM production
+             WHERE customer_id = ? AND prod_date >= ? AND prod_date <= ?
+             ORDER BY prod_date'
+        );
+        $st->execute([$customerId, $bas, $son]);
+        $out = [];
+        foreach ($st->fetchAll() as $r) {
+            $gun = (string) $r['prod_date'];
+            $price = (float) $r['unit_price_snap'];
+            $kisi = $price > 0.0001 ? (int) round(((float) $r['amount']) / $price) : (int) $r['persons'];
+            $out[$gun] = ($out[$gun] ?? 0) + max(0, $kisi);
+        }
+        return $out;
+    }
+
+    /**
+     * Dönemin alt firma bölüşümü — gün gün desen uygulanır, dönem boyunca toplanır.
+     * Tutar o ayın birim fiyatıyla (ay-bazlı fiyat; dönem iki aya taşarsa her gün kendi ayından).
+     * Alt firması tanımlı DEĞİLSE boş döner → çağıran taraf eski davranışını sürdürür.
+     * @return array<string,array{ad:string,contact_id:string,kisi:int,tutar:float}> kod => ...
+     */
+    public function altFirmaDagilim(int $customerId, string $bas, string $son): array
+    {
+        $firmalar = $this->altFirmalar($customerId);
+        if (!$firmalar) {
+            return [];
+        }
+        $out = [];
+        foreach ($firmalar as $f) {
+            $out[$f['kod']] = ['ad' => $f['ad'], 'contact_id' => $f['contact_id'], 'kisi' => 0, 'tutar' => 0.0];
+        }
+        $fiyat = [];
+        foreach ($this->gunFaturaKisiMap($customerId, $bas, $son) as $gun => $kisi) {
+            $ay = substr($gun, 0, 7);
+            if (!isset($fiyat[$ay])) {
+                $fiyat[$ay] = $this->priceFor($customerId, $ay)['unit_price'];
+            }
+            foreach (self::altFirmaGunDagit($kisi, $gun, $firmalar) as $kod => $pay) {
+                $out[$kod]['kisi'] += $pay;
+                $out[$kod]['tutar'] += $pay * $fiyat[$ay];
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Aylık alt firma özeti (fatura bölüşümünün ay hâli).
+     * @return array<string,array{ad:string,contact_id:string,kisi:int,tutar:float}>
+     */
+    public function aylikAltFirmaOzet(int $customerId, string $ay): array
+    {
+        $ar = $this->ayAralik($ay);
+        return $this->altFirmaDagilim($customerId, $ar['bas'], $ar['son']);
     }
 
     // ── Taşıma karlılık (opus-013: adet[production] × (satış − alış) − sabit gider) ─

@@ -189,9 +189,13 @@ if ($method === 'POST') {
                 } else {
                     $kontroller[] = ['ok' => true, 'txt' => 'Dönemin geçmiş hafta içi günlerinin tamamı kayıtlı (' . count($kayitliSet) . ' gün).'];
                 }
-                if ($sumKisi !== (int) $a['adet']) {
+                // fable-051: bölüşümlü müşteride hedef = dönemin FATURA kişisi (fable-040 kuralı
+                // varsa üretimden farklı: CANTAŞ 50/70). Yoksa eskisi gibi üretim adedi.
+                $hedefAdet = (($a['bolusum'] ?? null) && (int) ($a['fatura_adet'] ?? 0) > 0)
+                    ? (int) $a['fatura_adet'] : (int) $a['adet'];
+                if ($sumKisi !== $hedefAdet) {
                     $kontroller[] = ['ok' => false, 'txt' => 'Bölüşüm toplamı (' . $sumKisi . ') sistem toplamından ('
-                        . (int) $a['adet'] . ') farklı — fark ' . ($sumKisi - (int) $a['adet']) . ' kişi.'];
+                        . $hedefAdet . ') farklı — fark ' . ($sumKisi - $hedefAdet) . ' kişi.'];
                 } else {
                     $kontroller[] = ['ok' => true, 'txt' => 'Bölüşüm toplamı sistem toplamıyla birebir (' . $sumKisi . ' kişi).'];
                 }
@@ -419,8 +423,15 @@ require __DIR__ . '/partials/header.php';
               $tevk = $a['tip'] === 'irsaliye' && ($a['tevkifat_kodu'] ?? '') !== '';
               $sonBol = $a['son_bolusum'] ?? null;
           ?>
+            <?php
+            // fable-051: bölüşümlü aylık müşteride hedef = dönemin FATURA kişisi (fable-040:
+            // CANTAŞ üretim 50 / fatura 70). Bölüşümsüz aylıkta hedef eskisi gibi üretim adedi.
+            $bolusumlu = $a['tip'] === 'aylik' && ($a['bolusum'] ?? null);
+            $hedefAdet = $a['tip'] !== 'aylik' ? 0
+                : (($bolusumlu && (int) ($a['fatura_adet'] ?? 0) > 0) ? (int) $a['fatura_adet'] : (int) $a['adet']);
+            ?>
             <div class="ftr-row <?= $a['secilebilir'] ? '' : 'disabled' ?>" data-cid="<?= (int) $a['customer_id'] ?>"
-                 data-tip="<?= Helpers::e($a['tip']) ?>" data-adet="<?= $a['tip'] === 'aylik' ? (int) $a['adet'] : 0 ?>">
+                 data-tip="<?= Helpers::e($a['tip']) ?>" data-adet="<?= $hedefAdet ?>">
               <label class="ftr-head">
                 <input type="checkbox" class="ftr-pick" value="<?= (int) $a['customer_id'] ?>" <?= $a['secilebilir'] ? '' : 'disabled' ?>>
                 <span class="ftr-name"><?= Helpers::e($a['name']) ?></span>
@@ -432,24 +443,79 @@ require __DIR__ . '/partials/header.php';
                   <?= (int) $a['irsaliye_sayisi'] ?> irsaliye · Öğlen <?= (int) $a['ogle'] ?> / Akşam <?= (int) $a['aksam'] ?> / Kumanya <?= (int) $a['kumanya'] ?> · <strong><?= (int) $a['toplam'] ?></strong> kişi × ₺<?= Helpers::money((float) $a['birim']) ?>
                 <?php else: ?>
                   Dönem üretimi: <strong><?= (int) $a['adet'] ?></strong> kişi × ₺<?= Helpers::money((float) $a['birim']) ?>
+                  <?php // fable-051: fatura kişisi üretimden farklıysa (fable-040 kuralı) ikisi de görünür — hangi rakamdan fatura kesildiği gizlenmez ?>
+                  <?php if ($hedefAdet > 0 && $hedefAdet !== (int) $a['adet']): ?>
+                    · <strong>fatura <?= $hedefAdet ?></strong> kişi
+                  <?php endif; ?>
                 <?php endif; ?>
               </div>
               <?php if (!$a['secilebilir']): ?>
                 <div class="ftr-why"><i class="bi bi-lock"></i> <?= Helpers::e($a['sebep']) ?></div>
               <?php elseif ($a['tip'] === 'aylik' && ($a['bolusum'] ?? null)): ?>
+                <?php
+                // fable-051: bölüşüm varsayılanı DESENDEN gelir (gün gün: hafta içi sabit kotalar +
+                // kalan varsayılan firmaya, cumartesi/pazar tamamı varsayılana; hesap FATURA kişisinden).
+                // Desen yoksa (alt firma tanımsız) eski davranış: son faturalanan ayın oranları.
+                $altD = $a['altfirma'] ?? [];
+                // Alt firma kodu ↔ bölüşüm key'i; eşleşmezse Paraşüt cari id'ye düşülür.
+                $altByContact = [];
+                foreach ($altD as $k => $v) {
+                    if (($v['contact_id'] ?? '') !== '') {
+                        $altByContact[$v['contact_id']] = $k; // contact id => alt firma kodu
+                    }
+                }
+                $desenTop = 0;
+                foreach ($altD as $v) {
+                    $desenTop += (int) $v['kisi'];
+                }
+                $desenVar = $desenTop > 0;
+                $sonTop = $sonBol !== null ? array_sum($sonBol) : 0;
+                // Bölüşüm kutularına GİREN varsayılanlar + hangi alt firma eşleşemedi (payı kaybolur)
+                $satirlarBol = [];
+                $eslesenKod = [];
+                foreach ($a['bolusum'] as $b) {
+                    $kod = isset($altD[$b['key']]) ? $b['key'] : ($altByContact[$b['contact_id']] ?? null);
+                    $alt = $kod !== null ? $altD[$kod] : null;
+                    if ($desenVar) {
+                        $def = $alt !== null ? (int) $alt['kisi'] : 0;
+                        if ($kod !== null) {
+                            $eslesenKod[] = $kod;
+                        }
+                    } else {
+                        $def = $sonBol !== null && $sonTop > 0 && isset($sonBol[$b['contact_id']])
+                            ? (int) round((int) $a['adet'] * $sonBol[$b['contact_id']] / $sonTop) : 0;
+                    }
+                    $satirlarBol[] = ['ad' => $b['ad'], 'key' => $b['key'], 'def' => $def];
+                }
+                // Desende olup fatura bölüşümünde KARŞILIĞI OLMAYAN firma = sessizce kaybolan pay.
+                // Rakam yanlış görünmektense uyar (veri güvenilirliği kuralı).
+                $kayipFirma = [];
+                if ($desenVar) {
+                    foreach ($altD as $k => $v) {
+                        if (!in_array($k, $eslesenKod, true) && (int) $v['kisi'] > 0) {
+                            $kayipFirma[] = $v['ad'] . ' (' . (int) $v['kisi'] . ')';
+                        }
+                    }
+                }
+                ?>
                 <div class="ftr-bolusum" hidden>
-                  <div class="ftr-bol-head">Bölüşüm (toplam = <span class="ftr-bol-hedef"><?= (int) $a['adet'] ?></span> kişi; varsayılan = son ayın oranları):</div>
-                  <?php
-                  // Varsayılan dağılım = SON faturalanan ayın ORANLARI, bu dönemin toplamına ölçeklenir.
-                  $sonTop = $sonBol !== null ? array_sum($sonBol) : 0;
-                  foreach ($a['bolusum'] as $b):
-                      $def = $sonBol !== null && $sonTop > 0 && isset($sonBol[$b['contact_id']])
-                          ? (int) round((int) $a['adet'] * $sonBol[$b['contact_id']] / $sonTop) : 0;
-                  ?>
-                    <label class="ftr-bol-row"><span><?= Helpers::e($b['ad']) ?></span>
-                      <input type="number" class="ftr-bol-in" data-key="<?= Helpers::e($b['key']) ?>" min="0" value="<?= $def ?>" inputmode="numeric"></label>
+                  <div class="ftr-bol-head">Bölüşüm (toplam = <span class="ftr-bol-hedef"><?= $desenVar ? $desenTop : (int) $a['adet'] ?></span> kişi;
+                    varsayılan = <?= $desenVar ? 'firma deseni (gün gün hesaplandı)' : 'son ayın oranları' ?>):</div>
+                  <?php foreach ($satirlarBol as $sb): ?>
+                    <label class="ftr-bol-row"><span><?= Helpers::e($sb['ad']) ?></span>
+                      <input type="number" class="ftr-bol-in" data-key="<?= Helpers::e($sb['key']) ?>" min="0" value="<?= (int) $sb['def'] ?>" inputmode="numeric"></label>
                   <?php endforeach; ?>
-                  <div class="ftr-bol-uyari" hidden></div>
+                  <?php if ($desenVar): ?>
+                    <p class="ftr-bol-not">Rakamlar firma deseninden geldi — hafta içi sabit paylar + kalan
+                      varsayılan firmaya, cumartesi/pazar tamamı varsayılan firmaya. Yanlışsa elle düzeltebilirsin.</p>
+                  <?php endif; ?>
+                  <?php if ($kayipFirma): ?>
+                    <div class="ftr-bol-uyari warn">Fatura bölüşümünde karşılığı olmayan alt firma:
+                      <?= Helpers::e(implode(' · ', $kayipFirma)) ?> — bu paylar faturaya GİRMEZ.
+                      Alt firma kodunu müşteri kartındaki bölüşüm anahtarıyla eşleyin.</div>
+                  <?php else: ?>
+                    <div class="ftr-bol-uyari" hidden></div>
+                  <?php endif; ?>
                 </div>
               <?php endif; ?>
             </div>

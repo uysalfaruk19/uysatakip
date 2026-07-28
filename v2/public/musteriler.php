@@ -37,6 +37,41 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             uysa_audit('musteri_pasif', $u['username'], (string) $pid, null, client_ip());
             $flash = 'Müşteri pasifleştirildi.';
         }
+    } elseif (in_array($_POST['action'] ?? '', ['altfirma', 'altfirma_pasif'], true)) {
+        // fable-051: faturası birden çok şirkete kesilen müşterinin (CANTAŞ) alt firmaları.
+        // Bölüşüm deseni burada yaşar (hafta içi sabit kota) — koda gömülü değil, Ömer değiştirir.
+        $pid = (int) ($_POST['id'] ?? 0);
+        if ($pid > 0) {
+            try {
+                if (($_POST['action'] ?? '') === 'altfirma_pasif') {
+                    $repo->setAltFirmaAktif((int) ($_POST['af_id'] ?? 0), false);
+                    uysa_audit('altfirma_pasif', $u['username'], (string) $pid,
+                        json_encode(['af' => (int) ($_POST['af_id'] ?? 0)]), client_ip());
+                    $flash = 'Alt firma pasifleştirildi (kayıt silinmedi).';
+                } else {
+                    $sabitRaw = trim((string) ($_POST['af_sabit'] ?? ''));
+                    $afId = $repo->upsertAltFirma(
+                        $pid,
+                        (string) ($_POST['af_kod'] ?? ''),
+                        (string) ($_POST['af_ad'] ?? ''),
+                        (string) ($_POST['af_contact'] ?? ''),
+                        !empty($_POST['af_varsayilan']),
+                        $sabitRaw === '' ? null : max(0, (int) $sabitRaw),
+                        (int) ($_POST['af_sira'] ?? 0),
+                        ((int) ($_POST['af_id'] ?? 0)) ?: null
+                    );
+                    uysa_audit('altfirma_kaydet', $u['username'], (string) $pid,
+                        json_encode(['af' => $afId], JSON_UNESCAPED_UNICODE), client_ip());
+                    $flash = 'Alt firma kaydedildi.';
+                }
+            } catch (\Throwable $e) {
+                $flash = 'Alt firma kaydedilemedi (kod benzersiz olmalı; migrate_048 uygulandı mı?).';
+                $flashOk = false;
+            }
+            $formOpen = true;
+            $_GET['edit'] = (string) $pid;
+            $editId = $pid;
+        }
     } elseif (($_POST['action'] ?? '') === 'aylik_fiyat') {
         // opus-017: bir ayın fiyatını düzenle → o ay production güncellenir (her yere yansır).
         $pid = (int) ($_POST['id'] ?? 0);
@@ -294,6 +329,72 @@ require __DIR__ . '/partials/header.php';
           </div>
           <div class="actions-row">
             <button class="btn-action btn-primaryx flex-fill" type="submit"><i class="bi bi-check2"></i> <?= Helpers::e(ay_label_tr($month)) ?> fiyatını kaydet</button>
+          </div>
+        </form>
+      </div>
+      <?php endif; ?>
+
+      <?php if ($edit && $fCat !== 'tasima'):
+        // fable-051: ALT FİRMALAR — faturası birden çok şirkete kesilen müşteri (CANTAŞ).
+        // Ay sonu bölüşümü bu desenden gün gün hesaplanır; Fatura Kes penceresine DOLU gelir.
+        $altF = $repo->altFirmalar($editId, false);
+        $ozet = $altF ? $repo->aylikAltFirmaOzet($editId, $month) : [];
+      ?>
+      <div class="cardx card-pad" id="alt-firmalar">
+        <div class="gt-h"><i class="bi bi-diagram-3"></i> ALT FİRMALAR (fatura bölüşümü)</div>
+        <p class="text-muted" style="font-size:12px">
+          Faturası <strong>birden çok şirkete</strong> kesilen müşteri için. Ay sonu bölüşümü şu desenden
+          <strong>gün gün</strong> hesaplanır: hafta içi sabit kotalar sırayla dağıtılır, <strong>kalan varsayılan
+          firmaya</strong>; cumartesi/pazar <strong>tamamı varsayılan firmaya</strong>. Hesap fatura kişisinden yapılır.
+          Kod, müşterinin fatura bölüşümü ayarındaki anahtarla aynı olmalı (ör. <code>fatura_cantas_hc</code>).
+        </p>
+        <?php if (!$altF): ?>
+          <div class="empty-state">Alt firma tanımlı değil — bölüşüm eskisi gibi son ayın oranlarından gelir.</div>
+        <?php else: foreach ($altF as $af): $o = $ozet[$af['kod']] ?? null; ?>
+          <form method="post" class="af-row<?= $af['aktif'] ? '' : ' af-pasif' ?>">
+            <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
+            <input type="hidden" name="action" value="altfirma">
+            <input type="hidden" name="id" value="<?= (int) $edit['id'] ?>">
+            <input type="hidden" name="af_id" value="<?= (int) $af['id'] ?>">
+            <div class="af-grid">
+              <label class="field"><span>Ad</span><input class="inputx" name="af_ad" value="<?= Helpers::e($af['ad']) ?>" required></label>
+              <label class="field"><span>Kod</span><input class="inputx" name="af_kod" value="<?= Helpers::e($af['kod']) ?>" autocapitalize="none" required></label>
+              <label class="field"><span>Paraşüt cari id</span><input class="inputx" name="af_contact" value="<?= Helpers::e((string) $af['contact_id']) ?>" inputmode="numeric" placeholder="boş = ayardan"></label>
+              <label class="field"><span>Hafta içi sabit</span><input class="inputx" name="af_sabit" type="number" min="0" inputmode="numeric" value="<?= $af['haftaici_sabit'] === null ? '' : (int) $af['haftaici_sabit'] ?>" placeholder="boş = kalanı alır"></label>
+              <label class="field"><span>Sıra</span><input class="inputx" name="af_sira" type="number" min="0" inputmode="numeric" value="<?= (int) $af['sira'] ?>"></label>
+            </div>
+            <label class="af-check"><input type="checkbox" name="af_varsayilan" value="1"<?= $af['varsayilan'] ? ' checked' : '' ?>>
+              <span>Varsayılan (kalan + cumartesi/pazar bu firmaya)</span></label>
+            <p class="row-meta">
+              <?php if ($o !== null): ?><?= Helpers::e(ay_label_tr($month)) ?>: <strong><?= (int) $o['kisi'] ?></strong> kişi · ₺<?= Helpers::money((float) $o['tutar']) ?><?php endif; ?>
+              <?= $af['aktif'] ? '' : ' · PASİF' ?>
+            </p>
+            <div class="actions-row">
+              <button class="btn-action btn-primaryx" type="submit"><i class="bi bi-check2"></i> Kaydet</button>
+              <?php if ($af['aktif']): ?>
+              <button class="btn-action btn-ghost" type="submit" name="action" value="altfirma_pasif"
+                      formnovalidate onclick="return confirm('Bu alt firma pasifleştirilsin mi? (kayıt silinmez)');">
+                <i class="bi bi-archive"></i> Pasifleştir</button>
+              <?php endif; ?>
+            </div>
+          </form>
+        <?php endforeach; endif; ?>
+
+        <form method="post" class="af-row af-yeni">
+          <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
+          <input type="hidden" name="action" value="altfirma">
+          <input type="hidden" name="id" value="<?= (int) $edit['id'] ?>">
+          <div class="gt-h" style="margin:0;font-size:12px">YENİ ALT FİRMA</div>
+          <div class="af-grid">
+            <label class="field"><span>Ad</span><input class="inputx" name="af_ad" placeholder="ör. HC Isıtma" required></label>
+            <label class="field"><span>Kod</span><input class="inputx" name="af_kod" placeholder="ör. fatura_cantas_hc" autocapitalize="none" required></label>
+            <label class="field"><span>Paraşüt cari id</span><input class="inputx" name="af_contact" inputmode="numeric" placeholder="boş = ayardan"></label>
+            <label class="field"><span>Hafta içi sabit</span><input class="inputx" name="af_sabit" type="number" min="0" inputmode="numeric" placeholder="boş = kalanı alır"></label>
+            <label class="field"><span>Sıra</span><input class="inputx" name="af_sira" type="number" min="0" value="<?= count($altF) + 1 ?>"></label>
+          </div>
+          <label class="af-check"><input type="checkbox" name="af_varsayilan" value="1"><span>Varsayılan (kalan + cumartesi/pazar bu firmaya)</span></label>
+          <div class="actions-row">
+            <button class="btn-action btn-primaryx" type="submit"><i class="bi bi-plus-lg"></i> Alt firma ekle</button>
           </div>
         </form>
       </div>
