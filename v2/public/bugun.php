@@ -204,9 +204,34 @@ foreach ($grid as $r) {
         }
         $splitLabel = implode(' · ', $parts);
     }
+    // fable-051: ALT FİRMA bölüşümü — SALT GÖSTERİM (giriş yok; düzenleme yeri Fatura Kes).
+    // Kaydedilmez, o günün fatura kişisine desen uygulanarak ANLIK hesaplanır.
+    // Alt firması tanımlı olmayan müşteride satır görünümü hiç değişmez.
+    $altFirmalar = $repo->altFirmalar($cid);
+    // Etiket dar satıra sığsın: alt firma adı müşteri adıyla başlıyorsa o ön ek atılır
+    // ("CANTAŞ İç-Dış" → "İç-Dış"); "HC Isıtma" gibi bağımsız adlar aynen kalır.
+    foreach ($altFirmalar as $i => $af) {
+        $kisa = $af['ad'];
+        if (mb_stripos($kisa, $r['name'], 0, 'UTF-8') === 0 && mb_strlen($kisa, 'UTF-8') > mb_strlen($r['name'], 'UTF-8') + 1) {
+            $kisa = trim(mb_substr($kisa, mb_strlen($r['name'], 'UTF-8'), null, 'UTF-8'));
+        }
+        $altFirmalar[$i]['ad'] = $kisa;
+    }
+    $altLabel = '';
+    if ($altFirmalar && $val > 0) {
+        $parts = [];
+        $pay = Repo::altFirmaGunDagit($billVal, $date, $altFirmalar);
+        foreach ($altFirmalar as $af) {
+            if (($pay[$af['kod']] ?? 0) > 0) {
+                $parts[] = $pay[$af['kod']] . ' ' . $af['ad'];
+            }
+        }
+        $altLabel = implode(' · ', $parts);
+    }
     $rowsData[] = [
         'cid' => $cid, 'name' => $r['name'], 'price' => $price, 'val' => $val, 'amt' => $amt,
         'meals' => $meals, 'split' => $splitLabel, 'fk' => $fkRow, // fable-040: fatura kişi kuralı
+        'alt' => $altLabel, 'altfirma' => $altFirmalar,            // fable-051: salt gösterim
     ];
 }
 $total = count($rowsData);
@@ -346,8 +371,16 @@ require __DIR__ . '/partials/header.php';
             $base = htmlspecialchars(json_encode([
                 'ogle' => (int) $taban['ogle'], 'aksam' => (int) $taban['aksam'], 'kumanya' => (int) $taban['kumanya'],
             ]), ENT_QUOTES);
+            // fable-051: satır sayısı değişince alt firma etiketi de canlı güncellensin
+            // (ekran yalan söylemesin). JS Repo::altFirmaGunDagit ile AYNI kuralı uygular.
+            // Alt firması yoksa öznitelik hiç basılmaz → o satırlarda HİÇBİR ŞEY değişmez.
+            $altAttr = $r['altfirma'] ? htmlspecialchars(json_encode(array_map(
+                static fn(array $f): array => ['kod' => $f['kod'], 'ad' => $f['ad'],
+                    'varsayilan' => $f['varsayilan'], 'sabit' => $f['haftaici_sabit']],
+                $r['altfirma']
+            ), JSON_UNESCAPED_UNICODE), ENT_QUOTES) : '';
           ?>
-            <div class="customer-row <?= $missing ? 'missing' : '' ?> <?= $isFocus ? 'is-focus' : '' ?>"<?= $isFocus ? ' id="focus-row"' : '' ?> data-price="<?= $r['price'] ?>" data-cid="<?= $r['cid'] ?>" data-name="<?= Helpers::e($r['name']) ?>" data-base="<?= $base ?>" data-fatura-kisi="<?= $r['fk'] !== null ? (int) $r['fk'] : '' ?>">
+            <div class="customer-row <?= $missing ? 'missing' : '' ?> <?= $isFocus ? 'is-focus' : '' ?>"<?= $isFocus ? ' id="focus-row"' : '' ?> data-price="<?= $r['price'] ?>" data-cid="<?= $r['cid'] ?>" data-name="<?= Helpers::e($r['name']) ?>" data-base="<?= $base ?>" data-fatura-kisi="<?= $r['fk'] !== null ? (int) $r['fk'] : '' ?>"<?= $altAttr !== '' ? ' data-altfirma="' . $altAttr . '"' : '' ?>>
               <div class="gt-rank" aria-hidden="true"><?= Helpers::e(mb_strtoupper(mb_substr($r['name'], 0, 1, 'UTF-8'), 'UTF-8')) ?></div>
               <div class="cr-firm">
                 <div class="row-title"><span class="status-dot <?= $missing ? 'warn' : '' ?>" hidden></span>
@@ -358,7 +391,7 @@ require __DIR__ . '/partials/header.php';
                 </div>
                 <!-- fable-029b/030 (Ömer): bu ekranda PARA GÖRÜNMEZ (birim fiyat + gün tutarı kaldırıldı;
                      sayım sırasında ekran başkalarına açık olabiliyor). "girilmedi" uyarısı + kırılım kalır. -->
-                <p class="row-meta"><span class="row-amt"><?= $missing ? 'girilmedi' : '' ?></span><span class="meal-split"<?= $r['split'] === '' ? ' hidden' : '' ?>><?= Helpers::e($r['split']) ?></span></p>
+                <p class="row-meta"><span class="row-amt"><?= $missing ? 'girilmedi' : '' ?></span><span class="meal-split"<?= $r['split'] === '' ? ' hidden' : '' ?>><?= Helpers::e($r['split']) ?></span><?php if ($r['altfirma']): ?><span class="alt-split"<?= $r['alt'] === '' ? ' hidden' : '' ?> title="Fatura bölüşümü (salt gösterim) — düzenleme: Fatura Kes"><?= Helpers::e($r['alt']) ?></span><?php endif; ?></p>
               </div>
               <div class="counter">
                 <button class="step-btn" type="button" data-step="-5">−</button>

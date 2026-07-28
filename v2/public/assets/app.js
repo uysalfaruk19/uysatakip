@@ -88,6 +88,57 @@
     setRowMeals(row, mealsFromTotal(input.value, cur), false);
   }
 
+  // fable-051: alt firma bölüşümü — SALT GÖSTERİM (giriş yok; düzenleme yeri Fatura Kes).
+  // Sunucudaki Repo::altFirmaGunDagit ile AYNI kural: hafta içi sabit kotalar sırayla,
+  // KALAN varsayılana; cumartesi/pazar tamamı varsayılana. Kişi azsa sondan kısılır.
+  function altFirmaDagit(total, firms, haftaIci) {
+    var out = {};
+    firms.forEach(function (f) {
+      out[f.kod] = 0;
+    });
+    if (!firms.length || total <= 0) return out;
+    var vars = null;
+    firms.forEach(function (f) {
+      if (vars === null && f.varsayilan) vars = f.kod;
+    });
+    firms.forEach(function (f) {
+      if (vars === null && (f.sabit === null || f.sabit === undefined))
+        vars = f.kod;
+    });
+    if (vars === null) vars = firms[firms.length - 1].kod;
+    if (!haftaIci) {
+      out[vars] = total;
+      return out;
+    }
+    var kalan = total;
+    firms.forEach(function (f) {
+      if (f.kod === vars || f.sabit === null || f.sabit === undefined) return;
+      var pay = Math.min(Math.max(0, f.sabit), kalan);
+      out[f.kod] = pay;
+      kalan -= pay;
+    });
+    out[vars] = kalan;
+    return out;
+  }
+
+  function syncAltSplit(row, billP, p) {
+    var el = row.querySelector(".alt-split");
+    if (!el) return; // alt firması olmayan müşteri → hiçbir şey değişmez
+    var firms = [];
+    try {
+      firms = JSON.parse(row.getAttribute("data-altfirma") || "[]");
+    } catch (e) {}
+    var parts = [];
+    if (firms.length && p > 0) {
+      var pay = altFirmaDagit(billP, firms, !!window.BUGUN_HAFTA_ICI);
+      firms.forEach(function (f) {
+        if (pay[f.kod] > 0) parts.push(pay[f.kod] + " " + f.ad);
+      });
+    }
+    el.textContent = parts.join(" · ");
+    el.hidden = parts.length === 0;
+  }
+
   function recalc() {
     var rows = document.querySelectorAll(".customer-row[data-price]");
     var totPersons = 0,
@@ -108,6 +159,8 @@
       var dot = row.querySelector(".status-dot");
       if (dot) dot.classList.toggle("warn", p === 0);
       row.classList.toggle("missing", p === 0);
+      syncAltSplit(row, billP, p); // fable-051: salt gösterim etiketi
+
       if (p > 0) {
         filled++;
         totPersons += p;
