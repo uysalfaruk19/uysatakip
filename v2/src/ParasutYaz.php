@@ -49,18 +49,24 @@ final class ParasutYaz
     /** Gerçek ağ mı kullanılıyor? (enjekte edilmiş katmanda hız-sınırı beklemesi anlamsız) */
     private bool $gercekAg;
 
+    /** fable-052: kuyruk işleyici (kesim anında tek deneme). @var callable */
+    private $mailIsle;
+
     /**
      * @param Repo         $repo
      * @param string|null  $onayToken sunucu tarafındaki beklenen onay imzası (session'dan)
      * @param callable|null $http     ağ katmanı (test/kuru deneme için enjekte edilir)
+     * @param callable|null $mailIsle fable-052 mail kuyruğu işleyici fn(int $id): array
      */
     public function __construct(
         private Repo $repo,
         private ?string $onayToken = null,
-        ?callable $http = null
+        ?callable $http = null,
+        ?callable $mailIsle = null
     ) {
         $this->gercekAg = $http === null;
         $this->http = $http ?? self::gercekHttp(...);
+        $this->mailIsle = $mailIsle ?? fn(int $id): array => $this->repo->mailKuyrukIsle(1, null, null, $id);
     }
 
     /** Ana şalter: env PARASUT_IRSALIYE_AKTIF. 1/true/on/yes dışında her şey KAPALI sayılır. */
@@ -429,9 +435,12 @@ final class ParasutYaz
             ? 'İrsaliye kesildi ve GÖNDERİLDİ' . ($despatch !== null ? " ($despatch)" : '') . '.'
             : 'İrsaliye kesildi; ' . $gonderimMesaj;
         if ($mail === 'gonderildi') {
-            $mesaj .= ' Mail paylaşıldı' . ($mailMesaj !== '' ? " ($mailMesaj)" : '') . '.';
+            $mesaj .= ' Mail gönderildi' . ($mailMesaj !== '' ? " ($mailMesaj)" : '') . '.';
+        } elseif ($mail === 'sirada') {
+            // fable-052: PDF belge resmileşene kadar hazır olmayabilir → kuyruk 5 dk'da bir dener.
+            $mesaj .= ' Mail SIRADA' . ($mailMesaj !== '' ? " ($mailMesaj)" : '') . ' — PDF hazır olunca gönderilecek.';
         } elseif ($mail === 'hata') {
-            $mesaj .= ' Mail paylaşımı BAŞARISIZ — Paraşüt\'ten elle paylaşın.';
+            $mesaj .= ' Mail BAŞARISIZ — Belge maili ayarlarından kontrol edin.';
         }
         if (!$tasiyiciOk) {
             $mesaj .= ' Ayrıca taşıyıcı bilgisi (plaka/şoför) işlenmedi — Paraşüt\'ten kontrol edin.';
@@ -440,7 +449,7 @@ final class ParasutYaz
             // Kalkanlardan biri çalışmadı: gizleme, söyle (yerel kilit + onay hâlâ devrede).
             $mesaj .= ' (Not: Paraşüt mükerrer sorgusu yapılamadı — elle kesilmiş bir belge varsa çift olabilir.)';
         }
-        return self::sonuc(true, 'kesildi', $mesaj, $docId, $despatch, $tasiyiciOk, $parasutAd, $toplam);
+        return self::sonuc(true, 'kesildi', $mesaj, $docId, $despatch, $tasiyiciOk, $parasutAd, $toplam, $mail);
     }
 
     /**
@@ -516,10 +525,17 @@ final class ParasutYaz
     }
 
     /**
-     * fable-023e: Belgeyi müşterinin mail adres(ler)ine paylaş (Paraşüt 'sharings' ucu).
-     * Canlı kanıt (21 Tem): POST /sharings, 'portal' parametresi ZORUNLU (yoksa 400),
+     * fable-023e: Belgeyi müşterinin mail adres(ler)ine paylaş.
+     *
+     * fable-052 ŞALTERİ (ayar `paylasim_yontemi`):
+     *   'uysa_mail' (VARSAYILAN) → Paraşüt sharings ÇAĞRILMAZ; belge mail kuyruğuna yazılır,
+     *                              PDF indirilip UYSA SMTP'sinden TEK PDF olarak gider.
+     *   'parasut'                → aşağıdaki ESKİ davranış (rollback yolu; kod SİLİNMEDİ).
+     *                              ⚠️ Paraşüt paylaşımı müşteriye ZIP yollar (kanıtlı).
+     *
+     * Eski akışın canlı kanıtı (21 Tem): POST /sharings, 'portal' parametresi ZORUNLU (yoksa 400),
      * başarıda email_status='sent'. Adres yoksa hiç çağrı yapılmaz.
-     * @return array{0:string,1:string} [mail(gonderildi|hata|yok), mesaj(adresler)]
+     * @return array{0:string,1:string} [mail(gonderildi|sirada|hata|yok), mesaj(adresler)]
      */
     private function mailPaylas(int $customerId, string $docId, ?string $despatch, string $gun): array
     {
@@ -531,6 +547,9 @@ final class ParasutYaz
         $adresler = trim((string) ($musteri['irsaliye_mail'] ?? ''));
         if ($adresler === '' || $docId === '') {
             return ['yok', ''];
+        }
+        if ($this->paylasimYontemi() === 'uysa_mail') {
+            return $this->uysaMailKuyruguna('irsaliye', $customerId, $docId, $adresler, $despatch, $gun);
         }
         $tarih = date('d.m.Y', strtotime($gun));
         $konu = 'e-İrsaliye' . ($despatch !== null ? ' ' . $despatch : '') . ' — UYSA YEMEK';
@@ -607,12 +626,15 @@ final class ParasutYaz
     }
 
     private static function sonuc(bool $ok, string $durum, string $mesaj, ?string $docId = null,
-        ?string $despatch = null, bool $tasiyiciOk = false, ?string $parasutAd = null, int $toplam = 0): array
+        ?string $despatch = null, bool $tasiyiciOk = false, ?string $parasutAd = null, int $toplam = 0,
+        string $mail = 'yok'): array
     {
         return [
             'ok' => $ok, 'durum' => $durum, 'mesaj' => $mesaj, 'doc_id' => $docId,
             'despatch_no' => $despatch, 'tasiyici_ok' => $tasiyiciOk,
             'parasut_ad' => $parasutAd, 'toplam' => $toplam,
+            // fable-052: ekran mail göstergesi kuyruk durumunu yansıtsın (gonderildi|sirada|hata|yok)
+            'mail' => $mail,
         ];
     }
 
@@ -1111,9 +1133,11 @@ final class ParasutYaz
         $mesaj = 'Fatura kesildi' . ($faturaNo !== null ? " ($faturaNo)" : '') . '; '
             . ($resm === 'gonderildi' ? 'e-Fatura resmileşti.' : 'e-Fatura resmileşmedi — ' . $resmMsg);
         if ($mail === 'gonderildi') {
-            $mesaj .= ' Mail paylaşıldı' . ($mailMsg !== '' ? " ($mailMsg)" : '') . '.';
+            $mesaj .= ' Mail gönderildi' . ($mailMsg !== '' ? " ($mailMsg)" : '') . '.';
+        } elseif ($mail === 'sirada') {
+            $mesaj .= ' Mail SIRADA' . ($mailMsg !== '' ? " ($mailMsg)" : '') . ' — PDF hazır olunca gönderilecek.';
         } elseif ($mail === 'hata') {
-            $mesaj .= ' Mail paylaşımı BAŞARISIZ — Paraşüt\'ten elle paylaşın.';
+            $mesaj .= ' Mail BAŞARISIZ — Belge maili ayarlarından kontrol edin.';
         }
         return self::faturaSonuc(true, 'kesildi', $mesaj, $faturaId, $faturaNo, $resm, $mail, $hesap['net'], $k['toplam_kisi']);
     }
@@ -1255,8 +1279,10 @@ final class ParasutYaz
     }
 
     /**
-     * Faturayı müşterinin fatura_mail adres(ler)ine paylaş (Paraşüt 'sharings' ucu).
-     * @return array{0:string,1:string} [mail(gonderildi|hata|yok), adresler]
+     * Faturayı müşterinin fatura_mail adres(ler)ine paylaş.
+     * fable-052: `paylasim_yontemi` = 'uysa_mail' ise kuyruğa yazılır (tek PDF, UYSA SMTP);
+     * 'parasut' ise aşağıdaki eski sharings akışı çalışır (ZIP gider — rollback yolu).
+     * @return array{0:string,1:string} [mail(gonderildi|sirada|hata|yok), adresler]
      */
     private function faturaMailPaylas(int $customerId, string $faturaId, ?string $faturaNo): array
     {
@@ -1268,6 +1294,9 @@ final class ParasutYaz
         $adresler = trim((string) ($musteri['fatura_mail'] ?? ''));
         if ($adresler === '' || $faturaId === '') {
             return ['yok', ''];
+        }
+        if ($this->paylasimYontemi() === 'uysa_mail') {
+            return $this->uysaMailKuyruguna('fatura', $customerId, $faturaId, $adresler, $faturaNo, null);
         }
         $konu = 'Fatura' . ($faturaNo !== null ? ' ' . $faturaNo : '') . ' — UYSA YEMEK';
         $r = $this->cagir('POST', '/sharings', ['data' => [
@@ -1286,6 +1315,57 @@ final class ParasutYaz
             return ['hata', ''];
         }
         return ['gonderildi', $adresler];
+    }
+
+    /**
+     * fable-052 şalteri. Ayar okunamazsa (migration henüz uygulanmadıysa) VARSAYILAN 'uysa_mail'
+     * DEĞİL 'parasut' döner — yani tablo yoksa eski, çalışan akış korunur (sessiz veri kaybı yok).
+     */
+    private function paylasimYontemi(): string
+    {
+        try {
+            return $this->repo->paylasimYontemi();
+        } catch (\Throwable $e) {
+            error_log('[UYSA v2 fable-052] paylasim_yontemi okunamadı, eski akışa düşüldü: ' . $e->getMessage());
+            return 'parasut';
+        }
+    }
+
+    /**
+     * Belgeyi mail kuyruğuna al + kesim anında BİR kez göndermeyi dene (normal akışta gecikme
+     * olmasın). PDF henüz hazır değilse 'sirada' döner; cron tekrar dener.
+     * 🔒 Burada ne olursa olsun BELGE GERİ ALINMAZ — mail hatası kesimi çökertmez.
+     * @return array{0:string,1:string} [mail durumu, adresler]
+     */
+    private function uysaMailKuyruguna(
+        string $tur,
+        int $customerId,
+        string $kaynakId,
+        string $adresler,
+        ?string $belgeNo,
+        ?string $gun
+    ): array {
+        try {
+            $e = $this->repo->mailKuyrugaEkle($tur, $customerId, $kaynakId, $adresler, $belgeNo, $gun);
+        } catch (\Throwable $ex) {
+            error_log('[UYSA v2 fable-052] mail kuyruğuna yazılamadı: ' . $ex->getMessage());
+            return ['hata', ''];
+        }
+        if (empty($e['ok'])) {
+            return ['hata', ''];
+        }
+        if (($e['durum'] ?? '') === 'gonderildi') {
+            return ['gonderildi', $adresler]; // mükerrer kalkanı: aynı belge ikinci kez maillenmez
+        }
+        try {
+            $r = ($this->mailIsle)((int) $e['id']);
+            if ((int) ($r['gonderildi'] ?? 0) > 0) {
+                return ['gonderildi', $adresler];
+            }
+        } catch (\Throwable $ex) {
+            error_log('[UYSA v2 fable-052] kuyruk ilk denemesi başarısız: ' . $ex->getMessage());
+        }
+        return ['sirada', $adresler];
     }
 
     /** create yanıtından fatura kalem (detail) id'lerini çıkar (e-Fatura tevkifat params için). */

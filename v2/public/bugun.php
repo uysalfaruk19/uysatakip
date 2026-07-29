@@ -499,13 +499,16 @@ require __DIR__ . '/partials/header.php';
                       }
                   }
                   $kirilim = $parts ? implode(' · ', $parts) : 'sayı yok';
+                  // fable-052: kesilmiş belgenin mail durumu (UYSA kuyruğu) satırda görünsün
+                  $mailNot = ['sirada' => ' · mail sırada', 'gonderildi' => ' · mail gönderildi',
+                      'hata' => ' · MAİL HATASI'][$a['mail'] ?? 'yok'] ?? '';
               ?>
                 <label class="irs-row <?= $a['secilebilir'] ? '' : 'is-off' ?>">
                   <input type="checkbox" class="irs-pick" value="<?= (int) $a['customer_id'] ?>"<?= $a['secilebilir'] ? '' : ' disabled' ?>>
                   <span class="irs-name"><?= Helpers::e($a['name']) ?></span>
                   <span class="irs-meta"><?= Helpers::e($kirilim) ?></span>
                   <?php if (!$a['secilebilir']): ?>
-                    <span class="irs-why"><?= Helpers::e($a['sebep']) ?><?= $a['despatch_no'] ? ' · ' . Helpers::e((string) $a['despatch_no']) : '' ?></span>
+                    <span class="irs-why"><?= Helpers::e($a['sebep']) ?><?= $a['despatch_no'] ? ' · ' . Helpers::e((string) $a['despatch_no']) : '' ?><?= Helpers::e($mailNot) ?></span>
                   <?php endif; ?>
                   <?php if ($a['durum'] === 'bilinmiyor'): ?>
                     <!-- Timeout kilidi çıkmaz sokak olmasın: Paraşüt'ten bakan insan kararını yazar -->

@@ -15,6 +15,14 @@ require __DIR__ . '/../src/bootstrap.php';
 
 use Uysa\Db;
 
+// fable-052 GÜVENLİK AĞI: hiçbir test GERÇEK mail göndermez ve Paraşüt'e ÇIKMAZ.
+// (Testler kendi mock'unu kurar; kuran unutsa bile buradaki reddeden katman tutar.)
+Uysa\Mail::tasiyiciAta(static fn(array $z): array => ['ok' => false, 'mesaj' => 'TEST: SMTP kapalı']);
+Uysa\ParasutPdf::agAta(
+    static fn(string $path, array $query): ?array => null,
+    static fn(string $url): ?string => null
+);
+
 /** Her test için taze şemalı SQLite PDO döndür ve Db'ye enjekte et. */
 function fresh_db(): PDO
 {

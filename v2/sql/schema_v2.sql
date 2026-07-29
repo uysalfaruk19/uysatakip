@@ -678,7 +678,7 @@ CREATE TABLE IF NOT EXISTS `parasut_irsaliye_log` (
   `hata_mesaj`     VARCHAR(500)          DEFAULT NULL,
   `tasiyici_ok`    TINYINT(1)   NOT NULL DEFAULT 0 COMMENT 'dönen belgede plaka/şoför işlendi mi',
   `gonderim`       VARCHAR(16)  NOT NULL DEFAULT 'yok' COMMENT 'gonderildi|hata|yok (fable-023d)',
-  `mail`           VARCHAR(16)  NOT NULL DEFAULT 'yok' COMMENT 'gonderildi|hata|yok (fable-023e)',
+  `mail`           VARCHAR(16)  NOT NULL DEFAULT 'yok' COMMENT 'gonderildi|sirada|hata|yok (fable-023e; sirada=fable-052 kuyruk)',
   `fatura_log_id`  INT UNSIGNED          DEFAULT NULL COMMENT 'faturalanınca parasut_fatura_log.id (aday havuzundan düşer, fable-024)',
   `entered_by`     VARCHAR(64)  NOT NULL DEFAULT '',
   `created_at`     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -710,7 +710,7 @@ CREATE TABLE IF NOT EXISTS `parasut_fatura_log` (
   `toplam_tutar`       DECIMAL(14,2) NOT NULL DEFAULT 0.00 COMMENT 'net (tahsil edilecek) = brüt + KDV − tevkifat',
   `durum`              VARCHAR(16)  NOT NULL DEFAULT 'hata' COMMENT 'kesildi|hata|bilinmiyor|iptal',
   `resmilestirme`      VARCHAR(16)  NOT NULL DEFAULT 'yok' COMMENT 'gonderildi|hata|yok (e-Fatura)',
-  `mail`               VARCHAR(16)  NOT NULL DEFAULT 'yok' COMMENT 'gonderildi|hata|yok',
+  `mail`               VARCHAR(16)  NOT NULL DEFAULT 'yok' COMMENT 'gonderildi|sirada|hata|yok (sirada=fable-052 kuyruk)',
   `hata_mesaj`         VARCHAR(500)          DEFAULT NULL,
   `entered_by`         VARCHAR(64)  NOT NULL DEFAULT '',
   `created_at`         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -735,5 +735,31 @@ INSERT IGNORE INTO `ayar` (`anahtar`, `deger`) VALUES
   ('fatura_cantas_bakir', '1062204894'),
   ('fatura_cantas_hc',    '1062205054'),
   ('fatura_irsaliye_bagla', '1');
+
+-- ── fable-052: belge maili KUYRUĞU (MySQL eşi migrate_049.sql) ──
+-- Paraşüt paylaşımı müşteriye ZIP yolluyor → belgenin PDF'i indirilip UYSA SMTP'sinden
+-- TEK PDF olarak gönderilir. PDF belge resmileşmeden hazır olmayabilir → kuyruk + cron.
+-- 🔒 UNIQUE(tur, kaynak_id) = mükerrer mail kalkanı. Kayıt SİLİNMEZ (gönderim izi).
+CREATE TABLE IF NOT EXISTS `mail_kuyruk` (
+  `id`           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `tur`          ENUM('fatura','irsaliye') NOT NULL,
+  `customer_id`  INT UNSIGNED NOT NULL,
+  `kaynak_id`    VARCHAR(40)  NOT NULL COMMENT 'sales_invoice.id veya shipment_document.id',
+  `belge_no`     VARCHAR(64)  DEFAULT NULL,
+  `gun`          DATE         DEFAULT NULL,
+  `alici`        VARCHAR(400) NOT NULL,
+  `durum`        ENUM('bekliyor','gonderildi','hata') NOT NULL DEFAULT 'bekliyor',
+  `deneme`       INT          NOT NULL DEFAULT 0,
+  `son_hata`     VARCHAR(500) DEFAULT NULL,
+  `gonderim_at`  DATETIME     DEFAULT NULL,
+  `created_at`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_mk_tur_kaynak` (`tur`, `kaynak_id`),
+  KEY `idx_mk_durum` (`durum`, `deneme`),
+  KEY `idx_mk_cust` (`customer_id`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT IGNORE INTO `ayar` (`anahtar`, `deger`) VALUES ('paylasim_yontemi', 'uysa_mail');
 
 SET FOREIGN_KEY_CHECKS = 1;

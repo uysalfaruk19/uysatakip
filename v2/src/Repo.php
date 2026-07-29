@@ -580,6 +580,8 @@ final class Repo
                 'sebep'       => $sebep,
                 'despatch_no' => $log !== null ? ($log['despatch_no'] ?? null) : null,
                 'durum'       => $durum,
+                // fable-052: mail kuyruk durumu (gonderildi|sirada|hata|yok) — ekranda sessiz kalmasın
+                'mail'        => $log !== null ? (string) ($log['mail'] ?? 'yok') : 'yok',
             ];
         }
         return $out;
@@ -809,6 +811,257 @@ final class Repo
         );
         $st->execute(array_merge([$faturaLogId], $ids));
         return $st->rowCount();
+    }
+
+    // ── fable-052: BELGE MAİLİ KUYRUĞU ──────────────────────────────────
+    // Paraşüt'ün paylaşım ucu müşteriye ZIP yolluyor (kanıtlı, seçenek yok) → belgenin PDF'i
+    // indirilip UYSA'nın kendi SMTP'sinden TEK PDF olarak gönderilir. PDF belge resmileşmeden
+    // hazır olmayabilir; bu yüzden gönderim KUYRUĞA alınır, cron (tools/mail_kuyruk.php) dener.
+    // 🔒 UNIQUE(tur, kaynak_id) = mükerrer mail kalkanı — aynı belge iki kez maillenmez.
+
+    /** Kuyruk denemesi bu sayıya ulaşınca satır 'hata'ya düşer (≈40 dk sonra pes eder). */
+    public const MAIL_MAX_DENEME = 8;
+
+    /** Denenen satırın "kirası" (dk) — bu süre dolmadan ikinci işleyici aynı satıra dokunmaz. */
+    public const MAIL_KIRA_DK = 3;
+
+    /**
+     * Paylaşım yöntemi şalteri: 'uysa_mail' (migrasyon sonrası varsayılan) | 'parasut' (eski, ZIP).
+     * ⚠️ AYAR SATIRI HİÇ YOKSA 'parasut' döner: kod deploy edilip migrate_049 henüz uygulanmadıysa
+     * (mail_kuyruk tablosu da yoktur) eski ÇALIŞAN akış sürer — mail sessizce kesilmez.
+     */
+    public function paylasimYontemi(): string
+    {
+        $ham = $this->ayar('paylasim_yontemi', null);
+        if ($ham === null || trim($ham) === '') {
+            return 'parasut';
+        }
+        return strtolower(trim($ham)) === 'parasut' ? 'parasut' : 'uysa_mail';
+    }
+
+    /**
+     * Kuyruğa al. Alıcı boşsa KAYIT AÇILMAZ (hata değil — müşteri mail istemiyor).
+     * Aynı (tur, kaynak_id) ikinci kez gelirse yeni satır AÇILMAZ (mükerrer kalkanı).
+     * @return array{ok:bool,id:int,durum:string,mesaj:string}
+     */
+    public function mailKuyrugaEkle(
+        string $tur,
+        int $customerId,
+        string $kaynakId,
+        string $alici,
+        ?string $belgeNo = null,
+        ?string $gun = null
+    ): array {
+        $tur = $tur === 'fatura' ? 'fatura' : 'irsaliye';
+        $kaynakId = trim($kaynakId);
+        $alici = trim($alici);
+        if ($kaynakId === '' || $alici === '') {
+            return ['ok' => false, 'id' => 0, 'durum' => 'yok', 'mesaj' => 'mail adresi/belge id yok'];
+        }
+        $mevcut = $this->mailKuyrukSatiri($tur, $kaynakId);
+        if ($mevcut !== null) {
+            return ['ok' => true, 'id' => (int) $mevcut['id'], 'durum' => (string) $mevcut['durum'],
+                'mesaj' => 'zaten kuyrukta'];
+        }
+        $sql = $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite'
+            ? 'INSERT OR IGNORE INTO mail_kuyruk (tur, customer_id, kaynak_id, belge_no, gun, alici) VALUES (?, ?, ?, ?, ?, ?)'
+            : 'INSERT IGNORE INTO mail_kuyruk (tur, customer_id, kaynak_id, belge_no, gun, alici) VALUES (?, ?, ?, ?, ?, ?)';
+        $this->pdo->prepare($sql)->execute([$tur, $customerId, $kaynakId,
+            ($belgeNo ?? '') !== '' ? $belgeNo : null, ($gun ?? '') !== '' ? $gun : null, mb_substr($alici, 0, 400)]);
+        $satir = $this->mailKuyrukSatiri($tur, $kaynakId);
+        return $satir === null
+            ? ['ok' => false, 'id' => 0, 'durum' => 'hata', 'mesaj' => 'kuyruğa yazılamadı']
+            : ['ok' => true, 'id' => (int) $satir['id'], 'durum' => (string) $satir['durum'], 'mesaj' => 'sıraya alındı'];
+    }
+
+    /** @return array<string,mixed>|null */
+    public function mailKuyrukSatiri(string $tur, string $kaynakId): ?array
+    {
+        $st = $this->pdo->prepare('SELECT * FROM mail_kuyruk WHERE tur = ? AND kaynak_id = ?');
+        $st->execute([$tur, $kaynakId]);
+        $r = $st->fetch();
+        return $r ?: null;
+    }
+
+    /**
+     * İşlenecek satırlar. KİRA (lease): son denemesinin üzerinden MAIL_KIRA_DK geçmemiş satıra
+     * ikinci bir işleyici DOKUNMAZ — iki cron çakışırsa aynı belge iki kez maillenmesin.
+     * Hiç denenmemiş (deneme=0) satır beklemeden alınır; onu da claim (deneme guard) tekilleştirir.
+     * @return array<int,array<string,mixed>>
+     */
+    public function mailKuyrukBekleyenler(int $limit = 20): array
+    {
+        $limit = max(1, min(200, $limit));
+        $esik = $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite'
+            ? "datetime('now','-" . self::MAIL_KIRA_DK . " minutes')"
+            : 'DATE_SUB(NOW(), INTERVAL ' . self::MAIL_KIRA_DK . ' MINUTE)';
+        $st = $this->pdo->prepare(
+            "SELECT * FROM mail_kuyruk WHERE durum = 'bekliyor' AND (deneme = 0 OR updated_at < $esik)
+             ORDER BY id LIMIT $limit"
+        );
+        $st->execute();
+        return $st->fetchAll();
+    }
+
+    /** Son N kuyruk satırı (ayarlar ekranı görünürlüğü). @return array<int,array<string,mixed>> */
+    public function mailKuyrukSon(int $limit = 30): array
+    {
+        $limit = max(1, min(200, $limit));
+        return $this->pdo->query(
+            "SELECT k.*, c.name AS musteri FROM mail_kuyruk k
+             LEFT JOIN customers c ON c.id = k.customer_id
+             ORDER BY k.id DESC LIMIT $limit"
+        )->fetchAll();
+    }
+
+    /** @return array{bekliyor:int,gonderildi:int,hata:int} */
+    public function mailKuyrukOzet(): array
+    {
+        $out = ['bekliyor' => 0, 'gonderildi' => 0, 'hata' => 0];
+        foreach ($this->pdo->query('SELECT durum, COUNT(*) AS n FROM mail_kuyruk GROUP BY durum')->fetchAll() as $r) {
+            $d = (string) $r['durum'];
+            if (isset($out[$d])) {
+                $out[$d] = (int) $r['n'];
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Kuyruğu işle: PDF getir → yoksa deneme++ (MAIL_MAX_DENEME'de 'hata') → varsa mail at.
+     *
+     * 🔒 Ağ bağımlılıkları ENJEKTE EDİLEBİLİR (testler ağa çıkmaz, gerçek mail gitmez):
+     *   $pdfGetir  fn(string $tur, string $kaynakId): ?string
+     *   $mailGonder fn(string $to, string $konu, string $govde, array $ekler): array{ok:bool,mesaj:string}
+     * Enjekte edilmezse gerçek katmanlar kullanılır AMA kredensiyal yoksa hiç ağ denenmez
+     * (satırlar 'bekliyor' kalır, deneme ARTMAZ — yapılandırma eksikliği belgeyi yakmaz).
+     *
+     * @return array{islenen:int,gonderildi:int,bekleyen:int,hata:int,atlandi:string}
+     */
+    public function mailKuyrukIsle(
+        int $limit = 20,
+        ?callable $pdfGetir = null,
+        ?callable $mailGonder = null,
+        ?int $sadeceId = null
+    ): array {
+        $out = ['islenen' => 0, 'gonderildi' => 0, 'bekleyen' => 0, 'hata' => 0, 'atlandi' => ''];
+        if ($pdfGetir === null && !\Uysa\ParasutPdf::yapilandirilmis()) {
+            $out['atlandi'] = 'Paraşüt kredensiyali yok';
+            return $out;
+        }
+        if ($mailGonder === null && !\Uysa\Mail::yapilandirilmis()) {
+            $out['atlandi'] = 'SMTP yapılandırılmamış';
+            return $out;
+        }
+        $pdfGetir ??= static fn(string $tur, string $kid): ?string => \Uysa\ParasutPdf::belgePdf($tur, $kid);
+        $mailGonder ??= static fn(string $to, string $konu, string $govde, array $ekler): array
+            => \Uysa\Mail::gonder($to, $konu, $govde, $ekler);
+
+        if ($sadeceId !== null) {
+            $st = $this->pdo->prepare("SELECT * FROM mail_kuyruk WHERE id = ? AND durum = 'bekliyor'");
+            $st->execute([$sadeceId]);
+            $satirlar = $st->fetchAll();
+        } else {
+            $satirlar = $this->mailKuyrukBekleyenler($limit);
+        }
+
+        foreach ($satirlar as $s) {
+            $id = (int) $s['id'];
+            $deneme = (int) $s['deneme'];
+            // 🔒 ATOMİK CLAIM: iki cron çakışırsa aynı belge İKİ KEZ maillenmesin. Satırı önce
+            // deneme sayacını artırarak "kap"; UPDATE tutmazsa başka süreç almış demektir.
+            $claim = $this->pdo->prepare(
+                'UPDATE mail_kuyruk SET deneme = ?, durum = ?, updated_at = ' . $this->simdiSql()
+                . " WHERE id = ? AND durum = 'bekliyor' AND deneme = ?"
+            );
+            $yeni = $deneme + 1;
+            $claim->execute([$yeni, $yeni >= self::MAIL_MAX_DENEME ? 'hata' : 'bekliyor', $id, $deneme]);
+            if ($claim->rowCount() !== 1) {
+                continue; // eşzamanlı başka işleyici aldı
+            }
+
+            $out['islenen']++;
+            $tur = (string) $s['tur'];
+            $belgeNo = ($s['belge_no'] ?? null) !== null ? (string) $s['belge_no'] : null;
+            $gun = ($s['gun'] ?? null) !== null ? (string) $s['gun'] : null;
+            $pesEdildi = $yeni >= self::MAIL_MAX_DENEME;
+
+            $pdf = null;
+            try {
+                $pdf = $pdfGetir($tur, (string) $s['kaynak_id']);
+            } catch (\Throwable $e) {
+                $pdf = null;
+            }
+            if (!is_string($pdf) || $pdf === '') {
+                // PDF henüz hazır değil (belge resmileşiyor olabilir) → tekrar denenecek.
+                $this->mailKuyrukHataYaz($id, 'PDF henüz hazır değil');
+                if ($pesEdildi) {
+                    $out['hata']++;
+                    $this->mailDurumunuLogaYaz($s, 'hata'); // pes edildi → ekranda sessiz kalmaz
+                } else {
+                    $out['bekleyen']++;
+                }
+                continue;
+            }
+
+            $r = ['ok' => false, 'mesaj' => ''];
+            try {
+                $r = $mailGonder(
+                    (string) $s['alici'],
+                    Mail::belgeKonusu($tur, $belgeNo, $gun),
+                    Mail::belgeGovdesi($tur),
+                    [['ad' => Mail::belgeDosyaAdi($tur, $belgeNo, $gun), 'tip' => 'application/pdf', 'veri' => $pdf]]
+                );
+            } catch (\Throwable $e) {
+                $r = ['ok' => false, 'mesaj' => 'gönderim istisnası: ' . mb_substr($e->getMessage(), 0, 160)];
+            }
+            if (!empty($r['ok'])) {
+                $this->pdo->prepare(
+                    "UPDATE mail_kuyruk SET durum = 'gonderildi', son_hata = NULL,
+                     gonderim_at = " . $this->simdiSql() . ', updated_at = ' . $this->simdiSql() . ' WHERE id = ?'
+                )->execute([$id]);
+                $out['gonderildi']++;
+                $this->mailDurumunuLogaYaz($s, 'gonderildi');
+                continue;
+            }
+            $this->mailKuyrukHataYaz($id, (string) ($r['mesaj'] ?? 'bilinmeyen hata'));
+            if ($pesEdildi) {
+                $out['hata']++;
+                $this->mailDurumunuLogaYaz($s, 'hata');
+            } else {
+                $out['bekleyen']++;
+            }
+        }
+        return $out;
+    }
+
+    private function simdiSql(): string
+    {
+        return $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite' ? "datetime('now')" : 'NOW()';
+    }
+
+    /** Başarısız denemenin sebebini yaz (durum/deneme claim adımında zaten ayarlandı). */
+    private function mailKuyrukHataYaz(int $id, string $hata): void
+    {
+        $this->pdo->prepare(
+            'UPDATE mail_kuyruk SET son_hata = ?, updated_at = ' . $this->simdiSql() . ' WHERE id = ?'
+        )->execute([mb_substr($hata, 0, 500), $id]);
+    }
+
+    /** Kesim kaydındaki `mail` göstergesi kuyruk sonucunu yansıtsın (ekranda sessiz kalmasın). */
+    private function mailDurumunuLogaYaz(array $satir, string $mailDurum): void
+    {
+        try {
+            if ((string) $satir['tur'] === 'irsaliye') {
+                $this->pdo->prepare('UPDATE parasut_irsaliye_log SET mail = ? WHERE parasut_doc_id = ?')
+                    ->execute([$mailDurum, (string) $satir['kaynak_id']]);
+                return;
+            }
+            $this->pdo->prepare('UPDATE parasut_fatura_log SET mail = ? WHERE parasut_fatura_id = ?')
+                ->execute([$mailDurum, (string) $satir['kaynak_id']]);
+        } catch (\Throwable $e) {
+            error_log('[UYSA v2 fable-052] mail durumu loga yazılamadı: ' . $e->getMessage());
+        }
     }
 
     /**

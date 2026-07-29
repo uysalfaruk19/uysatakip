@@ -670,7 +670,7 @@ CREATE TABLE IF NOT EXISTS parasut_irsaliye_log (
   hata_mesaj TEXT,
   tasiyici_ok INTEGER NOT NULL DEFAULT 0,  -- dönen belgede plaka/şoför işlendi mi
   gonderim TEXT NOT NULL DEFAULT 'yok' CHECK(gonderim IN ('gonderildi','hata','yok')), -- fable-023d
-  mail TEXT NOT NULL DEFAULT 'yok' CHECK(mail IN ('gonderildi','hata','yok')),         -- fable-023e
+  mail TEXT NOT NULL DEFAULT 'yok' CHECK(mail IN ('gonderildi','sirada','hata','yok')), -- fable-023e (+052 sirada)
   fatura_log_id INTEGER REFERENCES parasut_fatura_log(id) ON DELETE SET NULL, -- fable-024: faturalanınca işaretlenir → aday listeden düşer
   entered_by TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -700,7 +700,7 @@ CREATE TABLE IF NOT EXISTS parasut_fatura_log (
   toplam_tutar REAL NOT NULL DEFAULT 0,     -- net (tahsil edilecek) = brüt + KDV − tevkifat
   durum TEXT NOT NULL DEFAULT 'hata' CHECK(durum IN ('kesildi','hata','bilinmiyor','iptal')),
   resmilestirme TEXT NOT NULL DEFAULT 'yok' CHECK(resmilestirme IN ('gonderildi','hata','yok')), -- e-Fatura
-  mail TEXT NOT NULL DEFAULT 'yok' CHECK(mail IN ('gonderildi','hata','yok')),
+  mail TEXT NOT NULL DEFAULT 'yok' CHECK(mail IN ('gonderildi','sirada','hata','yok')),
   hata_mesaj TEXT,
   entered_by TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -751,3 +751,29 @@ CREATE INDEX IF NOT EXISTS idx_sf_cust ON satis_faturasi(customer_id, fatura_tar
 INSERT OR IGNORE INTO ayar (anahtar, deger) VALUES
   ('kar_kaynak_varsayilan', 'fatura'),
   ('fatura_gecikme_uyari_gun', '3');
+
+-- ── fable-052: belge maili KUYRUĞU (MySQL eşi migrate_049.sql) ──
+-- Paraşüt paylaşımı müşteriye ZIP yolluyor → belgenin PDF'i indirilip UYSA SMTP'sinden
+-- TEK PDF olarak gönderilir. PDF belge resmileşmeden hazır olmayabilir → kuyruk + cron.
+-- 🔒 UNIQUE(tur, kaynak_id) = mükerrer mail kalkanı. Kayıt SİLİNMEZ (gönderim izi).
+CREATE TABLE IF NOT EXISTS mail_kuyruk (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  tur         TEXT NOT NULL CHECK(tur IN ('fatura','irsaliye')),
+  customer_id INTEGER NOT NULL,
+  kaynak_id   TEXT NOT NULL,
+  belge_no    TEXT,
+  gun         TEXT,
+  alici       TEXT NOT NULL,
+  durum       TEXT NOT NULL DEFAULT 'bekliyor' CHECK(durum IN ('bekliyor','gonderildi','hata')),
+  deneme      INTEGER NOT NULL DEFAULT 0,
+  son_hata    TEXT,
+  gonderim_at TEXT,
+  created_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(tur, kaynak_id)
+);
+CREATE INDEX IF NOT EXISTS idx_mk_durum ON mail_kuyruk(durum, deneme);
+CREATE INDEX IF NOT EXISTS idx_mk_cust ON mail_kuyruk(customer_id, created_at);
+
+-- Paylaşım yöntemi şalteri: 'uysa_mail' (varsayılan, tek PDF) | 'parasut' (eski, ZIP gider)
+INSERT OR IGNORE INTO ayar (anahtar, deger) VALUES ('paylasim_yontemi', 'uysa_mail');

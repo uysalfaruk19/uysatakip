@@ -508,8 +508,9 @@
     }
 
     function blok(s) {
+      // fable-052: mail hatası da sarıya düşürür (belge kesildi ama müşteriye gitmedi).
       var cls = s.ok
-        ? s.resmilestirme === "gonderildi"
+        ? s.resmilestirme === "gonderildi" && s.mail !== "hata"
           ? "ok"
           : "warn"
         : "err";

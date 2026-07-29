@@ -310,10 +310,21 @@
           var s = r.sonuc || {};
           if (s.ok) {
             basarili++;
+            // fable-052: mail artık UYSA kuyruğundan gidiyor — durumu satırda görünsün.
+            var mailNot =
+              s.mail === "sirada"
+                ? " · mail sırada"
+                : s.mail === "gonderildi"
+                  ? " · mail gönderildi"
+                  : s.mail === "hata"
+                    ? " · MAİL HATASI"
+                    : "";
             satir(
               cid,
-              s.durum === "kesildi" && !s.tasiyici_ok ? "warn" : "ok",
-              s.despatch_no || "",
+              s.durum === "kesildi" && (!s.tasiyici_ok || s.mail === "hata")
+                ? "warn"
+                : "ok",
+              (s.despatch_no || "") + mailNot,
               s.mesaj || "",
             );
           } else {
