@@ -260,4 +260,28 @@ final class AltFirmaTest extends TestCase
         $this->assertSame(60, $d['fatura_cantas_icdis']['kisi'], '2 × 30');
         $this->assertSame(20, $d['fatura_cantas_bakir']['kisi'], '2 × 10');
     }
+
+    /**
+     * fable-054 REGRESYON: faturaAdaylari bölüşümü musteri_altfirma'dan üretirken cariyi
+     * 'contact_id' anahtarından okumalı. Yanlış anahtar okunursa cari BOŞ görünür ve müşteri
+     * "Bölüşüm cari eşleşmesi eksik" diye FATURA KESİLEMEZ hale gelir (canlıda yaşandı).
+     */
+    public function testFaturaAdaylariBolusumCarisiDolulur(): void
+    {
+        $cid = $this->seedCantas();
+        $this->seedTemmuz($cid);
+
+        $bulundu = null;
+        foreach ($this->repo->faturaAdaylari('2026-07-01', '2026-07-31') as $a) {
+            if ((int) $a['customer_id'] === $cid) {
+                $bulundu = $a;
+            }
+        }
+        self::assertNotNull($bulundu, 'aylık müşteri adaylarda yok');
+        self::assertNotEmpty($bulundu['bolusum'] ?? [], 'bölüşüm üretilmedi');
+        foreach ($bulundu['bolusum'] as $p) {
+            self::assertNotSame('', $p['contact_id'], 'alt firma carisi BOŞ geldi: ' . $p['ad']);
+        }
+        self::assertTrue((bool) $bulundu['secilebilir'], 'cari dolu ama seçilemez: ' . ($bulundu['sebep'] ?? ''));
+    }
 }

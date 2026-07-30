@@ -1161,7 +1161,9 @@ final class Repo
                     $bolusum[] = [
                         'key'        => (string) $a['kod'],
                         'ad'         => (string) $a['ad'],
-                        'contact_id' => trim((string) ($a['parasut_contact_id'] ?? '')),
+                        // altFirmalar() cariyi 'contact_id' adıyla döndürür (kolon adı
+                        // parasut_contact_id DEĞİL) ve boşsa ayar tablosundan tamamlar.
+                        'contact_id' => trim((string) ($a['contact_id'] ?? '')),
                     ];
                 }
             }
