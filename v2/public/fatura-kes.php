@@ -165,11 +165,15 @@ if ($method === 'POST') {
                     $h = ParasutYaz::faturaHesap([['miktar' => $kisi, 'birim' => (float) $a['birim']]], 10.0, null);
                     $altNet += $h['net'];
                     $partOut[] = ['ad' => $pt['ad'], 'kisi' => $kisi, 'net' => $h['net']];
-                    $govdeler[$pt['ad']] = $yaz->aylikGovde($pt['contact_id'], $son, $kisi, (float) $a['birim'], (int) $a['vade_gun'], $pt['ad'] . ' — yemek hizmet bedeli');
+                    $govdeler[$pt['ad']] = $yaz->aylikGovde($pt['contact_id'], (string) ($a['donem_son'] ?? $son), $kisi, (float) $a['birim'], (int) $a['vade_gun'], $pt['ad'] . ' — yemek hizmet bedeli');
                 }
                 // ── fable-029: aylık sistem kontrolleri ──
+                // fable-055: kontroller de AY dönemine bakar (ekrandaki haftalık aralığa değil),
+                // yoksa "kayıtsız gün" listesi ayın sadece bir haftasını denetlerdi.
+                $kBas = (string) ($a['donem_bas'] ?? $bas);
+                $kSon = (string) ($a['donem_son'] ?? $son);
                 $kontroller = [];
-                $gunlerAy = $repo->customerMealsRange($cid, $bas, $son);
+                $gunlerAy = $repo->customerMealsRange($cid, $kBas, $kSon);
                 $kayitliSet = [];
                 foreach ($gunlerAy as $g) {
                     if ((int) $g['toplam'] > 0) {
@@ -178,7 +182,7 @@ if ($method === 'POST') {
                 }
                 // Dönem içi GEÇMİŞ hafta içi günlerden kaydı olmayanlar (eksik gün → fatura düşük kalır)
                 $eksikGun = [];
-                for ($d = strtotime($bas); $d <= min(strtotime($son), strtotime('yesterday')); $d += 86400) {
+                for ($d = strtotime($kBas); $d <= min(strtotime($kSon), strtotime('yesterday')); $d += 86400) {
                     if ((int) date('N', $d) <= 5 && !isset($kayitliSet[date('Y-m-d', $d)])) {
                         $eksikGun[] = date('d.m', $d);
                     }
@@ -281,11 +285,15 @@ if ($method === 'POST') {
                 'mesaj' => $r['mesaj'], 'fatura_no' => $r['fatura_no'], 'resmilestirme' => $r['resmilestirme'],
                 'mail' => $r['mail'], 'net' => $r['net']];
         } else {
+            // fable-055: aylık faturanın dönemi EKRANDAKİ dönem değil, ayın tamamıdır —
+            // haftalık turda seçilse bile fatura "01.07 - 31.07 dönemi" olarak kesilir.
+            $aBas = (string) ($a['donem_bas'] ?? $bas);
+            $aSon = (string) ($a['donem_son'] ?? $son);
             foreach ((array) ($item['parts'] ?? []) as $pt) {
                 if ((int) ($pt['kisi'] ?? 0) <= 0) {
                     continue; // 0 kişi = fatura kesilmez (onay özetinde görünür, sessiz değil)
                 }
-                $r = $yaz->createMonthlyInvoice($tek, $bas, $son, $pt, ['onay' => $imza, 'actor' => (string) $u['username']]);
+                $r = $yaz->createMonthlyInvoice($tek, $aBas, $aSon, $pt, ['onay' => $imza, 'actor' => (string) $u['username']]);
                 if ($r['ok']) {
                     $basarili++;
                 }
@@ -462,6 +470,8 @@ require __DIR__ . '/partials/header.php';
                         // öne alınır — CANTAŞ'ta üretim 50, fatura 70 kişiden (fable-040) ve
                         // ekranda önce 1180 görünmesi "eksik" izlenimi veriyordu. Üretim adedi
                         // yine gösterilir (gizlenmez) ama parantezde, ikincil. ?>
+                  <?php // fable-055: aylık müşteri ekrandaki dönemden BAĞIMSIZ — ayın tamamı ?>
+                  <span class="badge-soft badge-blue"><?= Helpers::e(ay_label_tr(substr((string) ($a['donem_bas'] ?? $bas), 0, 7))) ?> · tam ay</span>
                   Faturaya esas: <strong><?= $hedefAdet > 0 ? $hedefAdet : (int) $a['adet'] ?></strong> kişi
                   × ₺<?= Helpers::money((float) $a['birim']) ?>
                   = <strong>₺<?= Helpers::money((($hedefAdet > 0 ? $hedefAdet : (int) $a['adet'])) * (float) $a['birim']) ?></strong>

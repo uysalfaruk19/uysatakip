@@ -105,6 +105,9 @@
       [].slice
         .call(document.querySelectorAll(".ftr-pick:not([disabled])"))
         .forEach(function (c) {
+          // fable-055 (Ömer): "Tümünü seç" AYLIK müşteriyi almaz — haftalık turda CANTAŞ/
+          // Marmara yanlışlıkla kesilmesin; onlar ay sonunda tek tek seçilir.
+          if (rowOf(c) && rowOf(c).dataset.tip === "aylik") return;
           c.checked = on;
           toggleBolusum(rowOf(c), on);
         });

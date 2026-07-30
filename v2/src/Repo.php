@@ -1146,7 +1146,13 @@ final class Repo
             }
 
             // ── aylık müşteri (irsaliye_aktif=0) ──
-            $adet = $this->productionPersonsRange($cid, $bas, $son);
+            // fable-055 (Ömer): "CANTAŞ ve Marmara'da haftalık sayıları çekiyor, halbuki aylık
+            // çekmesi lazım." Aylık müşteri AYDA BİR kesilir; ekrandaki dönem haftalık olsa bile
+            // faturası ayın TAMAMINDAN doğar. Ay, dönem BAŞLANGICININ ayıdır (hafta ay sınırını
+            // aşsa bile içinde bulunulan ay faturalanır). İrsaliyeli müşteride hiçbir şey değişmez.
+            $aylikBas = date('Y-m-01', strtotime($bas));
+            $aylikSon = date('Y-m-t', strtotime($bas));
+            $adet = $this->productionPersonsRange($cid, $aylikBas, $aylikSon);
             if ($adet <= 0 && $kilit === null) {
                 continue;
             }
@@ -1213,14 +1219,18 @@ final class Repo
                 // fable-051: dönemin FATURA kişisi (ciro/birim fiyat) — fable-040 kuralı olan
                 // müşteride üretimden FARKLIDIR (CANTAŞ 50/70). Bölüşüm hedefi budur; 'adet'
                 // (gerçek üretim) semantiği DEĞİŞMEDİ — bölüşümsüz aylık fatura ondan kesilir.
-                'fatura_adet' => array_sum($this->gunFaturaKisiMap($cid, $bas, $son)),
+                'fatura_adet' => array_sum($this->gunFaturaKisiMap($cid, $aylikBas, $aylikSon)),
+                // fable-055: aylık müşterinin GERÇEK fatura dönemi — ekrandaki dönem ne olursa
+                // olsun ayın tamamı. Kesim ve fatura açıklaması bu tarihleri kullanır.
+                'donem_bas'   => $aylikBas,
+                'donem_son'   => $aylikSon,
                 'birim'       => $birim,
                 'vade_gun'    => (int) ($c['fatura_vade_gun'] ?? 1),
                 'bolusum'     => $bolusum,
                 'son_bolusum' => $bolusum !== null ? $this->faturaSonBolusum($cid) : null,
                 // fable-051: desen bazlı 3'lü bölüşüm (gün gün hesaplanır) — pencere DOLU gelsin.
                 // Boş dizi = alt firma tanımlı değil → eski davranış (son ayın oranları) sürer.
-                'altfirma'    => $bolusum !== null ? $this->altFirmaDagilim($cid, $bas, $son) : [],
+                'altfirma'    => $bolusum !== null ? $this->altFirmaDagilim($cid, $aylikBas, $aylikSon) : [],
                 'secilebilir' => $secilebilir,
                 'sebep'       => $sebep,
             ];

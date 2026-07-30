@@ -284,4 +284,40 @@ final class AltFirmaTest extends TestCase
         }
         self::assertTrue((bool) $bulundu['secilebilir'], 'cari dolu ama seçilemez: ' . ($bulundu['sebep'] ?? ''));
     }
+
+    /**
+     * fable-055 (Ömer): "CANTAŞ ve Marmara'da haftalık sayıları çekiyor, aylık çekmesi lazım."
+     * Aylık müşteri ekrandaki dönem HAFTALIK olsa bile ayın TAMAMINDAN faturalanır.
+     */
+    public function testAylikMusteriHaftalikDonemdeDeAyinTamaminiCeker(): void
+    {
+        $cid = $this->seedCantas();
+        $this->seedTemmuz($cid);
+
+        $al = function (string $bas, string $son) use ($cid): ?array {
+            foreach ($this->repo->faturaAdaylari($bas, $son) as $a) {
+                if ((int) $a['customer_id'] === $cid) {
+                    return $a;
+                }
+            }
+            return null;
+        };
+
+        $hafta = $al('2026-07-22', '2026-07-28');   // haftalık tur
+        $ay = $al('2026-07-01', '2026-07-31');      // ay sonu turu
+
+        self::assertNotNull($hafta, 'haftalık dönemde aylık müşteri listelenmedi');
+        self::assertSame(1640, (int) $hafta['fatura_adet'], 'haftalık dönemde ay toplamı gelmeli');
+        self::assertSame((int) $ay['fatura_adet'], (int) $hafta['fatura_adet'], 'iki dönemde farklı sayı');
+        self::assertSame('2026-07-01', $hafta['donem_bas']);
+        self::assertSame('2026-07-31', $hafta['donem_son']);
+
+        // bölüşüm de ay toplamından doğmalı (720/690/230)
+        $kisiler = [];
+        foreach ($hafta['altfirma'] as $v) {
+            $kisiler[] = (int) $v['kisi'];
+        }
+        sort($kisiler);
+        self::assertSame([230, 690, 720], $kisiler, 'haftalık dönemde bölüşüm ay toplamından gelmedi');
+    }
 }
