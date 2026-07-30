@@ -1151,8 +1151,22 @@ final class Repo
                 continue;
             }
             $bolusum = null;
+            // fable-053: bölüşümün TEK KAYNAĞI musteri_altfirma tablosu — alt firma tanımlıysa
+            // pencere ondan doğar (Marmara/Gebze Palet ancak böyle görünür). customers.fatura_bolusum
+            // JSON'u yalnız tablo boşken okunur: eski kayıtlar (CANTAŞ) migration'sız da çalışsın.
+            $altlar = $this->altFirmalar($cid);
+            if ($altlar) {
+                $bolusum = [];
+                foreach ($altlar as $a) {
+                    $bolusum[] = [
+                        'key'        => (string) $a['kod'],
+                        'ad'         => (string) $a['ad'],
+                        'contact_id' => trim((string) ($a['parasut_contact_id'] ?? '')),
+                    ];
+                }
+            }
             $bRaw = trim((string) ($c['fatura_bolusum'] ?? ''));
-            if ($bRaw !== '') {
+            if ($bolusum === null && $bRaw !== '') {
                 $dec = json_decode($bRaw, true);
                 if (is_array($dec)) {
                     $bolusum = [];
