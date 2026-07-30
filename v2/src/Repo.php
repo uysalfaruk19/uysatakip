@@ -1430,7 +1430,7 @@ final class Repo
      * @param list<array<string,mixed>> $firmalar altFirmalar() çıktısı (sıralı)
      * @return array<string,int> kod => kişi
      */
-    public static function altFirmaGunDagit(int $faturaKisi, string $gun, array $firmalar): array
+    public static function altFirmaGunDagit(int $faturaKisi, string $gun, array $firmalar, bool $tatil = false): array
     {
         $out = [];
         foreach ($firmalar as $f) {
@@ -1440,8 +1440,11 @@ final class Repo
             return $out;
         }
         $vars = self::altFirmaVarsayilanKod($firmalar);
-        if ((int) date('N', strtotime($gun)) >= 6) {
-            $out[$vars] = $faturaKisi; // Ömer kuralı: cumartesi/pazar TAMAMI varsayılan firmaya
+        // fable-060 (Ömer): "tatil günlerinde oran kuralı olmasın — öyle olunca sayıyı tek
+        // firmaya giremiyorum." RESMİ TATİL hafta sonu gibi davranır: sabit kotalar (İç-Dış 30,
+        // Bakır 10) uygulanmaz, tamamı varsayılan firmaya gelir; Ömer oradan istediği firmaya taşır.
+        if ($tatil || (int) date('N', strtotime($gun)) >= 6) {
+            $out[$vars] = $faturaKisi; // cumartesi/pazar/resmi tatil → TAMAMI varsayılan firmaya
             return $out;
         }
         $kalan = $faturaKisi;
@@ -1502,6 +1505,11 @@ final class Repo
             $out[$f['kod']] = ['ad' => $f['ad'], 'contact_id' => $f['contact_id'], 'kisi' => 0, 'tutar' => 0.0];
         }
         $elle = $this->altFirmaElleAralik($customerId, $bas, $son);
+        // fable-060: tatil günleri TEK sorguda alınır (gün gün tatilMi() çağırmak N+1 olurdu).
+        $tatilSet = [];
+        foreach ($this->resmiTatiller(true, $bas, $son) as $t) {
+            $tatilSet[(string) $t['tarih']] = true;
+        }
         $fiyat = [];
         foreach ($this->gunFaturaKisiMap($customerId, $bas, $son) as $gun => $kisi) {
             $ay = substr($gun, 0, 7);
@@ -1510,7 +1518,7 @@ final class Repo
             }
             $pay = isset($elle[$gun])
                 ? self::altFirmaElleDagit($kisi, $elle[$gun], $firmalar)
-                : self::altFirmaGunDagit($kisi, $gun, $firmalar);
+                : self::altFirmaGunDagit($kisi, $gun, $firmalar, isset($tatilSet[$gun]));
             foreach ($pay as $kod => $adet) {
                 $out[$kod]['kisi'] += $adet;
                 $out[$kod]['tutar'] += $adet * $fiyat[$ay];

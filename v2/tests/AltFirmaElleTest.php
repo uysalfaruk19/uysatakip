@@ -77,23 +77,25 @@ final class AltFirmaElleTest extends TestCase
         $cid = $this->seedCantas();
         $this->seedTemmuzTatilli($cid);
 
-        // Önce mevcut (desen) hâli — canlı çıpa
+        // Önce mevcut (desen) hâli — canlı çıpa.
+        // fable-060: RESMİ TATİLDE oran kuralı uygulanmaz (hafta sonu gibi) → 15 Tem'in 36
+        // kişisi zaten varsayılan firmaya (HC) düşer; Ömer oradan istediği firmaya taşır.
         $once = $this->ozet($cid);
-        self::assertSame(690, $once['fatura_cantas_hc'], 'desen HC (22×30 + 2×15 cmt)');
-        self::assertSame(690, $once['fatura_cantas_icdis'], 'desen İç-Dış (22×30 + 15 Tem 30)');
-        self::assertSame(226, $once['fatura_cantas_bakir'], 'desen Bakır (22×10 + 15 Tem 6)');
+        self::assertSame(726, $once['fatura_cantas_hc'], 'desen HC (22×30 + 2×15 cmt + tatil 36)');
+        self::assertSame(660, $once['fatura_cantas_icdis'], 'desen İç-Dış (22×30) — tatilde kota yok');
+        self::assertSame(220, $once['fatura_cantas_bakir'], 'desen Bakır (22×10) — tatilde kota yok');
         self::assertSame(1606, array_sum($once), 'dönem fatura kişisi');
 
-        // 15 Temmuz'un 36 kişisinin TAMAMI HC'ye ait (Ömer bilir, desen bilemez)
+        // Elle giriş aynı sonucu vermeli (Ömer tamamını HC'de bırakıyor) — toplam korunur
         self::assertSame(36, $this->repo->altFirmaGunHedef($cid, '2026-07-15'), 'tatilde hedef = girilen sayı');
         $this->repo->saveGunAltFirma($cid, '2026-07-15', [
             'fatura_cantas_hc' => 36, 'fatura_cantas_icdis' => 0, 'fatura_cantas_bakir' => 0,
         ]);
 
         $sonra = $this->ozet($cid);
-        self::assertSame(726, $sonra['fatura_cantas_hc'], '690 − 0 + 36 (15 Tem tamamı HC)');
-        self::assertSame(660, $sonra['fatura_cantas_icdis'], '690 − 30 (15 Tem deseni düştü)');
-        self::assertSame(220, $sonra['fatura_cantas_bakir'], '226 − 6');
+        self::assertSame(726, $sonra['fatura_cantas_hc'], 'elle: 15 Tem tamamı HC');
+        self::assertSame(660, $sonra['fatura_cantas_icdis'], 'İç-Dış hafta içi payı');
+        self::assertSame(220, $sonra['fatura_cantas_bakir'], 'Bakır hafta içi payı');
         self::assertSame(1606, array_sum($sonra), 'TOPLAM DEĞİŞMEZ — yalnız dağılım değişir');
 
         // Ciro da birebir korunur (fatura tutarı bölüşümden doğuyor)
@@ -413,5 +415,31 @@ final class AltFirmaElleTest extends TestCase
         );
         // boş kayıt → tamamı varsayılana (fark kuralı)
         self::assertSame(['icdis' => 0, 'bakir' => 0, 'hc' => 70], Repo::altFirmaElleDagit(70, [], $firmalar));
+    }
+
+    /**
+     * fable-060 (Ömer): "tatil günlerinde oran kuralı olmasın — öyle olunca sayıyı tek firmaya
+     * giremiyorum." Resmi tatil hafta sonu gibi davranır: sabit kotalar uygulanmaz, tamamı
+     * varsayılan firmaya gelir (oradan elle istenen firmaya taşınır).
+     */
+    public function testResmiTatildeOranKuraliUygulanmaz(): void
+    {
+        $cid = $this->seedCantas();
+        $this->pdo->prepare('INSERT INTO resmi_tatil (tarih, ad, tur, yarim_gun, aktif) VALUES (?, ?, ?, 0, 1)')
+            ->execute(['2026-07-15', 'Demokrasi ve Milli Birlik Günü', 'resmi']);
+        // tatil günü: 36 kişi (fable-057 → fatura kişisi kuralı yok)
+        $this->repo->saveDayMeals($cid, '2026-07-15', ['ogle' => 36, 'aksam' => 0, 'kumanya' => 0], 328.0, 'uysa', null);
+        // normal hafta içi gün: kural + desen çalışmaya devam etmeli
+        $this->repo->saveDayMeals($cid, '2026-07-16', ['ogle' => 50, 'aksam' => 0, 'kumanya' => 0], 328.0, 'uysa', 70);
+
+        $d = $this->repo->altFirmaDagilim($cid, '2026-07-15', '2026-07-15');
+        self::assertSame(36, (int) $d['fatura_cantas_hc']['kisi'], 'tatilde tamamı varsayılana gelmedi');
+        self::assertSame(0, (int) $d['fatura_cantas_icdis']['kisi'], 'tatilde sabit kota uygulanmış');
+        self::assertSame(0, (int) $d['fatura_cantas_bakir']['kisi'], 'tatilde sabit kota uygulanmış');
+
+        $n = $this->repo->altFirmaDagilim($cid, '2026-07-16', '2026-07-16');
+        self::assertSame(30, (int) $n['fatura_cantas_hc']['kisi'], 'normal günde desen bozulmuş');
+        self::assertSame(30, (int) $n['fatura_cantas_icdis']['kisi']);
+        self::assertSame(10, (int) $n['fatura_cantas_bakir']['kisi']);
     }
 }

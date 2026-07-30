@@ -203,7 +203,9 @@
     var elle = rowElle(row);
     return elle
       ? altFirmaElleDagit(billP, elle, firms)
-      : altFirmaDagit(billP, firms, !!window.BUGUN_HAFTA_ICI);
+      // fable-060: resmi tatilde oran kuralı UYGULANMAZ (hafta sonu gibi) — tamamı
+      // varsayılan firmaya gelir, Ömer oradan istediği firmaya taşır.
+      : altFirmaDagit(billP, firms, !!window.BUGUN_HAFTA_ICI && !window.BUGUN_TATIL);
   }
 
   function syncAltSplit(row, billP, p) {
