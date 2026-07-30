@@ -1223,11 +1223,20 @@ final class ParasutYaz
         $doc = $r['data']['data'] ?? [];
         $faturaId = (string) ($doc['id'] ?? '');
         $faturaNo = trim((string) ($doc['attributes']['invoice_no'] ?? '')) ?: null;
-        // Aylık: alias yok (alt-firmalar customers'ta değil) → resmileştirme elle. Sessiz geçme, söyle.
+        // fable-062: alt firma carisinden alias ÇÖZÜLÜP e-Fatura OTOMATİK resmileştirilir.
+        // Çözülemezse (mükellef değil / API hatası) eski davranış: elle resmileştirme uyarısı.
+        $altAlias = Parasut::contactAlias((string) ($part['contact_id'] ?? ''));
+        $resm = 'yok';
+        $resmMesaj = 'Aylık fatura — e-Fatura resmileştirme Paraşüt\'ten elle yapılır (alias tanımlı değil).';
+        if ($altAlias !== null && $faturaId !== '') {
+            [$resm, $resmMesaj] = $this->faturaResmilestir(
+                $customerId, $faturaId, self::faturaDetailIds($r['data']), null, $altAlias
+            );
+        }
         $this->repo->faturaLogGuncelle($faturaLogId, [
             'parasut_fatura_id' => $faturaId !== '' ? $faturaId : null, 'fatura_no' => $faturaNo,
-            'durum' => 'kesildi', 'resmilestirme' => 'yok',
-            'hata_mesaj' => 'Aylık fatura — e-Fatura resmileştirme Paraşüt\'ten elle yapılır (alias tanımlı değil).',
+            'durum' => 'kesildi', 'resmilestirme' => $resm,
+            'hata_mesaj' => $resm === 'gonderildi' ? null : $resmMesaj,
         ]);
         uysa_audit('parasut_fatura', $actor, $son, json_encode([
             'customer_id' => $customerId, 'alt_ad' => $altAd, 'fatura_id' => $faturaId,
@@ -1235,8 +1244,8 @@ final class ParasutYaz
         ], JSON_UNESCAPED_UNICODE), '');
         return self::faturaSonuc(true, 'kesildi',
             $altAd . ': fatura kesildi' . ($faturaNo !== null ? " ($faturaNo)" : '')
-            . ' — e-Fatura Paraşüt\'ten elle resmileştirilir.',
-            $faturaId, $faturaNo, 'yok', 'yok', $hesap['net'], $kisi);
+            . ($resm === 'gonderildi' ? ' — e-Fatura gönderildi.' : ' — ' . $resmMesaj),
+            $faturaId, $faturaNo, $resm, 'yok', $hesap['net'], $kisi);
     }
 
     /**
@@ -1245,7 +1254,7 @@ final class ParasutYaz
      * @param array<int,int> $detailIds
      * @return array{0:string,1:string} [resmilestirme(gonderildi|hata|yok), mesaj]
      */
-    private function faturaResmilestir(int $customerId, string $faturaId, array $detailIds, ?string $tevkifatKodu): array
+    private function faturaResmilestir(int $customerId, string $faturaId, array $detailIds, ?string $tevkifatKodu, ?string $aliasOverride = null): array
     {
         if ($faturaId === '') {
             return ['hata', 'fatura id alınamadı — Paraşüt\'ten elle resmileştirin.'];
@@ -1255,7 +1264,10 @@ final class ParasutYaz
             $musteri = $this->repo->customer($customerId);
         } catch (\Throwable) {
         }
-        $alias = trim((string) ($musteri['edespatch_alias'] ?? ''));
+        // fable-062: alt firma faturasında alias müşteri kartından değil, ALT FİRMA carisinden
+        // türetilir (Parasut::contactAlias) — alt firmalar customers'ta olmadığı için eskiden
+        // alias bulunamıyor ve fatura TASLAKTA kalıyordu (Marmara/Gebze Palet 30 Tem dersi).
+        $alias = $aliasOverride !== null ? trim($aliasOverride) : trim((string) ($musteri['edespatch_alias'] ?? ''));
         if ($alias === '') {
             return ['yok', 'alıcı e-Fatura kutusu (alias) tanımlı değil — Paraşüt\'ten elle resmileştirin.'];
         }

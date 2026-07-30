@@ -282,6 +282,33 @@ final class Parasut
      * Ağ kısmı ince (get); asıl mantık parseContactBalance'ta (PÜR, mock'la test edilir).
      * @return array{parasut_id:string,name:string,balance:float}|null  (id yok / balance alanı yoksa null)
      */
+    /**
+     * fable-062 (Ömer, 31 Tem: "marmara teknik faturaları taslak kaydoldu gönderilmemiş"):
+     * ALT FİRMA carisinin e-Fatura alias'ı. Alt firmalar `customers` tablosunda olmadığı için
+     * `edespatch_alias` yoktu → aylık faturalar taslakta kalıyordu. Alias artık Paraşüt'ten
+     * TÜRETİLİR: cari → VKN → e_invoice_inboxes. Mükellef değilse null (e-Arşiv yolu).
+     */
+    public static function contactAlias(string $contactId): ?string
+    {
+        $contactId = trim($contactId);
+        if ($contactId === '') {
+            return null;
+        }
+        try {
+            $c = self::get('contacts/' . rawurlencode($contactId));
+            $vkn = trim((string) ($c['data']['attributes']['tax_number'] ?? ''));
+            if ($vkn === '') {
+                return null;
+            }
+            $e = self::get('e_invoice_inboxes', ['filter[vkn]' => $vkn]);
+            $alias = trim((string) ($e['data'][0]['attributes']['e_invoice_address'] ?? ''));
+            return $alias !== '' ? $alias : null;
+        } catch (\Throwable $ex) {
+            error_log('[UYSA v2 contactAlias] ' . $ex->getMessage());
+            return null; // alias çözülemezse eski davranış: elle resmileştirme
+        }
+    }
+
     public static function contactBalance(string $parasutId): ?array
     {
         $id = trim($parasutId);
