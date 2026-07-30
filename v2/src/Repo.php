@@ -1206,6 +1206,14 @@ final class Repo
                 $secilebilir = false;
                 $sebep = 'Bu dönemde üretim yok';
             }
+            // fable-056 (Ömer): "CANTAŞ ve Marmara ayın son günü açık olsun, öncesinde
+            // seçilemesin." Aylık fatura ay KAPANMADAN kesilirse eksik kişiyle gider ve
+            // e-fatura geri alınamaz. Ay bittikten sonra (sonraki aylarda da) açık kalır.
+            if ($secilebilir && Helpers::today() < $aylikSon) {
+                $secilebilir = false;
+                $sebep = 'Aylık fatura ay kapanınca kesilir — '
+                    . date('d.m.Y', strtotime($aylikSon)) . ' tarihinde açılır.';
+            }
             if ($secilebilir && $kilit !== null) {
                 $secilebilir = false;
                 $sebep = $kilit;

@@ -214,6 +214,53 @@
     return t;
   }
 
+  function esc(x) {
+    return String(x == null ? "" : x).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  // fable-056: alt firmalı müşteride pencere FİRMA kırılımını gösterir (Ömer: "öğün kırılımı
+  // değil firma kırılımı açılsın"). Rakamlar desenden hesaplanır ve toplam değişince tazelenir.
+  function renderFirmSplit() {
+    var box = document.getElementById("meal-modal-firms");
+    var list = document.getElementById("meal-modal-firmlist");
+    if (!box || !list || !mealRow) return;
+    var firms = [];
+    try {
+      firms = JSON.parse(mealRow.getAttribute("data-altfirma") || "[]");
+    } catch (e) {}
+    if (!firms.length) {
+      box.hidden = true;
+      return;
+    }
+    var p = mealModalTotal();
+    var fk = parseInt(mealRow.getAttribute("data-fatura-kisi") || "", 10);
+    // Fatura kişisi kuralı olan müşteride (CANTAŞ 50/70) bölüşüm FATURA kişisinden doğar.
+    var billP = p > 0 && !isNaN(fk) && window.BUGUN_HAFTA_ICI ? fk : p;
+    var pay = altFirmaDagit(billP, firms, !!window.BUGUN_HAFTA_ICI);
+    var html = "";
+    firms.forEach(function (f) {
+      var n = pay[f.kod] || 0;
+      html +=
+        '<div class="firm-split-row"><span>' +
+        esc(f.ad) +
+        "</span><strong>" +
+        n.toLocaleString("tr-TR") +
+        " kişi</strong></div>";
+    });
+    if (billP !== p) {
+      html +=
+        '<div class="firm-split-note">Fatura kişisi ' +
+        billP.toLocaleString("tr-TR") +
+        " (üretim " +
+        p.toLocaleString("tr-TR") +
+        ")</div>";
+    }
+    list.innerHTML = html;
+    box.hidden = false;
+  }
+
   function openMealModal(row) {
     if (!mealModal) return;
     mealRow = row;
@@ -224,7 +271,11 @@
     });
     var nameEl = document.getElementById("meal-modal-name");
     if (nameEl) nameEl.textContent = row.getAttribute("data-name") || "";
+    var titleEl = document.getElementById("meal-modal-title");
+    var hasFirms = (row.getAttribute("data-altfirma") || "") !== "";
+    if (titleEl) titleEl.textContent = hasFirms ? "Firma kırılımı" : "Öğün kırılımı";
     mealModalTotal();
+    renderFirmSplit();
     mealModal.hidden = false;
     document.body.classList.add("meal-open");
     var first = document.getElementById("meal-in-ogle");
@@ -261,8 +312,10 @@
   });
 
   document.addEventListener("input", function (e) {
-    if (e.target.classList && e.target.classList.contains("meal-input"))
+    if (e.target.classList && e.target.classList.contains("meal-input")) {
       mealModalTotal();
+      renderFirmSplit(); // fable-056: sayı değişince firma dağılımı anında tazelenir
+    }
   });
 
   var mealSaveBtn = document.getElementById("meal-save");

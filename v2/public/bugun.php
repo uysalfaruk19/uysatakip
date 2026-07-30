@@ -450,6 +450,15 @@ require __DIR__ . '/partials/header.php';
             <button type="button" class="icon-btn" data-meal-close aria-label="Kapat"><i class="bi bi-x-lg"></i></button>
           </div>
           <p class="meal-sub" id="meal-modal-name"></p>
+          <?php // fable-056 (Ömer): "CANTAŞ ve Marmara'ya tıklayınca öğün kırılımı değil FİRMA
+                // kırılımı açılsın." Alt firması olan müşteride bu bölüm üstte ve ana içerik olur;
+                // öğün alanları altta kalır (CANTAŞ/Marmara tek öğün çalışıyor, ama yetenek durur). ?>
+          <div class="firm-split" id="meal-modal-firms" hidden>
+            <div class="firm-split-list" id="meal-modal-firmlist"></div>
+            <p class="meal-hint">Dağılım firma desenine göre otomatik hesaplanır (hafta içi sabit
+              paylar, kalan varsayılan firmaya; hafta sonu tamamı varsayılana). Toplam kişiyi
+              değiştirdiğinde anında güncellenir. Faturada da bu rakamlar kullanılır.</p>
+          </div>
           <div class="meal-fields">
             <?php foreach ($mealLabels as $mk => $ml): ?>
               <label class="meal-field">

@@ -161,7 +161,9 @@ final class Helpers
 
     public static function today(): string
     {
-        return date('Y-m-d');
+        // fable-056: bootstrap'taki tarih yardımcıları zaten APP_TODAY'e bakıyordu; testlerde
+        // "bugün"ü enjekte edebilmek için burada da aynı kural geçerli. Env yoksa gerçek tarih.
+        return (getenv('APP_TODAY') ?: date('Y-m-d'));
     }
 
     /** Sipariş değişiklik son saati (order_date'ten bir gün önce). fable-001: 16:00 (Ömer istedi). */

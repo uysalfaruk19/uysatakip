@@ -320,4 +320,41 @@ final class AltFirmaTest extends TestCase
         sort($kisiler);
         self::assertSame([230, 690, 720], $kisiler, 'haftalık dönemde bölüşüm ay toplamından gelmedi');
     }
+
+    /**
+     * fable-056 (Ömer): "CANTAŞ ve Marmara ayın son günü açık olsun, öncesinde seçilemesin."
+     * Ay kapanmadan kesilen aylık fatura eksik kişiyle gider ve e-fatura geri alınamaz.
+     */
+    public function testAylikFaturaAyKapanmadanSecilemez(): void
+    {
+        $cid = $this->seedCantas();
+        $this->seedTemmuz($cid);
+
+        $durum = function (string $bugun) use ($cid): array {
+            putenv('APP_TODAY=' . $bugun);
+            try {
+                foreach ($this->repo->faturaAdaylari('2026-07-01', '2026-07-31') as $a) {
+                    if ((int) $a['customer_id'] === $cid) {
+                        return $a;
+                    }
+                }
+                return [];
+            } finally {
+                putenv('APP_TODAY');
+            }
+        };
+
+        $ayOrtasi = $durum('2026-07-15');
+        self::assertFalse((bool) $ayOrtasi['secilebilir'], 'ay ortasında kesilebiliyor');
+        self::assertStringContainsString('31.07.2026', (string) $ayOrtasi['sebep']);
+
+        $sonGunOncesi = $durum('2026-07-30');
+        self::assertFalse((bool) $sonGunOncesi['secilebilir'], 'son günden bir gün önce açık');
+
+        $sonGun = $durum('2026-07-31');
+        self::assertTrue((bool) $sonGun['secilebilir'], 'ayın son günü kapalı: ' . ($sonGun['sebep'] ?? ''));
+
+        $sonrakiAy = $durum('2026-08-04');
+        self::assertTrue((bool) $sonrakiAy['secilebilir'], 'ay bittikten sonra kapalı kalmış');
+    }
 }
