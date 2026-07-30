@@ -941,9 +941,21 @@ final class ParasutYaz
                 'shipment_included' => true,
                 'description'       => date('d.m.Y', strtotime($bas)) . ' - ' . date('d.m.Y', strtotime($son))
                     . ' dönemi yemek hizmet bedeli',
+                'print_note'        => $this->faturaNotu(),
             ],
             'relationships' => $rel,
         ]];
+    }
+
+    /**
+     * fable-061 (Ömer, 31 Tem): "faturada IBAN görünsün." Paraşüt'te banka hesabı kayıtlı
+     * olmasına rağmen e-Fatura PDF'ine basılmıyordu (TALAY UY02026000000132 PDF'inde IBAN YOK
+     * — kanıtlandı). Çözüm: fatura gövdesine `print_note` — PDF'te "Not" alanında görünür.
+     * Metin `ayar.fatura_notu`'ndan gelir (koda gömülü DEĞİL; Ömer ayarlardan değiştirebilir).
+     */
+    private function faturaNotu(): string
+    {
+        return trim((string) $this->repo->ayar('fatura_notu', ''));
     }
 
     /** Aylık tek-kalem fatura gövdesi (tevkifat YOK, irsaliye bağı YOK). */
@@ -971,6 +983,7 @@ final class ParasutYaz
                 'issue_date'  => $son,
                 'due_date'    => $vade,
                 'description' => date('m.Y', strtotime($son)) . ' dönemi yemek hizmet bedeli',
+                'print_note'  => $this->faturaNotu(),
             ],
             'relationships' => [
                 'contact' => ['data' => ['id' => $parasutId, 'type' => 'contacts']],
