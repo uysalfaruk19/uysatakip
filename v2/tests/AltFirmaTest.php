@@ -357,4 +357,28 @@ final class AltFirmaTest extends TestCase
         $sonrakiAy = $durum('2026-08-04');
         self::assertTrue((bool) $sonrakiAy['secilebilir'], 'ay bittikten sonra kapalı kalmış');
     }
+
+    /**
+     * fable-057 (Ömer: "tatil günlerinde yemek yemiyor"): RESMİ TATİLDE hafta içi fatura
+     * kişisi kuralı UYGULANMAZ. 15 Temmuz'da CANTAŞ 36 kişi girildiği halde 70 kişiden
+     * faturalanıyordu → müşteriye ₺11.152 fazla yansıyacaktı (canlıda yakalandı).
+     */
+    public function testResmiTatildeFaturaKisisiKuraliUygulanmaz(): void
+    {
+        $cid = $this->seedCantas();
+        $this->pdo->prepare('INSERT INTO resmi_tatil (tarih, ad, tur, yarim_gun, aktif) VALUES (?, ?, ?, 0, 1)')
+            ->execute(['2026-07-15', 'Demokrasi ve Milli Birlik Günü', 'resmi']);
+
+        self::assertTrue($this->repo->tatilMi('2026-07-15'), 'tatil tanınmadı');
+        self::assertFalse($this->repo->tatilMi('2026-07-16'), 'normal gün tatil sayıldı');
+
+        // Tatil günü: kural uygulanmaz → fatura kişisi = girilen kişi
+        $this->repo->saveDayMeals($cid, '2026-07-15', ['ogle' => 36, 'aksam' => 0, 'kumanya' => 0], 328.0, 'uysa', null);
+        // Normal hafta içi: kural uygulanır → 50 girildi, fatura 70
+        $this->repo->saveDayMeals($cid, '2026-07-16', ['ogle' => 50, 'aksam' => 0, 'kumanya' => 0], 328.0, 'uysa', 70);
+
+        $map = $this->repo->gunFaturaKisiMap($cid, '2026-07-15', '2026-07-16');
+        self::assertSame(36, (int) ($map['2026-07-15'] ?? 0), 'tatilde 70 kuralı uygulanmış');
+        self::assertSame(70, (int) ($map['2026-07-16'] ?? 0), 'normal günde kural bozulmuş');
+    }
 }

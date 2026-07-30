@@ -3126,6 +3126,22 @@ final class Repo
      * Resmi tatil listesi (tarih ASC). $aktifOnly=false → pasifler de gelir (yönetim ekranı).
      * @return array<int,array{id:int,tarih:string,ad:string,tur:string,yarim_gun:int,aktif:int}>
      */
+    /**
+     * fable-057 (Ömer: "tatil günlerinde yemek yemiyor"): gün RESMİ TATİL mi?
+     * Tatilde hafta içi fatura kişisi kuralı (fable-040) UYGULANMAZ — o gün normal servis
+     * yoktur, sabit kişiden fatura kesilirse müşteriye fazla yansır (CANTAŞ 15 Tem dersi).
+     */
+    public function tatilMi(string $gun): bool
+    {
+        try {
+            $st = $this->pdo->prepare('SELECT 1 FROM resmi_tatil WHERE tarih = ? AND aktif = 1 LIMIT 1');
+            $st->execute([$gun]);
+            return (bool) $st->fetchColumn();
+        } catch (\PDOException $e) {
+            return false; // tablo yoksa eski davranış
+        }
+    }
+
     public function resmiTatiller(bool $aktifOnly = true, ?string $bas = null, ?string $son = null): array
     {
         $sql = 'SELECT id, tarih, ad, tur, yarim_gun, aktif FROM resmi_tatil WHERE 1=1';

@@ -73,7 +73,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $price = $toplam > 0 ? $repo->priceFor($cid, substr($date, 0, 7))['unit_price'] : 0.0;
                 // Bağlı alanlar atomik: 3 öğün tek transaction içinde tek metotla yazılır/silinir.
                 // fable-040: fatura kişi kuralı (hafta içi) → ciro fatura kişisinden (persons gerçek).
-                $fk = $c['fatura_kisi_haftaici'] !== null ? (int) $c['fatura_kisi_haftaici'] : null;
+                // fable-057 (Ömer: "tatil günlerinde yemek yemiyor"): RESMİ TATİLDE hafta içi
+                // fatura kişisi kuralı uygulanmaz — o gün girilen sayı neyse fatura ondan.
+                $fk = ($c['fatura_kisi_haftaici'] !== null && !$repo->tatilMi($date))
+                    ? (int) $c['fatura_kisi_haftaici'] : null;
                 $repo->saveDayMeals($cid, $date, $meals, $price, 'uysa', $fk);
                 if ($toplam > 0) {
                     $saved++;
@@ -108,7 +111,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                             $fk = $r['fatura_kisi'] ?? null; // fable-040: hedef günler hep hafta içi (Pzt–Cum)
                             foreach ($hedefler as $gun) {
                                 $price = $repo->priceFor((int) $r['customer_id'], substr($gun, 0, 7))['unit_price'];
-                                $repo->saveDayMeals((int) $r['customer_id'], $gun, $meals, $price, 'uysa', $fk);
+                                // fable-057: kopyalanan gün resmi tatilse fatura kişisi kuralı geçmez
+                                $gunFk = $repo->tatilMi($gun) ? null : $fk;
+                                $repo->saveDayMeals((int) $r['customer_id'], $gun, $meals, $price, 'uysa', $gunFk);
                             }
                         }
                         $pdo->commit();
