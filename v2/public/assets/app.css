@@ -3025,3 +3025,17 @@ body.meal-open {
   font-size: 12px;
   color: var(--muted);
 }
+
+/* fable-058: firma kırılımı penceresi tek başına gösterilir (öğün alanları gizli) */
+.firm-hint {
+  margin-top: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.firm-split[hidden],
+.meal-fields[hidden],
+.meal-total[hidden],
+.meal-hint[hidden] {
+  display: none !important;
+}

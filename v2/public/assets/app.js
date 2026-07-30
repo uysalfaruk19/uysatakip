@@ -274,11 +274,28 @@
     var titleEl = document.getElementById("meal-modal-title");
     var hasFirms = (row.getAttribute("data-altfirma") || "") !== "";
     if (titleEl) titleEl.textContent = hasFirms ? "Firma kırılımı" : "Öğün kırılımı";
+    // fable-058 (Ömer): alt firmalı müşteride ÖĞÜN kırılımı hiç gösterilmez — tek öğün
+    // çalışıyorlar ve pencere ekrana sığmıyordu. Sayı satırdaki sayaçtan girilir.
+    var ogunAlan = mealModal.querySelector(".meal-fields");
+    var ogunTotal = mealModal.querySelector(".meal-total");
+    var ogunHint = mealModal.querySelector(".meal-hint");
+    var kaydetBtn = document.getElementById("meal-save");
+    var vazgecBtn = mealModal.querySelector(".actions-row [data-meal-close]");
+    if (ogunAlan) ogunAlan.hidden = hasFirms;
+    if (ogunTotal) ogunTotal.hidden = hasFirms;
+    if (ogunHint) ogunHint.hidden = hasFirms;
+    if (kaydetBtn) kaydetBtn.hidden = hasFirms;
+    if (vazgecBtn) {
+      vazgecBtn.textContent = hasFirms ? "Kapat" : "Vazgeç";
+      vazgecBtn.classList.toggle("btn-primaryx", hasFirms);
+      vazgecBtn.classList.toggle("btn-secondaryx", !hasFirms);
+    }
     mealModalTotal();
     renderFirmSplit();
     mealModal.hidden = false;
     document.body.classList.add("meal-open");
-    var first = document.getElementById("meal-in-ogle");
+    var first = hasFirms ? mealModal.querySelector(".actions-row [data-meal-close]")
+      : document.getElementById("meal-in-ogle");
     if (first) first.focus();
   }
 

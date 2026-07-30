@@ -460,9 +460,9 @@ require __DIR__ . '/partials/header.php';
                 // öğün alanları altta kalır (CANTAŞ/Marmara tek öğün çalışıyor, ama yetenek durur). ?>
           <div class="firm-split" id="meal-modal-firms" hidden>
             <div class="firm-split-list" id="meal-modal-firmlist"></div>
-            <p class="meal-hint">Dağılım firma desenine göre otomatik hesaplanır (hafta içi sabit
-              paylar, kalan varsayılan firmaya; hafta sonu tamamı varsayılana). Toplam kişiyi
-              değiştirdiğinde anında güncellenir. Faturada da bu rakamlar kullanılır.</p>
+            <p class="firm-hint">Dağılım firma desenine göre otomatik hesaplanır (hafta içi sabit
+              paylar, kalan varsayılan firmaya; hafta sonu tamamı varsayılana). Faturada da bu
+              rakamlar kullanılır. Kişi sayısını satırdaki sayaçtan değiştirirsin.</p>
           </div>
           <div class="meal-fields">
             <?php foreach ($mealLabels as $mk => $ml): ?>
