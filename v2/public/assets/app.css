@@ -2975,3 +2975,24 @@ body.meal-open {
   font-size: 12px;
   font-weight: 650;
 }
+
+/* fable-054: fatura dönemi bugünü aşınca çıkan planlı-üretim uyarısı + ikincil üretim adedi */
+.uyari-kutu {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #a35400;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.uyari-kutu i {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.ftr-uretim {
+  color: var(--muted);
+}

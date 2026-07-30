@@ -397,6 +397,11 @@ require __DIR__ . '/partials/header.php';
           'Bu hafta'    => [$pzt, Helpers::today()],
           'Geçen ay'    => [date('Y-m-01', strtotime('first day of last month')), date('Y-m-t', strtotime('first day of last month'))],
           'Bu ay'       => [date('Y-m-01'), Helpers::today()],
+          // fable-054: aylık müşteri (CANTAŞ/Marmara) AY SONUNDA kesilir — dönem ayın son
+          // gününe kadar olmalı. "Bu ay" bugüne kadar verdiği için ayın 30'unda bakınca
+          // son gün eksik görünüyordu. Ay ortasında tıklanırsa planlı günler de girer:
+          // seçildiğinde uyarı çıkar (aşağıdaki data-uyar).
+          'Ay tamamı'   => [date('Y-m-01'), date('Y-m-t')],
       ];
       ?>
       <div class="ftr-kisayol">
@@ -404,6 +409,17 @@ require __DIR__ . '/partials/header.php';
           <a class="chip <?= $aktif ? 'active' : '' ?>" href="fatura-kes.php?bas=<?= $kb ?>&son=<?= $ks ?>"><?= $ad ?></a>
         <?php endforeach; ?>
       </div>
+      <?php // fable-054: dönem bugünü aşıyorsa henüz GERÇEKLEŞMEMİŞ (planlı) günler de sayıya
+            // girer — ay ortasında "Ay tamamı" tıklanırsa fazla fatura kesilmesin diye uyarılır. ?>
+      <?php if ($son > Helpers::today()): ?>
+        <div class="uyari-kutu" style="margin:10px 0">
+          <i class="bi bi-exclamation-triangle"></i>
+          Dönem sonu <strong><?= Helpers::e(date('d.m.Y', strtotime($son))) ?></strong> —
+          bugünden ileri. <?= (int) round((strtotime($son) - strtotime(Helpers::today())) / 86400) ?> günlük
+          <strong>planlı</strong> üretim de sayıya dahil. Ay sonu kesiminde normaldir;
+          ay ortasındaysan dönem sonunu bugüne çek.
+        </div>
+      <?php endif; ?>
       <form method="get" class="date-row" style="gap:8px;flex-wrap:wrap">
         <div class="date-pill"><i class="bi bi-calendar2-week"></i>
           <input type="date" name="bas" value="<?= Helpers::e($bas) ?>" onchange="this.form.submit()"></div>
@@ -442,10 +458,15 @@ require __DIR__ . '/partials/header.php';
                 <?php if ($a['tip'] === 'irsaliye'): ?>
                   <?= (int) $a['irsaliye_sayisi'] ?> irsaliye · Öğlen <?= (int) $a['ogle'] ?> / Akşam <?= (int) $a['aksam'] ?> / Kumanya <?= (int) $a['kumanya'] ?> · <strong><?= (int) $a['toplam'] ?></strong> kişi × ₺<?= Helpers::money((float) $a['birim']) ?>
                 <?php else: ?>
-                  Dönem üretimi: <strong><?= (int) $a['adet'] ?></strong> kişi × ₺<?= Helpers::money((float) $a['birim']) ?>
-                  <?php // fable-051: fatura kişisi üretimden farklıysa (fable-040 kuralı) ikisi de görünür — hangi rakamdan fatura kesildiği gizlenmez ?>
+                  <?php // fable-054 (Ömer: "dönem üretimi eksik gözüküyor"): FATURAYA ESAS rakam
+                        // öne alınır — CANTAŞ'ta üretim 50, fatura 70 kişiden (fable-040) ve
+                        // ekranda önce 1180 görünmesi "eksik" izlenimi veriyordu. Üretim adedi
+                        // yine gösterilir (gizlenmez) ama parantezde, ikincil. ?>
+                  Faturaya esas: <strong><?= $hedefAdet > 0 ? $hedefAdet : (int) $a['adet'] ?></strong> kişi
+                  × ₺<?= Helpers::money((float) $a['birim']) ?>
+                  = <strong>₺<?= Helpers::money((($hedefAdet > 0 ? $hedefAdet : (int) $a['adet'])) * (float) $a['birim']) ?></strong>
                   <?php if ($hedefAdet > 0 && $hedefAdet !== (int) $a['adet']): ?>
-                    · <strong>fatura <?= $hedefAdet ?></strong> kişi
+                    <span class="ftr-uretim">(dönem üretimi <?= (int) $a['adet'] ?> kişi)</span>
                   <?php endif; ?>
                 <?php endif; ?>
               </div>
