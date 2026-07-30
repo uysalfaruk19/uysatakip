@@ -3033,9 +3033,9 @@ body.meal-open {
   line-height: 1.5;
   color: var(--muted);
 }
-.firm-split[hidden],
-.meal-fields[hidden],
-.meal-total[hidden],
-.meal-hint[hidden] {
+/* .btn-action gibi display:flex kuralları [hidden] özniteliğini eziyordu — pencere
+   içindeki her gizli öğe gerçekten gizlenir (Kaydet butonu görünür kalmıştı). */
+.meal-card [hidden],
+.firm-split[hidden] {
   display: none !important;
 }
