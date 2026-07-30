@@ -536,9 +536,35 @@ require __DIR__ . '/partials/header.php';
                     <label class="ftr-bol-row"><span><?= Helpers::e($sb['ad']) ?></span>
                       <input type="number" class="ftr-bol-in" data-key="<?= Helpers::e($sb['key']) ?>" min="0" value="<?= (int) $sb['def'] ?>" inputmode="numeric"></label>
                   <?php endforeach; ?>
+                  <?php
+                  // fable-059: ay içinde ELLE girilen kırılım günleri (istisna günler) — ay sonunda
+                  // Ömer neyin desenle, neyin elle hesaplandığını görsün. Günler title'da.
+                  $elleD = $a['altfirma_elle'] ?? ['gunler' => [], 'bayat' => []];
+                  $elleGun = $elleD['gunler'] ?? [];
+                  $elleBayat = $elleD['bayat'] ?? [];
+                  ?>
                   <?php if ($desenVar): ?>
-                    <p class="ftr-bol-not">Rakamlar firma deseninden geldi — hafta içi sabit paylar + kalan
+                    <p class="ftr-bol-not">Rakamlar firma deseninden geldi<?= $elleGun ? ' (elle girilen günler hariç)' : '' ?> — hafta içi sabit paylar + kalan
                       varsayılan firmaya, cumartesi/pazar tamamı varsayılan firmaya. Yanlışsa elle düzeltebilirsin.</p>
+                  <?php endif; ?>
+                  <?php if ($elleGun): ?>
+                    <p class="ftr-bol-not" title="<?= Helpers::e(implode(' · ', array_map(
+                        static fn(string $g): string => date('d.m.Y', strtotime($g)),
+                        $elleGun
+                    ))) ?>"><i class="bi bi-pencil-square"></i>
+                      <strong><?= count($elleGun) ?> günde elle kırılım var</strong>
+                      (<?= Helpers::e(implode(' · ', array_map(
+                          static fn(string $g): string => date('d.m', strtotime($g)),
+                          array_slice($elleGun, 0, 6)
+                      ))) ?><?= count($elleGun) > 6 ? ' …' : '' ?>) — o günler desenle değil,
+                      Bugün ekranından girdiğin sayılarla hesaplandı.</p>
+                  <?php endif; ?>
+                  <?php if ($elleBayat): ?>
+                    <div class="ftr-bol-uyari warn">Elle kırılım girildikten SONRA gün sayısı değişmiş:
+                      <?= Helpers::e(implode(' · ', array_map(
+                          static fn(string $g): string => date('d.m.Y', strtotime($g)),
+                          $elleBayat
+                      ))) ?> — fark varsayılan firmaya yazıldı. Doğrusunu Bugün ekranından tekrar girin.</div>
                   <?php endif; ?>
                   <?php if ($kayipFirma): ?>
                     <div class="ftr-bol-uyari warn">Fatura bölüşümünde karşılığı olmayan alt firma:

@@ -136,6 +136,36 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $flash = 'Kayıt hatası.';
             $flashOk = false;
         }
+
+        // ── fable-059 (Ömer: "15 temmuzdaki sayısı ona göre gireyim hangi firmaya istiyorsam") ──
+        // Firma kırılımına ELLE giriş. Üretim kaydı BİTTİKTEN sonra çalışır: hedef (günün fatura
+        // kişisi) o anki kayıttan doğar → aynı POST'ta hem sayı hem kırılım değişse bile ikisi
+        // tutarlı olur. Toplam hedefe eşit değilse Repo REDDEDER (sessiz yanlış kayıt yok).
+        $altCid = (int) ($_POST['altfirma_cid'] ?? 0);
+        if ($flashOk && $altCid > 0) {
+            $gelen = [];
+            if (empty($_POST['altfirma_oto'])) { // "Otomatiğe dön" → boş dizi = satırları sil
+                foreach ((array) ($_POST['altfirma'] ?? []) as $kod => $v) {
+                    $gelen[(string) $kod] = Repo::normalizePersons(is_scalar($v) ? $v : 0);
+                }
+            }
+            try {
+                $repo->saveGunAltFirma($altCid, $date, $gelen);
+                uysa_audit('altfirma_kirilim', $u['username'], $date, json_encode([
+                    'cid' => $altCid, 'kirilim' => $gelen,
+                ], JSON_UNESCAPED_UNICODE), client_ip());
+                $flash .= array_sum($gelen) > 0
+                    ? ' · Firma kırılımı elle kaydedildi.'
+                    : ' · Firma kırılımı otomatiğe (desene) döndü.';
+            } catch (\InvalidArgumentException $e) {
+                $flash .= ' · FİRMA KIRILIMI KAYDEDİLMEDİ: ' . $e->getMessage();
+                $flashOk = false;
+            } catch (\Throwable $e) {
+                error_log('[UYSA v2 bugun altfirma] ' . $e->getMessage());
+                $flash .= ' · Firma kırılımı kaydedilemedi (kayıt hatası).';
+                $flashOk = false;
+            }
+        }
     }
 }
 
@@ -182,6 +212,14 @@ $grid = $repo->dayGridAllMeals($date);
 $sumP = 0; $sumA = 0.0; $filled = 0;
 $rowsData = [];
 $priceMonth = substr($date, 0, 7);
+// fable-057 (ekran ayağı): resmi tatilde hafta içi FATURA KİŞİSİ kuralı uygulanmaz — kayıt
+// tarafı bunu zaten yapıyordu (POST), ekran hâlâ 70 kişiden ciro/kırılım gösteriyordu.
+$tatilGunu = $repo->tatilMi($date);
+$tatilAd = '';
+if ($tatilGunu) {
+    $tl = $repo->resmiTatiller(true, $date, $date);
+    $tatilAd = $tl ? (string) $tl[0]['ad'] : '';
+}
 foreach ($grid as $r) {
     $cid = (int) $r['customer_id'];
     $src = $copyValues[$cid] ?? $r;
@@ -195,7 +233,7 @@ foreach ($grid as $r) {
     $price = $repo->priceFor($cid, $priceMonth)['unit_price'];
     // fable-040: günlük ciro FATURA kişisinden (hafta içi kural varsa 70), toplam kişi GERÇEK (50).
     $fkRow = $r['fatura_kisi'] ?? null;
-    $billVal = Repo::faturaKisiToplam($val, $fkRow, $date);
+    $billVal = Repo::faturaKisiToplam($val, $tatilGunu ? null : $fkRow, $date);
     $amt = $billVal * $price;
     if ($val > 0) { $sumP += $val; $sumA += $amt; $filled++; }
     // Kırılım etiketi yalnız akşam/kumanya varken görünür (tek öğünlü müşteride gürültü olmasın)
@@ -209,10 +247,11 @@ foreach ($grid as $r) {
         }
         $splitLabel = implode(' · ', $parts);
     }
-    // fable-051: ALT FİRMA bölüşümü — SALT GÖSTERİM (giriş yok; düzenleme yeri Fatura Kes).
-    // Kaydedilmez, o günün fatura kişisine desen uygulanarak ANLIK hesaplanır.
+    // fable-051: ALT FİRMA bölüşümü — o günün fatura kişisine desen uygulanarak hesaplanır.
+    // fable-059: o güne ELLE kırılım girildiyse desen değil O kayıt geçerlidir (istisna günler).
     // Alt firması tanımlı olmayan müşteride satır görünümü hiç değişmez.
     $altFirmalar = $repo->altFirmalar($cid);
+    $elleKirilim = $altFirmalar ? $repo->gunAltFirmaKirilim($cid, $date) : [];
     // Etiket dar satıra sığsın: alt firma adı müşteri adıyla başlıyorsa o ön ek atılır
     // ("CANTAŞ İç-Dış" → "İç-Dış"); "HC Isıtma" gibi bağımsız adlar aynen kalır.
     foreach ($altFirmalar as $i => $af) {
@@ -225,7 +264,9 @@ foreach ($grid as $r) {
     $altLabel = '';
     if ($altFirmalar && $val > 0) {
         $parts = [];
-        $pay = Repo::altFirmaGunDagit($billVal, $date, $altFirmalar);
+        $pay = $elleKirilim
+            ? Repo::altFirmaElleDagit($billVal, $elleKirilim, $altFirmalar)
+            : Repo::altFirmaGunDagit($billVal, $date, $altFirmalar);
         foreach ($altFirmalar as $af) {
             if (($pay[$af['kod']] ?? 0) > 0) {
                 $parts[] = $pay[$af['kod']] . ' ' . $af['ad'];
@@ -236,7 +277,8 @@ foreach ($grid as $r) {
     $rowsData[] = [
         'cid' => $cid, 'name' => $r['name'], 'price' => $price, 'val' => $val, 'amt' => $amt,
         'meals' => $meals, 'split' => $splitLabel, 'fk' => $fkRow, // fable-040: fatura kişi kuralı
-        'alt' => $altLabel, 'altfirma' => $altFirmalar,            // fable-051: salt gösterim
+        'alt' => $altLabel, 'altfirma' => $altFirmalar,            // fable-051: gün kırılımı
+        'elle' => $elleKirilim,                                    // fable-059: elle giriş kaydı
     ];
 }
 $total = count($rowsData);
@@ -343,7 +385,10 @@ require __DIR__ . '/partials/header.php';
       </div>
 
       <?php // fable-040: günlük ciro nabzı fatura kişisinden — kural yalnız hafta içi (Pzt–Cum) uygulanır ?>
-      <script>window.BUGUN_HAFTA_ICI = <?= ((int) date('N', strtotime($date)) <= 5) ? 'true' : 'false' ?>;</script>
+      <script>window.BUGUN_HAFTA_ICI = <?= ((int) date('N', strtotime($date)) <= 5) ? 'true' : 'false' ?>;
+        // fable-057/059: resmi tatilde hafta içi fatura kişisi kuralı UYGULANMAZ → o gün hedef
+        // girilen sayının kendisidir (elle firma kırılımı da bu hedefi bölmek zorunda).
+        window.BUGUN_TATIL = <?= $tatilGunu ? 'true' : 'false' ?>;</script>
       <?php // fable-034b (denetim): mockup sırası → MÜŞTERİ SAYILARI önce, HIZLI ERİŞİM sonra (aşağıda) ?>
       <form method="post" id="bugun-form">
         <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
@@ -384,8 +429,11 @@ require __DIR__ . '/partials/header.php';
                     'varsayilan' => $f['varsayilan'], 'sabit' => $f['haftaici_sabit']],
                 $r['altfirma']
             ), JSON_UNESCAPED_UNICODE), ENT_QUOTES) : '';
+            // fable-059: o güne ELLE girilmiş kırılım (kod => kişi). Boşsa öznitelik basılmaz →
+            // pencere "otomatik (desen)" rozetiyle açılır.
+            $elleAttr = $r['elle'] ? htmlspecialchars(json_encode($r['elle'], JSON_UNESCAPED_UNICODE), ENT_QUOTES) : '';
           ?>
-            <div class="customer-row <?= $missing ? 'missing' : '' ?> <?= $isFocus ? 'is-focus' : '' ?>"<?= $isFocus ? ' id="focus-row"' : '' ?> data-price="<?= $r['price'] ?>" data-cid="<?= $r['cid'] ?>" data-name="<?= Helpers::e($r['name']) ?>" data-base="<?= $base ?>" data-fatura-kisi="<?= $r['fk'] !== null ? (int) $r['fk'] : '' ?>"<?= $altAttr !== '' ? ' data-altfirma="' . $altAttr . '"' : '' ?>>
+            <div class="customer-row <?= $missing ? 'missing' : '' ?> <?= $isFocus ? 'is-focus' : '' ?>"<?= $isFocus ? ' id="focus-row"' : '' ?> data-price="<?= $r['price'] ?>" data-cid="<?= $r['cid'] ?>" data-name="<?= Helpers::e($r['name']) ?>" data-base="<?= $base ?>" data-fatura-kisi="<?= $r['fk'] !== null ? (int) $r['fk'] : '' ?>"<?= $altAttr !== '' ? ' data-altfirma="' . $altAttr . '"' : '' ?><?= $elleAttr !== '' ? ' data-altfirma-elle="' . $elleAttr . '"' : '' ?>>
               <div class="gt-rank" aria-hidden="true"><?= Helpers::e(mb_strtoupper(mb_substr($r['name'], 0, 1, 'UTF-8'), 'UTF-8')) ?></div>
               <div class="cr-firm">
                 <div class="row-title"><span class="status-dot <?= $missing ? 'warn' : '' ?>" hidden></span>
@@ -396,7 +444,7 @@ require __DIR__ . '/partials/header.php';
                 </div>
                 <!-- fable-029b/030 (Ömer): bu ekranda PARA GÖRÜNMEZ (birim fiyat + gün tutarı kaldırıldı;
                      sayım sırasında ekran başkalarına açık olabiliyor). "girilmedi" uyarısı + kırılım kalır. -->
-                <p class="row-meta"><span class="row-amt"><?= $missing ? 'girilmedi' : '' ?></span><span class="meal-split"<?= $r['split'] === '' ? ' hidden' : '' ?>><?= Helpers::e($r['split']) ?></span><?php if ($r['altfirma']): ?><span class="alt-split"<?= $r['alt'] === '' ? ' hidden' : '' ?> title="Fatura bölüşümü (salt gösterim) — düzenleme: Fatura Kes"><?= Helpers::e($r['alt']) ?></span><?php endif; ?></p>
+                <p class="row-meta"><span class="row-amt"><?= $missing ? 'girilmedi' : '' ?></span><span class="meal-split"<?= $r['split'] === '' ? ' hidden' : '' ?>><?= Helpers::e($r['split']) ?></span><?php if ($r['altfirma']): ?><span class="alt-split<?= $r['elle'] ? ' is-elle' : '' ?>"<?= $r['alt'] === '' ? ' hidden' : '' ?> title="<?= $r['elle'] ? 'Firma kırılımı bu güne ELLE girildi — değiştirmek için müşteri adına dokun' : 'Fatura bölüşümü (firma deseni) — elle girmek için müşteri adına dokun' ?>"><?= Helpers::e($r['alt']) ?></span><?php endif; ?></p>
               </div>
               <div class="counter">
                 <button class="step-btn" type="button" data-step="-5">−</button>
@@ -458,11 +506,25 @@ require __DIR__ . '/partials/header.php';
           <?php // fable-056 (Ömer): "CANTAŞ ve Marmara'ya tıklayınca öğün kırılımı değil FİRMA
                 // kırılımı açılsın." Alt firması olan müşteride bu bölüm üstte ve ana içerik olur;
                 // öğün alanları altta kalır (CANTAŞ/Marmara tek öğün çalışıyor, ama yetenek durur). ?>
+          <?php // fable-059 (Ömer): pencere artık DÜZENLENEBİLİR — istisna günlerde (resmi tatil,
+                // özel iş) hangi şirkete kaç kişi yazılacağını Ömer elle girer. Toplam o günün
+                // FATURA kişisine eşit olmadan Kaydet açılmaz (ay sonu 3 ayrı e-Fatura). ?>
           <div class="firm-split" id="meal-modal-firms" hidden>
+            <div class="firm-split-head">
+              <span class="firm-badge" id="firm-badge">otomatik (desen)</span>
+            </div>
+            <?php if ($tatilGunu): ?>
+              <?php // Hedefin neden 70 değil 36 olduğu pencerede yazsın (fable-057 kuralı) ?>
+              <p class="firm-tatil"><i class="bi bi-calendar-x"></i> Bu gün <strong>resmi tatil</strong><?= $tatilAd !== '' ? ' (' . Helpers::e($tatilAd) . ')' : '' ?> — hafta içi fatura kişisi kuralı uygulanmaz; hedef, güne girilen sayının kendisidir.</p>
+            <?php endif; ?>
             <div class="firm-split-list" id="meal-modal-firmlist"></div>
-            <p class="firm-hint">Dağılım firma desenine göre otomatik hesaplanır (hafta içi sabit
-              paylar, kalan varsayılan firmaya; hafta sonu tamamı varsayılana). Faturada da bu
-              rakamlar kullanılır. Kişi sayısını satırdaki sayaçtan değiştirirsin.</p>
+            <p class="firm-total" id="firm-total">Toplam: <strong>0</strong> / hedef <strong>0</strong> kişi</p>
+            <p class="firm-warn" id="firm-warn" hidden></p>
+            <p class="firm-hint" id="firm-hint">Boş bırakırsan dağılım firma desenine göre otomatik
+              hesaplanır (hafta içi sabit paylar, kalan varsayılan firmaya; hafta sonu tamamı
+              varsayılana). İstisna günlerde sayıları elle gir — faturada bu rakamlar kullanılır.</p>
+            <button type="button" class="firm-oto" id="firm-oto" hidden>
+              <i class="bi bi-arrow-counterclockwise"></i> Otomatiğe dön (deseni kullan)</button>
           </div>
           <div class="meal-fields">
             <?php foreach ($mealLabels as $mk => $ml): ?>

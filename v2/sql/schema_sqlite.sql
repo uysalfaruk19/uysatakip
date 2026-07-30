@@ -142,6 +142,22 @@ CREATE TABLE IF NOT EXISTS musteri_altfirma (
 );
 CREATE INDEX IF NOT EXISTS idx_maf_cust ON musteri_altfirma(customer_id, aktif, sira);
 
+-- fable-059: İSTİSNA günlerde firma kırılımı ELLE girilir (15 Tem resmi tatili gibi günlerde
+-- desen bilemez: o günün 36 kişisi hangi şirkete ait?). YALNIZ elle girilen günler yazılır —
+-- kaydı olmayan gün desenle hesaplanır. Toplam, günün FATURA kişisine eşit olmak ZORUNDA
+-- (aksi hâlde kayıt reddedilir); tamamı 0 girilirse satırlar silinir → gün desene döner.
+CREATE TABLE IF NOT EXISTS uretim_altfirma (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id INTEGER NOT NULL,
+  prod_date   TEXT    NOT NULL,
+  altfirma_id INTEGER NOT NULL REFERENCES musteri_altfirma(id) ON DELETE CASCADE,
+  kisi        INTEGER NOT NULL,
+  created_at  TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at  TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(customer_id, prod_date, altfirma_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ua_cust_gun ON uretim_altfirma(customer_id, prod_date);
+
 CREATE TABLE IF NOT EXISTS requests (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,

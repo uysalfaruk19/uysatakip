@@ -121,16 +121,98 @@
     return out;
   }
 
+  // fable-059: o güne ELLE kırılım girilmişse desen DEĞİL o kayıt geçerlidir.
+  // Sunucudaki Repo::altFirmaElleDagit ile AYNI kural: tanınmayan (pasif) firmanın payı
+  // varsayılana döner; kayıttan sonra sayı değiştiyse fark varsayılana yazılır / sondan kısılır.
+  function firmVarsKod(firms) {
+    var vars = null;
+    firms.forEach(function (f) {
+      if (vars === null && f.varsayilan) vars = f.kod;
+    });
+    firms.forEach(function (f) {
+      if (vars === null && (f.sabit === null || f.sabit === undefined)) vars = f.kod;
+    });
+    return vars === null ? firms[firms.length - 1].kod : vars;
+  }
+
+  function altFirmaElleDagit(total, elle, firms) {
+    var out = {};
+    firms.forEach(function (f) {
+      out[f.kod] = 0;
+    });
+    if (!firms.length || total <= 0) return out;
+    var vars = firmVarsKod(firms);
+    Object.keys(elle).forEach(function (kod) {
+      var n = clampP(elle[kod]);
+      out[Object.prototype.hasOwnProperty.call(out, kod) ? kod : vars] += n;
+    });
+    var top = 0;
+    firms.forEach(function (f) {
+      top += out[f.kod];
+    });
+    var fark = total - top;
+    if (fark > 0) {
+      out[vars] += fark;
+    } else if (fark < 0) {
+      var kes = -fark;
+      firms
+        .slice()
+        .reverse()
+        .forEach(function (f) {
+          if (kes <= 0) return;
+          var d = Math.min(out[f.kod], kes);
+          out[f.kod] -= d;
+          kes -= d;
+        });
+    }
+    return out;
+  }
+
+  function rowFirms(row) {
+    try {
+      return JSON.parse(row.getAttribute("data-altfirma") || "[]");
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function rowElle(row) {
+    try {
+      var x = JSON.parse(row.getAttribute("data-altfirma-elle") || "null");
+      return x && Object.keys(x).length ? x : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Günün BÖLÜŞÜM HEDEFİ = o günün fatura kişisi. Sunucudaki kuralın birebir eşi:
+  // hafta içi + resmi tatil DEĞİL + kural varsa (CANTAŞ 70) kural; aksi hâlde girilen sayı.
+  function rowHedef(row) {
+    var input = row.querySelector(".count-input");
+    var p = clampP(input ? input.value : 0);
+    var fk = parseInt(row.getAttribute("data-fatura-kisi") || "", 10);
+    if (p > 0 && !isNaN(fk) && fk > 0 && window.BUGUN_HAFTA_ICI && !window.BUGUN_TATIL) {
+      return fk;
+    }
+    return p;
+  }
+
+  function firmPaylar(row, billP) {
+    var firms = rowFirms(row);
+    if (!firms.length) return null;
+    var elle = rowElle(row);
+    return elle
+      ? altFirmaElleDagit(billP, elle, firms)
+      : altFirmaDagit(billP, firms, !!window.BUGUN_HAFTA_ICI);
+  }
+
   function syncAltSplit(row, billP, p) {
     var el = row.querySelector(".alt-split");
     if (!el) return; // alt firması olmayan müşteri → hiçbir şey değişmez
-    var firms = [];
-    try {
-      firms = JSON.parse(row.getAttribute("data-altfirma") || "[]");
-    } catch (e) {}
+    var firms = rowFirms(row);
     var parts = [];
     if (firms.length && p > 0) {
-      var pay = altFirmaDagit(billP, firms, !!window.BUGUN_HAFTA_ICI);
+      var pay = firmPaylar(row, billP) || {};
       firms.forEach(function (f) {
         if (pay[f.kod] > 0) parts.push(pay[f.kod] + " " + f.ad);
       });
@@ -150,8 +232,8 @@
       var p = parseInt(input.value, 10) || 0;
       // fable-040: günlük ciro FATURA kişisinden — hafta içi kural varsa (data-fatura-kisi)
       //   ciro fatura kişisinden hesaplanır; "Toplam kişi" ise GERÇEK üretim (p) kalır.
-      var fk = parseInt(row.getAttribute("data-fatura-kisi"), 10) || 0;
-      var billP = window.BUGUN_HAFTA_ICI && fk > 0 && p > 0 ? fk : p;
+      // fable-059: kural resmi tatilde uygulanmaz (rowHedef) — sunucu kaydıyla aynı rakam.
+      var billP = rowHedef(row);
       var amt = billP * price;
       var amtEl = row.querySelector(".row-amt");
       // fable-030 (Ömer): satırda para GÖSTERİLMEZ — sadece "girilmedi" uyarısı
@@ -221,44 +303,111 @@
   }
 
   // fable-056: alt firmalı müşteride pencere FİRMA kırılımını gösterir (Ömer: "öğün kırılımı
-  // değil firma kırılımı açılsın"). Rakamlar desenden hesaplanır ve toplam değişince tazelenir.
+  // değil firma kırılımı açılsın").
+  // fable-059: kutular DÜZENLENEBİLİR — istisna günlerde (resmi tatil, özel iş) hangi şirkete
+  // kaç kişi yazılacağını Ömer girer. Kayıt yoksa kutular DESENDEN dolu gelir (bugüne kadarki
+  // davranış), toplam günün FATURA kişisine eşit olmadan Kaydet açılmaz.
   function renderFirmSplit() {
     var box = document.getElementById("meal-modal-firms");
     var list = document.getElementById("meal-modal-firmlist");
     if (!box || !list || !mealRow) return;
-    var firms = [];
-    try {
-      firms = JSON.parse(mealRow.getAttribute("data-altfirma") || "[]");
-    } catch (e) {}
+    var firms = rowFirms(mealRow);
     if (!firms.length) {
       box.hidden = true;
       return;
     }
-    var p = mealModalTotal();
-    var fk = parseInt(mealRow.getAttribute("data-fatura-kisi") || "", 10);
-    // Fatura kişisi kuralı olan müşteride (CANTAŞ 50/70) bölüşüm FATURA kişisinden doğar.
-    var billP = p > 0 && !isNaN(fk) && window.BUGUN_HAFTA_ICI ? fk : p;
-    var pay = altFirmaDagit(billP, firms, !!window.BUGUN_HAFTA_ICI);
+    var elle = rowElle(mealRow);
+    var billP = rowHedef(mealRow);
+    var pay = firmPaylar(mealRow, billP) || {};
     var html = "";
     firms.forEach(function (f) {
-      var n = pay[f.kod] || 0;
+      var n = elle && Object.prototype.hasOwnProperty.call(elle, f.kod)
+        ? clampP(elle[f.kod])
+        : pay[f.kod] || 0;
       html +=
-        '<div class="firm-split-row"><span>' +
+        '<label class="firm-split-row"><span>' +
         esc(f.ad) +
-        "</span><strong>" +
-        n.toLocaleString("tr-TR") +
-        " kişi</strong></div>";
+        '</span><input class="firm-in" type="number" inputmode="numeric" min="0" ' +
+        'data-kod="' + esc(f.kod) + '" value="' + n + '"></label>';
     });
-    if (billP !== p) {
-      html +=
-        '<div class="firm-split-note">Fatura kişisi ' +
-        billP.toLocaleString("tr-TR") +
-        " (üretim " +
-        p.toLocaleString("tr-TR") +
-        ")</div>";
-    }
     list.innerHTML = html;
+    var badge = document.getElementById("firm-badge");
+    if (badge) {
+      badge.textContent = elle ? "elle girildi" : "otomatik (desen)";
+      badge.classList.toggle("is-elle", !!elle);
+    }
+    var oto = document.getElementById("firm-oto");
+    if (oto) oto.hidden = !elle;
     box.hidden = false;
+    firmUpdateTotal();
+  }
+
+  // Canlı doğrulama: toplam = o günün FATURA kişisi olmalı. Değilse Kaydet PASİF + net mesaj
+  // ("3 kişi eksik" / "5 kişi fazla") — sessiz yanlış kayıt YOK (ay sonu 3 ayrı e-Fatura).
+  function firmUpdateTotal() {
+    if (!mealRow) return 0;
+    var ins = document.querySelectorAll("#meal-modal-firmlist .firm-in");
+    var sum = 0;
+    ins.forEach(function (el) {
+      sum += clampP(el.value);
+    });
+    var hedef = rowHedef(mealRow);
+    var totEl = document.getElementById("firm-total");
+    if (totEl) {
+      totEl.innerHTML =
+        "Toplam: <strong>" + sum.toLocaleString("tr-TR") +
+        "</strong> / hedef <strong>" + hedef.toLocaleString("tr-TR") + "</strong> kişi";
+      totEl.classList.toggle("bad", sum !== hedef);
+    }
+    var warn = document.getElementById("firm-warn");
+    var fark = sum - hedef;
+    var msg = "";
+    if (hedef <= 0) {
+      msg = "Bu güne kişi sayısı girilmemiş — önce satırdaki sayacı doldurup kaydet.";
+    } else if (fark !== 0) {
+      msg = Math.abs(fark).toLocaleString("tr-TR") + " kişi " + (fark > 0 ? "fazla" : "eksik") +
+        " — toplam hedefe eşit olmadan kaydedilmez.";
+    }
+    if (warn) {
+      warn.textContent = msg;
+      warn.hidden = msg === "";
+    }
+    ins.forEach(function (el) {
+      el.classList.toggle("is-bad", msg !== "");
+    });
+    var btn = document.getElementById("meal-save");
+    if (btn && !btn.hidden) btn.disabled = msg !== "";
+    return sum;
+  }
+
+  // Tek POST: gün sayıları + firma kırılımı aynı formda gider (kırılım sunucuda üretim
+  // kaydından SONRA doğrulanır → hedef her zaman güncel rakamdan hesaplanır).
+  function submitFirmSplit(otomatige) {
+    var form = document.getElementById("bugun-form");
+    if (!form || !mealRow) return;
+    var eski = form.querySelectorAll(".firm-post");
+    eski.forEach(function (el) {
+      el.remove();
+    });
+    function gizli(name, value) {
+      var i = document.createElement("input");
+      i.type = "hidden";
+      i.name = name;
+      i.value = value;
+      i.className = "firm-post";
+      form.appendChild(i);
+    }
+    gizli("altfirma_cid", mealRow.getAttribute("data-cid") || "0");
+    if (otomatige) {
+      gizli("altfirma_oto", "1");
+    } else {
+      document.querySelectorAll("#meal-modal-firmlist .firm-in").forEach(function (el) {
+        gizli("altfirma[" + el.getAttribute("data-kod") + "]", String(clampP(el.value)));
+      });
+    }
+    closeMealModal();
+    if (form.requestSubmit) form.requestSubmit();
+    else form.submit();
   }
 
   function openMealModal(row) {
@@ -284,18 +433,24 @@
     if (ogunAlan) ogunAlan.hidden = hasFirms;
     if (ogunTotal) ogunTotal.hidden = hasFirms;
     if (ogunHint) ogunHint.hidden = hasFirms;
-    if (kaydetBtn) kaydetBtn.hidden = hasFirms;
+    // fable-059: firma kırılımı artık düzenlenebilir → Kaydet her iki pencerede de görünür.
+    if (kaydetBtn) {
+      kaydetBtn.hidden = false;
+      kaydetBtn.disabled = false;
+    }
     if (vazgecBtn) {
-      vazgecBtn.textContent = hasFirms ? "Kapat" : "Vazgeç";
-      vazgecBtn.classList.toggle("btn-primaryx", hasFirms);
-      vazgecBtn.classList.toggle("btn-secondaryx", !hasFirms);
+      vazgecBtn.textContent = "Vazgeç";
+      vazgecBtn.classList.remove("btn-primaryx");
+      vazgecBtn.classList.add("btn-secondaryx");
     }
     mealModalTotal();
     renderFirmSplit();
     mealModal.hidden = false;
     document.body.classList.add("meal-open");
-    var first = hasFirms ? mealModal.querySelector(".actions-row [data-meal-close]")
+    var first = hasFirms
+      ? mealModal.querySelector("#meal-modal-firmlist .firm-in")
       : document.getElementById("meal-in-ogle");
+    if (!first) first = mealModal.querySelector(".actions-row [data-meal-close]");
     if (first) first.focus();
   }
 
@@ -329,16 +484,38 @@
   });
 
   document.addEventListener("input", function (e) {
-    if (e.target.classList && e.target.classList.contains("meal-input")) {
+    if (!e.target.classList) return;
+    if (e.target.classList.contains("meal-input")) {
       mealModalTotal();
       renderFirmSplit(); // fable-056: sayı değişince firma dağılımı anında tazelenir
+    } else if (e.target.classList.contains("firm-in")) {
+      firmUpdateTotal(); // fable-059: elle giriş → canlı toplam/hedef denetimi
     }
   });
+
+  // fable-059: "Otomatiğe dön" — elle kaydı siler, gün desene döner (onay sorulur).
+  var firmOtoBtn = document.getElementById("firm-oto");
+  if (firmOtoBtn) {
+    firmOtoBtn.addEventListener("click", function () {
+      if (!mealRow) return;
+      if (!confirm("Bu günün elle girilen firma kırılımı silinsin ve dağılım yeniden firma desenine göre hesaplansın mı?")) {
+        return;
+      }
+      submitFirmSplit(true);
+    });
+  }
 
   var mealSaveBtn = document.getElementById("meal-save");
   if (mealSaveBtn) {
     mealSaveBtn.addEventListener("click", function () {
       if (!mealRow) return;
+      // fable-059: alt firmalı müşteride Kaydet = FİRMA kırılımı kaydı (öğün alanları gizli)
+      if (rowFirms(mealRow).length) {
+        if (firmUpdateTotal() !== rowHedef(mealRow) || rowHedef(mealRow) <= 0) return;
+        mealSaveBtn.disabled = true; // çift tık koruması
+        submitFirmSplit(false);
+        return;
+      }
       var m = {};
       MEALS.forEach(function (k) {
         var el = document.getElementById("meal-in-" + k);

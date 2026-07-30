@@ -3039,3 +3039,109 @@ body.meal-open {
 .firm-split[hidden] {
   display: none !important;
 }
+
+/* ── fable-059: firma kırılımına ELLE giriş (istisna günler) ──
+   390px'te tam sığar: ad esner (minmax 0 1fr), kutu 92px sabit. iOS zoom olmasın → 17px. */
+.firm-split-head {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 6px;
+}
+.firm-badge {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.firm-badge.is-elle {
+  background: #fff4d6;
+  border-color: #e8c777;
+  color: #8a5a06;
+}
+.firm-split .firm-split-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 92px;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+}
+.firm-split .firm-split-row > span {
+  font-size: 14px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.firm-in {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 6px;
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  background: var(--surface);
+  color: inherit;
+  font-size: 17px;
+  font-weight: 800;
+  text-align: center;
+  -moz-appearance: textfield;
+}
+.firm-in::-webkit-outer-spin-button,
+.firm-in::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.firm-in.is-bad {
+  border-color: var(--red);
+  background: var(--red-tint);
+}
+.firm-total {
+  margin: 8px 0 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+.firm-total.bad {
+  color: var(--red);
+}
+.firm-warn {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.45;
+  color: var(--red);
+}
+.firm-oto {
+  margin-top: 10px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--primary);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+/* Satırda elle girilmiş gün göze çarpsın (renk tek başına anlam taşımasın diye title da var) */
+.alt-split.is-elle {
+  font-weight: 800;
+}
+/* Kaydet pasifken TIKLANABİLİR görünmesin (toplam hedefe eşit değilken kapalı) */
+.btn-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+/* Resmi tatil rozeti — hedefin neden 70 değil 36 olduğu pencerede yazsın */
+.firm-tatil {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--red-tint);
+  color: var(--red);
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.45;
+}

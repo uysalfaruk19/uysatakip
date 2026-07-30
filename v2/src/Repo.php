@@ -1239,6 +1239,12 @@ final class Repo
                 // fable-051: desen bazlı 3'lü bölüşüm (gün gün hesaplanır) — pencere DOLU gelsin.
                 // Boş dizi = alt firma tanımlı değil → eski davranış (son ayın oranları) sürer.
                 'altfirma'    => $bolusum !== null ? $this->altFirmaDagilim($cid, $aylikBas, $aylikSon) : [],
+                // fable-059: hangi günlerde kırılım ELLE girildi (fatura penceresinde not olarak
+                // görünür — ay sonunda Ömer neyin elle girildiğini bilsin). 'bayat' = kayıttan
+                // sonra günün sayısı değişmiş gün (fark varsayılan firmaya yazılıyor → uyarılır).
+                'altfirma_elle' => $bolusum !== null
+                    ? $this->altFirmaElleDurum($cid, $aylikBas, $aylikSon)
+                    : ['gunler' => [], 'bayat' => []],
                 'secilebilir' => $secilebilir,
                 'sebep'       => $sebep,
             ];
@@ -1478,7 +1484,9 @@ final class Repo
     }
 
     /**
-     * Dönemin alt firma bölüşümü — gün gün desen uygulanır, dönem boyunca toplanır.
+     * Dönemin alt firma bölüşümü — gün gün hesaplanır, dönem boyunca toplanır.
+     * fable-059: ELLE GİRİLEN gün varsa o gün deseni EZER; kaydı olmayan gün desenle hesaplanır
+     * (karışık ay: bazı günler elle, bazıları desen — toplam yine dönemin fatura kişisidir).
      * Tutar o ayın birim fiyatıyla (ay-bazlı fiyat; dönem iki aya taşarsa her gün kendi ayından).
      * Alt firması tanımlı DEĞİLSE boş döner → çağıran taraf eski davranışını sürdürür.
      * @return array<string,array{ad:string,contact_id:string,kisi:int,tutar:float}> kod => ...
@@ -1493,18 +1501,224 @@ final class Repo
         foreach ($firmalar as $f) {
             $out[$f['kod']] = ['ad' => $f['ad'], 'contact_id' => $f['contact_id'], 'kisi' => 0, 'tutar' => 0.0];
         }
+        $elle = $this->altFirmaElleAralik($customerId, $bas, $son);
         $fiyat = [];
         foreach ($this->gunFaturaKisiMap($customerId, $bas, $son) as $gun => $kisi) {
             $ay = substr($gun, 0, 7);
             if (!isset($fiyat[$ay])) {
                 $fiyat[$ay] = $this->priceFor($customerId, $ay)['unit_price'];
             }
-            foreach (self::altFirmaGunDagit($kisi, $gun, $firmalar) as $kod => $pay) {
-                $out[$kod]['kisi'] += $pay;
-                $out[$kod]['tutar'] += $pay * $fiyat[$ay];
+            $pay = isset($elle[$gun])
+                ? self::altFirmaElleDagit($kisi, $elle[$gun], $firmalar)
+                : self::altFirmaGunDagit($kisi, $gun, $firmalar);
+            foreach ($pay as $kod => $adet) {
+                $out[$kod]['kisi'] += $adet;
+                $out[$kod]['tutar'] += $adet * $fiyat[$ay];
             }
         }
         return $out;
+    }
+
+    // ── fable-059: İSTİSNA günlerde firma kırılımına ELLE GİRİŞ ───
+    // NEDEN: desen normal günlerde doğru, istisna günlerde değil. 15 Temmuz resmi tatilinde
+    // yemek verilmedi, o güne başka bir işin 36 kişilik maliyeti yazıldı — o 36 kişinin hangi
+    // şirkete ait olduğunu desen BİLEMEZ. Ay sonu bu kırılım 3 ayrı e-Faturaya bölündüğü için
+    // yanlış rakam = YANLIŞ ŞİRKETE FATURA (geri alınamaz). Ömer o günü elle girer.
+    // YALNIZ elle girilen gün yazılır → desen değişince geçmiş kendiliğinden düzelir.
+
+    /**
+     * Bir günün ELLE girilmiş firma kırılımı (kod => kişi). Kayıt yoksa BOŞ dizi = desen.
+     * @return array<string,int>
+     */
+    public function gunAltFirmaKirilim(int $customerId, string $gun): array
+    {
+        return $this->altFirmaElleAralik($customerId, $gun, $gun)[$gun] ?? [];
+    }
+
+    /**
+     * Dönemdeki ELLE girilmiş günler: gün => (kod => kişi). Tek sorgu (gün gün sorgulamaz).
+     * Tablo henüz yoksa (migrate_050 uygulanmadıysa) BOŞ döner — ekranlar desenle çalışmaya devam.
+     * @return array<string,array<string,int>>
+     */
+    public function altFirmaElleAralik(int $customerId, string $bas, string $son): array
+    {
+        try {
+            $st = $this->pdo->prepare(
+                'SELECT u.prod_date, f.kod, u.kisi
+                   FROM uretim_altfirma u
+                   JOIN musteri_altfirma f ON f.id = u.altfirma_id
+                  WHERE u.customer_id = ? AND u.prod_date >= ? AND u.prod_date <= ?
+                  ORDER BY u.prod_date, f.sira, f.id'
+            );
+            $st->execute([$customerId, $bas, $son]);
+            $rows = $st->fetchAll();
+        } catch (\PDOException $e) {
+            error_log('[UYSA v2 altFirmaElle] okunamadı (migrate_050?): ' . $e->getMessage());
+            return [];
+        }
+        $out = [];
+        foreach ($rows as $r) {
+            $out[(string) $r['prod_date']][(string) $r['kod']] = (int) $r['kisi'];
+        }
+        return $out;
+    }
+
+    /** Dönemde elle kırılım girilmiş günler (fatura penceresindeki "N günde elle kırılım var"). */
+    public function altFirmaElleGunler(int $customerId, string $bas, string $son): array
+    {
+        return array_keys($this->altFirmaElleAralik($customerId, $bas, $son));
+    }
+
+    /**
+     * Elle kırılımlı günler + BAYAT olanlar (kayıttan sonra günün sayısı değişmiş → toplam
+     * artık hedefe eşit değil; fark varsayılan firmaya yazılıyor). Ömer görmeden kalmasın.
+     * @return array{gunler:list<string>,bayat:list<string>}
+     */
+    public function altFirmaElleDurum(int $customerId, string $bas, string $son): array
+    {
+        $elle = $this->altFirmaElleAralik($customerId, $bas, $son);
+        if (!$elle) {
+            return ['gunler' => [], 'bayat' => []];
+        }
+        $hedefler = $this->gunFaturaKisiMap($customerId, $bas, $son);
+        $bayat = [];
+        foreach ($elle as $gun => $kirilim) {
+            if (array_sum($kirilim) !== (int) ($hedefler[$gun] ?? 0)) {
+                $bayat[] = $gun;
+            }
+        }
+        return ['gunler' => array_keys($elle), 'bayat' => $bayat];
+    }
+
+    /**
+     * O günün BÖLÜŞÜM HEDEFİ = günün FATURA kişisi (gunFaturaKisiMap — fable-040 kuralı,
+     * fable-057: resmi tatilde kural uygulanmaz → o gün girilen sayı). Elle giriş bunu bölmelidir.
+     */
+    public function altFirmaGunHedef(int $customerId, string $gun): int
+    {
+        return (int) ($this->gunFaturaKisiMap($customerId, $gun, $gun)[$gun] ?? 0);
+    }
+
+    /**
+     * ELLE girilen kırılımı günün fatura kişisine oturt.
+     *   · Pasif/silinmiş firmaya yazılmış pay KAYBOLMAZ — varsayılan firmaya döner.
+     *   · Kayıttan sonra günün sayısı değişmişse (bayat kayıt) fark varsayılana yazılır,
+     *     fazlaysa sondan kısılır → bölüşüm toplamı DAİMA fatura kişisine eşittir
+     *     (kişi/tutar ne kaybolur ne uydurulur; ekran bayat günü ayrıca uyarır).
+     * @param array<string,int> $elle kod => kişi
+     * @param list<array<string,mixed>> $firmalar
+     * @return array<string,int>
+     */
+    public static function altFirmaElleDagit(int $faturaKisi, array $elle, array $firmalar): array
+    {
+        $out = [];
+        foreach ($firmalar as $f) {
+            $out[(string) $f['kod']] = 0;
+        }
+        if (!$firmalar || $faturaKisi <= 0) {
+            return $out;
+        }
+        $vars = self::altFirmaVarsayilanKod($firmalar);
+        foreach ($elle as $kod => $kisi) {
+            $kisi = max(0, (int) $kisi);
+            $hedefKod = array_key_exists((string) $kod, $out) ? (string) $kod : $vars;
+            $out[$hedefKod] += $kisi;
+        }
+        $fark = $faturaKisi - array_sum($out);
+        if ($fark > 0) {
+            $out[$vars] += $fark; // gün sayısı sonradan arttı → fark varsayılana
+        } elseif ($fark < 0) {
+            $kes = -$fark; // gün sayısı sonradan azaldı → sondan kıs (negatife düşmeden)
+            foreach (array_reverse(array_keys($out)) as $kod) {
+                if ($kes <= 0) {
+                    break;
+                }
+                $d = min($out[$kod], $kes);
+                $out[$kod] -= $d;
+                $kes -= $d;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Elle kırılımı yaz — ATOMİK (tek transaction: tüm gün silinir + gelenler yazılır).
+     *   · Tamamı 0/boş gelirse satırlar SİLİNİR → gün otomatiğe (desene) döner.
+     *   · Toplam, günün FATURA kişisine EŞİT DEĞİLSE yazılmaz (InvalidArgumentException).
+     *   · Müşteriye ait olmayan/pasif firma kodu reddedilir; negatif sayı reddedilir.
+     * @param array<string,int> $kirilim kod => kişi
+     */
+    public function saveGunAltFirma(int $customerId, string $gun, array $kirilim): void
+    {
+        if (!Helpers::isDate($gun)) {
+            throw new \InvalidArgumentException('Geçersiz tarih.');
+        }
+        $firmalar = $this->altFirmalar($customerId);
+        if (!$firmalar) {
+            throw new \InvalidArgumentException('Bu müşteride alt firma tanımlı değil.');
+        }
+        $idOf = [];
+        foreach ($firmalar as $f) {
+            $idOf[(string) $f['kod']] = (int) $f['id'];
+        }
+        $temiz = [];
+        $toplam = 0;
+        foreach ($kirilim as $kod => $kisi) {
+            $kod = (string) $kod;
+            if (!isset($idOf[$kod])) {
+                throw new \InvalidArgumentException('Tanınmayan alt firma: ' . $kod);
+            }
+            if (!is_numeric($kisi) || (int) $kisi < 0) {
+                throw new \InvalidArgumentException('Kişi sayısı negatif olamaz.');
+            }
+            $temiz[$kod] = (int) $kisi;
+            $toplam += (int) $kisi;
+        }
+        $sil = $toplam === 0;
+        if (!$sil) {
+            $hedef = $this->altFirmaGunHedef($customerId, $gun);
+            if ($hedef <= 0) {
+                throw new \InvalidArgumentException(
+                    'Bu güne sayı girilmemiş — önce günün kişi sayısını kaydedin.'
+                );
+            }
+            if ($toplam !== $hedef) {
+                $fark = $toplam - $hedef;
+                throw new \InvalidArgumentException(sprintf(
+                    'Kırılım toplamı %d kişi, hedef %d kişi — %d kişi %s. Kaydedilmedi.',
+                    $toplam,
+                    $hedef,
+                    abs($fark),
+                    $fark > 0 ? 'fazla' : 'eksik'
+                ));
+            }
+        }
+        $disTx = $this->pdo->inTransaction();
+        if (!$disTx) {
+            $this->pdo->beginTransaction();
+        }
+        try {
+            $this->pdo->prepare('DELETE FROM uretim_altfirma WHERE customer_id = ? AND prod_date = ?')
+                ->execute([$customerId, $gun]);
+            if (!$sil) {
+                $ins = $this->pdo->prepare(
+                    'INSERT INTO uretim_altfirma (customer_id, prod_date, altfirma_id, kisi) VALUES (?, ?, ?, ?)'
+                );
+                foreach ($temiz as $kod => $kisi) {
+                    if ($kisi > 0) { // 0 pay satırı tutulmaz (gün yine "elle" sayılır, kayıt sade kalır)
+                        $ins->execute([$customerId, $gun, $idOf[$kod], $kisi]);
+                    }
+                }
+            }
+            if (!$disTx) {
+                $this->pdo->commit();
+            }
+        } catch (\Throwable $e) {
+            if (!$disTx && $this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+            throw $e;
+        }
     }
 
     /**
