@@ -5757,10 +5757,23 @@ final class Repo
      */
     private function txFirma(array $r): string
     {
-        if (($r['source'] ?? 'manuel') === 'parasut') {
+        // fable-067 (Ömer: "elle girilen diye bir şey olmasın, kime ne ödeyeceğimi bileyim"):
+        // tedarikçi seçilmişse HER ZAMAN o ad esastır — kaynak ne olursa olsun.
+        $supOnce = trim((string) ($r['supplier_name'] ?? ''));
+        if ($supOnce !== '') {
+            return $supOnce;
+        }
+        // Belge kaynaklı kayıtlarda (Paraşüt / GİB listesi) açıklama "FİRMA · BELGE" biçimindedir.
+        // Eskiden yalnız 'parasut' okunuyordu; GİB'den işlenenler "Elle girilen" torbasına düşüp
+        // borç listesinde firma bazında GÖRÜNMÜYORDU (POLATOĞLU vakası).
+        $src = (string) ($r['source'] ?? 'manuel');
+        if ($src === 'parasut' || $src === 'gib') {
             $d = (string) ($r['description'] ?? '');
             $firma = trim(explode(' · ', $d)[0] ?? '');
-            return $firma !== '' ? $firma : 'Paraşüt (tedarikçi bilinmiyor)';
+            if ($firma !== '') {
+                return $firma;
+            }
+            return $src === 'gib' ? 'GİB listesi (tedarikçi bilinmiyor)' : 'Paraşüt (tedarikçi bilinmiyor)';
         }
         // fable-043: elle girilen + tedarikçi seçili → tedarikçi ADI (firma karnesi/eşleştirme/gıda
         // hepsi bu tek kaynaktan; supplier yoksa eski 'Elle girilen · kategori' fallback korunur).
