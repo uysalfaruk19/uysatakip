@@ -519,7 +519,7 @@ require __DIR__ . '/partials/header.php';
                   + KDV %<?= rtrim(rtrim(number_format((float) $a['kdv_orani'], 2), '0'), '.') ?>
                   = <strong>₺<?= Helpers::money((float) $a['net']) ?></strong>
                   <?php if (($a['aciklama'] ?? '') !== ''): ?>
-                    <span class="ftr-uretim"><?= Helpers::e((string) $a['aciklama']) ?></span>
+                    <span class="ftr-not"><?= Helpers::e((string) $a['aciklama']) ?></span>
                   <?php endif; ?>
                 <?php elseif ($a['tip'] === 'irsaliye'): ?>
                   <?= (int) $a['irsaliye_sayisi'] ?> irsaliye · Öğlen <?= (int) $a['ogle'] ?> / Akşam <?= (int) $a['aksam'] ?> / Kumanya <?= (int) $a['kumanya'] ?> · <strong><?= (int) $a['toplam'] ?></strong> kişi × ₺<?= Helpers::money((float) $a['birim']) ?>

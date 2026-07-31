@@ -640,10 +640,12 @@ final class Repo
      */
     public function sonKesilenFatura(int $customerId, string $oncesinde): ?array
     {
+        // fable-065: SABİT kalem faturaları (1 adet × sabit tutar) buraya GİRMEZ — yemek
+        // faturasıyla kıyaslanınca "1 kişi → 586 kişi" gibi anlamsız bir sapma üretirlerdi.
         $st = $this->pdo->prepare(
             "SELECT donem_bas, donem_son, SUM(toplam_kisi) AS kisi, SUM(toplam_tutar) AS tutar
              FROM parasut_fatura_log
-             WHERE customer_id = ? AND durum = 'kesildi' AND donem_son < ?
+             WHERE customer_id = ? AND durum = 'kesildi' AND donem_son < ? AND tip <> 'sabit'
              GROUP BY donem_bas, donem_son
              ORDER BY donem_son DESC LIMIT 1"
         );
@@ -4106,9 +4108,12 @@ final class Repo
         $st = $this->pdo->prepare("SELECT customer_id FROM fatura WHERE ay = ? AND durum = 'kesildi'");
         $st->execute([$ay]);
         $faturali = array_flip(array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN)));
+        // fable-065: SABİT kalem faturası YEMEK faturası SAYILMAZ. Sayılsaydı, personel
+        // hizmeti kesilmiş bir müşteri "faturalandı" görünür ve asıl yemek faturasının
+        // unutulduğu ay kapanışta SESSİZCE gizlenirdi (tam kaçınmak istediğimiz hata).
         $st = $this->pdo->prepare(
             "SELECT DISTINCT customer_id FROM parasut_fatura_log
-             WHERE substr(donem_son,1,7) = ? AND durum = 'kesildi'"
+             WHERE substr(donem_son,1,7) = ? AND durum = 'kesildi' AND tip <> 'sabit'"
         );
         $st->execute([$ay]);
         foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $cid) {

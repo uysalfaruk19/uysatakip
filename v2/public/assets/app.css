@@ -2996,6 +2996,13 @@ body.meal-open {
 .ftr-uretim {
   color: var(--muted);
 }
+/* fable-065: sabit kalem açıklaması tutar satırına yapışmasın (kendi satırına insin) */
+.ftr-not {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+}
 
 /* fable-056: Bugün ekranı kırılım penceresinde FİRMA dağılımı (CANTAŞ/Marmara) */
 .firm-split {

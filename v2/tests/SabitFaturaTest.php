@@ -605,6 +605,53 @@ final class SabitFaturaTest extends TestCase
         self::assertSame(60000.00, (float) $this->aday('s' . $kid)['net'], 'yeni fiyat aday satırına yansımadı');
     }
 
+    /**
+     * SIZINTI 1: sabit fatura "önceki dönem kıyası"na girmemeli. Girseydi Ağustos yemek
+     * faturasında "önceki fatura 1 kişi → bu dönem 586 kişi (+58.500%)" gibi anlamsız bir
+     * uyarı çıkar, gerçek sapma uyarısı gürültüye boğulurdu.
+     */
+    public function testSabitFaturaOncekiDonemKiyasinaGirmez(): void
+    {
+        $cid = $this->musteri('BOMİ');
+        $kid = $this->kalem($cid);
+
+        // Haziran'da GERÇEK yemek faturası + Temmuz'da sabit kalem faturası.
+        $this->repo->faturaLogEkle([
+            'customer_id' => $cid, 'donem_bas' => '2026-06-01', 'donem_son' => '2026-06-30',
+            'tip' => 'irsaliye', 'toplam_kisi' => 520, 'toplam_tutar' => 122408.00, 'durum' => 'kesildi',
+        ]);
+        (new ParasutYaz($this->repo, 'TOKEN', $this->http([$this->createYanit()])))
+            ->createFixedInvoice($kid, '2026-07', ['onay' => 'TOKEN']);
+
+        $son = $this->repo->sonKesilenFatura($cid, '2026-08-01');
+        self::assertNotNull($son);
+        self::assertSame('2026-06-30', $son['donem_son'], 'kıyas sabit kalem faturasına kaydı');
+        self::assertSame(520, $son['kisi']);
+    }
+
+    /**
+     * SIZINTI 2: ay kapanışındaki "faturası kesilmemiş müşteri" uyarısı, sabit kalem faturası
+     * yüzünden SUSMAMALI — yoksa asıl yemek faturasının unutulduğu ay sessizce gizlenir.
+     */
+    public function testSabitFaturaAyKapanisiFaturaUyarisiniSusturmaz(): void
+    {
+        $cid = $this->musteri('BOMİ');
+        $kid = $this->kalem($cid);
+        $this->repo->upsertProduction($cid, '2026-07-13', 118, 214.0, 'ogle');
+        $this->irsaliye($cid, '2026-07-13', 118, 'UU1');
+
+        $once = $this->repo->ayBelgeDurumu('2026-07');
+        self::assertSame([$cid], array_column($once['fatura'], 'customer_id'),
+            'yemek faturası kesilmemişken uyarı yok');
+
+        (new ParasutYaz($this->repo, 'TOKEN', $this->http([$this->createYanit()])))
+            ->createFixedInvoice($kid, '2026-07', ['onay' => 'TOKEN']);
+
+        $sonra = $this->repo->ayBelgeDurumu('2026-07');
+        self::assertSame([$cid], array_column($sonra['fatura'], 'customer_id'),
+            'sabit kalem faturası "yemek faturası kesildi" sanıldı — uyarı sustu');
+    }
+
     // ══ TABLO YOKSA (migrate_052 uygulanmadan deploy) EKRAN ÇÖKMEZ ════════════
     public function testTabloYokkenAdayListesiCalismayaDevamEder(): void
     {
