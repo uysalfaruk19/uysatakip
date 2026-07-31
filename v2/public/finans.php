@@ -24,7 +24,7 @@ if (!in_array($filter, ['all', 'gelir', 'gider', 'firma'], true)) {
 $flash = '';
 $flashOk = true;
 
-$CATS = ['Et/Tavuk', 'Sebze-Meyve', 'Kuru Gıda', 'Ambalaj', 'Yakıt', 'Personel', 'Kira', 'Diğer'];
+$CATS = ['Et/Tavuk', 'Sebze-Meyve', 'Kuru Gıda', 'Ambalaj', 'Yakıt', 'Personel', 'Kira', 'Vergi/Harç', 'Diğer'];
 
 // ── Hızlı ekle ───────────────────────────────────────────────
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {

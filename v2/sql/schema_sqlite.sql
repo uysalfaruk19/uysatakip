@@ -158,6 +158,28 @@ CREATE TABLE IF NOT EXISTS uretim_altfirma (
 );
 CREATE INDEX IF NOT EXISTS idx_ua_cust_gun ON uretim_altfirma(customer_id, prod_date);
 
+-- ── fable-065: SABİT AYLIK FATURA KALEMİ (MySQL eşi migrate_052.sql) ──────────────────
+-- Yemek faturasından AYRI, üretimden BAĞIMSIZ, her ay AYNI tutarda kesilen kalem
+-- (BOMİ → "PERSONEL HİZMET"; ileride kira/hizmet bedeli de olabilir). GENEL özellik:
+-- kalem tanımlanmamış müşteride hiçbir davranış değişmez.
+-- KDV kalemin KENDİ oranından (hizmet %20 — yemek %10 DEĞİL). SİLME YOK: aktif=0.
+-- Aynı ay + aynı kalem iki kez kesilemez → kalkan parasut_fatura_log(tip='sabit', sabit_kalem_id).
+CREATE TABLE IF NOT EXISTS musteri_sabit_fatura (
+  id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id        INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  ad                 TEXT NOT NULL,                   -- ör. 'Personel hizmeti'
+  parasut_product_id TEXT,                            -- Paraşüt ürün id (ör. PERSONEL HİZMET)
+  parasut_contact_id TEXT,                            -- boşsa müşterinin KENDİ carisi kullanılır
+  birim_fiyat        REAL NOT NULL DEFAULT 0,         -- 1 adet × bu tutar (KDV hariç)
+  kdv_orani          REAL NOT NULL DEFAULT 20,
+  aciklama           TEXT,
+  aktif              INTEGER NOT NULL DEFAULT 1,
+  created_at         TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at         TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(customer_id, ad)
+);
+CREATE INDEX IF NOT EXISTS idx_msf_cust ON musteri_sabit_fatura(customer_id, aktif, id);
+
 CREATE TABLE IF NOT EXISTS requests (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
@@ -706,7 +728,9 @@ CREATE TABLE IF NOT EXISTS parasut_fatura_log (
   customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
   donem_bas TEXT NOT NULL,                  -- 'YYYY-MM-DD' dönem başlangıç
   donem_son TEXT NOT NULL,                  -- 'YYYY-MM-DD' dönem bitiş (= issue_date)
-  tip TEXT NOT NULL DEFAULT 'irsaliye' CHECK(tip IN ('irsaliye','aylik')), -- irsaliyeden mi aylık toplamdan mı
+  -- fable-065: 'sabit' = üretimden bağımsız, her ay aynı tutarlı kalem (musteri_sabit_fatura)
+  tip TEXT NOT NULL DEFAULT 'irsaliye' CHECK(tip IN ('irsaliye','aylik','sabit')),
+  sabit_kalem_id INTEGER,                   -- tip='sabit' ise musteri_sabit_fatura.id (mükerrer kalkanı)
   parasut_contact_id TEXT,                  -- faturanın kesildiği contact (irsaliyeli=customers.parasut_id; aylık bölüşümde alt-firma)
   parasut_fatura_id TEXT,                   -- sales_invoices.id
   fatura_no TEXT,                           -- Paraşüt otomatik seri no (UY...)

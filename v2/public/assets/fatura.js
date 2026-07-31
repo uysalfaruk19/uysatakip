@@ -20,7 +20,10 @@
   var onayGenelEl = document.getElementById("ftr-onay-genel");
   var sonucEl = document.getElementById("ftr-sonuc");
   var onayToken = "";
-  var sonPlan = []; // fable-026: onaylanan müşteriler [{cid, name}] — canlı ilerleme satırları
+  // fable-026: onaylanan satırlar [{key, name}] — canlı ilerleme blokları.
+  // fable-065: anahtar artık customer_id DEĞİL satir_key ("12" müşteri · "s3" sabit kalem),
+  // çünkü bir müşteride birden çok aday satırı olabilir (BOMİ = yemek + personel hizmeti).
+  var sonPlan = [];
 
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
@@ -107,7 +110,9 @@
         .forEach(function (c) {
           // fable-055 (Ömer): "Tümünü seç" AYLIK müşteriyi almaz — haftalık turda CANTAŞ/
           // Marmara yanlışlıkla kesilmesin; onlar ay sonunda tek tek seçilir.
-          if (rowOf(c) && rowOf(c).dataset.tip === "aylik") return;
+          // fable-065: SABİT kalem de aynı kurala tabi (ay sonunda bilinçli seçilir).
+          var t = rowOf(c) && rowOf(c).dataset.tip;
+          if (t === "aylik" || t === "sabit") return;
           c.checked = on;
           toggleBolusum(rowOf(c), on);
         });
@@ -152,7 +157,10 @@
   function buildSecim() {
     return picks().map(function (cb) {
       var row = rowOf(cb);
-      var item = { customer_id: parseInt(cb.value, 10) };
+      var item = {
+        key: row.getAttribute("data-key"),
+        customer_id: parseInt(row.getAttribute("data-cid"), 10),
+      };
       if (row.getAttribute("data-tip") === "aylik") {
         var dag = {};
         [].slice
@@ -181,7 +189,7 @@
         onayToken = r.onay || "";
         sonPlan = [];
         r.satirlar.forEach(function (s) {
-          if (s.ok) sonPlan.push({ cid: s.customer_id, name: s.name });
+          if (s.ok) sonPlan.push({ key: s.key, name: s.name });
         });
         var html = "";
         var govdeler = [];
@@ -244,7 +252,10 @@
           Akşam: "AKŞAM YEMEK BEDELİ",
           Kumanya: "KUMANYA BEDELİ",
         };
-        function faturaBelge(baslik, kalemler, hesap, vade, tevkifat) {
+        // fable-065: KDV oranı artık parametre — sabit kalemde %20 (yemek %10).
+        function faturaBelge(baslik, kalemler, hesap, vade, tevkifat, kdvOran) {
+          var kdvTxt =
+            "%" + String(kdvOran == null ? 10 : kdvOran).replace(".", ",");
           var rows = kalemler
             .map(function (k) {
               return (
@@ -254,7 +265,9 @@
                 k.miktar +
                 "</td><td>" +
                 money(k.birim) +
-                "</td><td>%10</td><td>" +
+                "</td><td>" +
+                kdvTxt +
+                "</td><td>" +
                 money(k.miktar * k.birim) +
                 "</td></tr>"
               );
@@ -285,7 +298,9 @@
             "<div>Ara toplam <strong>" +
             money(hesap.brut) +
             "</strong></div>" +
-            "<div>KDV (%10) <strong>" +
+            "<div>KDV (" +
+            kdvTxt +
+            ") <strong>" +
             money(hesap.kdv) +
             "</strong></div>" +
             (hesap.tevkifat > 0
@@ -342,7 +357,44 @@
             return;
           }
           var kb = kontrolBlok(s.kontroller);
-          if (s.tip === "irsaliye") {
+          if (s.tip === "sabit") {
+            // fable-065: üretimden bağımsız sabit kalem — tek satır, kalemin kendi KDV'si.
+            html +=
+              '<div class="ftr-res ok"><div class="ftr-name">' +
+              esc(s.name) +
+              ' <span class="badge-soft badge-warn">SABİT</span>' +
+              kb[0] +
+              "</div>" +
+              kb[1] +
+              '<div class="ftr-lines">' +
+              esc(s.kalem_ad) +
+              " × 1 × " +
+              money(s.birim) +
+              " (KDV %" +
+              String(s.kdv_orani).replace(".", ",") +
+              ")</div>" +
+              '<div class="ftr-calc">Brüt ' +
+              money(s.hesap.brut) +
+              " · KDV " +
+              money(s.hesap.kdv) +
+              " · <strong>Tahsil " +
+              money(s.hesap.net) +
+              "</strong> · Dönem " +
+              esc(s.donem) +
+              " · Vade " +
+              esc(s.vade) +
+              "</div>" +
+              faturaBelge(
+                s.name,
+                [{ ad: s.kalem_ad, miktar: 1, birim: s.birim }],
+                s.hesap,
+                s.vade,
+                "",
+                s.kdv_orani,
+              ) +
+              "</div>";
+            govdeler.push(s.name + ":\n" + JSON.stringify(s.govde, null, 2));
+          } else if (s.tip === "irsaliye") {
             var kal = s.kalemler
               .map(function (k) {
                 return esc(k.ad) + " × " + k.miktar + " × " + money(k.birim);
@@ -484,7 +536,7 @@
     sonPlan.forEach(function (p) {
       html +=
         '<div class="ftr-res wait" id="ftr-prog-' +
-        p.cid +
+        p.key +
         '"><div class="ftr-name">' +
         esc(p.name) +
         '</div><div class="ftr-why">Sırada bekliyor…</div></div>';
@@ -539,7 +591,7 @@
         return;
       }
       var p = queue.shift();
-      var row = document.getElementById("ftr-prog-" + p.cid);
+      var row = document.getElementById("ftr-prog-" + p.key);
       if (row) {
         row.className = "ftr-res wait busy";
         row.innerHTML =
@@ -547,7 +599,7 @@
           esc(p.name) +
           '</div><div class="ftr-why">Fatura kesiliyor ve resmileştiriliyor…</div>';
       }
-      post({ action: "kes", tek: p.cid, onay: onayToken }, function (r) {
+      post({ action: "kes", tek: p.key, onay: onayToken }, function (r) {
         islenen++;
         if (!r.ok) {
           basarisiz++;

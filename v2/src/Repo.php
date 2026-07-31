@@ -673,9 +673,12 @@ final class Repo
      */
     public function faturaKilidi(int $customerId, string $bas, string $son): ?string
     {
+        // fable-065: tip='sabit' kayıtları BURAYA GİRMEZ — sabit kalemin kendi kalkanı var
+        // (sabitFaturaKesim). Aksi hâlde sabit kalemde takılan bir kesim müşterinin YEMEK
+        // faturasını da kilitlerdi (BOMİ'de iki aday satırı birbirinden bağımsızdır).
         $st = $this->pdo->prepare(
             "SELECT tip, durum FROM parasut_fatura_log
-             WHERE customer_id = ? AND donem_bas <= ? AND donem_son >= ?
+             WHERE customer_id = ? AND donem_bas <= ? AND donem_son >= ? AND tip <> 'sabit'
              ORDER BY id DESC"
         );
         $st->execute([$customerId, $son, $bas]);
@@ -706,20 +709,22 @@ final class Repo
     public function faturaLogEkle(array $d): int
     {
         $enum = static fn(string $v, array $ok, string $def): string => in_array($v, $ok, true) ? $v : $def;
-        $tip  = $enum((string) ($d['tip'] ?? 'irsaliye'), ['irsaliye', 'aylik'], 'irsaliye');
+        // fable-065: 'sabit' = üretimden bağımsız, her ay aynı tutarlı kalem (musteri_sabit_fatura)
+        $tip  = $enum((string) ($d['tip'] ?? 'irsaliye'), ['irsaliye', 'aylik', 'sabit'], 'irsaliye');
         $durum = $enum((string) ($d['durum'] ?? 'hata'), ['kesildi', 'hata', 'bilinmiyor', 'iptal'], 'hata');
         $resm = $enum((string) ($d['resmilestirme'] ?? 'yok'), ['gonderildi', 'hata', 'yok'], 'yok');
         $mail = $enum((string) ($d['mail'] ?? 'yok'), ['gonderildi', 'hata', 'yok'], 'yok');
         $sql = 'INSERT INTO parasut_fatura_log
-                    (customer_id, donem_bas, donem_son, tip, parasut_contact_id, parasut_fatura_id,
+                    (customer_id, donem_bas, donem_son, tip, sabit_kalem_id, parasut_contact_id, parasut_fatura_id,
                      fatura_no, alt_ad, kalemler, toplam_kisi, toplam_tutar, durum, resmilestirme, mail,
                      hata_mesaj, entered_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
         $this->pdo->prepare($sql)->execute([
             (int) $d['customer_id'],
             (string) $d['donem_bas'],
             (string) $d['donem_son'],
             $tip,
+            ((int) ($d['sabit_kalem_id'] ?? 0)) ?: null,
             $d['parasut_contact_id'] ?? null,
             $d['parasut_fatura_id'] ?? null,
             $d['fatura_no'] ?? null,
@@ -1066,190 +1071,465 @@ final class Repo
 
     /**
      * fable-024: Fatura Kes ekranının tek gerçek kaynağı — dönemdeki faturalanabilir müşteriler.
-     * İki tip: 'irsaliye' (faturalanmamış kesilmiş irsaliyelerin öğün toplamı) ve
-     * 'aylik' (irsaliye_aktif=0 → dönemdeki production.persons toplamı × birim; CANTAŞ bölüşümlü).
+     * Üç tip: 'irsaliye' (faturalanmamış kesilmiş irsaliyelerin öğün toplamı),
+     * 'aylik' (irsaliye_aktif=0 → dönemdeki production.persons toplamı × birim; CANTAŞ bölüşümlü) ve
+     * fable-065 'sabit' (üretimden BAĞIMSIZ, her ay aynı tutarlı kalem — AYRI satır).
      * Seçilemeyen de listelenir (sessiz atlama yok, sebep yazılı).
+     *
+     * Her satırda `satir_key` vardır: liste artık müşteri başına BİRDEN ÇOK satır içerebildiği
+     * için (BOMİ = yemek + personel hizmeti) ekran ve kesim akışı customer_id'yi DEĞİL bu
+     * anahtarı kullanır ('12' = müşteri satırı, 's3' = sabit kalem 3).
      * @return array<int,array<string,mixed>>
      */
     public function faturaAdaylari(string $bas, string $son): array
     {
-        $ay = substr($son, 0, 7);
         $out = [];
         $rows = $this->pdo->query('SELECT * FROM customers WHERE is_active = 1 ORDER BY name, id')->fetchAll();
         foreach ($rows as $c) {
-            $cid = (int) $c['id'];
-            $parasutId = trim((string) ($c['parasut_id'] ?? ''));
-            $irsAktif = (int) ($c['irsaliye_aktif'] ?? 1) === 1;
-            $kilit = $this->faturaKilidi($cid, $bas, $son);
-            $birim = $this->priceFor($cid, $ay)['unit_price'];
+            foreach ($this->musteriFaturaAdayi($c, $bas, $son) as $r) {
+                $out[] = $r;
+            }
+            // fable-065: sabit kalemler müşterinin yemek adayından BAĞIMSIZ — yemek adayı hiç
+            // çıkmasa da (irsaliye yok / üretim yok) sabit kalem satırı görünür.
+            foreach ($this->sabitFaturaAdaylari($c, $bas) as $r) {
+                $out[] = $r;
+            }
+        }
+        return $out;
+    }
 
-            if ($irsAktif) {
-                $irs = $this->faturaAdayIrsaliyeler($cid, $bas, $son);
-                if (!$irs && $kilit === null) {
-                    continue; // faturalanacak irsaliye yok → listeleme
+    /**
+     * Tek müşterinin yemek fatura adayı (0 ya da 1 satır). fable-024/051/055/056 mantığı
+     * BİREBİR buradadır — fable-065'te yalnız faturaAdaylari()'ndan buraya TAŞINDI.
+     * @param array<string,mixed> $c customers satırı
+     * @return list<array<string,mixed>>
+     */
+    private function musteriFaturaAdayi(array $c, string $bas, string $son): array
+    {
+        $ay = substr($son, 0, 7);
+        $cid = (int) $c['id'];
+        $parasutId = trim((string) ($c['parasut_id'] ?? ''));
+        $irsAktif = (int) ($c['irsaliye_aktif'] ?? 1) === 1;
+        $kilit = $this->faturaKilidi($cid, $bas, $son);
+        $birim = $this->priceFor($cid, $ay)['unit_price'];
+
+        if ($irsAktif) {
+            $irs = $this->faturaAdayIrsaliyeler($cid, $bas, $son);
+            if (!$irs && $kilit === null) {
+                return []; // faturalanacak irsaliye yok → listeleme
+            }
+            $ogle = $aksam = $kumanya = 0;
+            $irsaliyeIds = $docIds = $nolar = [];
+            foreach ($irs as $r) {
+                $irsaliyeIds[] = (int) $r['id'];
+                if (($r['parasut_doc_id'] ?? '') !== '') {
+                    $docIds[] = (string) $r['parasut_doc_id'];
                 }
-                $ogle = $aksam = $kumanya = 0;
-                $irsaliyeIds = $docIds = $nolar = [];
-                foreach ($irs as $r) {
-                    $irsaliyeIds[] = (int) $r['id'];
-                    if (($r['parasut_doc_id'] ?? '') !== '') {
-                        $docIds[] = (string) $r['parasut_doc_id'];
-                    }
-                    if (($r['despatch_no'] ?? '') !== '') {
-                        $nolar[] = (string) $r['despatch_no'];
-                    }
-                    foreach (json_decode((string) ($r['kalemler'] ?? '[]'), true) ?: [] as $k) {
-                        $m = (int) ($k['miktar'] ?? 0);
-                        $og = (string) ($k['ogun'] ?? '');
-                        if ($og === 'ogle') {
-                            $ogle += $m;
-                        } elseif ($og === 'aksam') {
-                            $aksam += $m;
-                        } elseif ($og === 'kumanya') {
-                            $kumanya += $m;
-                        }
+                if (($r['despatch_no'] ?? '') !== '') {
+                    $nolar[] = (string) $r['despatch_no'];
+                }
+                foreach (json_decode((string) ($r['kalemler'] ?? '[]'), true) ?: [] as $k) {
+                    $m = (int) ($k['miktar'] ?? 0);
+                    $og = (string) ($k['ogun'] ?? '');
+                    if ($og === 'ogle') {
+                        $ogle += $m;
+                    } elseif ($og === 'aksam') {
+                        $aksam += $m;
+                    } elseif ($og === 'kumanya') {
+                        $kumanya += $m;
                     }
                 }
-                $toplam = $ogle + $aksam + $kumanya;
-                $secilebilir = true;
-                $sebep = '';
-                if ($parasutId === '') {
-                    $secilebilir = false;
-                    $sebep = 'Paraşüt eşleşmesi yok';
-                } elseif ($kilit !== null) {
-                    // timeout sonrası irsaliye kilitli olduğundan $irs boş olabilir — kilit önce gelir.
-                    $secilebilir = false;
-                    $sebep = $kilit;
-                } elseif (!$irs || $toplam <= 0) {
-                    $secilebilir = false;
-                    $sebep = 'Faturalanacak irsaliye yok';
-                }
-                $out[] = [
-                    'customer_id'   => $cid,
-                    'name'          => (string) $c['name'],
-                    'tip'           => 'irsaliye',
-                    'parasut_id'    => $parasutId,
-                    'ogle'          => $ogle, 'aksam' => $aksam, 'kumanya' => $kumanya,
-                    'toplam'        => $toplam,
-                    'irsaliye_sayisi' => count($irs),
-                    'irsaliye_ids'  => $irsaliyeIds,
-                    'doc_ids'       => $docIds,
-                    'despatch_nolar' => $nolar,
-                    'birim'         => $birim,
-                    'tevkifat_kodu' => trim((string) ($c['tevkifat_kodu'] ?? '')),
-                    'tevkifat_oran' => $c['tevkifat_oran'] !== null ? (float) $c['tevkifat_oran'] : null,
-                    'vade_gun'      => (int) ($c['fatura_vade_gun'] ?? 1),
-                    'secilebilir'   => $secilebilir,
-                    'sebep'         => $sebep,
+            }
+            $toplam = $ogle + $aksam + $kumanya;
+            $secilebilir = true;
+            $sebep = '';
+            if ($parasutId === '') {
+                $secilebilir = false;
+                $sebep = 'Paraşüt eşleşmesi yok';
+            } elseif ($kilit !== null) {
+                // timeout sonrası irsaliye kilitli olduğundan $irs boş olabilir — kilit önce gelir.
+                $secilebilir = false;
+                $sebep = $kilit;
+            } elseif (!$irs || $toplam <= 0) {
+                $secilebilir = false;
+                $sebep = 'Faturalanacak irsaliye yok';
+            }
+            return [[
+                'satir_key'     => (string) $cid,
+                'customer_id'   => $cid,
+                'name'          => (string) $c['name'],
+                'tip'           => 'irsaliye',
+                'parasut_id'    => $parasutId,
+                'ogle'          => $ogle, 'aksam' => $aksam, 'kumanya' => $kumanya,
+                'toplam'        => $toplam,
+                'irsaliye_sayisi' => count($irs),
+                'irsaliye_ids'  => $irsaliyeIds,
+                'doc_ids'       => $docIds,
+                'despatch_nolar' => $nolar,
+                'birim'         => $birim,
+                'tevkifat_kodu' => trim((string) ($c['tevkifat_kodu'] ?? '')),
+                'tevkifat_oran' => $c['tevkifat_oran'] !== null ? (float) $c['tevkifat_oran'] : null,
+                'vade_gun'      => (int) ($c['fatura_vade_gun'] ?? 1),
+                'secilebilir'   => $secilebilir,
+                'sebep'         => $sebep,
+            ]];
+        }
+
+        // ── aylık müşteri (irsaliye_aktif=0) ──
+        // fable-055 (Ömer): "CANTAŞ ve Marmara'da haftalık sayıları çekiyor, halbuki aylık
+        // çekmesi lazım." Aylık müşteri AYDA BİR kesilir; ekrandaki dönem haftalık olsa bile
+        // faturası ayın TAMAMINDAN doğar. Ay, dönem BAŞLANGICININ ayıdır (hafta ay sınırını
+        // aşsa bile içinde bulunulan ay faturalanır). İrsaliyeli müşteride hiçbir şey değişmez.
+        $aylikBas = date('Y-m-01', strtotime($bas));
+        $aylikSon = date('Y-m-t', strtotime($bas));
+        $adet = $this->productionPersonsRange($cid, $aylikBas, $aylikSon);
+        if ($adet <= 0 && $kilit === null) {
+            return [];
+        }
+        $bolusum = null;
+        // fable-053: bölüşümün TEK KAYNAĞI musteri_altfirma tablosu — alt firma tanımlıysa
+        // pencere ondan doğar (Marmara/Gebze Palet ancak böyle görünür). customers.fatura_bolusum
+        // JSON'u yalnız tablo boşken okunur: eski kayıtlar (CANTAŞ) migration'sız da çalışsın.
+        $altlar = $this->altFirmalar($cid);
+        if ($altlar) {
+            $bolusum = [];
+            foreach ($altlar as $a) {
+                $bolusum[] = [
+                    'key'        => (string) $a['kod'],
+                    'ad'         => (string) $a['ad'],
+                    // altFirmalar() cariyi 'contact_id' adıyla döndürür (kolon adı
+                    // parasut_contact_id DEĞİL) ve boşsa ayar tablosundan tamamlar.
+                    'contact_id' => trim((string) ($a['contact_id'] ?? '')),
                 ];
-                continue;
             }
-
-            // ── aylık müşteri (irsaliye_aktif=0) ──
-            // fable-055 (Ömer): "CANTAŞ ve Marmara'da haftalık sayıları çekiyor, halbuki aylık
-            // çekmesi lazım." Aylık müşteri AYDA BİR kesilir; ekrandaki dönem haftalık olsa bile
-            // faturası ayın TAMAMINDAN doğar. Ay, dönem BAŞLANGICININ ayıdır (hafta ay sınırını
-            // aşsa bile içinde bulunulan ay faturalanır). İrsaliyeli müşteride hiçbir şey değişmez.
-            $aylikBas = date('Y-m-01', strtotime($bas));
-            $aylikSon = date('Y-m-t', strtotime($bas));
-            $adet = $this->productionPersonsRange($cid, $aylikBas, $aylikSon);
-            if ($adet <= 0 && $kilit === null) {
-                continue;
-            }
-            $bolusum = null;
-            // fable-053: bölüşümün TEK KAYNAĞI musteri_altfirma tablosu — alt firma tanımlıysa
-            // pencere ondan doğar (Marmara/Gebze Palet ancak böyle görünür). customers.fatura_bolusum
-            // JSON'u yalnız tablo boşken okunur: eski kayıtlar (CANTAŞ) migration'sız da çalışsın.
-            $altlar = $this->altFirmalar($cid);
-            if ($altlar) {
+        }
+        $bRaw = trim((string) ($c['fatura_bolusum'] ?? ''));
+        if ($bolusum === null && $bRaw !== '') {
+            $dec = json_decode($bRaw, true);
+            if (is_array($dec)) {
                 $bolusum = [];
-                foreach ($altlar as $a) {
+                foreach ($dec as $p) {
+                    $key = (string) ($p['key'] ?? '');
                     $bolusum[] = [
-                        'key'        => (string) $a['kod'],
-                        'ad'         => (string) $a['ad'],
-                        // altFirmalar() cariyi 'contact_id' adıyla döndürür (kolon adı
-                        // parasut_contact_id DEĞİL) ve boşsa ayar tablosundan tamamlar.
-                        'contact_id' => trim((string) ($a['contact_id'] ?? '')),
+                        'key'        => $key,
+                        'ad'         => (string) ($p['ad'] ?? $key),
+                        'contact_id' => trim((string) $this->ayar($key, '')),
                     ];
                 }
             }
-            $bRaw = trim((string) ($c['fatura_bolusum'] ?? ''));
-            if ($bolusum === null && $bRaw !== '') {
-                $dec = json_decode($bRaw, true);
-                if (is_array($dec)) {
-                    $bolusum = [];
-                    foreach ($dec as $p) {
-                        $key = (string) ($p['key'] ?? '');
-                        $bolusum[] = [
-                            'key'        => $key,
-                            'ad'         => (string) ($p['ad'] ?? $key),
-                            'contact_id' => trim((string) $this->ayar($key, '')),
-                        ];
-                    }
+        }
+        $secilebilir = true;
+        $sebep = '';
+        if ($bolusum !== null) {
+            foreach ($bolusum as $p) {
+                if ($p['contact_id'] === '') {
+                    $secilebilir = false;
+                    $sebep = 'Bölüşüm cari eşleşmesi eksik (' . $p['ad'] . ')';
+                    break;
                 }
             }
+        } elseif ($parasutId === '') {
+            $secilebilir = false;
+            $sebep = 'Paraşüt eşleşmesi yok — cari açılınca aktif olur';
+        }
+        if ($secilebilir && $adet <= 0) {
+            $secilebilir = false;
+            $sebep = 'Bu dönemde üretim yok';
+        }
+        // fable-056 (Ömer): "CANTAŞ ve Marmara ayın son günü açık olsun, öncesinde
+        // seçilemesin." Aylık fatura ay KAPANMADAN kesilirse eksik kişiyle gider ve
+        // e-fatura geri alınamaz. Ay bittikten sonra (sonraki aylarda da) açık kalır.
+        if ($secilebilir && Helpers::today() < $aylikSon) {
+            $secilebilir = false;
+            $sebep = 'Aylık fatura ay kapanınca kesilir — '
+                . date('d.m.Y', strtotime($aylikSon)) . ' tarihinde açılır.';
+        }
+        if ($secilebilir && $kilit !== null) {
+            $secilebilir = false;
+            $sebep = $kilit;
+        }
+        return [[
+            'satir_key'   => (string) $cid,
+            'customer_id' => $cid,
+            'name'        => (string) $c['name'],
+            'tip'         => 'aylik',
+            'parasut_id'  => $parasutId,
+            'adet'        => $adet,
+            // fable-051: dönemin FATURA kişisi (ciro/birim fiyat) — fable-040 kuralı olan
+            // müşteride üretimden FARKLIDIR (CANTAŞ 50/70). Bölüşüm hedefi budur; 'adet'
+            // (gerçek üretim) semantiği DEĞİŞMEDİ — bölüşümsüz aylık fatura ondan kesilir.
+            'fatura_adet' => array_sum($this->gunFaturaKisiMap($cid, $aylikBas, $aylikSon)),
+            // fable-055: aylık müşterinin GERÇEK fatura dönemi — ekrandaki dönem ne olursa
+            // olsun ayın tamamı. Kesim ve fatura açıklaması bu tarihleri kullanır.
+            'donem_bas'   => $aylikBas,
+            'donem_son'   => $aylikSon,
+            'birim'       => $birim,
+            'vade_gun'    => (int) ($c['fatura_vade_gun'] ?? 1),
+            'bolusum'     => $bolusum,
+            'son_bolusum' => $bolusum !== null ? $this->faturaSonBolusum($cid) : null,
+            // fable-051: desen bazlı 3'lü bölüşüm (gün gün hesaplanır) — pencere DOLU gelsin.
+            // Boş dizi = alt firma tanımlı değil → eski davranış (son ayın oranları) sürer.
+            'altfirma'    => $bolusum !== null ? $this->altFirmaDagilim($cid, $aylikBas, $aylikSon) : [],
+            // fable-059: hangi günlerde kırılım ELLE girildi (fatura penceresinde not olarak
+            // görünür — ay sonunda Ömer neyin elle girildiğini bilsin). 'bayat' = kayıttan
+            // sonra günün sayısı değişmiş gün (fark varsayılan firmaya yazılıyor → uyarılır).
+            'altfirma_elle' => $bolusum !== null
+                ? $this->altFirmaElleDurum($cid, $aylikBas, $aylikSon)
+                : ['gunler' => [], 'bayat' => []],
+            'secilebilir' => $secilebilir,
+            'sebep'       => $sebep,
+        ]];
+    }
+
+    // ── fable-065: SABİT AYLIK FATURA KALEMİ ──────────────────────
+    // NEDEN: BOMİ'ye yemek faturasından AYRI, üretimle ilgisi OLMAYAN, her ay AYNI tutarda
+    // "PERSONEL HİZMET" faturası kesiliyor (elle, Paraşüt'ten). Kokpit bilmediği için ay
+    // sonunda unutulma riski vardı. Kalem burada tanımlanır (tutar/KDV/ürün id ekrandan),
+    // ay kapanınca Fatura Kes ekranında AYRI aday satırı olarak çıkar.
+    // GENEL özellik — BOMİ'ye özel kod yok; kalem tanımlanmamış müşteride hiçbir şey değişmez.
+
+    /**
+     * Sabit aylık fatura kalemleri. $customerId = 0 → hepsi.
+     * Tablo henüz yoksa (migrate_052 uygulanmadıysa) BOŞ döner — ekranlar çalışmaya devam eder.
+     * @return list<array{id:int,customer_id:int,ad:string,parasut_product_id:string,
+     *   parasut_contact_id:string,birim_fiyat:float,kdv_orani:float,aciklama:string,aktif:bool}>
+     */
+    public function sabitFaturaKalemleri(int $customerId = 0, bool $aktifOnly = true): array
+    {
+        $sql = 'SELECT id, customer_id, ad, parasut_product_id, parasut_contact_id,
+                       birim_fiyat, kdv_orani, aciklama, aktif
+                  FROM musteri_sabit_fatura WHERE 1 = 1';
+        $args = [];
+        if ($customerId > 0) {
+            $sql .= ' AND customer_id = ?';
+            $args[] = $customerId;
+        }
+        if ($aktifOnly) {
+            $sql .= ' AND aktif = 1';
+        }
+        $sql .= ' ORDER BY customer_id, id';
+        try {
+            $st = $this->pdo->prepare($sql);
+            $st->execute($args);
+            $rows = $st->fetchAll();
+        } catch (\PDOException $e) {
+            error_log('[UYSA v2 sabitFaturaKalemleri] okunamadı (migrate_052?): ' . $e->getMessage());
+            return [];
+        }
+        $out = [];
+        foreach ($rows as $r) {
+            $out[] = [
+                'id'                 => (int) $r['id'],
+                'customer_id'        => (int) $r['customer_id'],
+                'ad'                 => (string) $r['ad'],
+                'parasut_product_id' => trim((string) ($r['parasut_product_id'] ?? '')),
+                'parasut_contact_id' => trim((string) ($r['parasut_contact_id'] ?? '')),
+                'birim_fiyat'        => (float) $r['birim_fiyat'],
+                'kdv_orani'          => (float) $r['kdv_orani'],
+                'aciklama'           => trim((string) ($r['aciklama'] ?? '')),
+                'aktif'              => (int) $r['aktif'] === 1,
+            ];
+        }
+        return $out;
+    }
+
+    /** Tek sabit kalem (pasif olsa da döner — kesim tarafı pasifliği kendi reddeder). */
+    public function sabitFaturaKalem(int $id): ?array
+    {
+        foreach ($this->sabitFaturaKalemleri(0, false) as $k) {
+            if ($k['id'] === $id) {
+                return $k;
+            }
+        }
+        return null;
+    }
+
+    /** Kalem ekle/güncelle. Ad + birim fiyat zorunlu; ad müşteri içinde BENZERSİZ. */
+    public function upsertSabitFaturaKalem(
+        int $customerId,
+        string $ad,
+        float $birimFiyat,
+        float $kdvOrani = 20.0,
+        ?string $urunId = null,
+        ?string $contactId = null,
+        ?string $aciklama = null,
+        ?int $id = null
+    ): int {
+        $ad = trim($ad);
+        if ($ad === '') {
+            throw new \InvalidArgumentException('Kalem adı zorunlu.');
+        }
+        if ($birimFiyat <= 0) {
+            throw new \InvalidArgumentException('Birim fiyat sıfırdan büyük olmalı.');
+        }
+        if ($kdvOrani < 0 || $kdvOrani > 100) {
+            throw new \InvalidArgumentException('KDV oranı 0–100 aralığında olmalı.');
+        }
+        $urunId = ($urunId !== null && trim($urunId) !== '') ? trim($urunId) : null;
+        $contactId = ($contactId !== null && trim($contactId) !== '') ? trim($contactId) : null;
+        $aciklama = ($aciklama !== null && trim($aciklama) !== '') ? trim($aciklama) : null;
+        if ($id === null) {
+            $st = $this->pdo->prepare('SELECT id FROM musteri_sabit_fatura WHERE customer_id = ? AND ad = ?');
+            $st->execute([$customerId, $ad]);
+            $found = $st->fetchColumn();
+            $id = $found !== false ? (int) $found : null;
+        }
+        if ($id === null) {
+            $this->pdo->prepare(
+                'INSERT INTO musteri_sabit_fatura
+                   (customer_id, ad, parasut_product_id, parasut_contact_id, birim_fiyat, kdv_orani, aciklama)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)'
+            )->execute([$customerId, $ad, $urunId, $contactId, $birimFiyat, $kdvOrani, $aciklama]);
+            return (int) $this->pdo->lastInsertId();
+        }
+        $this->pdo->prepare(
+            'UPDATE musteri_sabit_fatura
+                SET ad = ?, parasut_product_id = ?, parasut_contact_id = ?, birim_fiyat = ?,
+                    kdv_orani = ?, aciklama = ?, aktif = 1, updated_at = ' . $this->nowExpr() . '
+              WHERE id = ? AND customer_id = ?'
+        )->execute([$ad, $urunId, $contactId, $birimFiyat, $kdvOrani, $aciklama, $id, $customerId]);
+        return $id;
+    }
+
+    /** Kalem pasifleştir/geri aç — SİLME YOK (geçmiş fatura izi bozulmasın). */
+    public function setSabitFaturaKalemAktif(int $id, bool $aktif): void
+    {
+        $this->pdo->prepare('UPDATE musteri_sabit_fatura SET aktif = ?, updated_at = ' . $this->nowExpr() . ' WHERE id = ?')
+            ->execute([$aktif ? 1 : 0, $id]);
+    }
+
+    /**
+     * 🔒 MÜKERRER KALKANI: bu kalem bu AY için zaten kesilmiş mi (ya da durumu belirsiz mi)?
+     * Eşleşme sabit_kalem_id ile; kolon boşsa (elle açılan eski kayıt) alt_ad + müşteri ile.
+     * @param string $ay 'YYYY-MM'
+     * @return array{fatura_no:string,durum:string,parasut_fatura_id:string,donem_son:string}|null
+     */
+    public function sabitFaturaKesim(int $kalemId, string $ay): ?array
+    {
+        $kalem = $this->sabitFaturaKalem($kalemId);
+        if ($kalem === null || !preg_match('/^\d{4}-\d{2}$/', $ay)) {
+            return null;
+        }
+        try {
+            $st = $this->pdo->prepare(
+                "SELECT fatura_no, durum, parasut_fatura_id, donem_son FROM parasut_fatura_log
+                  WHERE tip = 'sabit' AND durum IN ('kesildi', 'bilinmiyor')
+                    AND donem_son >= ? AND donem_son <= ?
+                    AND (sabit_kalem_id = ? OR (sabit_kalem_id IS NULL AND customer_id = ? AND alt_ad = ?))
+                  ORDER BY id DESC LIMIT 1"
+            );
+            $st->execute([$ay . '-01', $ay . '-31', $kalemId, $kalem['customer_id'], $kalem['ad']]);
+            $r = $st->fetch();
+        } catch (\PDOException $e) {
+            error_log('[UYSA v2 sabitFaturaKesim] okunamadı (migrate_052?): ' . $e->getMessage());
+            return null;
+        }
+        if (!$r) {
+            return null;
+        }
+        return [
+            'fatura_no'         => trim((string) ($r['fatura_no'] ?? '')),
+            'durum'             => (string) $r['durum'],
+            'parasut_fatura_id' => trim((string) ($r['parasut_fatura_id'] ?? '')),
+            'donem_son'         => (string) $r['donem_son'],
+        ];
+    }
+
+    /** Bu kalem bu ay kesildi mi (ya da durumu belirsiz mi)? — kesim öncesi tek soru. */
+    public function sabitFaturaKesildiMi(int $kalemId, string $ay): bool
+    {
+        return $this->sabitFaturaKesim($kalemId, $ay) !== null;
+    }
+
+    /**
+     * Bir müşterinin sabit kalem aday satırları (Fatura Kes ekranı). Dönem = $bas'ın AYI —
+     * fable-055'teki aylık müşteri kuralıyla aynı (haftalık turda da ay bütünü görünür).
+     * @param array<string,mixed> $c customers satırı
+     * @return list<array<string,mixed>>
+     */
+    private function sabitFaturaAdaylari(array $c, string $bas): array
+    {
+        $cid = (int) $c['id'];
+        $kalemler = $this->sabitFaturaKalemleri($cid);
+        if (!$kalemler) {
+            return [];
+        }
+        $aylikBas = date('Y-m-01', strtotime($bas));
+        $aylikSon = date('Y-m-t', strtotime($bas));
+        $ay = substr($aylikBas, 0, 7);
+        $musteriCari = trim((string) ($c['parasut_id'] ?? ''));
+        $out = [];
+        foreach ($kalemler as $k) {
+            $contactId = $k['parasut_contact_id'] !== '' ? $k['parasut_contact_id'] : $musteriCari;
+            $hesap = self::sabitFaturaHesap($k['birim_fiyat'], $k['kdv_orani']);
             $secilebilir = true;
             $sebep = '';
-            if ($bolusum !== null) {
-                foreach ($bolusum as $p) {
-                    if ($p['contact_id'] === '') {
-                        $secilebilir = false;
-                        $sebep = 'Bölüşüm cari eşleşmesi eksik (' . $p['ad'] . ')';
-                        break;
-                    }
-                }
-            } elseif ($parasutId === '') {
+            if ($contactId === '') {
                 $secilebilir = false;
                 $sebep = 'Paraşüt eşleşmesi yok — cari açılınca aktif olur';
-            }
-            if ($secilebilir && $adet <= 0) {
+            } elseif ($k['parasut_product_id'] === '') {
                 $secilebilir = false;
-                $sebep = 'Bu dönemde üretim yok';
+                $sebep = 'Paraşüt ürün eşleşmesi yok — müşteri kartından ürün id girin';
+            } elseif ($k['birim_fiyat'] <= 0) {
+                $secilebilir = false;
+                $sebep = 'Birim fiyat girilmemiş — müşteri kartından tanımlayın';
             }
-            // fable-056 (Ömer): "CANTAŞ ve Marmara ayın son günü açık olsun, öncesinde
-            // seçilemesin." Aylık fatura ay KAPANMADAN kesilirse eksik kişiyle gider ve
-            // e-fatura geri alınamaz. Ay bittikten sonra (sonraki aylarda da) açık kalır.
+            // fable-056 kuralının AYNISI: ay KAPANMADAN kesilmez (mesaj biçimi de aynı).
             if ($secilebilir && Helpers::today() < $aylikSon) {
                 $secilebilir = false;
                 $sebep = 'Aylık fatura ay kapanınca kesilir — '
                     . date('d.m.Y', strtotime($aylikSon)) . ' tarihinde açılır.';
             }
-            if ($secilebilir && $kilit !== null) {
+            $kesim = $this->sabitFaturaKesim($k['id'], $ay);
+            if ($secilebilir && $kesim !== null) {
                 $secilebilir = false;
-                $sebep = $kilit;
+                $sebep = $kesim['durum'] === 'bilinmiyor'
+                    ? 'Önceki fatura denemesi belirsiz — Paraşüt\'ten kontrol edin'
+                    : 'Bu ay kesildi' . ($kesim['fatura_no'] !== '' ? ' (' . $kesim['fatura_no'] . ')' : '');
             }
             $out[] = [
+                'satir_key'   => 's' . $k['id'],
                 'customer_id' => $cid,
-                'name'        => (string) $c['name'],
-                'tip'         => 'aylik',
-                'parasut_id'  => $parasutId,
-                'adet'        => $adet,
-                // fable-051: dönemin FATURA kişisi (ciro/birim fiyat) — fable-040 kuralı olan
-                // müşteride üretimden FARKLIDIR (CANTAŞ 50/70). Bölüşüm hedefi budur; 'adet'
-                // (gerçek üretim) semantiği DEĞİŞMEDİ — bölüşümsüz aylık fatura ondan kesilir.
-                'fatura_adet' => array_sum($this->gunFaturaKisiMap($cid, $aylikBas, $aylikSon)),
-                // fable-055: aylık müşterinin GERÇEK fatura dönemi — ekrandaki dönem ne olursa
-                // olsun ayın tamamı. Kesim ve fatura açıklaması bu tarihleri kullanır.
+                'kalem_id'    => $k['id'],
+                'kalem_ad'    => $k['ad'],
+                'name'        => (string) $c['name'] . ' · ' . $k['ad'],
+                'tip'         => 'sabit',
+                'parasut_id'  => $contactId,
+                'urun_id'     => $k['parasut_product_id'],
+                'adet'        => 1,
+                'birim'       => $k['birim_fiyat'],
+                'kdv_orani'   => $k['kdv_orani'],
+                'aciklama'    => $k['aciklama'],
+                'brut'        => $hesap['brut'],
+                'kdv'         => $hesap['kdv'],
+                'net'         => $hesap['net'],
                 'donem_bas'   => $aylikBas,
                 'donem_son'   => $aylikSon,
-                'birim'       => $birim,
+                'ay'          => $ay,
                 'vade_gun'    => (int) ($c['fatura_vade_gun'] ?? 1),
-                'bolusum'     => $bolusum,
-                'son_bolusum' => $bolusum !== null ? $this->faturaSonBolusum($cid) : null,
-                // fable-051: desen bazlı 3'lü bölüşüm (gün gün hesaplanır) — pencere DOLU gelsin.
-                // Boş dizi = alt firma tanımlı değil → eski davranış (son ayın oranları) sürer.
-                'altfirma'    => $bolusum !== null ? $this->altFirmaDagilim($cid, $aylikBas, $aylikSon) : [],
-                // fable-059: hangi günlerde kırılım ELLE girildi (fatura penceresinde not olarak
-                // görünür — ay sonunda Ömer neyin elle girildiğini bilsin). 'bayat' = kayıttan
-                // sonra günün sayısı değişmiş gün (fark varsayılan firmaya yazılıyor → uyarılır).
-                'altfirma_elle' => $bolusum !== null
-                    ? $this->altFirmaElleDurum($cid, $aylikBas, $aylikSon)
-                    : ['gunler' => [], 'bayat' => []],
+                'son_kesim'   => $kesim,
                 'secilebilir' => $secilebilir,
                 'sebep'       => $sebep,
             ];
         }
         return $out;
+    }
+
+    /**
+     * Sabit kalem tutarı (PÜR — kuruş bazında, float taşması yok): 1 adet × birim, KDV kalemin
+     * KENDİ oranından (hizmet %20; yemek %10 DEĞİL). Tevkifat YOK.
+     * @return array{brut:float,kdv:float,net:float,brut_kurus:int,kdv_kurus:int,net_kurus:int}
+     */
+    public static function sabitFaturaHesap(float $birim, float $kdvOrani): array
+    {
+        $brutKurus = (int) round($birim * 100);
+        $kdvKurus = (int) round($brutKurus * $kdvOrani / 100);
+        return [
+            'brut' => $brutKurus / 100, 'kdv' => $kdvKurus / 100,
+            'net' => ($brutKurus + $kdvKurus) / 100,
+            'brut_kurus' => $brutKurus, 'kdv_kurus' => $kdvKurus,
+            'net_kurus' => $brutKurus + $kdvKurus,
+        ];
     }
 
     /**

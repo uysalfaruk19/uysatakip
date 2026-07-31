@@ -61,9 +61,11 @@ if ($method === 'POST') {
     }
     $kapali = !ParasutYaz::faturaAktif();
 
+    // fable-065: liste artık müşteri başına BİRDEN ÇOK satır içerebilir (BOMİ = yemek + sabit
+    // kalem) → anahtar customer_id DEĞİL, satir_key ('12' müşteri satırı · 's3' sabit kalem).
     $adaylar = [];
     foreach ($repo->faturaAdaylari($bas, $son) as $a) {
-        $adaylar[(int) $a['customer_id']] = $a;
+        $adaylar[(string) $a['satir_key']] = $a;
     }
 
     // ── HAZIRLA: seçimi doğrula + tutar/gövde göster + onay imzası üret ──
@@ -74,14 +76,37 @@ if ($method === 'POST') {
         $plan = [];
         $genelNet = 0.0;
         foreach ($secim as $s) {
-            $cid = (int) ($s['customer_id'] ?? 0);
-            $a = $adaylar[$cid] ?? null;
+            $key = (string) ($s['key'] ?? ($s['customer_id'] ?? ''));
+            $a = $adaylar[$key] ?? null;
+            $cid = (int) ($a['customer_id'] ?? ($s['customer_id'] ?? 0));
             if ($a === null || !$a['secilebilir']) {
-                $satirlar[] = ['customer_id' => $cid, 'name' => $a['name'] ?? ('#' . $cid), 'ok' => false,
-                    'sebep' => $a['sebep'] ?? 'Müşteri listede yok.'];
+                $satirlar[] = ['key' => $key, 'customer_id' => $cid, 'name' => $a['name'] ?? ('#' . $key),
+                    'ok' => false, 'sebep' => $a['sebep'] ?? 'Müşteri listede yok.'];
                 continue;
             }
-            if ($a['tip'] === 'irsaliye') {
+            if ($a['tip'] === 'sabit') {
+                // fable-065: üretimden BAĞIMSIZ sabit kalem — 1 adet × birim, kalemin KENDİ KDV'si.
+                $hesap = Repo::sabitFaturaHesap((float) $a['birim'], (float) $a['kdv_orani']);
+                $vade = date('Y-m-d', strtotime($a['donem_son'] . ' +' . max(0, (int) $a['vade_gun']) . ' day'));
+                $kontroller = [['ok' => true, 'txt' => 'Sabit kalem — tutar üretimden bağımsız: 1 adet × ₺'
+                    . Helpers::money((float) $a['birim']) . ' + KDV %' . rtrim(rtrim(number_format((float) $a['kdv_orani'], 2), '0'), '.')
+                    . ' = ₺' . Helpers::money($hesap['net']) . '.']];
+                $kontroller[] = ['ok' => true, 'txt' => 'Bu ay (' . date('m.Y', strtotime($a['donem_son']))
+                    . ') için bu kalemden fatura kesilmemiş — mükerrer riski yok.'];
+                $plan[] = ['key' => $key, 'customer_id' => $cid, 'tip' => 'sabit',
+                    'kalem_id' => (int) $a['kalem_id'], 'ay' => (string) $a['ay']];
+                $genelNet += $hesap['net'];
+                $satirlar[] = [
+                    'key' => $key, 'customer_id' => $cid, 'name' => $a['name'], 'ok' => true, 'tip' => 'sabit',
+                    'kontroller' => $kontroller,
+                    'kalem_ad' => (string) $a['kalem_ad'], 'adet' => 1, 'birim' => (float) $a['birim'],
+                    'kdv_orani' => (float) $a['kdv_orani'], 'hesap' => $hesap, 'vade' => $vade,
+                    'donem' => date('m.Y', strtotime($a['donem_son'])),
+                    'govde' => $yaz->sabitGovde((string) $a['parasut_id'], (string) $a['donem_son'],
+                        (string) $a['urun_id'], (float) $a['birim'], (float) $a['kdv_orani'],
+                        (int) $a['vade_gun'], (string) $a['kalem_ad']),
+                ];
+            } elseif ($a['tip'] === 'irsaliye') {
                 $p = $yaz->faturaOnizleme($cid, $bas, $son);
                 if (!$p['ok']) {
                     $satirlar[] = ['customer_id' => $cid, 'name' => $a['name'], 'ok' => false, 'sebep' => $p['mesaj']];
@@ -137,9 +162,10 @@ if ($method === 'POST') {
                     $kontroller[] = ['ok' => abs($farkYuzde) <= 25, 'txt' => $kiyasTxt];
                 }
 
-                $plan[] = ['customer_id' => $cid, 'tip' => 'irsaliye'];
+                $plan[] = ['key' => $key, 'customer_id' => $cid, 'tip' => 'irsaliye'];
                 $genelNet += $p['hesap']['net'];
                 $satirlar[] = [
+                    'key' => $key,
                     'customer_id' => $cid, 'name' => $a['name'], 'ok' => true, 'tip' => 'irsaliye',
                     'gunler' => $gunler,
                     'kontroller' => $kontroller,
@@ -211,9 +237,10 @@ if ($method === 'POST') {
                         . $sonF['kisi'] . ' kişi — bu dönem ' . $sumKisi . ' kişi (' . ($farkYuzde >= 0 ? '+' : '') . $farkYuzde . '%).'];
                 }
 
-                $plan[] = ['customer_id' => $cid, 'tip' => 'aylik', 'parts' => $parts];
+                $plan[] = ['key' => $key, 'customer_id' => $cid, 'tip' => 'aylik', 'parts' => $parts];
                 $genelNet += $altNet;
                 $satirlar[] = [
+                    'key' => $key,
                     'customer_id' => $cid, 'name' => $a['name'], 'ok' => true, 'tip' => 'aylik',
                     // fable-028: aylıkta döküm = dönem içi GİRİLEN sayılar (fatura bunların toplamı)
                     'gunler' => $gunlerAy,
@@ -242,8 +269,8 @@ if ($method === 'POST') {
     // İmza tüketilmez; müşterinin plan kalemi kesimden ÖNCE plandan düşülür (çift tık kalkanı
     // müşteri bazında). Aylık müşteride o müşterinin TÜM parçaları (örn. CANTAŞ 3 fatura) bu
     // istekte kesilir — sonuç dizisi parça parça döner.
-    if ($action === 'kes' && (int) ($body['tek'] ?? 0) > 0) {
-        $tek = (int) $body['tek'];
+    if ($action === 'kes' && trim((string) ($body['tek'] ?? '')) !== '') {
+        $tek = trim((string) $body['tek']);   // fable-065: satir_key ('12' | 's3')
         $oturum = $_SESSION['fatura_onay'] ?? null;
         $imza = (string) ($body['onay'] ?? '');
         if (!is_array($oturum) || (int) ($oturum['exp'] ?? 0) < time()
@@ -255,7 +282,7 @@ if ($method === 'POST') {
         $item = null;
         $kalanPlan = [];
         foreach ($plan as $p) {
-            if ($item === null && (int) ($p['customer_id'] ?? 0) === $tek) {
+            if ($item === null && (string) ($p['key'] ?? '') === $tek) {
                 $item = $p;
                 continue;
             }
@@ -273,15 +300,26 @@ if ($method === 'POST') {
 
         $yaz = new ParasutYaz($repo, (string) $oturum['token']);
         $a = $adaylar[$tek] ?? null;
+        $cid = (int) ($item['customer_id'] ?? 0);
         $ad = $a['name'] ?? ('#' . $tek);
         $sonuclar = [];
         $basarili = 0;
-        if (($item['tip'] ?? '') === 'irsaliye') {
-            $r = $yaz->createSalesInvoice($tek, $bas, $son, ['onay' => $imza, 'actor' => (string) $u['username']]);
+        if (($item['tip'] ?? '') === 'sabit') {
+            // fable-065: dönem EKRANDAKİ dönem değil, kalemin AYI (mükerrer kalkanı da ona bakar).
+            $r = $yaz->createFixedInvoice((int) ($item['kalem_id'] ?? 0), (string) ($item['ay'] ?? ''),
+                ['onay' => $imza, 'actor' => (string) $u['username']]);
             if ($r['ok']) {
                 $basarili++;
             }
-            $sonuclar[] = ['customer_id' => $tek, 'name' => $ad, 'ok' => $r['ok'], 'durum' => $r['durum'],
+            $sonuclar[] = ['customer_id' => $cid, 'name' => $ad, 'ok' => $r['ok'], 'durum' => $r['durum'],
+                'mesaj' => $r['mesaj'], 'fatura_no' => $r['fatura_no'], 'resmilestirme' => $r['resmilestirme'],
+                'mail' => $r['mail'], 'net' => $r['net']];
+        } elseif (($item['tip'] ?? '') === 'irsaliye') {
+            $r = $yaz->createSalesInvoice($cid, $bas, $son, ['onay' => $imza, 'actor' => (string) $u['username']]);
+            if ($r['ok']) {
+                $basarili++;
+            }
+            $sonuclar[] = ['customer_id' => $cid, 'name' => $ad, 'ok' => $r['ok'], 'durum' => $r['durum'],
                 'mesaj' => $r['mesaj'], 'fatura_no' => $r['fatura_no'], 'resmilestirme' => $r['resmilestirme'],
                 'mail' => $r['mail'], 'net' => $r['net']];
         } else {
@@ -293,11 +331,11 @@ if ($method === 'POST') {
                 if ((int) ($pt['kisi'] ?? 0) <= 0) {
                     continue; // 0 kişi = fatura kesilmez (onay özetinde görünür, sessiz değil)
                 }
-                $r = $yaz->createMonthlyInvoice($tek, $aBas, $aSon, $pt, ['onay' => $imza, 'actor' => (string) $u['username']]);
+                $r = $yaz->createMonthlyInvoice($cid, $aBas, $aSon, $pt, ['onay' => $imza, 'actor' => (string) $u['username']]);
                 if ($r['ok']) {
                     $basarili++;
                 }
-                $sonuclar[] = ['customer_id' => $tek, 'name' => $ad . ' · ' . ($pt['ad'] ?? ''),
+                $sonuclar[] = ['customer_id' => $cid, 'name' => $ad . ' · ' . ($pt['ad'] ?? ''),
                     'ok' => $r['ok'], 'durum' => $r['durum'], 'mesaj' => $r['mesaj'],
                     'fatura_no' => $r['fatura_no'], 'resmilestirme' => $r['resmilestirme'], 'mail' => $r['mail'], 'net' => $r['net']];
             }
@@ -323,9 +361,18 @@ if ($method === 'POST') {
         $basarili = 0;
         foreach ((array) ($oturum['plan'] ?? []) as $item) {
             $cid = (int) ($item['customer_id'] ?? 0);
-            $a = $adaylar[$cid] ?? null;
+            $a = $adaylar[(string) ($item['key'] ?? $cid)] ?? null;
             $ad = $a['name'] ?? ('#' . $cid);
-            if (($item['tip'] ?? '') === 'irsaliye') {
+            if (($item['tip'] ?? '') === 'sabit') {
+                $r = $yaz->createFixedInvoice((int) ($item['kalem_id'] ?? 0), (string) ($item['ay'] ?? ''),
+                    ['onay' => $imza, 'actor' => (string) $u['username']]);
+                if ($r['ok']) {
+                    $basarili++;
+                }
+                $sonuclar[] = ['customer_id' => $cid, 'name' => $ad, 'ok' => $r['ok'], 'durum' => $r['durum'],
+                    'mesaj' => $r['mesaj'], 'fatura_no' => $r['fatura_no'], 'resmilestirme' => $r['resmilestirme'],
+                    'mail' => $r['mail'], 'net' => $r['net']];
+            } elseif (($item['tip'] ?? '') === 'irsaliye') {
                 $r = $yaz->createSalesInvoice($cid, $bas, $son, ['onay' => $imza, 'actor' => (string) $u['username']]);
                 if ($r['ok']) {
                     $basarili++;
@@ -455,15 +502,26 @@ require __DIR__ . '/partials/header.php';
                 : (($bolusumlu && (int) ($a['fatura_adet'] ?? 0) > 0) ? (int) $a['fatura_adet'] : (int) $a['adet']);
             ?>
             <div class="ftr-row <?= $a['secilebilir'] ? '' : 'disabled' ?>" data-cid="<?= (int) $a['customer_id'] ?>"
+                 data-key="<?= Helpers::e((string) $a['satir_key']) ?>"
                  data-tip="<?= Helpers::e($a['tip']) ?>" data-adet="<?= $hedefAdet ?>">
               <label class="ftr-head">
-                <input type="checkbox" class="ftr-pick" value="<?= (int) $a['customer_id'] ?>" <?= $a['secilebilir'] ? '' : 'disabled' ?>>
+                <input type="checkbox" class="ftr-pick" value="<?= Helpers::e((string) $a['satir_key']) ?>" <?= $a['secilebilir'] ? '' : 'disabled' ?>>
                 <span class="ftr-name"><?= Helpers::e($a['name']) ?></span>
                 <?php if ($a['tip'] === 'aylik'): ?><span class="badge-soft badge-blue">AYLIK</span><?php endif; ?>
+                <?php // fable-065: sabit kalem AYLIK rozetinden ayırt edilsin (farklı akış, farklı KDV) ?>
+                <?php if ($a['tip'] === 'sabit'): ?><span class="badge-soft badge-warn">SABİT</span><?php endif; ?>
                 <?php if ($tevk): ?><span class="badge-soft badge-warn">TEVKİFATLI (<?= Helpers::e($a['tevkifat_kodu']) ?> · %<?= rtrim(rtrim(number_format((float) $a['tevkifat_oran'], 2), '0'), '.') ?>)</span><?php endif; ?>
               </label>
               <div class="ftr-meta">
-                <?php if ($a['tip'] === 'irsaliye'): ?>
+                <?php if ($a['tip'] === 'sabit'): ?>
+                  <span class="badge-soft badge-blue"><?= Helpers::e(ay_label_tr((string) $a['ay'])) ?> · sabit tutar</span>
+                  1 adet × ₺<?= Helpers::money((float) $a['birim']) ?>
+                  + KDV %<?= rtrim(rtrim(number_format((float) $a['kdv_orani'], 2), '0'), '.') ?>
+                  = <strong>₺<?= Helpers::money((float) $a['net']) ?></strong>
+                  <?php if (($a['aciklama'] ?? '') !== ''): ?>
+                    <span class="ftr-uretim"><?= Helpers::e((string) $a['aciklama']) ?></span>
+                  <?php endif; ?>
+                <?php elseif ($a['tip'] === 'irsaliye'): ?>
                   <?= (int) $a['irsaliye_sayisi'] ?> irsaliye · Öğlen <?= (int) $a['ogle'] ?> / Akşam <?= (int) $a['aksam'] ?> / Kumanya <?= (int) $a['kumanya'] ?> · <strong><?= (int) $a['toplam'] ?></strong> kişi × ₺<?= Helpers::money((float) $a['birim']) ?>
                 <?php else: ?>
                   <?php // fable-054 (Ömer: "dönem üretimi eksik gözüküyor"): FATURAYA ESAS rakam

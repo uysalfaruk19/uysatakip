@@ -72,6 +72,45 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $_GET['edit'] = (string) $pid;
             $editId = $pid;
         }
+    } elseif (in_array($_POST['action'] ?? '', ['sabit_kalem', 'sabit_kalem_pasif'], true)) {
+        // fable-065: yemek faturasından AYRI, üretimden BAĞIMSIZ, her ay AYNI tutarlı kalem
+        // (BOMİ → PERSONEL HİZMET). Ay kapanınca Fatura Kes ekranında ayrı aday satırı olur.
+        $pid = (int) ($_POST['id'] ?? 0);
+        if ($pid > 0) {
+            try {
+                if (($_POST['action'] ?? '') === 'sabit_kalem_pasif') {
+                    $repo->setSabitFaturaKalemAktif((int) ($_POST['sk_id'] ?? 0), false);
+                    uysa_audit('sabit_kalem_pasif', $u['username'], (string) $pid,
+                        json_encode(['sk' => (int) ($_POST['sk_id'] ?? 0)]), client_ip());
+                    $flash = 'Sabit kalem pasifleştirildi (kayıt silinmedi).';
+                } else {
+                    $kdvRaw = trim((string) ($_POST['sk_kdv'] ?? ''));
+                    $skId = $repo->upsertSabitFaturaKalem(
+                        $pid,
+                        (string) ($_POST['sk_ad'] ?? ''),
+                        Helpers::parseMoney((string) ($_POST['sk_fiyat'] ?? '0')),
+                        // KDV oranı yüzde — parseMoney binlik nokta kuralı burada yanıltır ("20.00"→2000)
+                        $kdvRaw === '' ? 20.0 : (float) str_replace(',', '.', $kdvRaw),
+                        (string) ($_POST['sk_urun'] ?? ''),
+                        (string) ($_POST['sk_contact'] ?? ''),
+                        (string) ($_POST['sk_aciklama'] ?? ''),
+                        ((int) ($_POST['sk_id'] ?? 0)) ?: null
+                    );
+                    uysa_audit('sabit_kalem_kaydet', $u['username'], (string) $pid,
+                        json_encode(['sk' => $skId], JSON_UNESCAPED_UNICODE), client_ip());
+                    $flash = 'Sabit aylık kalem kaydedildi.';
+                }
+            } catch (\InvalidArgumentException $e) {
+                $flash = $e->getMessage();
+                $flashOk = false;
+            } catch (\Throwable $e) {
+                $flash = 'Sabit kalem kaydedilemedi (ad benzersiz olmalı; migrate_052 uygulandı mı?).';
+                $flashOk = false;
+            }
+            $formOpen = true;
+            $_GET['edit'] = (string) $pid;
+            $editId = $pid;
+        }
     } elseif (($_POST['action'] ?? '') === 'aylik_fiyat') {
         // opus-017: bir ayın fiyatını düzenle → o ay production güncellenir (her yere yansır).
         $pid = (int) ($_POST['id'] ?? 0);
@@ -395,6 +434,81 @@ require __DIR__ . '/partials/header.php';
           <label class="af-check"><input type="checkbox" name="af_varsayilan" value="1"><span>Varsayılan (kalan + cumartesi/pazar bu firmaya)</span></label>
           <div class="actions-row">
             <button class="btn-action btn-primaryx" type="submit"><i class="bi bi-plus-lg"></i> Alt firma ekle</button>
+          </div>
+        </form>
+      </div>
+      <?php endif; ?>
+
+      <?php if ($edit && $fCat !== 'tasima'):
+        // fable-065: SABİT AYLIK KALEMLER — yemek faturasından AYRI, üretimden BAĞIMSIZ,
+        // her ay AYNI tutarda kesilen kalem (BOMİ → PERSONEL HİZMET; kira/hizmet bedeli de olabilir).
+        $sabitK = $repo->sabitFaturaKalemleri($editId, false);
+      ?>
+      <div class="cardx card-pad" id="sabit-kalemler">
+        <div class="gt-h"><i class="bi bi-receipt-cutoff"></i> SABİT AYLIK KALEMLER</div>
+        <p class="text-muted" style="font-size:12px">
+          Yemek faturasından <strong>ayrı</strong>, üretimden <strong>bağımsız</strong>, her ay
+          <strong>aynı tutarda</strong> kesilen kalem (ör. personel hizmeti, kira). Ay kapanınca
+          <strong>Fatura Kes</strong> ekranında <em>SABİT</em> rozetli ayrı satır olarak çıkar;
+          aynı ay iki kez kesilemez. KDV kalemin kendi oranından (hizmet <strong>%20</strong> —
+          yemek %10 değil). Paraşüt cari boş bırakılırsa müşterinin kendi carisi kullanılır.
+        </p>
+        <?php if (!$sabitK): ?>
+          <div class="empty-state">Sabit kalem tanımlı değil — bu müşteride hiçbir davranış değişmez.</div>
+        <?php else: foreach ($sabitK as $sk):
+            $skHesap = Repo::sabitFaturaHesap($sk['birim_fiyat'], $sk['kdv_orani']);
+            $skKesim = $repo->sabitFaturaKesim($sk['id'], $month);
+        ?>
+          <form method="post" class="af-row<?= $sk['aktif'] ? '' : ' af-pasif' ?>">
+            <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
+            <input type="hidden" name="action" value="sabit_kalem">
+            <input type="hidden" name="id" value="<?= (int) $edit['id'] ?>">
+            <input type="hidden" name="sk_id" value="<?= (int) $sk['id'] ?>">
+            <div class="af-grid">
+              <label class="field"><span>Kalem adı</span><input class="inputx" name="sk_ad" value="<?= Helpers::e($sk['ad']) ?>" required></label>
+              <label class="field"><span>Birim fiyat (₺ · KDV hariç)</span><input class="inputx" name="sk_fiyat" inputmode="decimal" value="<?= Helpers::money($sk['birim_fiyat']) ?>" required></label>
+              <label class="field"><span>KDV %</span><input class="inputx" name="sk_kdv" type="number" min="0" max="100" step="0.01" value="<?= rtrim(rtrim(number_format($sk['kdv_orani'], 2, '.', ''), '0'), '.') ?>"></label>
+              <label class="field"><span>Paraşüt ürün id</span><input class="inputx" name="sk_urun" value="<?= Helpers::e($sk['parasut_product_id']) ?>" inputmode="numeric" placeholder="ör. 1066391424"></label>
+              <label class="field"><span>Paraşüt cari id</span><input class="inputx" name="sk_contact" value="<?= Helpers::e($sk['parasut_contact_id']) ?>" inputmode="numeric" placeholder="boş = müşterinin carisi"></label>
+              <label class="field"><span>Açıklama</span><input class="inputx" name="sk_aciklama" value="<?= Helpers::e($sk['aciklama']) ?>" placeholder="opsiyonel"></label>
+            </div>
+            <p class="row-meta">
+              1 adet × ₺<?= Helpers::money($sk['birim_fiyat']) ?>
+              + KDV %<?= rtrim(rtrim(number_format($sk['kdv_orani'], 2), '0'), '.') ?>
+              = <strong>₺<?= Helpers::money($skHesap['net']) ?></strong>
+              <?php if ($skKesim !== null): ?>
+                · <?= Helpers::e(ay_label_tr($month)) ?>: <strong>kesildi<?= $skKesim['fatura_no'] !== '' ? ' (' . Helpers::e($skKesim['fatura_no']) . ')' : '' ?></strong>
+              <?php else: ?>
+                · <?= Helpers::e(ay_label_tr($month)) ?>: henüz kesilmedi
+              <?php endif; ?>
+              <?= $sk['aktif'] ? '' : ' · PASİF' ?>
+            </p>
+            <div class="actions-row">
+              <button class="btn-action btn-primaryx" type="submit"><i class="bi bi-check2"></i> Kaydet</button>
+              <?php if ($sk['aktif']): ?>
+              <button class="btn-action btn-ghost" type="submit" name="action" value="sabit_kalem_pasif"
+                      formnovalidate onclick="return confirm('Bu sabit kalem pasifleştirilsin mi? (kayıt silinmez)');">
+                <i class="bi bi-archive"></i> Pasifleştir</button>
+              <?php endif; ?>
+            </div>
+          </form>
+        <?php endforeach; endif; ?>
+
+        <form method="post" class="af-row af-yeni">
+          <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
+          <input type="hidden" name="action" value="sabit_kalem">
+          <input type="hidden" name="id" value="<?= (int) $edit['id'] ?>">
+          <div class="gt-h" style="margin:0;font-size:12px">YENİ SABİT KALEM</div>
+          <div class="af-grid">
+            <label class="field"><span>Kalem adı</span><input class="inputx" name="sk_ad" placeholder="ör. Personel hizmeti" required></label>
+            <label class="field"><span>Birim fiyat (₺ · KDV hariç)</span><input class="inputx" name="sk_fiyat" inputmode="decimal" placeholder="0,00" required></label>
+            <label class="field"><span>KDV %</span><input class="inputx" name="sk_kdv" type="number" min="0" max="100" step="0.01" value="20"></label>
+            <label class="field"><span>Paraşüt ürün id</span><input class="inputx" name="sk_urun" inputmode="numeric" placeholder="ör. 1066391424"></label>
+            <label class="field"><span>Paraşüt cari id</span><input class="inputx" name="sk_contact" inputmode="numeric" placeholder="boş = müşterinin carisi"></label>
+            <label class="field"><span>Açıklama</span><input class="inputx" name="sk_aciklama" placeholder="opsiyonel"></label>
+          </div>
+          <div class="actions-row">
+            <button class="btn-action btn-primaryx" type="submit"><i class="bi bi-plus-lg"></i> Sabit kalem ekle</button>
           </div>
         </form>
       </div>

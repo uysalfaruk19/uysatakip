@@ -993,6 +993,43 @@ final class ParasutYaz
     }
 
     /**
+     * fable-065: SABİT kalem fatura gövdesi (tek kalem, 1 adet, kalemin KENDİ KDV oranı).
+     * Tevkifat YOK, irsaliye bağı YOK. issue_date = ayın SON günü, due_date = +vade.
+     * `print_note` = ayar.fatura_notu (IBAN — fable-061).
+     */
+    public function sabitGovde(string $contactId, string $son, string $urunId, float $birim,
+        float $kdvOrani, int $vadeGun, string $ad): array
+    {
+        $vade = date('Y-m-d', strtotime($son . ' +' . max(0, $vadeGun) . ' day'));
+        $detail = [
+            'type'       => 'sales_invoice_details',
+            'attributes' => [
+                'quantity'    => 1,
+                'unit_price'  => $birim,
+                'vat_rate'    => $kdvOrani,
+                'description' => $ad,
+            ],
+        ];
+        if ($urunId !== '') {
+            $detail['relationships'] = ['product' => ['data' => ['id' => $urunId, 'type' => 'products']]];
+        }
+        return ['data' => [
+            'type'       => 'sales_invoices',
+            'attributes' => [
+                'item_type'   => 'invoice',
+                'issue_date'  => $son,
+                'due_date'    => $vade,
+                'description' => date('m.Y', strtotime($son)) . ' dönemi ' . $ad,
+                'print_note'  => $this->faturaNotu(),
+            ],
+            'relationships' => [
+                'contact' => ['data' => ['id' => $contactId, 'type' => 'contacts']],
+                'details' => ['data' => [$detail]],
+            ],
+        ]];
+    }
+
+    /**
      * e-Fatura resmileştirme gövdesi. Tevkifatlıysa her kalem için vat_withholding_params.
      * @param array<int,int> $detailIds fatura kalem id'leri (create yanıtından)
      */
@@ -1246,6 +1283,159 @@ final class ParasutYaz
             $altAd . ': fatura kesildi' . ($faturaNo !== null ? " ($faturaNo)" : '')
             . ($resm === 'gonderildi' ? ' — e-Fatura gönderildi.' : ' — ' . $resmMesaj),
             $faturaId, $faturaNo, $resm, 'yok', $hesap['net'], $kisi);
+    }
+
+    /**
+     * 🔒 fable-065 — SABİT AYLIK KALEM FATURASI KES (BOMİ personel hizmeti gibi).
+     * createMonthlyInvoice deseninin BİREBİR aynısı; farkı: kalem üretimden değil
+     * `musteri_sabit_fatura`'dan gelir, KDV kalemin KENDİ oranıdır (hizmet %20 · yemek %10),
+     * miktar daima 1, issue_date ayın SON günüdür.
+     *
+     * Kapılar (sırayla, hiçbiri atlanmaz): şalter → onay imzası → ay kapandı mı →
+     * kalem/cari/ürün doğrulaması → MÜKERRER KALKANI (o ayın log kaydı) → CLAIM (log) → POST.
+     * Kalkana takılırsa HİÇBİR HTTP çağrısı yapılmaz (Temmuz elle kesildi: UY02026000000145).
+     *
+     * @param string $ay 'YYYY-MM'
+     * @param array{onay?:string,actor?:string} $ctx
+     */
+    public function createFixedInvoice(int $kalemId, string $ay, array $ctx): array
+    {
+        if (!self::faturaAktif()) {
+            return self::faturaSonuc(false, 'kapali', 'Fatura kesimi kapalı — Ömer onayı bekleniyor (PARASUT_FATURA_AKTIF=0).');
+        }
+        $imza = (string) ($ctx['onay'] ?? '');
+        if ($this->onayToken === null || $this->onayToken === '' || $imza === ''
+            || !hash_equals($this->onayToken, $imza)) {
+            return self::faturaSonuc(false, 'onaysiz', 'Onay imzası geçersiz — fatura kesilmedi.');
+        }
+        if (!preg_match('/^\d{4}-\d{2}$/', $ay)) {
+            return self::faturaSonuc(false, 'hata', 'Geçersiz dönem.');
+        }
+        $bas = $ay . '-01';
+        $son = date('Y-m-t', strtotime($bas));
+        $kalem = $this->repo->sabitFaturaKalem($kalemId);
+        if ($kalem === null) {
+            return self::faturaSonuc(false, 'hata', 'Sabit kalem bulunamadı.');
+        }
+        if (!$kalem['aktif']) {
+            return self::faturaSonuc(false, 'kapsam_disi', $kalem['ad'] . ': kalem pasif — fatura kesilmez.');
+        }
+        $customerId = $kalem['customer_id'];
+        $c = $this->repo->customer($customerId);
+        if ($c === null) {
+            return self::faturaSonuc(false, 'hata', 'Müşteri bulunamadı.');
+        }
+        // fable-056 kuralı burada da geçerli: ay KAPANMADAN kesilmez (UI'yi atlayan istek de durur).
+        if (Helpers::today() < $son) {
+            return self::faturaSonuc(false, 'ay_kapanmadi', 'Aylık fatura ay kapanınca kesilir — '
+                . date('d.m.Y', strtotime($son)) . ' tarihinde açılır.');
+        }
+        $musteriCari = trim((string) ($c['parasut_id'] ?? ''));
+        $contactId = $kalem['parasut_contact_id'] !== '' ? $kalem['parasut_contact_id'] : $musteriCari;
+        if ($contactId === '') {
+            return self::faturaSonuc(false, 'eslesme_yok', 'Paraşüt cari eşleşmesi yok — fatura kesilemez.');
+        }
+        if ($kalem['parasut_product_id'] === '') {
+            return self::faturaSonuc(false, 'hata', 'Paraşüt ürün eşleşmesi yok — müşteri kartından ürün id girin.');
+        }
+        if ($kalem['birim_fiyat'] <= 0) {
+            return self::faturaSonuc(false, 'kalem_yok', 'Birim fiyat girilmemiş — fatura kesilmez.');
+        }
+        // 🔒 MÜKERRER KALKANI — ağa çıkmadan ÖNCE.
+        $onceki = $this->repo->sabitFaturaKesim($kalemId, $ay);
+        if ($onceki !== null) {
+            return self::faturaSonuc(false, $onceki['durum'] === 'bilinmiyor' ? 'bilinmiyor' : 'zaten_kesildi',
+                $onceki['durum'] === 'bilinmiyor'
+                    ? $kalem['ad'] . ': önceki fatura denemesi belirsiz — Paraşüt\'ten kontrol edin, TEKRAR DENEMEYİN.'
+                    : $kalem['ad'] . ': bu ay zaten kesildi'
+                        . ($onceki['fatura_no'] !== '' ? ' (' . $onceki['fatura_no'] . ')' : '') . ' — mükerrer fatura kesilmedi.');
+        }
+
+        $ad = $kalem['ad'];
+        $birim = $kalem['birim_fiyat'];
+        $kdv = $kalem['kdv_orani'];
+        $vadeGun = (int) ($c['fatura_vade_gun'] ?? 1);
+        // Tutarın TEK kaynağı Repo::sabitFaturaHesap — aday ekranı da kesim de aynı hesabı okur.
+        $hesap = Repo::sabitFaturaHesap($birim, $kdv);
+        $actor = (string) ($ctx['actor'] ?? '');
+
+        $faturaLogId = $this->repo->faturaLogEkle([
+            'customer_id' => $customerId, 'donem_bas' => $bas, 'donem_son' => $son, 'tip' => 'sabit',
+            'sabit_kalem_id' => $kalemId, 'parasut_contact_id' => $contactId, 'alt_ad' => $ad,
+            'kalemler' => [['ogun' => 'sabit', 'urun_id' => $kalem['parasut_product_id'],
+                'miktar' => 1, 'birim_fiyat' => $birim]],
+            'toplam_kisi' => 1, 'toplam_tutar' => $hesap['net'],
+            'durum' => 'bilinmiyor', 'entered_by' => $actor,
+        ]);
+
+        $govde = $this->sabitGovde($contactId, $son, $kalem['parasut_product_id'], $birim, $kdv, $vadeGun, $ad);
+        $r = $this->cagir('POST', '/sales_invoices?include=details', $govde);
+        if ($r['net'] === 'connect') {
+            $r = $this->cagir('POST', '/sales_invoices?include=details', $govde);
+        }
+        if ($r['net'] === 'timeout') {
+            // Belge kesilmiş OLABİLİR → kayıt 'bilinmiyor' KALIR (kalkan bir daha kesilmesini engeller).
+            $this->repo->faturaLogGuncelle($faturaLogId, ['durum' => 'bilinmiyor',
+                'hata_mesaj' => 'Zaman aşımı — fatura kesilmiş OLABİLİR. Yeniden denenmedi.']);
+            uysa_audit('parasut_fatura', $actor, $son, json_encode([
+                'customer_id' => $customerId, 'sabit_kalem_id' => $kalemId, 'alt_ad' => $ad,
+                'durum' => 'bilinmiyor', 'fatura_log_id' => $faturaLogId,
+            ], JSON_UNESCAPED_UNICODE), '');
+            return self::faturaSonuc(false, 'bilinmiyor',
+                $ad . ': zaman aşımı — fatura kesilmiş olabilir. TEKRAR DENEMEYİN, Paraşüt\'ten kontrol edin.',
+                null, null, 'yok', 'yok', $hesap['net'], 1);
+        }
+        if ($r['net'] !== 'ok' || $r['status'] < 200 || $r['status'] >= 300) {
+            $mesaj = $ad . ': Paraşüt reddetti (HTTP ' . $r['status'] . ')' . self::apiHata($r['data']);
+            $this->repo->faturaLogGuncelle($faturaLogId, ['durum' => 'hata', 'hata_mesaj' => $mesaj]);
+            uysa_audit('parasut_fatura', $actor, $son, json_encode([
+                'customer_id' => $customerId, 'sabit_kalem_id' => $kalemId, 'durum' => 'hata',
+                'fatura_log_id' => $faturaLogId,
+            ], JSON_UNESCAPED_UNICODE), '');
+            return self::faturaSonuc(false, 'hata', $mesaj, null, null, 'yok', 'yok', $hesap['net'], 1);
+        }
+
+        $doc = $r['data']['data'] ?? [];
+        $faturaId = (string) ($doc['id'] ?? '');
+        $faturaNo = trim((string) ($doc['attributes']['invoice_no'] ?? '')) ?: null;
+        $detailIds = self::faturaDetailIds($r['data']);
+
+        // e-Fatura resmileştirme. Kalem BAŞKA bir cariye kesiliyorsa alias o cariden ÇÖZÜLÜR
+        // (fable-062); çözülemezse müşterinin alias'ına DÜŞÜLMEZ — yanlış kutuya e-Fatura gitmesin.
+        if ($contactId !== $musteriCari) {
+            $alias = Parasut::contactAlias($contactId);
+            [$resm, $resmMesaj] = $alias === null
+                ? ['yok', 'alıcı e-Fatura kutusu (alias) çözülemedi — Paraşüt\'ten elle resmileştirin.']
+                : $this->faturaResmilestir($customerId, $faturaId, $detailIds, null, $alias);
+        } else {
+            [$resm, $resmMesaj] = $this->faturaResmilestir($customerId, $faturaId, $detailIds, null);
+        }
+        // Mail: resmileşmişse müşterinin fatura_mail adresine (kuyruk — fable-052). Boşsa girmez.
+        [$mail, $mailMsg] = $resm === 'gonderildi'
+            ? $this->faturaMailPaylas($customerId, $faturaId, $faturaNo)
+            : ['yok', ''];
+
+        $this->repo->faturaLogGuncelle($faturaLogId, [
+            'parasut_fatura_id' => $faturaId !== '' ? $faturaId : null, 'fatura_no' => $faturaNo,
+            'durum' => 'kesildi', 'resmilestirme' => $resm, 'mail' => $mail,
+            'hata_mesaj' => $resm !== 'gonderildi' && $resmMesaj !== '' ? $resmMesaj : null,
+        ]);
+        uysa_audit('parasut_fatura', $actor, $son, json_encode([
+            'customer_id' => $customerId, 'sabit_kalem_id' => $kalemId, 'alt_ad' => $ad,
+            'fatura_id' => $faturaId, 'fatura_no' => $faturaNo, 'net' => $hesap['net'],
+            'resmilestirme' => $resm, 'mail' => $mail, 'durum' => 'kesildi', 'fatura_log_id' => $faturaLogId,
+        ], JSON_UNESCAPED_UNICODE), '');
+
+        $mesaj = $ad . ': fatura kesildi' . ($faturaNo !== null ? " ($faturaNo)" : '') . '; '
+            . ($resm === 'gonderildi' ? 'e-Fatura resmileşti.' : 'e-Fatura resmileşmedi — ' . $resmMesaj);
+        if ($mail === 'gonderildi') {
+            $mesaj .= ' Mail gönderildi' . ($mailMsg !== '' ? " ($mailMsg)" : '') . '.';
+        } elseif ($mail === 'sirada') {
+            $mesaj .= ' Mail SIRADA' . ($mailMsg !== '' ? " ($mailMsg)" : '') . ' — PDF hazır olunca gönderilecek.';
+        } elseif ($mail === 'hata') {
+            $mesaj .= ' Mail BAŞARISIZ — Belge maili ayarlarından kontrol edin.';
+        }
+        return self::faturaSonuc(true, 'kesildi', $mesaj, $faturaId, $faturaNo, $resm, $mail, $hesap['net'], 1);
     }
 
     /**

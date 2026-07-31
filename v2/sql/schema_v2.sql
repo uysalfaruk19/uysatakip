@@ -700,7 +700,8 @@ CREATE TABLE IF NOT EXISTS `parasut_fatura_log` (
   `customer_id`        INT UNSIGNED NOT NULL,
   `donem_bas`          DATE         NOT NULL COMMENT 'dönem başlangıç',
   `donem_son`          DATE         NOT NULL COMMENT 'dönem bitiş (= issue_date)',
-  `tip`                VARCHAR(16)  NOT NULL DEFAULT 'irsaliye' COMMENT 'irsaliye|aylik',
+  `tip`                VARCHAR(16)  NOT NULL DEFAULT 'irsaliye' COMMENT 'irsaliye|aylik|sabit (fable-065)',
+  `sabit_kalem_id`     INT UNSIGNED          DEFAULT NULL COMMENT 'tip=sabit ise musteri_sabit_fatura.id (mükerrer kalkanı, fable-065)',
   `parasut_contact_id` VARCHAR(40)           DEFAULT NULL COMMENT 'faturanın kesildiği contact',
   `parasut_fatura_id`  VARCHAR(40)           DEFAULT NULL COMMENT 'sales_invoices.id',
   `fatura_no`          VARCHAR(64)           DEFAULT NULL COMMENT 'Paraşüt otomatik seri no',
@@ -717,6 +718,7 @@ CREATE TABLE IF NOT EXISTS `parasut_fatura_log` (
   `updated_at`         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_fatura_cust` (`customer_id`, `donem_son`),
+  KEY `idx_fatura_sabit` (`sabit_kalem_id`, `donem_son`),
   CONSTRAINT `fk_pfaturalog_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -761,5 +763,26 @@ CREATE TABLE IF NOT EXISTS `mail_kuyruk` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT IGNORE INTO `ayar` (`anahtar`, `deger`) VALUES ('paylasim_yontemi', 'uysa_mail');
+
+-- fable-065: SABİT AYLIK FATURA KALEMİ (migrate_052.sql ile aynı tanım).
+-- Yemek faturasından AYRI, üretimden BAĞIMSIZ, her ay AYNI tutar (BOMİ → PERSONEL HİZMET).
+-- KDV kalemin KENDİ oranı (hizmet %20; yemek %10 DEĞİL). SİLME YOK → aktif=0.
+CREATE TABLE IF NOT EXISTS `musteri_sabit_fatura` (
+  `id`                  INT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  `customer_id`         INT UNSIGNED  NOT NULL,
+  `ad`                  VARCHAR(120)  NOT NULL,
+  `parasut_product_id`  VARCHAR(48)   DEFAULT NULL,
+  `parasut_contact_id`  VARCHAR(48)   DEFAULT NULL COMMENT 'boşsa müşterinin kendi carisi',
+  `birim_fiyat`         DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `kdv_orani`           DECIMAL(5,2)  NOT NULL DEFAULT 20.00,
+  `aciklama`            VARCHAR(200)  DEFAULT NULL,
+  `aktif`               TINYINT(1)    NOT NULL DEFAULT 1,
+  `created_at`          DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`          DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_msf_cust_ad` (`customer_id`, `ad`),
+  KEY `idx_msf_cust` (`customer_id`, `aktif`, `id`),
+  CONSTRAINT `fk_msf_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;
