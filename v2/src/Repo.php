@@ -6725,6 +6725,22 @@ final class Repo
         foreach ($this->pdo->query("SELECT id, parasut_id FROM customers WHERE parasut_id IS NOT NULL AND parasut_id <> ''")->fetchAll() as $c) {
             $custMap[(string) $c['parasut_id']] = (int) $c['id'];
         }
+        // fable-063 (Ömer: kâr/zararda "3 gündür fatura kesilmemiş" + boşta gelir): ALT FİRMA
+        // carisiyle kesilen fatura (CANTAŞ HC/İç-Dış/Bakır, Gebze Palet) ANA MÜŞTERİNİN geliridir.
+        // Alt firmalar customers'ta olmadığı için 4 fatura (₺565.718) "eşleşmemiş" kalıyordu.
+        try {
+            foreach ($this->pdo->query(
+                "SELECT customer_id, parasut_contact_id FROM musteri_altfirma
+                 WHERE parasut_contact_id IS NOT NULL AND parasut_contact_id <> ''"
+            )->fetchAll() as $a) {
+                $key = (string) $a['parasut_contact_id'];
+                if (!isset($custMap[$key])) { // müşterinin kendi carisi önceliklidir
+                    $custMap[$key] = (int) $a['customer_id'];
+                }
+            }
+        } catch (\PDOException $e) {
+            error_log('[UYSA v2 satisFaturaIsle] altfirma eşleşmesi atlandı: ' . $e->getMessage());
+        }
         $mevcutRows = [];
         foreach ($this->pdo->query('SELECT * FROM satis_faturasi')->fetchAll() as $r) {
             $mevcutRows[(string) $r['parasut_id']] = $r;
