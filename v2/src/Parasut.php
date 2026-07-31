@@ -516,7 +516,8 @@ final class Parasut
      * TUTAR KONVANSİYONU (alış tarafında kanıtlanan Paraşüt dili — Fable canlıda doğrulayacak):
      *   gross_total = KDV HARİÇ ara toplam · total_vat = KDV · net_total = KDV DAHİL genel toplam.
      *   toplam    = net_total (yoksa gross_total + total_vat)
-     *   net_tutar = toplam − kdv  (kâr/zarar geliri; üretim cirosuyla AYNI baz)
+     *   net_tutar = gross_total (KDV hariç matrah) — tevkifatlı faturada "toplam − kdv" YANLIŞ
+     *     sonuç verir çünkü net_total'dan tevkifat zaten düşülmüştür (fable-064).
      * Tutarı olmayan/0 fatura ATLANMAZ ama net_tutar 0 kalır — uydurma yok.
      *
      * @return array{invoices:array<int,array<string,mixed>>,iade:int,atlanan:int,eskiye_gecti:bool}
@@ -560,7 +561,11 @@ final class Parasut
             $net = round((float) ($a['net_total'] ?? 0), 2);       // Paraşüt: KDV DAHİL genel toplam
             $gross = round((float) ($a['gross_total'] ?? 0), 2);   // Paraşüt: KDV HARİÇ ara toplam
             $toplam = $net > 0 ? $net : round($gross + $vat, 2);
-            $haric = round($toplam - $vat, 2);
+            // fable-064 (Ömer teşhisi 31 Tem): TEVKİFATLI faturada net_total, tevkifat KESİLMİŞ
+            // (tahsil edilecek) tutardır — ondan KDV'nin TAMAMINI düşmek geliri tevkifat kadar
+            // EKSİK gösteriyordu (PENDORYA Temmuz: ₺18.429,50 kayıp). KDV hariç gelir zaten
+            // gross_total'dır; varsa doğrudan o kullanılır, yoksa eski hesaba düşülür.
+            $haric = $gross > 0 ? $gross : round($toplam - $vat, 2);
             if ($haric <= 0 && $gross > 0) {
                 $haric = $gross;
             }

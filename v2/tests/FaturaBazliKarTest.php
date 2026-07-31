@@ -416,4 +416,52 @@ final class FaturaBazliKarTest extends TestCase
         $ad = (string) $this->pdo->query('SELECT contact_ad FROM satis_faturasi')->fetchColumn();
         $this->assertSame('ÇAĞRI GIDA İŞLETMELERİ', $ad, 'Türkçe karakter bozulmaz');
     }
+
+    /**
+     * fable-064 (Ömer teşhisi 31 Tem): TEVKİFATLI faturada gelir tevkifat kadar EKSİK
+     * kaydediliyordu. Paraşüt'te net_total = matrah + KDV − TEVKİFAT (tahsil edilecek);
+     * ondan KDV'nin tamamını düşmek yanlış. KDV hariç gelir = gross_total.
+     * CANLI ÇIPA: PENDORYA UY22026000000001 → matrah 83.230 · KDV 8.323 · tevkifat 4.161,50
+     * · net_total 87.391,50. Gelir 83.230 olmalı (eski hesap 79.068,50 veriyordu).
+     */
+    public function testTevkifatliFaturadaGelirMatrahtanGelir(): void
+    {
+        $resp = ['data' => [[
+            'id' => '1', 'type' => 'sales_invoices',
+            'attributes' => [
+                'issue_date' => '2026-07-07', 'invoice_no' => 'UY22026000000001',
+                'gross_total' => '83230.0', 'total_vat' => '8323.0',
+                'vat_withholding' => '4161.5', 'net_total' => '87391.5',
+            ],
+            'relationships' => ['contact' => ['data' => ['id' => '900', 'type' => 'contacts']]],
+        ]], 'included' => [[
+            'id' => '900', 'type' => 'contacts', 'attributes' => ['name' => 'PENDORYA'],
+        ]]];
+
+        $p = Parasut::parseSalesInvoices($resp, '2026-07');
+        self::assertCount(1, $p['invoices']);
+        $f = $p['invoices'][0];
+        self::assertSame(83230.0, (float) $f['net_tutar'], 'tevkifatlı gelir matrahtan gelmeli');
+        self::assertSame(87391.5, (float) $f['toplam'], 'tahsil edilecek tutar korunmalı');
+        self::assertNotSame(79068.5, (float) $f['net_tutar'], 'eski hatalı hesap geri gelmiş');
+    }
+
+    /** Tevkifatsız fatura eski davranışta kalmalı (regresyon). */
+    public function testTevkifatsizFaturaDegismedi(): void
+    {
+        $resp = ['data' => [[
+            'id' => '2', 'type' => 'sales_invoices',
+            'attributes' => [
+                'issue_date' => '2026-07-08', 'invoice_no' => 'UY02026000000100',
+                'gross_total' => '100000.0', 'total_vat' => '10000.0', 'net_total' => '110000.0',
+            ],
+            'relationships' => ['contact' => ['data' => ['id' => '901', 'type' => 'contacts']]],
+        ]], 'included' => [[
+            'id' => '901', 'type' => 'contacts', 'attributes' => ['name' => 'ERMETAL'],
+        ]]];
+
+        $f = Parasut::parseSalesInvoices($resp, '2026-07')['invoices'][0];
+        self::assertSame(100000.0, (float) $f['net_tutar']);
+        self::assertSame(110000.0, (float) $f['toplam']);
+    }
 }
