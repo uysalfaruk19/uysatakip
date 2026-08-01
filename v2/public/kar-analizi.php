@@ -191,12 +191,14 @@ require __DIR__ . '/partials/header.php';
       <?php // fable-039: KİŞİ BAŞI GIDA MALİYETİ — büyük rakam + tıklayınca kırılım ?>
       <div class="cardx card-pad">
         <div class="gt-h"><i class="bi bi-basket3-fill"></i> KİŞİ BAŞI GIDA MALİYETİ</div>
-        <div class="gt-pulse tap-card" role="button" tabindex="0" onclick="toggleGida()" style="cursor:<?= $gida['kirilimlar'] ? 'pointer' : 'default' ?>">
-          <div class="gt-pulse-n"><?= $gida['kisi_basi'] > 0 ? '₺' . Helpers::money($gida['kisi_basi']) : '—' ?></div>
-          <div class="gt-pulse-l">1 kişilik gıda maliyeti · gıda alımları ₺<?= Helpers::money($gida['toplam']) ?> · üretim <?= number_format($gida['kisi_toplam'], 0, ',', '.') ?> kişi<?= $gida['kirilimlar'] ? ' <i class="bi bi-chevron-down chev"></i>' : '' ?></div>
+        <?php // fable-071 (Ömer): rakam GİRİŞTE gizli — karta dokununca açılır. ?>
+        <div class="gt-pulse tap-card" role="button" tabindex="0" onclick="toggleGida()" style="cursor:pointer">
+          <div class="gt-pulse-n gizli" id="gida-rakam"><?= $gida['kisi_basi'] > 0 ? '₺' . Helpers::money($gida['kisi_basi']) : '—' ?></div>
+          <div class="gt-pulse-l">1 kişilik gıda maliyeti <i class="bi bi-chevron-down chev"></i></div>
         </div>
         <?php if ($gida['kirilimlar']): ?>
         <div id="gida-kirilim" style="display:none;margin-top:6px">
+          <div class="gt-pulse-l" style="margin-bottom:6px">gıda alımları ₺<?= Helpers::money($gida['toplam']) ?> · üretim <?= number_format($gida['kisi_toplam'], 0, ',', '.') ?> kişi</div>
           <?php foreach ($gida['kirilimlar'] as $ki => $g): $w = max(4, (int) round($g['oran'] * 100));
             // fable-044: bu kırılımda en çok para harcanan ürün kalemleri (top-10 + birim fiyat).
             $uo = $repo->kirilimUrunOzet($month, $g['kod']);
@@ -269,9 +271,38 @@ require __DIR__ . '/partials/header.php';
       <?php $pc = $repo->personelCostOzetUretim($month); ?>
       <div class="cardx card-pad">
         <div class="gt-h"><i class="bi bi-people-fill"></i> KİŞİ BAŞI PERSONEL MALİYETİ</div>
-        <div class="gt-pulse">
-          <div class="gt-pulse-n"><?= $pc['kisi_basi'] > 0 ? '₺' . Helpers::money($pc['kisi_basi']) : '—' ?></div>
+        <div class="gt-pulse tap-card" role="button" tabindex="0" onclick="toggleKart('pers')" style="cursor:pointer">
+          <div class="gt-pulse-n gizli" id="pers-rakam"><?= $pc['kisi_basi'] > 0 ? '₺' . Helpers::money($pc['kisi_basi']) : '—' ?></div>
+          <div class="gt-pulse-l">1 kişilik personel maliyeti <i class="bi bi-chevron-down chev"></i></div>
+        </div>
+        <div id="pers-detay" style="display:none;margin-top:6px">
           <div class="gt-pulse-l">personel (işveren maliyeti) ₺<?= Helpers::money($pc['toplam']) ?> · üretim <?= number_format($pc['kisi_toplam'], 0, ',', '.') ?> kişi</div>
+        </div>
+      </div>
+
+      <?php // fable-071 (Ömer): KİŞİ BAŞI DİĞER MALİYET — gıda/personel dışı giderler kategori kırılımıyla ?>
+      <?php $dc = $repo->digerCostOzet($month); ?>
+      <div class="cardx card-pad">
+        <div class="gt-h"><i class="bi bi-receipt-cutoff"></i> KİŞİ BAŞI DİĞER MALİYET</div>
+        <div class="gt-pulse tap-card" role="button" tabindex="0" onclick="toggleKart('diger')" style="cursor:pointer">
+          <div class="gt-pulse-n gizli" id="diger-rakam"><?= $dc['kisi_basi'] > 0 ? '₺' . Helpers::money($dc['kisi_basi']) : '—' ?></div>
+          <div class="gt-pulse-l">1 kişilik diğer maliyet <i class="bi bi-chevron-down chev"></i></div>
+        </div>
+        <div id="diger-detay" style="display:none;margin-top:6px">
+          <div class="gt-pulse-l" style="margin-bottom:6px">toplam ₺<?= Helpers::money($dc['toplam']) ?> · üretim <?= number_format($dc['kisi_toplam'], 0, ',', '.') ?> kişi</div>
+          <?php foreach ($dc['kirilimlar'] as $d): $w = max(4, (int) round($d['oran'] * 100)); ?>
+            <div class="gt-kr">
+              <div class="gt-kr-head">
+                <div class="gt-kr-firm">
+                  <div class="gt-kr-ad"><?= Helpers::e($d['ad']) ?></div>
+                  <div class="gt-kr-sub">kişi başı ₺<?= Helpers::money($d['kisi_basi']) ?></div>
+                </div>
+                <div class="gt-kr-val">₺<?= Helpers::money($d['tutar']) ?><small><?= number_format($d['oran'] * 100, 0) ?>%</small></div>
+              </div>
+              <div class="gt-bar"><i style="width: <?= $w ?>%"></i></div>
+            </div>
+          <?php endforeach; ?>
+          <?php if (!$dc['kirilimlar']): ?><div class="gt-pulse-l">Bu ayda gıda/personel dışı gider yok.</div><?php endif; ?>
         </div>
       </div>
 
@@ -411,10 +442,23 @@ require __DIR__ . '/partials/header.php';
         // fable-039: gıda maliyeti kartı → kırılım aç/kapat
         function toggleGida(){
           var el = document.getElementById('gida-kirilim');
-          if (!el) return;
-          el.style.display = el.style.display === 'none' ? '' : 'none';
+          var n  = document.getElementById('gida-rakam');
+          var acik = false;
+          if (el) { el.style.display = el.style.display === 'none' ? '' : 'none'; acik = el.style.display !== 'none'; }
+          if (n) n.classList.toggle('gizli', !acik);   // fable-071: rakam da kartla birlikte açılır
           var card = document.querySelector('[onclick="toggleGida()"]');
-          if (card) card.classList.toggle('open', el.style.display !== 'none');
+          if (card) card.classList.toggle('open', acik);
+        }
+        // fable-071: personel + diğer maliyet kartları için ortak aç/kapa
+        function toggleKart(ad){
+          var d = document.getElementById(ad + '-detay');
+          var n = document.getElementById(ad + '-rakam');
+          if (!d) return;
+          d.style.display = d.style.display === 'none' ? '' : 'none';
+          var acik = d.style.display !== 'none';
+          if (n) n.classList.toggle('gizli', !acik);
+          var card = document.querySelector('[onclick="toggleKart(\'' + ad + '\')"]');
+          if (card) card.classList.toggle('open', acik);
         }
         // fable-044: kırılım satırı → ürün kalemi listesi aç/kapat
         function toggleKir(id){

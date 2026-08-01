@@ -3152,3 +3152,11 @@ body.meal-open {
   font-weight: 700;
   line-height: 1.45;
 }
+
+/* fable-071: kişi başı maliyet kartlarında rakam girişte gizli — karta dokununca açılır */
+.gt-pulse-n.gizli {
+  filter: blur(10px);
+  opacity: 0.35;
+  user-select: none;
+  transition: filter .18s ease, opacity .18s ease;
+}

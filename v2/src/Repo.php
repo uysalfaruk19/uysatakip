@@ -6363,6 +6363,64 @@ final class Repo
      * gıda costuna girmez → karAnalizi/netKarlilik sayılarını ETKİLEMEZ (ayrı görünüm katmanı).
      * @return array{toplam:float,kisi_toplam:int,kisi_basi:float,kirilimlar:array<int,array{kod:string,ad:string,tutar:float,kisi_basi:float,oran:float}>}
      */
+    /**
+     * fable-071 (Ömer: "kişi başı diğer maliyet koy, diğer maliyetleri de orada görelim").
+     * GIDA ve PERSONEL dışında kalan, üretime düşen giderler — kategori bazında kırılımlı.
+     * HARİÇ: 'Personel' (ayrı kart), 'Taşıma alış' (al-sat, üretim maliyeti değil) ve gıda
+     * kırılımına ATANMIŞ tedarikçilerin faturaları (onlar gıda kartında).
+     * Payda gıda kartıyla AYNI: o ayın üretim müşterilerinin toplam kişisi.
+     *
+     * @return array{toplam:float,kisi_toplam:int,kisi_basi:float,
+     *   kirilimlar:array<int,array{ad:string,tutar:float,kisi_basi:float,oran:float}>}
+     */
+    public function digerCostOzet(string $ay): array
+    {
+        $kisi = 0;
+        foreach ($this->monthProductionByCustomer($ay, 'uretim', true) as $r) {
+            $kisi += (int) $r['persons'];
+        }
+        $map = $this->tedarikciGidaMap();
+
+        $st = $this->pdo->prepare(
+            "SELECT t.source, t.category, t.description, t.amount, s.name AS supplier_name
+             FROM transactions t LEFT JOIN suppliers s ON s.id = t.supplier_id
+             WHERE t.type = 'gider' AND substr(t.tx_date,1,7) = ?
+               AND (t.category IS NULL OR t.category NOT IN ('Personel', 'Taşıma alış'))"
+        );
+        $st->execute([$ay]);
+
+        $perKat = [];
+        $toplam = 0.0;
+        foreach ($st->fetchAll() as $r) {
+            // gıda kırılımına atanmış tedarikçi → gıda kartında, burada sayılmaz
+            if (isset($map[self::normTedarikci($this->txFirma($r))])) {
+                continue;
+            }
+            $kat = trim((string) ($r['category'] ?? '')) ?: 'Diğer';
+            $tut = (float) $r['amount'];
+            $perKat[$kat] = ($perKat[$kat] ?? 0.0) + $tut;
+            $toplam += $tut;
+        }
+        arsort($perKat);
+
+        $kirilimlar = [];
+        foreach ($perKat as $kat => $tut) {
+            $kirilimlar[] = [
+                'ad' => $kat,
+                'tutar' => $tut,
+                'kisi_basi' => $kisi > 0 ? $tut / $kisi : 0.0,
+                'oran' => $toplam > 0 ? $tut / $toplam : 0.0,
+            ];
+        }
+
+        return [
+            'toplam' => $toplam,
+            'kisi_toplam' => $kisi,
+            'kisi_basi' => $kisi > 0 ? $toplam / $kisi : 0.0,
+            'kirilimlar' => $kirilimlar,
+        ];
+    }
+
     public function gidaCostOzet(string $ay): array
     {
         $kirilimlar = $this->gidaKirilimlar();
