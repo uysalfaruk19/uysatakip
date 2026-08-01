@@ -24,6 +24,10 @@ if (!in_array($tab, ['uretim', 'tasima'], true)) {
 // VERİ KAYNAĞI seçici — Üretim|Taşıma sekmesinden AYRI eksen; seçim URL'de taşınır.
 //   fatura = kesilen satış faturaları (GERÇEK, varsayılan) · uretim = production tahakkuku (eski hesap)
 $kaynak = (string) ($_GET['kaynak'] ?? '');
+// fable-070 (Ömer): aylar arası geçiş Bugün ekranındaki gün geçişi gibi ‹ › oklarıyla.
+$prevMonth = date('Y-m', strtotime($month . '-01 -1 month'));
+$nextMonth = date('Y-m', strtotime($month . '-01 +1 month'));
+
 $ka = $repo->karAnaliziKaynak($month, $kaynak !== '' ? $kaynak : null);
 $kaynak = (string) $ka['kaynak'];
 $fbilgi = $ka['fatura'] ?? null;  // fatura modunda kapsam bilgisi (dürüstlük satırı)
@@ -88,17 +92,19 @@ require __DIR__ . '/partials/header.php';
       foreach ($karne as $k) { $karneCiroToplam += $k['gelir']; }
       ?>
       <div class="cardx card-pad">
-        <form method="get" class="gt-date">
-          <input type="hidden" name="tab" value="<?= Helpers::e($tab) ?>">
-          <input type="hidden" name="kaynak" value="<?= Helpers::e($kaynak) ?>">
-          <div class="dt" style="position:relative">
+        <div class="gt-date">
+          <a class="nav" href="kar-analizi.php?<?= Helpers::e($qs(['ay' => $prevMonth])) ?>" aria-label="Önceki ay">‹</a>
+          <form method="get" class="dt" style="position:relative">
+            <input type="hidden" name="tab" value="<?= Helpers::e($tab) ?>">
+            <input type="hidden" name="kaynak" value="<?= Helpers::e($kaynak) ?>">
             <b><?= Helpers::e(ay_label_tr($month)) ?></b>
             <?php $mtdSpan = $kaynak === 'uretim' ? ay_span_tr($month) : ''; // fable-048: fatura modunda MTD kırpması YOK ?>
             <span><?= $tab === 'tasima' ? 'taşıma kâr/zarar' : 'üretim kâr/zarar + gıda maliyeti' ?><?= $mtdSpan ? ' · ' . Helpers::e($mtdSpan) . ' (ay içi)' : '' ?></span>
             <input type="month" name="ay" value="<?= Helpers::e($month) ?>" onchange="this.form.submit()"
                    aria-label="Ay seç" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer">
-          </div>
-        </form>
+          </form>
+          <a class="nav" href="kar-analizi.php?<?= Helpers::e($qs(['ay' => $nextMonth])) ?>" aria-label="Sonraki ay">›</a>
+        </div>
       </div>
 
       <?php // fable-048 (Ömer): VERİ KAYNAĞI — gerçek fatura mı, üretim tahakkuku mu ?>
