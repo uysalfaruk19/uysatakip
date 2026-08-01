@@ -6065,12 +6065,14 @@ final class Repo
         };
 
         // 1) Faturalar — TÜM ZAMAN (tarih kısıtı YOK), Personel/Taşıma alış hariç.
+        // fable-069: 'Yakıt & Sarf' SABİT TAHMİNİ giderdir (Ömer: aylık 50.000) — faturası ve
+        // tedarikçisi yoktur, kâr/zarara girer ama BORÇ listesinde yer almaz.
         $st = $this->pdo->query(
             "SELECT t.source, t.category, t.description, t.amount, s.name AS supplier_name
              FROM transactions t
              LEFT JOIN suppliers s ON s.id = t.supplier_id
              WHERE t.type = 'gider'
-               AND (t.category IS NULL OR t.category NOT IN ('Personel'))"
+               AND (t.category IS NULL OR t.category NOT IN ('Personel', 'Yakıt & Sarf'))"
         );
         foreach ($st->fetchAll() as $r) {
             $firma = $this->txFirma($r);
@@ -6134,7 +6136,7 @@ final class Repo
              FROM transactions t
              LEFT JOIN suppliers s ON s.id = t.supplier_id
              WHERE t.type = 'gider'
-               AND (t.category IS NULL OR t.category NOT IN ('Personel'))
+               AND (t.category IS NULL OR t.category NOT IN ('Personel', 'Yakıt & Sarf'))
              ORDER BY t.tx_date DESC, t.id DESC"
         );
         foreach ($st->fetchAll() as $r) {
@@ -6204,7 +6206,7 @@ final class Repo
              FROM transactions t
              LEFT JOIN suppliers s ON s.id = t.supplier_id
              WHERE t.type = 'gider'
-               AND (t.category IS NULL OR t.category NOT IN ('Personel'))
+               AND (t.category IS NULL OR t.category NOT IN ('Personel', 'Yakıt & Sarf'))
              ORDER BY t.tx_date DESC, t.id DESC"
         );
         foreach ($st->fetchAll() as $r) {
