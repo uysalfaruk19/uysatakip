@@ -6380,9 +6380,13 @@ final class Repo
 
         // Gıda kırılımına eşli gider tx'lerinin BRÜT toplamı (kırılım bazında).
         $st = $this->pdo->prepare(
-            "SELECT source, category, description, amount FROM transactions
-             WHERE type = 'gider' AND substr(tx_date,1,7) = ?
-               AND (category IS NULL OR category NOT IN ('Personel', 'Taşıma alış'))"
+            // fable-068: tedarikçi adı `suppliers`ten de okunmalı — aksi hâlde ekstreden/elle
+            // işlenen kayıt (supplier_id dolu ama açıklama biçimi farklı) gıda kırılımına
+            // GİRMİYOR ve maliyet eksik çıkıyordu (YOPA ₺10.561,30 vakası).
+            "SELECT t.source, t.category, t.description, t.amount, s.name AS supplier_name
+             FROM transactions t LEFT JOIN suppliers s ON s.id = t.supplier_id
+             WHERE t.type = 'gider' AND substr(t.tx_date,1,7) = ?
+               AND (t.category IS NULL OR t.category NOT IN ('Personel', 'Taşıma alış'))"
         );
         $st->execute([$ay]);
         $perKir = [];
@@ -6439,9 +6443,11 @@ final class Repo
 
         // Bu kırılıma eşli gider tx'leri (gidaCostOzet ile AYNI filtre → toplam birebir tutar).
         $st = $this->pdo->prepare(
-            "SELECT id, source, category, description, amount FROM transactions
-             WHERE type = 'gider' AND substr(tx_date,1,7) = ?
-               AND (category IS NULL OR category NOT IN ('Personel', 'Taşıma alış'))"
+            // fable-068: aynı düzeltme — kırılım ürün listesi de tedarikçi adını görmeli.
+            "SELECT t.id, t.source, t.category, t.description, t.amount, s.name AS supplier_name
+             FROM transactions t LEFT JOIN suppliers s ON s.id = t.supplier_id
+             WHERE t.type = 'gider' AND substr(t.tx_date,1,7) = ?
+               AND (t.category IS NULL OR t.category NOT IN ('Personel', 'Taşıma alış'))"
         );
         $st->execute([$ay]);
         $txIds = [];
