@@ -111,11 +111,21 @@ $sekmeUrl = static fn(string $s): string => 'cari.php?sekme=' . $s;
     // ── BORÇLARIM (tedarikçi bazlı, AYDAN BAĞIMSIZ kümülatif) ──
     // fable-046: tek geçişte TÜM detaylar (eskiden satır başına 1 tam tarama vardı).
     $detaylar = $repo->borclarimDetayTumu();
+    // fable-073 (Ömer): "kalan borç − gözükmesin; her tedarikçi bağımsız, ben bu sefer ne
+    // ödeyeceğimi göremem." Bakiyesi EKSİ olan tedarikçi (peşin ödeme/çek yüzünden BİZE
+    // borçlu) ödenecek borç toplamına KATILMAZ — ayrı satırda gösterilir.
     $toplamKalan = 0.0;
     $toplamFatura = 0.0;
     $toplamOdenen = 0.0;
+    $bizeBorclu = 0.0;
+    $bizeBorcluAdet = 0;
     foreach ($detaylar as $b) {
-        $toplamKalan += $b['kalan'];
+        if ($b['kalan'] < -0.005) {
+            $bizeBorclu += abs($b['kalan']);
+            $bizeBorcluAdet++;
+        } else {
+            $toplamKalan += $b['kalan'];
+        }
         $toplamFatura += $b['fatura'] + $b['devir'];
         $toplamOdenen += $b['odenen'];
     }
@@ -128,6 +138,13 @@ $sekmeUrl = static fn(string $s): string => 'cari.php?sekme=' . $s;
             <div><div class="gt-mn"><?= count($detaylar) ?></div><div class="gt-ml">Tedarikçi</div></div>
           </div>
           <p class="row-meta" style="text-align:center;margin-top:8px">fatura+devir ₺<?= Helpers::money($toplamFatura) ?> · aydan bağımsız, tüm zaman kümülatif</p>
+          <?php if ($bizeBorcluAdet > 0): ?>
+            <p class="row-meta" style="text-align:center;margin-top:4px;color:var(--ok)">
+              <i class="bi bi-arrow-down-left-circle"></i>
+              Ayrıca <?= $bizeBorcluAdet ?> tedarikçi <strong>bize ₺<?= Helpers::money($bizeBorclu) ?></strong> borçlu
+              (peşin ödeme/çek) — ödenecek borca dahil değil.
+            </p>
+          <?php endif; ?>
         </div>
 
         <div class="cardx card-pad">
@@ -151,7 +168,8 @@ $sekmeUrl = static fn(string $s): string => 'cari.php?sekme=' . $s;
                       <div class="gt-kr-ad"><?= Helpers::e($b['label']) ?></div>
                       <div class="gt-kr-sub">fatura ₺<?= Helpers::money($b['fatura'] + $b['devir']) ?> · ödenen ₺<?= Helpers::money($b['odenen']) ?></div>
                     </div>
-                    <div class="gt-kr-val <?= $borclu ? 'bad' : 'ok' ?>">₺<?= Helpers::money($b['kalan']) ?><small><?= $borclu ? 'kalan' : 'kapandı' ?></small></div>
+                    <?php $alacak = $b['kalan'] < -0.005; ?>
+                    <div class="gt-kr-val <?= $borclu ? 'bad' : 'ok' ?>">₺<?= Helpers::money($alacak ? abs($b['kalan']) : $b['kalan']) ?><small><?= $borclu ? 'kalan' : ($alacak ? 'bize borçlu' : 'kapandı') ?></small></div>
                   </div>
                   <div class="gt-bar"><i class="<?= $borclu ? '' : 'bad' ?>" style="width: <?= $borclu ? $w : 100 ?>%"></i></div>
                 </div>
