@@ -605,6 +605,122 @@ final class Repo
         return $st->fetchAll();
     }
 
+    // ── fable-072: e-İrsaliye NUMARASI gecikmeli doğuyor ────────────────────────────────
+    // Kesim anında `despatch_no` çoğu zaman HENÜZ YOK (GİB numarayı birkaç saniye sonra
+    // veriyor) — sistem bir daha dönüp bakmadığı için 66 kaydın 54'ünde boş kaldı. Aşağıdaki
+    // iki metot "sonradan doldur" mekaniğinin yerel yarısı; Paraşüt tarafı ParasutYaz'da.
+
+    /**
+     * Numarası HENÜZ boş olan kesilmiş irsaliyeler (belge id'si var → Paraşüt'ten sorulabilir).
+     * @param string|null $gunden 'YYYY-MM-DD' (null = sınırsız)
+     * @return array<int,array{id:int,customer_id:int,gun:string,parasut_doc_id:string}>
+     */
+    public function despatchNosuEksikIrsaliyeler(?string $gunden = null, int $limit = 200): array
+    {
+        $sql = "SELECT id, customer_id, gun, parasut_doc_id FROM parasut_irsaliye_log
+                 WHERE durum = 'kesildi'
+                   AND (despatch_no IS NULL OR despatch_no = '')
+                   AND parasut_doc_id IS NOT NULL AND parasut_doc_id <> ''";
+        $args = [];
+        if ($gunden !== null) {
+            $sql .= ' AND gun >= ?';
+            $args[] = $gunden;
+        }
+        $sql .= ' ORDER BY gun DESC, id DESC LIMIT ' . max(1, $limit);
+        $st = $this->pdo->prepare($sql);
+        $st->execute($args);
+        $out = [];
+        foreach ($st->fetchAll() as $r) {
+            $out[] = ['id' => (int) $r['id'], 'customer_id' => (int) $r['customer_id'],
+                'gun' => (string) $r['gun'], 'parasut_doc_id' => (string) $r['parasut_doc_id']];
+        }
+        return $out;
+    }
+
+    /**
+     * BOŞ numarayı doldur (yalnız boşsa — dolu numaranın ÜZERİNE YAZILMAZ; resmi belge izi).
+     * irsaliyeLogKaydet 'kesildi' satırına dokunmadığı için tek alanlık bu dar kapı gerekli.
+     * @return bool gerçekten yazıldı mı
+     */
+    public function despatchNoDoldur(int $id, string $no): bool
+    {
+        $no = trim($no);
+        if ($id <= 0 || $no === '') {
+            return false;
+        }
+        $st = $this->pdo->prepare(
+            'UPDATE parasut_irsaliye_log SET despatch_no = ?, updated_at = ' . $this->nowExpr() . '
+              WHERE id = ? AND (despatch_no IS NULL OR despatch_no = \'\')'
+        );
+        $st->execute([$no, $id]);
+        return $st->rowCount() > 0;
+    }
+
+    /**
+     * Bir faturaya bağlı irsaliyelerin numaraları (tarih sırasına göre; numarasız gün atlanır).
+     * @return array<int,string>
+     */
+    public function faturaIrsaliyeNolari(int $faturaLogId): array
+    {
+        $st = $this->pdo->prepare(
+            "SELECT despatch_no FROM parasut_irsaliye_log
+              WHERE fatura_log_id = ? AND despatch_no IS NOT NULL AND despatch_no <> ''
+              ORDER BY gun"
+        );
+        $st->execute([$faturaLogId]);
+        $out = [];
+        foreach ($st->fetchAll() as $r) {
+            $out[] = (string) $r['despatch_no'];
+        }
+        return array_values(array_unique($out));
+    }
+
+    /**
+     * fable-072 görünürlük: Paraşüt'te KESİLEN faturalar + her birinin irsaliye numaraları
+     * ("135 nolu fatura → irsaliyeleri şunlar"). Yeni → eski.
+     * @return array<int,array{id:int,customer_id:int,customer_name:string,tip:string,fatura_no:string,
+     *   alt_ad:string,donem_bas:string,donem_son:string,toplam_kisi:int,toplam_tutar:float,
+     *   durum:string,irsaliyeler:array<int,string>}>
+     */
+    public function parasutFaturaGecmisi(int $limit = 50, ?string $ay = null): array
+    {
+        $sql = 'SELECT f.*, c.name AS customer_name FROM parasut_fatura_log f
+                LEFT JOIN customers c ON c.id = f.customer_id';
+        $args = [];
+        if ($ay !== null && preg_match('/^\d{4}-\d{2}$/', $ay)) {
+            $sql .= ' WHERE substr(f.donem_son, 1, 7) = ?';
+            $args[] = $ay;
+        }
+        $sql .= ' ORDER BY f.donem_son DESC, f.id DESC LIMIT ' . max(1, $limit);
+        try {
+            $st = $this->pdo->prepare($sql);
+            $st->execute($args);
+            $rows = $st->fetchAll();
+        } catch (\PDOException $e) {
+            error_log('[UYSA v2 parasutFaturaGecmisi] okunamadı: ' . $e->getMessage());
+            return [];
+        }
+        $out = [];
+        foreach ($rows as $r) {
+            $id = (int) $r['id'];
+            $out[] = [
+                'id'            => $id,
+                'customer_id'   => (int) $r['customer_id'],
+                'customer_name' => (string) ($r['customer_name'] ?? ''),
+                'tip'           => (string) ($r['tip'] ?? 'irsaliye'),
+                'fatura_no'     => trim((string) ($r['fatura_no'] ?? '')),
+                'alt_ad'        => trim((string) ($r['alt_ad'] ?? '')),
+                'donem_bas'     => (string) $r['donem_bas'],
+                'donem_son'     => (string) $r['donem_son'],
+                'toplam_kisi'   => (int) $r['toplam_kisi'],
+                'toplam_tutar'  => (float) $r['toplam_tutar'],
+                'durum'         => (string) $r['durum'],
+                'irsaliyeler'   => (string) ($r['tip'] ?? '') === 'irsaliye' ? $this->faturaIrsaliyeNolari($id) : [],
+            ];
+        }
+        return $out;
+    }
+
     /**
      * fable-028: Müşterinin dönem içi GÜN GÜN öğün kırılımı (fatura onayında "netleştirme" tablosu).
      * @return array<int,array{gun:string,ogle:int,aksam:int,kumanya:int,toplam:int}>

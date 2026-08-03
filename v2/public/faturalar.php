@@ -51,6 +51,9 @@ $customers = $repo->listCustomersByCategory('uretim');
 $cust = $custId ? $repo->customer($custId) : null;
 $invoice = $cust ? $repo->customerInvoice($custId, $month, $kdvOran) : null;
 $faturalar = $repo->listFaturalar();
+// fable-072: Paraşüt'te KESİLEN faturalar + her birinin irsaliye numaraları
+// (Ömer: "135 nolu fatura → irsaliyeleri şunlar").
+$parasutFaturalar = $repo->parasutFaturaGecmisi(50);
 
 $pageTitle = 'Faturalar';
 $eyebrow = 'Aylık müşteri faturası';
@@ -170,6 +173,45 @@ require __DIR__ . '/partials/header.php';
                 <td class="num">₺ <?= Helpers::money((float) $f['genel_toplam']) ?></td>
                 <td><span class="badge-soft <?= $f['durum'] === 'kesildi' ? 'badge-warn' : '' ?>" style="<?= $f['durum'] === 'kesildi' ? '' : 'background:var(--surface-2);color:var(--muted)' ?>"><?= $f['durum'] === 'kesildi' ? 'Kesildi' : 'Taslak' ?></span></td>
               </tr>
+            <?php endforeach; ?>
+            </tbody>
+          </table>
+        <?php endif; ?>
+      </div>
+
+      <div class="section-head fatura-gecmis"><div class="gt-h" style="margin:0"><i class="bi bi-receipt-cutoff"></i> PARAŞÜT'TE KESİLEN FATURALAR</div></div>
+      <div class="cardx card-pad fatura-gecmis">
+        <?php if (!$parasutFaturalar): ?>
+          <div class="empty-state">Paraşüt'te kesilmiş fatura kaydı yok.</div>
+        <?php else: ?>
+          <table class="tablex">
+            <thead><tr><th>Fatura / müşteri</th><th>Dönem</th><th class="num">Tutar</th></tr></thead>
+            <tbody>
+            <?php foreach ($parasutFaturalar as $f): ?>
+              <?php
+                $tipEtiket = ['irsaliye' => 'Haftalık (irsaliyeli)', 'aylik' => 'Aylık', 'sabit' => 'Sabit kalem'][$f['tip']] ?? $f['tip'];
+                $ad = $f['alt_ad'] !== '' ? $f['alt_ad'] : $f['customer_name'];
+              ?>
+              <tr>
+                <td>
+                  <strong><?= $f['fatura_no'] !== '' ? Helpers::e($f['fatura_no']) : '—' ?></strong>
+                  <div><?= Helpers::e($ad !== '' ? $ad : '#' . $f['customer_id']) ?></div>
+                  <div class="row-meta"><?= Helpers::e($tipEtiket) ?><?= $f['durum'] !== 'kesildi' ? ' · ' . Helpers::e($f['durum']) : '' ?></div>
+                </td>
+                <td><?= Helpers::e(date('d.m', strtotime($f['donem_bas']))) ?>–<?= Helpers::e(date('d.m.Y', strtotime($f['donem_son']))) ?></td>
+                <td class="num">₺ <?= Helpers::money($f['toplam_tutar']) ?></td>
+              </tr>
+              <?php if ($f['tip'] === 'irsaliye'): ?>
+                <tr>
+                  <td colspan="3" style="padding-top:0;border-top:0">
+                    <?php if ($f['irsaliyeler']): ?>
+                      <div class="row-meta" style="overflow-wrap:anywhere"><i class="bi bi-truck"></i> İrsaliyeler (<?= count($f['irsaliyeler']) ?>): <?= Helpers::e(implode(', ', $f['irsaliyeler'])) ?></div>
+                    <?php else: ?>
+                      <div class="row-meta"><i class="bi bi-truck"></i> İrsaliye numarası yok — Paraşüt'ten kontrol edin.</div>
+                    <?php endif; ?>
+                  </td>
+                </tr>
+              <?php endif; ?>
             <?php endforeach; ?>
             </tbody>
           </table>

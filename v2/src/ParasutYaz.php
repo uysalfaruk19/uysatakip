@@ -779,6 +779,135 @@ final class ParasutYaz
     }
 
     // ══════════════════════════════════════════════════════════════════════════════════
+    // fable-072 — GECİKMELİ e-İRSALİYE NUMARASI (SALT OKUMA)
+    //
+    // Kanıt: e-İrsaliye numarası GİB'den kesimden BİRKAÇ SANİYE SONRA doğuyor. Kesim anında
+    // sorgulanınca boş dönüyor ve sistem bir daha bakmıyordu → 66 kesilmiş irsaliyenin 54'ünde
+    // `despatch_no` boş kaldı, faturaya yazacak numara elde olmadı.
+    //
+    // Buradaki akış Paraşüt'e HİÇBİR ŞEY YAZMAZ (yalnız GET) — yazma şalteri/onay imzası
+    // gerektirmez; yazma sadece YEREL loga olur (boş alanı doldurur, dolusuna dokunmaz).
+    // Hız sınırı GERÇEK (canlıda HTTP 429 alındı): çağrılar arası bekleme + üstel geri çekilme,
+    // 3 denemede olmazsa o kayıt ATLANIR — akış asla çökmez.
+    // ══════════════════════════════════════════════════════════════════════════════════
+
+    /** Tazeleme çağrıları arası bekleme (ms) — Paraşüt hız sınırı. */
+    private const TAZELE_ARASI_MS = 800;
+
+    /** 429'da geri çekilme saniyeleri (üstel) + toplam deneme sayısı. */
+    private const TAZELE_BEKLE = [2, 4, 8];
+
+    /** Fatura kesimi sırasında en fazla kaç belge sorulur (kesim gecikmesin). */
+    private const TAZELE_FATURA_LIMIT = 10;
+
+    /**
+     * Boş numaraları Paraşüt'ten çekip loga yaz (salt-okuma + yerel doldurma).
+     * @param array<int,array{id:int,parasut_doc_id:string}> $kayitlar
+     * @return array{tarandi:int,bulundu:int,bos:int,hata:int}
+     */
+    public function despatchNolariTazele(array $kayitlar, int $enFazla = 200): array
+    {
+        $sonuc = ['tarandi' => 0, 'bulundu' => 0, 'bos' => 0, 'hata' => 0];
+        foreach ($kayitlar as $k) {
+            if ($sonuc['tarandi'] >= max(0, $enFazla)) {
+                break;
+            }
+            $id = (int) ($k['id'] ?? 0);
+            $docId = trim((string) ($k['parasut_doc_id'] ?? ''));
+            if ($id <= 0 || $docId === '') {
+                continue;
+            }
+            $sonuc['tarandi']++;
+            try {
+                $r = $this->belgeNosuOku($docId);
+            } catch (\Throwable $e) {
+                error_log('[fable-072] belge okunamadı (' . $docId . '): ' . $e->getMessage());
+                $sonuc['hata']++;
+                continue;
+            }
+            if ($r['durum'] === 'bulundu' && $r['no'] !== null) {
+                try {
+                    $this->repo->despatchNoDoldur($id, $r['no']);
+                    $sonuc['bulundu']++;
+                } catch (\Throwable $e) {
+                    error_log('[fable-072] numara yazılamadı (#' . $id . '): ' . $e->getMessage());
+                    $sonuc['hata']++;
+                }
+                continue;
+            }
+            $sonuc[$r['durum'] === 'bos' ? 'bos' : 'hata']++;
+        }
+        return $sonuc;
+    }
+
+    /**
+     * GET /shipment_documents/{id} → attributes.despatch_no.
+     * ⚠️ Yalnız `despatch_no` okunur — kesimdeki `procurement_number`/`invoice_no` yedekleri
+     *    BİLEREK kullanılmaz: buradan gelen numara MÜŞTERİYE GİDEN faturaya basılıyor,
+     *    yanlış alandan gelen bir değer sessizce oraya yazılmamalı (KANITLI alan adı bu).
+     * @return array{no:?string,durum:string} durum: bulundu|bos|hata
+     */
+    private function belgeNosuOku(string $docId): array
+    {
+        $yol = '/shipment_documents/' . rawurlencode($docId);
+        for ($i = 0; $i < count(self::TAZELE_BEKLE); $i++) {
+            $r = ($this->http)('GET', $yol, null);
+            $status = (int) ($r['status'] ?? 0);
+            $net = (string) ($r['net'] ?? 'ok');
+            if ($status === 429) {
+                if ($this->gercekAg) {
+                    sleep(self::TAZELE_BEKLE[$i]);
+                }
+                continue; // üstel geri çekilme → tekrar dene
+            }
+            $this->tazelemeNefesi();
+            if ($net !== 'ok' || $status < 200 || $status >= 300) {
+                return ['no' => null, 'durum' => 'hata'];
+            }
+            $doc = is_array($r['data'] ?? null) ? ($r['data']['data'] ?? []) : [];
+            $no = is_array($doc) ? trim((string) ($doc['attributes']['despatch_no'] ?? '')) : '';
+            return $no !== '' ? ['no' => $no, 'durum' => 'bulundu'] : ['no' => null, 'durum' => 'bos'];
+        }
+        $this->tazelemeNefesi();
+        return ['no' => null, 'durum' => 'hata']; // 3 deneme de 429 → bu kaydı ATLA
+    }
+
+    private function tazelemeNefesi(): void
+    {
+        if ($this->gercekAg) {
+            usleep(self::TAZELE_ARASI_MS * 1000);
+        }
+    }
+
+    /**
+     * Fatura kesiminden ÖNCE dönemin numarasız irsaliyelerini tazele (best-effort).
+     * ⚠️ Hiçbir hata dışarı SIZMAZ — fatura kesimi bu yüzden ASLA düşmez; numara bulunamazsa
+     *    o gün fatura notunda yer almaz, o kadar.
+     */
+    private function faturaOncesiNoTazele(int $customerId, string $bas, string $son): void
+    {
+        try {
+            $c = $this->repo->customer($customerId);
+            if ($c === null || (int) ($c['irsaliye_aktif'] ?? 1) !== 1) {
+                return; // aylık/kapsam dışı müşteri → irsaliye numarası aranmaz, ağa çıkılmaz
+            }
+            $eksik = [];
+            foreach ($this->repo->faturaAdayIrsaliyeler($customerId, $bas, $son) as $r) {
+                $no = trim((string) ($r['despatch_no'] ?? ''));
+                $doc = trim((string) ($r['parasut_doc_id'] ?? ''));
+                if ($no === '' && $doc !== '') {
+                    $eksik[] = ['id' => (int) $r['id'], 'parasut_doc_id' => $doc];
+                }
+            }
+            if ($eksik) {
+                $this->despatchNolariTazele($eksik, self::TAZELE_FATURA_LIMIT);
+            }
+        } catch (\Throwable $e) {
+            error_log('[fable-072] fatura öncesi numara tazeleme atlandı: ' . $e->getMessage());
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════════
     // fable-024 — SATIŞ FATURASI + e-FATURA (aynı disiplin: şalter + onay imzası + timeout)
     //
     // İki akış:
@@ -895,9 +1024,10 @@ final class ParasutYaz
      * Satış faturası JSON:API gövdesi (PÜR — ağ yok; kuru deneme ekranı bunu gösterir).
      * @param array<int,array{ogun:string,urun_id:string,miktar:int,birim:float}> $kalemler
      * @param array<int,string> $docIds dönemin irsaliye belge id'leri (bağ; ayarla kapatılabilir)
+     * @param array<int,string> $nolar  fable-072: faturaya yazılacak e-İrsaliye numaraları (tarih sırası)
      */
     public function faturaGovde(string $parasutId, string $bas, string $son, array $kalemler,
-        int $vadeGun, ?string $tevkifatKodu, ?float $tevkifatOran, array $docIds = []): array
+        int $vadeGun, ?string $tevkifatKodu, ?float $tevkifatOran, array $docIds = [], array $nolar = []): array
     {
         $vat = $this->faturaKdvOrani();
         $vade = date('Y-m-d', strtotime($son . ' +' . max(0, $vadeGun) . ' day'));
@@ -941,7 +1071,7 @@ final class ParasutYaz
                 'shipment_included' => true,
                 'description'       => date('d.m.Y', strtotime($bas)) . ' - ' . date('d.m.Y', strtotime($son))
                     . ' dönemi yemek hizmet bedeli',
-                'print_note'        => $this->faturaNotu(),
+                'print_note'        => $this->faturaNotuIrsaliyeli($nolar),
             ],
             'relationships' => $rel,
         ]];
@@ -956,6 +1086,58 @@ final class ParasutYaz
     private function faturaNotu(): string
     {
         return trim((string) $this->repo->ayar('fatura_notu', ''));
+    }
+
+    /** print_note güvenli üst sınırı — Paraşüt alan sınırı bilinmiyor (VARSAYIM), taşma kesilir. */
+    private const NOT_MAKS = 500;
+
+    /**
+     * fable-072 (Ömer, 3 Ağu): "İrsaliyeli faturalarda irsaliye numaraları da yazsın"
+     * ("135 nolu fatura → irsaliyeleri şunlar"). IBAN notunun (fable-061) ALTINA ikinci satır:
+     *
+     *   Ödeme: HALKBANK — IBAN TR75 ... (UYSA YEMEK HİZMETLERİ ...)
+     *   İrsaliyeler: UU02026000000597, UU02026000000603, ...
+     *
+     * Yalnız irsaliyeli (haftalık) faturada çağrılır — aylık/sabit gövde `faturaNotu()` kullanır.
+     * Numarası olmayan gün zaten listeye girmez; hiç numara yoksa satır HİÇ eklenmez.
+     * @param array<int,string> $nolar tarih sıralı e-İrsaliye numaraları
+     */
+    private function faturaNotuIrsaliyeli(array $nolar): string
+    {
+        $not = $this->faturaNotu();
+        $temiz = [];
+        foreach ($nolar as $n) {
+            $n = trim((string) $n);
+            if ($n !== '' && !in_array($n, $temiz, true)) {
+                $temiz[] = $n;
+            }
+        }
+        if (!$temiz) {
+            return $not;
+        }
+        $ayrac = $not !== '' ? "\n" : '';
+        $onEk = 'İrsaliyeler: ';
+        $kalan = self::NOT_MAKS - mb_strlen($not, 'UTF-8') - mb_strlen($ayrac, 'UTF-8') - mb_strlen($onEk, 'UTF-8');
+        if ($kalan <= 0) {
+            return $not; // IBAN notu tek başına sınırı doldurmuş → numara satırı eklenmez
+        }
+        $secilen = [];
+        foreach ($temiz as $no) {
+            $aday = $secilen;
+            $aday[] = $no;
+            $artan = count($temiz) - count($aday);
+            $metin = implode(', ', $aday) . ($artan > 0 ? ' … ve ' . $artan . ' irsaliye daha' : '');
+            if (mb_strlen($metin, 'UTF-8') > $kalan) {
+                break;
+            }
+            $secilen = $aday;
+        }
+        if (!$secilen) {
+            return $not;
+        }
+        $artan = count($temiz) - count($secilen);
+        return $not . $ayrac . $onEk . implode(', ', $secilen)
+            . ($artan > 0 ? ' … ve ' . $artan . ' irsaliye daha' : '');
     }
 
     /** Aylık tek-kalem fatura gövdesi (tevkifat YOK, irsaliye bağı YOK). */
@@ -1075,7 +1257,7 @@ final class ParasutYaz
             'kalemler' => $k['kalemler'], 'hesap' => $hesap, 'toplam' => $k['toplam_kisi'],
             'despatch_nolar' => $k['despatch_nolar'], 'vade' => $vade,
             'govde' => $this->faturaGovde($k['parasut_id'], $bas, $son, $k['kalemler'],
-                $k['vade_gun'], $k['tevkifat_kodu'], $k['tevkifat_oran'], $k['doc_ids']),
+                $k['vade_gun'], $k['tevkifat_kodu'], $k['tevkifat_oran'], $k['doc_ids'], $k['despatch_nolar']),
         ];
     }
 
@@ -1099,6 +1281,9 @@ final class ParasutYaz
         if (!Helpers::isDate($bas) || !Helpers::isDate($son) || $bas > $son) {
             return self::faturaSonuc(false, 'hata', 'Geçersiz dönem.');
         }
+        // fable-072: numaralar faturaya YAZILACAK → kesimden hemen önce eksikleri Paraşüt'ten
+        // çek (salt-okuma, en fazla 10 çağrı). Başarısız olursa sessizce devam — kesim düşmez.
+        $this->faturaOncesiNoTazele($customerId, $bas, $son);
         $on = $this->faturaOnKontrol($customerId, $bas, $son);
         if (!$on['ok']) {
             return self::faturaSonuc(false, $on['durum'], $on['mesaj']);
@@ -1128,7 +1313,7 @@ final class ParasutYaz
 
         // ── POST /sales_invoices (timeout'ta RETRY YOK; connect'te 1 tekrar) ──
         $govde = $this->faturaGovde($k['parasut_id'], $bas, $son, $k['kalemler'],
-            $k['vade_gun'], $k['tevkifat_kodu'], $k['tevkifat_oran'], $k['doc_ids']);
+            $k['vade_gun'], $k['tevkifat_kodu'], $k['tevkifat_oran'], $k['doc_ids'], $k['despatch_nolar']);
         $r = $this->cagir('POST', '/sales_invoices?include=details', $govde);
         if ($r['net'] === 'connect') {
             $r = $this->cagir('POST', '/sales_invoices?include=details', $govde);
