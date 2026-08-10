@@ -7312,8 +7312,13 @@ final class Repo
                 $yeni++;
                 continue;
             }
+            // fable-074: DÖNEM de karşılaştırmaya girer. Aksi halde dönem ayıklama iyileştiğinde
+            // (donemCikar'a yeni kalıp eklenince) MEVCUT kayıtlar hiç güncellenmiyordu — senkron
+            // "değişmedi" deyip geçiyor, fatura yanlış ayda kalıyordu. Sessiz kalıcı hata.
             $degisti = ((int) ($eski['customer_id'] ?? 0) ?: null) !== $vals[0]
                 || (string) ($eski['fatura_tarihi'] ?? '') !== $vals[4]
+                || (string) ($eski['donem_bas'] ?? '') !== (string) ($vals[5] ?? '')
+                || (string) ($eski['donem_son'] ?? '') !== (string) ($vals[6] ?? '')
                 || abs((float) ($eski['net_tutar'] ?? 0) - (float) $vals[7]) > 0.004
                 || abs((float) ($eski['kdv'] ?? 0) - (float) $vals[8]) > 0.004
                 || abs((float) ($eski['toplam'] ?? 0) - (float) $vals[9]) > 0.004;
