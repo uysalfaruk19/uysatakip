@@ -608,6 +608,21 @@ final class Parasut
         if (preg_match('/(\d{4}-\d{2}-\d{2})\s*[-–—]\s*(\d{4}-\d{2}-\d{2})/u', $aciklama, $m)) {
             return ['bas' => $m[1], 'son' => $m[2]];
         }
+        // fable-074: AY ADI + YIL ("Temmuz 2026 yemek bedeli fiyat farkı") → o ayın tamamı.
+        // Gerekçe (Ömer, 10 Ağu): geriye dönük fark/geç faturalar kesim ayına yazılıyordu;
+        // Temmuz'un hizmeti Ağustos gelirinde görünüyordu. Dönem açıklamadan okunursa fatura
+        // modu da dönemsel doğru olur. Ay adı yoksa yine [null,null] — TAHMİN YOK.
+        $aylar = ['ocak' => 1, 'şubat' => 2, 'subat' => 2, 'mart' => 3, 'nisan' => 4,
+            'mayıs' => 5, 'mayis' => 5, 'haziran' => 6, 'temmuz' => 7, 'ağustos' => 8,
+            'agustos' => 8, 'eylül' => 9, 'eylul' => 9, 'ekim' => 10, 'kasım' => 11,
+            'kasim' => 11, 'aralık' => 12, 'aralik' => 12];
+        $kucuk = mb_strtolower($aciklama, 'UTF-8');
+        foreach ($aylar as $ad => $no) {
+            if (preg_match('/\b' . preg_quote($ad, '/') . '\s+(\d{4})\b/u', $kucuk, $m)) {
+                $bas = sprintf('%04d-%02d-01', (int) $m[1], $no);
+                return ['bas' => $bas, 'son' => date('Y-m-t', strtotime($bas))];
+            }
+        }
         return ['bas' => null, 'son' => null];
     }
 

@@ -7354,9 +7354,16 @@ final class Repo
         // migrate_047 uygulanmadıysa ekran ÇÖKMESİN: tablo yok bilgisiyle boş özet dön
         // (çağıran üretim moduna düşer + kullanıcıya "senkron kurulmadı" der — sessiz 0 gelir YOK).
         try {
+            // fable-074: fatura HANGİ AYA yazılır? Hizmet dönemi biliniyorsa O AYA, bilinmiyorsa
+            // kesim ayına (eski davranış). Gerekçe (Ömer, 10 Ağu): CANTAŞ Temmuz fiyat farkı
+            // 10.08'de kesildi; kesim ayına yazılınca Temmuz kârı eksik, Ağustos fazla görünüyordu.
+            // GERİYE DÖNÜK GÜVENLİ: mevcut 46 faturanın 18'inde dönem dolu ve HİÇBİRİ ay
+            // değiştirmiyor (ölçüldü) — yani eski rakamlar oynamaz, yalnız dönemi bilinen
+            // geç/fark faturaları doğru aya oturur.
             $st = $this->pdo->prepare(
                 "SELECT customer_id, contact_ad, fatura_tarihi, donem_son, net_tutar, kdv, toplam
-                 FROM satis_faturasi WHERE substr(fatura_tarihi,1,7) = ?"
+                 FROM satis_faturasi
+                 WHERE substr(COALESCE(donem_son, fatura_tarihi),1,7) = ?"
             );
             $st->execute([$ay]);
             $rows = $st->fetchAll();
