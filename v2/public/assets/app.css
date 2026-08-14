@@ -3160,3 +3160,23 @@ body.meal-open {
   user-select: none;
   transition: filter .18s ease, opacity .18s ease;
 }
+
+/* ── fable-075: müşteri karnesi açılır özet (Ömer: sayfa değiştirmeden özet gör) ── */
+.gt-kr-ok {
+  font-size: 10px;
+  margin-left: 6px;
+  opacity: 0.55;
+  transition: transform 0.15s ease;
+  display: inline-block;
+}
+.gt-satir[open] .gt-kr-ok {
+  transform: rotate(180deg);
+  opacity: 0.9;
+}
+.gt-kr-alt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+}

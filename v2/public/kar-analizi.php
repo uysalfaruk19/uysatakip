@@ -15,9 +15,10 @@ if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
     $month = date('Y-m');
 }
 
-$tab = (string) ($_GET['tab'] ?? 'uretim');
-if (!in_array($tab, ['uretim', 'tasima'], true)) {
-    $tab = 'uretim';
+// fable-075 (Ömer, 14 Ağu): karne TÜM müşterileri kapsar; 'tumu' varsayılan.
+$tab = (string) ($_GET['tab'] ?? 'tumu');
+if (!in_array($tab, ['tumu', 'uretim', 'tasima'], true)) {
+    $tab = 'tumu';
 }
 
 // fable-048 (Ömer): "kâr zararı kestiğim faturalardan yap, gerçek veri olsun".
@@ -74,15 +75,26 @@ require __DIR__ . '/partials/header.php';
       $scalePct = $ka['toplam_gelir'] > 0 ? (int) round($ka['toplam_net'] / $ka['toplam_gelir'] * 100) : 0;
       if ($scalePct < 4 && $ka['toplam_net'] > 0) { $scalePct = 4; }
       if ($scalePct < 0) { $scalePct = 0; }
-      // fable-039: karne artık sekmeye göre AYRIK (üretim | taşıma).
+      // fable-075 (Ömer, 14 Ağu): karne ARTIK TÜM MÜŞTERİLER — üretim + taşıma tek listede.
+      // Ayrı "Üretim"/"Taşıma" P&L tabloları KALDIRILDI (karneyle birebir aynı veriydi);
+      // kırılım her satırın kendi açılır özet panelinde. Yeni müşteri karneye KENDİLİĞİNDEN
+      // düşer — liste karAnalizi satırlarından türer, elle ekleme yoktur.
       $karne = [];
-      if ($tab === 'uretim') {
+      if ($tab === 'tumu' || $tab === 'uretim') {
           foreach ($ka['uretim']['rows'] as $r) {
-              $karne[] = ['id' => $r['customer_id'], 'name' => $r['name'], 'gelir' => (float) $r['gelir'], 'net' => (float) $r['net'], 'marj' => (float) $r['marj'], 'tasima' => false];
+              $karne[] = ['id' => $r['customer_id'], 'name' => $r['name'], 'gelir' => (float) $r['gelir'],
+                  'net' => (float) $r['net'], 'marj' => (float) $r['marj'], 'tasima' => false,
+                  'gider' => (float) $r['gider'], 'personel' => (float) $r['personel'],
+                  'fatura_adedi' => (int) ($r['fatura_adedi'] ?? 0)];
           }
-      } else {
+      }
+      if ($tab === 'tumu' || $tab === 'tasima') {
           foreach ($ka['tasima']['rows'] as $r) {
-              $karne[] = ['id' => $r['customer_id'], 'name' => $r['name'], 'gelir' => (float) $r['satis'], 'net' => (float) $r['net'], 'marj' => (float) $r['marj'], 'tasima' => true];
+              $karne[] = ['id' => $r['customer_id'], 'name' => $r['name'], 'gelir' => (float) $r['satis'],
+                  'net' => (float) $r['net'], 'marj' => (float) $r['marj'], 'tasima' => true,
+                  'alis' => (float) $r['alis'], 'sabit' => (float) $r['sabit'],
+                  'gider' => (float) $r['gider'], 'personel' => (float) $r['personel'],
+                  'fatura_adedi' => (int) ($r['fatura_adedi'] ?? 0)];
           }
       }
       usort($karne, static fn($a, $b) => $b['net'] <=> $a['net']);
@@ -99,7 +111,7 @@ require __DIR__ . '/partials/header.php';
             <input type="hidden" name="kaynak" value="<?= Helpers::e($kaynak) ?>">
             <b><?= Helpers::e(ay_label_tr($month)) ?></b>
             <?php $mtdSpan = $kaynak === 'uretim' ? ay_span_tr($month) : ''; // fable-048: fatura modunda MTD kırpması YOK ?>
-            <span><?= $tab === 'tasima' ? 'taşıma kâr/zarar' : 'üretim kâr/zarar + gıda maliyeti' ?><?= $mtdSpan ? ' · ' . Helpers::e($mtdSpan) . ' (ay içi)' : '' ?></span>
+            <span><?= $tab === 'tasima' ? 'taşıma kâr/zarar' : ($tab === 'uretim' ? 'üretim kâr/zarar + gıda maliyeti' : 'tüm müşteriler · kâr/zarar') ?><?= $mtdSpan ? ' · ' . Helpers::e($mtdSpan) . ' (ay içi)' : '' ?></span>
             <input type="month" name="ay" value="<?= Helpers::e($month) ?>" onchange="this.form.submit()"
                    aria-label="Ay seç" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer">
           </form>
@@ -115,6 +127,7 @@ require __DIR__ . '/partials/header.php';
 
       <!-- fable-039: Kâr/Zarar → Üretim | Taşıma ayrımı -->
       <div class="segmented" style="margin-bottom:12px">
+        <a class="chip <?= $tab === 'tumu' ? 'active' : '' ?>" href="kar-analizi.php?<?= Helpers::e($qs(['tab' => 'tumu'])) ?>">Tümü</a>
         <a class="chip <?= $tab === 'uretim' ? 'active' : '' ?>" href="kar-analizi.php?<?= Helpers::e($qs(['tab' => 'uretim'])) ?>">Üretim</a>
         <a class="chip <?= $tab === 'tasima' ? 'active' : '' ?>" href="kar-analizi.php?<?= Helpers::e($qs(['tab' => 'tasima'])) ?>">Taşıma</a>
       </div>
@@ -187,7 +200,7 @@ require __DIR__ . '/partials/header.php';
         </div>
       </div>
 
-      <?php if ($tab === 'uretim'): ?>
+      <?php if ($tab === 'tumu' || $tab === 'uretim'): ?>
       <?php // fable-039: KİŞİ BAŞI GIDA MALİYETİ — büyük rakam + tıklayınca kırılım ?>
       <div class="cardx card-pad">
         <div class="gt-h"><i class="bi bi-basket3-fill"></i> KİŞİ BAŞI GIDA MALİYETİ</div>
@@ -306,21 +319,50 @@ require __DIR__ . '/partials/header.php';
         </div>
       </div>
 
+      <?php endif; // fable-075: gıda/personel/gider kartları bloğu burada kapanır —
+             // eskiden kaldırılan ÜRETİM P&L tablosunun sonunda kapanıyordu. ?>
+
       <?php if ($karne): ?>
       <div class="cardx card-pad">
         <div class="gt-h"><i class="bi bi-clipboard-data"></i> MÜŞTERİ KARNESİ</div>
         <?php foreach ($karne as $k): $w = $netMax > 0 ? max(4, (int) round(abs($k['net']) / $netMax * 100)) : 4; $bad = $k['net'] < 0; ?>
-          <a class="gt-kr<?= $bad ? ' warn' : '' ?>" href="rapor.php?musteri=<?= (int) $k['id'] ?>&ay=<?= $month ?>" style="display:block">
-            <div class="gt-kr-head">
-              <div class="gt-rank"><?= Helpers::e(mb_strtoupper(mb_substr($k['name'], 0, 1, 'UTF-8'), 'UTF-8')) ?></div>
-              <div class="gt-kr-firm">
-                <div class="gt-kr-ad"><?= Helpers::e($k['name']) ?></div>
-                <div class="gt-kr-sub">gelir ₺<?= Helpers::money($k['gelir']) ?><?= $k['tasima'] ? ' · taşıma' : '' ?></div>
+          <?php // fable-075: satır artık SAYFA DEĞİŞTİRMİYOR — açılır özet. Detaya geçiş panelden. ?>
+          <details class="gt-satir">
+            <summary class="gt-kr<?= $bad ? ' warn' : '' ?>">
+              <div class="gt-kr-head">
+                <div class="gt-rank"><?= Helpers::e(mb_strtoupper(mb_substr($k['name'], 0, 1, 'UTF-8'), 'UTF-8')) ?></div>
+                <div class="gt-kr-firm">
+                  <div class="gt-kr-ad"><?= Helpers::e($k['name']) ?><i class="bi bi-chevron-down gt-kr-ok"></i></div>
+                  <div class="gt-kr-sub">gelir ₺<?= Helpers::money($k['gelir']) ?><?= $k['tasima'] ? ' · taşıma' : '' ?></div>
+                </div>
+                <div class="gt-kr-val <?= $bad ? 'bad' : 'ok' ?>"><?= $bad ? '−' : '' ?>₺<?= Helpers::money(abs($k['net'])) ?><small>marj <?= marj_pct($k['marj']) ?></small></div>
               </div>
-              <div class="gt-kr-val <?= $bad ? 'bad' : 'ok' ?>"><?= $bad ? '−' : '' ?>₺<?= Helpers::money(abs($k['net'])) ?><small>marj <?= marj_pct($k['marj']) ?></small></div>
+              <div class="gt-bar"><i class="<?= $bad ? 'bad' : '' ?>" style="width: <?= $w ?>%"></i></div>
+            </summary>
+            <div class="gt-satir-detay">
+              <table class="tablex">
+                <tbody>
+                <?php if ($k['tasima']): ?>
+                  <tr><td>Satış</td><td class="num">₺ <?= Helpers::money($k['gelir']) ?></td></tr>
+                  <tr><td>Alış (taşıma)</td><td class="num">− ₺ <?= Helpers::money($k['alis']) ?></td></tr>
+                  <?php if ($k['sabit'] > 0): ?><tr><td>Sabit gider</td><td class="num">− ₺ <?= Helpers::money($k['sabit']) ?></td></tr><?php endif; ?>
+                <?php else: ?>
+                  <tr><td><?= $kaynak === 'fatura' ? 'Fatura geliri' : 'Gelir' ?></td><td class="num">₺ <?= Helpers::money($k['gelir']) ?></td></tr>
+                <?php endif; ?>
+                  <tr><td>Gıda / işletme gideri</td><td class="num">− ₺ <?= Helpers::money($k['gider']) ?></td></tr>
+                  <tr><td>Personel</td><td class="num">− ₺ <?= Helpers::money($k['personel']) ?></td></tr>
+                  <tr style="border-top:2px solid var(--line-2)">
+                    <td><strong>Net kâr</strong></td>
+                    <td class="num"><strong style="color:<?= $bad ? 'var(--red)' : 'var(--green)' ?>">₺ <?= Helpers::money($k['net']) ?></strong> <span class="text-muted">(<?= marj_pct($k['marj']) ?>)</span></td>
+                  </tr>
+                </tbody>
+              </table>
+              <div class="gt-kr-alt">
+                <span class="text-muted" style="font-size:12px"><?= (int) $k['fatura_adedi'] ?> fatura</span>
+                <a class="btn-action btn-ghost" href="rapor.php?musteri=<?= (int) $k['id'] ?>&ay=<?= $month ?>&geri=kar">Detay <i class="bi bi-arrow-right"></i></a>
+              </div>
             </div>
-            <div class="gt-bar"><i class="<?= $bad ? 'bad' : '' ?>" style="width: <?= $w ?>%"></i></div>
-          </a>
+          </details>
         <?php endforeach; ?>
         <?php // fable-039: karnenin EN ALTINA toplam ciro satırı (taşıma bölümündeki toplam kalıbı) ?>
         <div class="gt-kr" style="border-top:2px solid var(--line-2)">
@@ -329,89 +371,13 @@ require __DIR__ . '/partials/header.php';
             <div class="gt-kr-val">₺<?= Helpers::money($karneCiroToplam) ?></div>
           </div>
         </div>
-        <div class="gt-note">satıra dokun → o müşterinin aylık dökümü açılır</div>
+        <div class="gt-note">satıra dokun → özet açılır · özetteki <strong>Detay</strong> ile aylık döküme gidilir</div>
       </div>
       <?php endif; ?>
 
-      <!-- ÜRETİM P&L -->
-      <div class="section-head"><h2>Üretim</h2><span class="text-muted" style="font-size:12px"><?= $kaynak === 'fatura' ? 'fatura geliri' : 'gelir' ?> − gider − personel = net</span></div>
-      <div class="cardx card-pad">
-        <?php if (!$ka['uretim']['rows']): ?>
-          <div class="empty-state"><?= $kaynak === 'fatura' ? 'Bu ay kesilmiş satış faturası yok.' : 'Bu ay üretim kaydı yok.' ?></div>
-        <?php else: ?>
-          <div style="overflow-x:auto">
-          <table class="tablex">
-            <thead><tr><th>Müşteri</th><th class="num">Gelir</th><th class="num">Gider payı</th><th class="num">Personel payı</th><th class="num">Net</th><th class="num">Marj</th></tr></thead>
-            <tbody>
-            <?php foreach ($ka['uretim']['rows'] as $r): ?>
-              <tr>
-                <td><a href="rapor.php?musteri=<?= (int) $r['customer_id'] ?>&ay=<?= $month ?>" style="color:var(--primary);font-weight:700"><?= Helpers::e($r['name']) ?></a><?php
-                  // fable-040: fatura kişi kuralı olan müşteride "üretim · fatura" rozeti (gelir fatura kişisinden)
-                  if (($r['fatura_kisi'] ?? null) !== null): ?><span class="text-muted" style="display:block;font-size:11px;font-weight:600"><?= $r['uretim_gunluk'] !== null ? (int) $r['uretim_gunluk'] : '—' ?> üretim · <?= (int) $r['fatura_kisi'] ?> fatura <span style="opacity:.7">(hafta içi/gün)</span></span><?php endif; ?>
-                  <?php // fable-048: fatura modunda gelirin kaç faturadan geldiği (0 = bu ay hiç faturası yok)
-                  if ($kaynak === 'fatura'): ?><span class="text-muted" style="display:block;font-size:11px;font-weight:600"><?= (int) ($r['fatura_adedi'] ?? 0) ?> fatura<?= (int) ($r['fatura_adedi'] ?? 0) === 0 ? ' · henüz kesilmedi' : '' ?></span><?php endif; ?></td>
-                <td class="num">₺ <?= Helpers::money($r['gelir']) ?></td>
-                <td class="num">− ₺ <?= Helpers::money($r['gider']) ?></td>
-                <td class="num">− ₺ <?= Helpers::money($r['personel']) ?></td>
-                <td class="num" style="color:<?= $r['net'] < 0 ? 'var(--red)' : 'var(--green)' ?>">₺ <?= Helpers::money($r['net']) ?></td>
-                <td class="num"><?= marj_pct($r['marj']) ?></td>
-              </tr>
-            <?php endforeach; ?>
-              <tr class="is-total">
-                <td>Üretim toplam</td>
-                <td class="num">₺ <?= Helpers::money($ka['uretim']['gelir']) ?></td>
-                <td class="num">− ₺ <?= Helpers::money($ka['uretim']['gider']) ?></td>
-                <td class="num">− ₺ <?= Helpers::money($ka['uretim']['personel']) ?></td>
-                <td class="num" style="color:<?= $ka['uretim']['net'] < 0 ? 'var(--red)' : 'var(--green)' ?>">₺ <?= Helpers::money($ka['uretim']['net']) ?></td>
-                <td class="num"><?= marj_pct($ka['uretim']['marj']) ?></td>
-              </tr>
-            </tbody>
-          </table>
-          </div>
-        <?php endif; ?>
-      </div>
-      <?php endif; // tab uretim ?>
-
-      <!-- TAŞIMA P&L -->
-      <?php if ($tab === 'tasima'): ?>
-      <?php if (!$ka['tasima']['rows']): ?>
-        <div class="cardx card-pad"><div class="empty-state">Bu ay taşıma kaydı yok.</div></div>
-      <?php else: ?>
-      <div class="section-head"><h2>Taşıma</h2><span class="text-muted" style="font-size:12px">satış − alış − sabit − gider − personel = net</span></div>
-      <div class="cardx card-pad">
-        <div style="overflow-x:auto">
-        <table class="tablex">
-          <thead><tr><th>Müşteri</th><th class="num">Satış</th><th class="num">Alış</th><th class="num">Sabit</th><th class="num">Gider</th><th class="num">Personel</th><th class="num">Net</th><th class="num">Marj</th></tr></thead>
-          <tbody>
-          <?php foreach ($ka['tasima']['rows'] as $r): ?>
-            <tr>
-              <td><a href="rapor.php?musteri=<?= (int) $r['customer_id'] ?>&ay=<?= $month ?>" style="color:var(--primary);font-weight:700"><?= Helpers::e($r['name']) ?></a></td>
-              <td class="num">₺ <?= Helpers::money($r['satis']) ?></td>
-              <td class="num">− ₺ <?= Helpers::money($r['alis']) ?></td>
-              <td class="num">− ₺ <?= Helpers::money($r['sabit']) ?></td>
-              <td class="num">− ₺ <?= Helpers::money($r['gider']) ?></td>
-              <td class="num">− ₺ <?= Helpers::money($r['personel']) ?></td>
-              <td class="num" style="color:<?= $r['net'] < 0 ? 'var(--red)' : 'var(--green)' ?>">₺ <?= Helpers::money($r['net']) ?></td>
-              <td class="num"><?= marj_pct($r['marj']) ?></td>
-            </tr>
-          <?php endforeach; ?>
-            <tr class="is-total">
-              <td>Taşıma toplam</td>
-              <td class="num">₺ <?= Helpers::money($ka['tasima']['satis']) ?></td>
-              <td class="num">− ₺ <?= Helpers::money($ka['tasima']['alis']) ?></td>
-              <td class="num">− ₺ <?= Helpers::money($ka['tasima']['sabit']) ?></td>
-              <td class="num">− ₺ <?= Helpers::money($ka['tasima']['gider']) ?></td>
-              <td class="num">− ₺ <?= Helpers::money($ka['tasima']['personel']) ?></td>
-              <td class="num" style="color:<?= $ka['tasima']['net'] < 0 ? 'var(--red)' : 'var(--green)' ?>">₺ <?= Helpers::money($ka['tasima']['net']) ?></td>
-              <td class="num"><?= marj_pct($ka['tasima']['marj']) ?></td>
-            </tr>
-          </tbody>
-        </table>
-        </div>
-      </div>
-      <?php endif; // tasima rows ?>
-      <?php endif; // tab tasima ?>
-
+      <?php // fable-075: ÜRETİM ve TAŞIMA P&L tabloları KALDIRILDI — ikisi de müşteri
+           // karnesiyle birebir aynı veriyi gösteriyordu. Kırılım artık karne satırının
+           // açılır özetinde; müşteri bazlı döküm rapor.php'de. ?>
       <!-- TOPLAM -->
       <div class="cardx card-pad">
         <h2>Toplam net kâr</h2>

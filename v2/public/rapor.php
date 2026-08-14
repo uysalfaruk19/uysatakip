@@ -15,6 +15,11 @@ if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
     $month = date('Y-m');
 }
 $drillId = (int) ($_GET['musteri'] ?? 0) ?: null;
+// fable-075 (Ömer, 14 Ağu): kâr analizindeki müşteri karnesinden gelindiyse geri oraya dön.
+// geri=kar dışındaki değerler yok sayılır (açık yönlendirme riski yok — sabit iki hedef).
+$geriKar = ($_GET['geri'] ?? '') === 'kar';
+$geriUrl = $geriKar ? 'kar-analizi.php?ay=' . rawurlencode((string) ($_GET['ay'] ?? '')) : null;
+$geriEtiket = $geriKar ? 'Kâr analizine dön' : 'Rapora dön';
 $drill = $drillId ? $repo->customer($drillId) : null;
 
 $pageTitle = $drill ? $drill['name'] : 'Kâr / Zarar';
@@ -35,7 +40,7 @@ if ($drill) {
         $trend = $repo->customerMonthlyProfit($drillId);
         $nk = $repo->customerNetKarlilik($drillId, $month);
         ?>
-        <a class="btn-action btn-ghost" href="rapor.php?ay=<?= $month ?>"><i class="bi bi-arrow-left"></i> Rapora dön</a>
+        <a class="btn-action btn-ghost" href="<?= Helpers::e($geriUrl ?? ('rapor.php?ay=' . $month)) ?>"><i class="bi bi-arrow-left"></i> <?= Helpers::e($geriEtiket) ?></a>
         <div class="summary-grid">
           <div class="summary-card tint-orange"><p class="label">Adet (bu ay, Bugün sayımı)</p><p class="metric"><?= number_format($adet, 0, ',', '.') ?></p></div>
           <div class="summary-card tint-blue"><p class="label">Birim alış / satış</p><p class="metric small">₺ <?= Helpers::money((float) $t['alis']) ?> / ₺ <?= Helpers::money((float) $t['satis']) ?></p></div>
@@ -89,7 +94,7 @@ if ($drill) {
         $ayKisa = [1 => 'Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
         $missingCount = (int) $grid['missing'];
         ?>
-        <a class="btn-action btn-ghost" href="rapor.php?ay=<?= $month ?>"><i class="bi bi-arrow-left"></i> Rapora dön</a>
+        <a class="btn-action btn-ghost" href="<?= Helpers::e($geriUrl ?? ('rapor.php?ay=' . $month)) ?>"><i class="bi bi-arrow-left"></i> <?= Helpers::e($geriEtiket) ?></a>
         <div class="summary-grid">
           <div class="summary-card tint-orange"><p class="label">Ay toplam kişi</p><p class="metric"><?= number_format($sumKisi, 0, ',', '.') ?></p></div>
           <div class="summary-card tint-green"><p class="label">Ay cirosu</p><p class="metric">₺ <?= Helpers::money($sumTutar) ?></p></div>
