@@ -358,7 +358,11 @@ require __DIR__ . '/partials/header.php';
                 </tbody>
               </table>
               <div class="gt-kr-alt">
-                <span class="text-muted" style="font-size:12px"><?= (int) $k['fatura_adedi'] ?> fatura</span>
+                <?php // fable-075: fatura adedi YALNIZ fatura modunda anlamlı — tahakkukta bu alan
+                      // dolmuyor, basılsa "0 fatura" diye YANLIŞ bilgi olurdu. ?>
+                <span class="text-muted" style="font-size:12px"><?= $kaynak === 'fatura'
+                    ? ((int) $k['fatura_adedi']) . ' fatura'
+                    : 'tahakkuk (üretim) hesabı' ?></span>
                 <a class="btn-action btn-ghost" href="rapor.php?musteri=<?= (int) $k['id'] ?>&ay=<?= $month ?>&geri=kar">Detay <i class="bi bi-arrow-right"></i></a>
               </div>
             </div>
