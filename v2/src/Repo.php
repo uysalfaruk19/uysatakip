@@ -376,9 +376,10 @@ final class Repo
      * En yüksek skorlu grup döner: 3 varsa yalnız 3'ler, yoksa 2'ler, yoksa 1'ler.
      * @param array<int,array{parasut_id:string,name:string,tax_number?:string}> $contacts
      * @param array<string,int> $sahipli contact_id => o cariyi kullanan customer_id
+     * @param bool $tumSkorlar true = en iyi gruba indirgeme YOK (benzer cari var mı sorusu için)
      * @return array<int,array{parasut_id:string,name:string,tax_number:string,skor:int}>
      */
-    public function parasutCariAdaylari(string $musteriAd, array $contacts, array $sahipli = [], int $customerId = 0): array
+    public function parasutCariAdaylari(string $musteriAd, array $contacts, array $sahipli = [], int $customerId = 0, bool $tumSkorlar = false): array
     {
         $bulunan = [];
         foreach ($contacts as $c) {
@@ -396,8 +397,8 @@ final class Repo
                     'tax_number' => (string) ($c['tax_number'] ?? ''), 'skor' => $skor];
             }
         }
-        if ($bulunan === []) {
-            return [];
+        if ($bulunan === [] || $tumSkorlar) {
+            return $bulunan;
         }
         $enIyi = max(array_column($bulunan, 'skor'));
         return array_values(array_filter($bulunan, static fn(array $a): bool => $a['skor'] === $enIyi));
@@ -479,10 +480,16 @@ final class Repo
         if (count($adaylar) > 1) {
             return ['durum' => 'secim', 'parasut_id' => '', 'ad' => '', 'adaylar' => $adaylar];
         }
+        // Tek aday kaldı ama BENZER başka cari (kardeş şirket) olabilir: birebir eşleşme
+        // ön-ek eşleşmesini eler. Bağlarız ama SESSİZ kalmayız — kalanların faturası
+        // "eşleşmemiş gelir" olur, Ömer alt firma olarak eklemek isteyebilir.
+        $tumu = $this->parasutCariAdaylari($musteriAd, $contacts, $this->parasutSahipliCariler(), $customerId, true);
+        $digerleri = array_values(array_filter($tumu,
+            static fn(array $a): bool => $a['parasut_id'] !== $adaylar[0]['parasut_id']));
         $this->pdo->prepare('UPDATE customers SET parasut_id = ? WHERE id = ?')
             ->execute([$adaylar[0]['parasut_id'], $customerId]);
         return ['durum' => 'baglandi', 'parasut_id' => $adaylar[0]['parasut_id'],
-            'ad' => $adaylar[0]['name'], 'adaylar' => $adaylar];
+            'ad' => $adaylar[0]['name'], 'adaylar' => $adaylar, 'digerleri' => $digerleri];
     }
 
     /**

@@ -232,6 +232,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                             json_encode(['parasut_id' => $sonuc['parasut_id'], 'ad' => $sonuc['ad']],
                                 JSON_UNESCAPED_UNICODE), client_ip());
                         $cariNotu = ' · Paraşüt carisi bağlandı: ' . $sonuc['ad'];
+                        if ($sonuc['digerleri'] ?? []) {
+                            // Kardeş şirket varsa SESSİZ kalma — onların faturası bu müşteriye
+                            // sayılmaz, "eşleşmemiş gelir" olur. Alt firma olarak eklenebilir.
+                            $cariNotu .= ' (Paraşüt\'te ' . count($sonuc['digerleri'])
+                                . ' benzer cari daha var — aynı firmanınsa Alt firmalar\'dan ekle)';
+                        }
                     } elseif ($sonuc['durum'] === 'secim') {
                         $cariNotu = ' · Paraşüt\'te ' . count($sonuc['adaylar'])
                             . ' aday cari var — karttan seç (bağlanmadan faturası kâr/zarara girmez)';
