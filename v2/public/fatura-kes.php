@@ -398,6 +398,22 @@ if ($method === 'POST') {
         uysa_audit('fatura_kesim', (string) $u['username'], $bas . '..' . $son, json_encode([
             'basarili' => $basarili, 'toplam' => count($sonuclar), 'kapali' => $kapali,
         ], JSON_UNESCAPED_UNICODE), client_ip());
+
+        // fable-082 (Ömer, 14 Ağu: "kâr/zararda fatura kesildiğini anlamamış, bilgi notunda öyle
+        // yazıyor"): Kâr/Zarar ekranı satis_faturasi tablosunu okur, o tablo Paraşüt satış
+        // senkronundan (günde 2 cron) beslenir. Kesim yaptıktan sonra senkron koşana kadar ekran
+        // "N gündür fatura kesilmemiş" demeye devam ediyordu — kullanıcı senkronu BEKLEMEMELİ.
+        // Kesim başarılıysa aynı ay hemen senkronlanır; hata olursa kesim sonucu ETKİLENMEZ
+        // (cron nasılsa yakalar), yalnız loga düşer.
+        if ($basarili > 0) {
+            try {
+                $si = Uysa\Parasut::salesInvoicesForMonth(substr($son, 0, 7));
+                $repo->satisFaturaIsle($si['invoices'], Uysa\Parasut::supplierContactIds());
+            } catch (\Throwable $e) {
+                error_log('[UYSA v2 fatura-kes] kesim sonrası satış senkronu atlandı: ' . $e->getMessage());
+            }
+        }
+
         Helpers::json(['ok' => true, 'kapali' => $kapali, 'basarili' => $basarili, 'sonuclar' => $sonuclar]);
     }
 
