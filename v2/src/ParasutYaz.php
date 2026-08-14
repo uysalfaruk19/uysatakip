@@ -716,14 +716,39 @@ final class ParasutYaz
             if ($this->repo->irsaliyeLog($cid, $gun) !== null) {
                 continue;   // o müşteri için zaten kayıt var (başka doc) — karışıklık yaratma
             }
+            // fable-080b: KALEMLER BOŞ BIRAKILAMAZ — haftalık fatura adayı kişi sayısını bu
+            // JSON'dan (öğle/akşam/kumanya) okur; boş kalırsa o gün FATURAYA HİÇ GİRMEZ
+            // (CEOTHERM'in 20 kişisi böyle kaybolacaktı). Öğün kırılımı o günün üretim
+            // kaydından türetilir ve Paraşüt'ün toplamıyla DOĞRULANIR; tutmazsa yazılmaz.
+            $kalemler = [];
+            $kNot = ' Kişi sayısı Paraşüt belgesinden okundu.';
+            foreach ($this->repo->irsaliyeAdaylari($gun) as $ad) {
+                if ((int) $ad['customer_id'] !== $cid) {
+                    continue;
+                }
+                $k = $this->kalemler(['ogle' => (int) $ad['ogle'], 'aksam' => (int) $ad['aksam'],
+                    'kumanya' => (int) $ad['kumanya']]);
+                $t = 0;
+                foreach ($k['kalemler'] as $x) {
+                    $t += (int) $x['miktar'];
+                }
+                if ($t === $ozet['miktar'] && $t > 0) {
+                    $kalemler = $k['kalemler'];
+                    $kNot = ' Öğün kırılımı üretim kaydından alındı (toplam Paraşüt ile birebir).';
+                } else {
+                    $kNot = sprintf(' ÖĞÜN KIRILIMI YAZILMADI: üretim %d ≠ Paraşüt %d —'
+                        . ' faturaya girmesi için elle düzeltin.', $t, $ozet['miktar']);
+                }
+                break;
+            }
             $this->repo->irsaliyeLogKaydet($cid, $gun, [
                 'parasut_doc_id' => $docId,
                 'despatch_no'    => $ozet['despatch_no'],
-                'kalemler'       => [],
+                'kalemler'       => $kalemler,
                 'toplam_kisi'    => $ozet['miktar'],
                 'durum'          => 'kesildi',
                 'hata_mesaj'     => 'Paraşüt\'te kesilmiş ama Kokpit\'e yazılamamıştı (yanıt kayboldu) '
-                    . '— otomatik uzlaştırıldı. Kişi sayısı Paraşüt belgesinden okundu.',
+                    . '— otomatik uzlaştırıldı.' . $kNot,
                 'tasiyici_ok'    => true,
                 'gonderim'       => 'gonderildi',
                 'entered_by'     => 'uzlastirma',
