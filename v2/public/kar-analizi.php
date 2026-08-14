@@ -29,15 +29,25 @@ $kaynak = (string) ($_GET['kaynak'] ?? '');
 $prevMonth = date('Y-m', strtotime($month . '-01 -1 month'));
 $nextMonth = date('Y-m', strtotime($month . '-01 +1 month'));
 
-$ka = $repo->karAnaliziKaynak($month, $kaynak !== '' ? $kaynak : null);
-$kaynak = (string) $ka['kaynak'];
-$fbilgi = $ka['fatura'] ?? null;  // fatura modunda kapsam bilgisi (dürüstlük satırı)
-/** Sayfa bağlantılarında ay+sekme+kaynak birlikte taşınır (yenilemede seçim kaybolmasın). */
-$qs = static fn(array $ov = []): string => http_build_query(array_merge(
-    ['ay' => $month, 'tab' => $tab, 'kaynak' => $kaynak], $ov));
+// fable-078 (Ömer, 14 Ağu): varsayılan İLGİLİ AY; yanındaki butonla YILLIK toplam.
+// Yıllık, karAnaliziYil ile AYNI yapıyı döndürdüğü için ekran aynı bileşenlerle çizilir.
+$donem = ($_GET['donem'] ?? '') === 'yil' ? 'yil' : 'ay';
+$yil = substr($month, 0, 4);
+$prevYil = (string) ((int) $yil - 1);
+$nextYil = (string) ((int) $yil + 1);
 
-$nk = $repo->netKarlilik($month);
-$gida = $repo->gidaCostOzet($month); // fable-039: kişi başı gıda maliyeti (görünüm katmanı)
+$ka = $donem === 'yil'
+    ? $repo->karAnaliziYil($yil, $kaynak !== '' ? $kaynak : null)
+    : $repo->karAnaliziKaynak($month, $kaynak !== '' ? $kaynak : null);
+$kaynak = (string) $ka['kaynak'];
+$fbilgi = $ka['fatura'] ?? null;  // fatura modunda kapsam bilgisi (dürüstlük satırı) — yıllıkta null
+/** Sayfa bağlantılarında ay+sekme+kaynak+dönem birlikte taşınır (yenilemede seçim kaybolmasın). */
+$qs = static fn(array $ov = []): string => http_build_query(array_merge(
+    ['ay' => $month, 'tab' => $tab, 'kaynak' => $kaynak, 'donem' => $donem], $ov));
+
+// Kişi başı maliyet kartları AYLIK kavramdır (o ayın kişi sayısına bölünür) — yıllıkta gösterilmez.
+$nk = $donem === 'yil' ? ['net' => $ka['toplam_net']] : $repo->netKarlilik($month);
+$gida = $donem === 'yil' ? null : $repo->gidaCostOzet($month); // fable-039: kişi başı gıda maliyeti
 
 /** Marjı yüzde göster. */
 function marj_pct(float $m): string
@@ -104,18 +114,35 @@ require __DIR__ . '/partials/header.php';
       foreach ($karne as $k) { $karneCiroToplam += $k['gelir']; }
       ?>
       <div class="cardx card-pad">
+        <?php // fable-078: AY / YIL ekseni. Yıl modunda ‹ › YIL gezinir, ay seçici kapanır. ?>
         <div class="gt-date">
-          <a class="nav" href="kar-analizi.php?<?= Helpers::e($qs(['ay' => $prevMonth])) ?>" aria-label="Önceki ay">‹</a>
+          <a class="nav" href="kar-analizi.php?<?= Helpers::e($donem === 'yil'
+              ? $qs(['ay' => $prevYil . substr($month, 4)]) : $qs(['ay' => $prevMonth])) ?>"
+             aria-label="<?= $donem === 'yil' ? 'Önceki yıl' : 'Önceki ay' ?>">‹</a>
+          <?php if ($donem === 'yil'): ?>
+          <div class="dt">
+            <b><?= Helpers::e($yil) ?></b>
+            <span>yıllık kâr/zarar · <?= (int) $ka['aylar'] ?> ay<?= $yil === date('Y') ? ' (yıl başından bugüne)' : '' ?></span>
+          </div>
+          <?php else: ?>
           <form method="get" class="dt" style="position:relative">
             <input type="hidden" name="tab" value="<?= Helpers::e($tab) ?>">
             <input type="hidden" name="kaynak" value="<?= Helpers::e($kaynak) ?>">
+            <input type="hidden" name="donem" value="ay">
             <b><?= Helpers::e(ay_label_tr($month)) ?></b>
             <?php $mtdSpan = $kaynak === 'uretim' ? ay_span_tr($month) : ''; // fable-048: fatura modunda MTD kırpması YOK ?>
             <span><?= $tab === 'tasima' ? 'taşıma kâr/zarar' : ($tab === 'uretim' ? 'üretim kâr/zarar + gıda maliyeti' : 'tüm müşteriler · kâr/zarar') ?><?= $mtdSpan ? ' · ' . Helpers::e($mtdSpan) . ' (ay içi)' : '' ?></span>
             <input type="month" name="ay" value="<?= Helpers::e($month) ?>" onchange="this.form.submit()"
                    aria-label="Ay seç" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer">
           </form>
-          <a class="nav" href="kar-analizi.php?<?= Helpers::e($qs(['ay' => $nextMonth])) ?>" aria-label="Sonraki ay">›</a>
+          <?php endif; ?>
+          <a class="nav" href="kar-analizi.php?<?= Helpers::e($donem === 'yil'
+              ? $qs(['ay' => $nextYil . substr($month, 4)]) : $qs(['ay' => $nextMonth])) ?>"
+             aria-label="<?= $donem === 'yil' ? 'Sonraki yıl' : 'Sonraki ay' ?>">›</a>
+        </div>
+        <div class="segmented" style="margin-top:10px;margin-bottom:0">
+          <a class="chip <?= $donem === 'ay' ? 'active' : '' ?>" href="kar-analizi.php?<?= Helpers::e($qs(['donem' => 'ay'])) ?>"><i class="bi bi-calendar3"></i> Aylık</a>
+          <a class="chip <?= $donem === 'yil' ? 'active' : '' ?>" href="kar-analizi.php?<?= Helpers::e($qs(['donem' => 'yil'])) ?>"><i class="bi bi-calendar-range"></i> Yıllık</a>
         </div>
       </div>
 
@@ -139,7 +166,9 @@ require __DIR__ . '/partials/header.php';
       </div>
       <?php endif; ?>
 
-      <?php if ($kaynak === 'fatura'): // fable-048: FATURA KAPSAMI — eksikliği açıkça yaz (veri güvenilirliği) ?>
+      <?php // fable-078: kapsam/gecikme AYLIK bilgidir (son fatura, kapsanan gün) —
+           // yıllık toplamda yanıltır, gösterilmez. ?>
+      <?php if ($donem === 'ay' && $kaynak === 'fatura'): // fable-048: FATURA KAPSAMI — eksikliği açıkça yaz (veri güvenilirliği) ?>
       <div class="cardx card-pad" style="padding-block:10px">
         <?php if ($fbilgi && $fbilgi['adet'] > 0): ?>
           <div style="font-size:12.5px;font-weight:600">
@@ -184,7 +213,7 @@ require __DIR__ . '/partials/header.php';
       <?php endif; ?>
 
       <div class="cardx card-pad">
-        <div class="gt-h"><i class="bi bi-broadcast"></i> AYIN NABZI</div>
+        <div class="gt-h"><i class="bi bi-broadcast"></i> <?= $donem === 'yil' ? 'YILIN NABZI' : 'AYIN NABZI' ?></div>
         <div class="gt-pulse">
           <div class="gt-pulse-n <?= $ka['toplam_net'] < 0 ? 'bad' : 'ok' ?>">₺<?= Helpers::money($ka['toplam_net']) ?></div>
           <div class="gt-pulse-l">net kâr · marj <?= marj_pct($ka['toplam_marj']) ?></div>
@@ -200,7 +229,9 @@ require __DIR__ . '/partials/header.php';
         </div>
       </div>
 
-      <?php if ($tab === 'tumu' || $tab === 'uretim'): ?>
+      <?php // fable-078: kişi başı maliyet kartları AYLIK kavramdır (o ayın kişi sayısına
+           // bölünür) — yıllık toplamda anlamı olmaz, gösterilmez. ?>
+      <?php if ($donem === 'ay' && ($tab === 'tumu' || $tab === 'uretim')): ?>
       <?php // fable-039: KİŞİ BAŞI GIDA MALİYETİ — büyük rakam + tıklayınca kırılım ?>
       <div class="cardx card-pad">
         <div class="gt-h"><i class="bi bi-basket3-fill"></i> KİŞİ BAŞI GIDA MALİYETİ</div>
@@ -324,7 +355,7 @@ require __DIR__ . '/partials/header.php';
 
       <?php if ($karne): ?>
       <div class="cardx card-pad">
-        <div class="gt-h"><i class="bi bi-clipboard-data"></i> MÜŞTERİ KARNESİ</div>
+        <div class="gt-h"><i class="bi bi-clipboard-data"></i> MÜŞTERİ KARNESİ<?= $donem === 'yil' ? ' · ' . Helpers::e($yil) : '' ?></div>
         <?php foreach ($karne as $k): $w = $netMax > 0 ? max(4, (int) round(abs($k['net']) / $netMax * 100)) : 4; $bad = $k['net'] < 0; ?>
           <?php // fable-075: satır artık SAYFA DEĞİŞTİRMİYOR — açılır özet. Detaya geçiş panelden. ?>
           <details class="gt-satir">
@@ -370,7 +401,7 @@ require __DIR__ . '/partials/header.php';
                 <span class="text-muted" style="font-size:12px"><?= $kaynak === 'fatura'
                     ? ((int) $k['fatura_adedi']) . ' fatura'
                     : 'tahakkuk (üretim) hesabı' ?></span>
-                <a class="btn-action btn-ghost" href="rapor.php?musteri=<?= (int) $k['id'] ?>&ay=<?= $month ?>&geri=kar">Detay <i class="bi bi-arrow-right"></i></a>
+                <a class="btn-action btn-ghost" href="rapor.php?musteri=<?= (int) $k['id'] ?>&ay=<?= $month ?>&geri=kar">Detay<?= $donem === 'yil' ? ' · ' . Helpers::e(ay_label_tr($month)) : '' ?> <i class="bi bi-arrow-right"></i></a>
               </div>
             </div>
           </details>
@@ -382,7 +413,7 @@ require __DIR__ . '/partials/header.php';
             <div class="gt-kr-val">₺<?= Helpers::money($karneCiroToplam) ?></div>
           </div>
         </div>
-        <div class="gt-note">satıra dokun → özet açılır · özetteki <strong>Detay</strong> ile aylık döküme gidilir</div>
+        <div class="gt-note">satıra dokun → özet açılır · özetteki <strong>Detay</strong> ile <?= $donem === 'yil' ? Helpers::e(ay_label_tr($month)) . ' dökümüne' : 'aylık döküme' ?> gidilir</div>
       </div>
       <?php endif; ?>
 
@@ -406,7 +437,11 @@ require __DIR__ . '/partials/header.php';
             <tr class="is-total"><td>Toplam net kâr</td><td class="num" style="color:<?= $ka['toplam_net'] < 0 ? 'var(--red)' : 'var(--green)' ?>">₺ <?= Helpers::money($ka['toplam_net']) ?> · <?= marj_pct($ka['toplam_marj']) ?></td></tr>
           </tbody>
         </table>
-        <?php if ($kaynak === 'uretim'): ?>
+        <?php if ($donem === 'yil'): ?>
+        <p class="row-meta" style="margin-top:8px"><i class="bi bi-calendar-range"></i>
+          <?= Helpers::e($yil) ?> yılının <?= (int) $ka['aylar'] ?> ayı toplandı<?= $yil === date('Y') ? ' (yıl başından bugüne)' : '' ?>.
+          Aylık dökümü görmek için <a href="kar-analizi.php?<?= Helpers::e($qs(['donem' => 'ay'])) ?>" style="text-decoration:underline">Aylık</a>'a geç.</p>
+        <?php elseif ($kaynak === 'uretim'): ?>
         <p class="row-meta" style="margin-top:8px"><i class="bi bi-check2-circle"></i> Finans net karlılık ile birebir: ₺ <?= Helpers::money($nk['net']) ?></p>
         <?php else: ?>
         <p class="row-meta" style="margin-top:8px"><i class="bi bi-receipt"></i> Gelir = bu ay <strong>kesilen satış faturaları</strong> (KDV hariç);

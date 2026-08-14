@@ -7728,6 +7728,96 @@ final class Repo
     }
 
     /**
+     * fable-078 (Ömer, 14 Ağu): "yıllık butonu koyalım, o yıl içindeki toplam kâr/zararı
+     * müşteri bazlı ve toplamı görelim."
+     *
+     * karAnaliziKaynak ile BİREBİR AYNI yapıyı döndürür — tek farkı, yılın aylarını toplamasıdır.
+     * Böylece ekran aynı bileşeni hiç değiştirmeden yıllık veriyle çizer (ikinci bir tablo YOK).
+     * Cari yılda GELECEK aylar hesaplanmaz (boş ay hesaplamak israf; sonucu da değiştirmez).
+     * Marj yeniden hesaplanır — aylık marjların ORTALAMASI yanlış olurdu (ağırlıksız ortalama tuzağı).
+     * @return array aynı anahtarlar + 'yil' => 'YYYY', 'aylar' => hesaplanan ay sayısı
+     */
+    public function karAnaliziYil(string $yil, ?string $kaynak = null): array
+    {
+        $sonAy = $yil === date('Y') ? (int) date('n') : 12;
+        $u = [];   // customer_id => üretim satırı toplamı
+        $t = [];   // customer_id => taşıma satırı toplamı
+        $g = ['uGelir' => 0.0, 'uGider' => 0.0, 'uPers' => 0.0, 'uNet' => 0.0,
+            'tSatis' => 0.0, 'tAlis' => 0.0, 'tSabit' => 0.0, 'tGider' => 0.0, 'tPers' => 0.0, 'tNet' => 0.0,
+            'dagitilmamis' => 0.0, 'eslesmemis' => 0.0, 'toplamGelir' => 0.0, 'toplamNet' => 0.0];
+        $kay = null;
+
+        for ($m = 1; $m <= $sonAy; $m++) {
+            $ay = sprintf('%s-%02d', $yil, $m);
+            $k = $this->karAnaliziKaynak($ay, $kaynak);
+            $kay ??= (string) $k['kaynak'];
+
+            foreach ($k['uretim']['rows'] as $r) {
+                $cid = (int) $r['customer_id'];
+                $u[$cid] ??= ['customer_id' => $cid, 'name' => $r['name'], 'gelir' => 0.0,
+                    'gider' => 0.0, 'personel' => 0.0, 'net' => 0.0, 'fatura_adedi' => 0];
+                $u[$cid]['gelir'] += (float) $r['gelir'];
+                $u[$cid]['gider'] += (float) $r['gider'];
+                $u[$cid]['personel'] += (float) $r['personel'];
+                $u[$cid]['net'] += (float) $r['net'];
+                $u[$cid]['fatura_adedi'] += (int) ($r['fatura_adedi'] ?? 0);
+            }
+            foreach ($k['tasima']['rows'] as $r) {
+                $cid = (int) $r['customer_id'];
+                $t[$cid] ??= ['customer_id' => $cid, 'name' => $r['name'], 'satis' => 0.0, 'alis' => 0.0,
+                    'sabit' => 0.0, 'gider' => 0.0, 'personel' => 0.0, 'net' => 0.0, 'fatura_adedi' => 0];
+                foreach (['satis', 'alis', 'sabit', 'gider', 'personel', 'net'] as $f) {
+                    $t[$cid][$f] += (float) $r[$f];
+                }
+                $t[$cid]['fatura_adedi'] += (int) ($r['fatura_adedi'] ?? 0);
+            }
+
+            $g['uGelir'] += (float) $k['uretim']['gelir'];
+            $g['uGider'] += (float) $k['uretim']['gider'];
+            $g['uPers'] += (float) $k['uretim']['personel'];
+            $g['uNet'] += (float) $k['uretim']['net'];
+            $g['tSatis'] += (float) $k['tasima']['satis'];
+            $g['tAlis'] += (float) $k['tasima']['alis'];
+            $g['tSabit'] += (float) $k['tasima']['sabit'];
+            $g['tGider'] += (float) $k['tasima']['gider'];
+            $g['tPers'] += (float) $k['tasima']['personel'];
+            $g['tNet'] += (float) $k['tasima']['net'];
+            $g['dagitilmamis'] += (float) $k['dagitilmamis'];
+            $g['eslesmemis'] += (float) ($k['eslesmemis_gelir'] ?? 0.0);
+            $g['toplamGelir'] += (float) $k['toplam_gelir'];
+            $g['toplamNet'] += (float) $k['toplam_net'];
+        }
+
+        $marj = static fn(array $r, string $gelirAlan): float
+            => $r[$gelirAlan] > 0 ? $r['net'] / $r[$gelirAlan] : 0.0;
+        foreach ($u as &$r) { $r['marj'] = $marj($r, 'gelir'); } unset($r);
+        foreach ($t as &$r) { $r['marj'] = $marj($r, 'satis'); } unset($r);
+        $uRows = array_values($u);
+        $tRows = array_values($t);
+        usort($uRows, static fn(array $a, array $b): int => $b['gelir'] <=> $a['gelir']);
+        usort($tRows, static fn(array $a, array $b): int => $b['satis'] <=> $a['satis']);
+
+        return [
+            'uretim' => ['rows' => $uRows, 'gelir' => $g['uGelir'], 'gider' => $g['uGider'],
+                'personel' => $g['uPers'], 'net' => $g['uNet'],
+                'marj' => $g['uGelir'] > 0 ? $g['uNet'] / $g['uGelir'] : 0.0],
+            'tasima' => ['rows' => $tRows, 'satis' => $g['tSatis'], 'alis' => $g['tAlis'],
+                'sabit' => $g['tSabit'], 'gider' => $g['tGider'], 'personel' => $g['tPers'],
+                'net' => $g['tNet'], 'marj' => $g['tSatis'] > 0 ? $g['tNet'] / $g['tSatis'] : 0.0],
+            'dagitilmamis' => $g['dagitilmamis'],
+            'toplam_gelir' => $g['toplamGelir'],
+            'toplam_net' => $g['toplamNet'],
+            'toplam_marj' => $g['toplamGelir'] > 0 ? $g['toplamNet'] / $g['toplamGelir'] : 0.0,
+            'kaynak' => $kay ?? 'fatura',
+            'faturasiz_musteri' => [],   // aylık kavram — yıllıkta anlamsız
+            'fatura' => null,            // kapsam/gecikme bilgisi aylık; yıllıkta gösterilmez
+            'eslesmemis_gelir' => $g['eslesmemis'],
+            'yil' => $yil,
+            'aylar' => $sonAy,
+        ];
+    }
+
+    /**
      * Kâr analizi veri kaynağı seçici: 'fatura' (gerçek, VARSAYILAN) | 'uretim' (tahakkuk).
      * Bilinmeyen değer → ayardaki varsayılan. Üretim modu ESKİ hesabı BİREBİR döndürür.
      */
