@@ -37,6 +37,33 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             uysa_audit('musteri_pasif', $u['username'], (string) $pid, null, client_ip());
             $flash = 'Müşteri pasifleştirildi.';
         }
+    } elseif (($_POST['action'] ?? '') === 'parasut_cari') {
+        // fable-076: oto-bağlama karar veremediğinde (0 ya da >1 aday) seçimi Ömer yapar.
+        // Cari BAŞKA müşteriye bağlıysa kabul edilmez — bir cari iki müşteriye bağlanırsa
+        // aynı fatura iki kez gelir sayılır.
+        $pid = (int) ($_POST['id'] ?? 0);
+        $sec = trim((string) ($_POST['pc_id'] ?? ''));
+        if ($pid > 0) {
+            $eski = $repo->customer($pid);
+            $acikPost = ($eski['category'] ?? 'uretim') === 'tasima' ? 'tasima' : 'uretim';
+            $sahipli = $repo->parasutSahipliCariler();
+            if ($sec !== '' && ($sahipli[$sec] ?? 0) > 0 && ($sahipli[$sec] ?? 0) !== $pid) {
+                $baskasi = $repo->customer((int) $sahipli[$sec]);
+                $flash = 'Bu Paraşüt carisi zaten ' . ($baskasi['name'] ?? '?') . ' müşterisine bağlı.';
+                $flashOk = false;
+            } else {
+                $pdo->prepare('UPDATE customers SET parasut_id = ? WHERE id = ?')
+                    ->execute([$sec !== '' ? $sec : null, $pid]);
+                uysa_audit('parasut_cari_sec', $u['username'], (string) $pid,
+                    json_encode(['parasut_id' => $sec]), client_ip());
+                $flash = $sec !== ''
+                    ? 'Paraşüt carisi bağlandı — bundan sonraki senkronda faturaları bu müşteriye düşer.'
+                    : 'Paraşüt cari bağı kaldırıldı.';
+            }
+            $formOpen = true;   // kart açık kalsın (alt firma/sabit kalem akışıyla aynı desen)
+            $_GET['edit'] = (string) $pid;
+            $editId = $pid;
+        }
     } elseif (in_array($_POST['action'] ?? '', ['altfirma', 'altfirma_pasif'], true)) {
         // fable-051: faturası birden çok şirkete kesilen müşterinin (CANTAŞ) alt firmaları.
         // Bölüşüm deseni burada yaşar (hafta içi sabit kota) — koda gömülü değil, Ömer değiştirir.
@@ -192,7 +219,27 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     }
                 }
                 uysa_audit('musteri_kaydet', $u['username'], (string) $cid, json_encode(['cat' => $category]), client_ip());
-                $flash = 'Müşteri kaydedildi · ' . $name . $fiyatNotu;
+                // fable-076 (Ömer, 14 Ağu): "yeni müşteri eklediğimde otomatik senkron olsun."
+                // Cari bağı yoksa Paraşüt carisiyle bağla — bağ kurulmazsa müşterinin faturası
+                // "eşleşmemiş gelir" kalır, kâr/zarar karnesinde GÖRÜNMEZ. Tek aday varsa bağlanır;
+                // birden çoksa (Paraşüt'te 3 ayrı CANTAŞ carisi var) KÖRÜ KÖRÜNE yazmaz, sorar.
+                $cariNotu = '';
+                if (!$repo->parasutBagliMi($cid) && \Uysa\Parasut::configured()) {
+                    $sonuc = $repo->parasutCariOtoBagla($cid, $name,
+                        $repo->parasutCariListesi(static fn(): array => \Uysa\Parasut::contacts()));
+                    if ($sonuc['durum'] === 'baglandi') {
+                        uysa_audit('parasut_cari_otobagla', $u['username'], (string) $cid,
+                            json_encode(['parasut_id' => $sonuc['parasut_id'], 'ad' => $sonuc['ad']],
+                                JSON_UNESCAPED_UNICODE), client_ip());
+                        $cariNotu = ' · Paraşüt carisi bağlandı: ' . $sonuc['ad'];
+                    } elseif ($sonuc['durum'] === 'secim') {
+                        $cariNotu = ' · Paraşüt\'te ' . count($sonuc['adaylar'])
+                            . ' aday cari var — karttan seç (bağlanmadan faturası kâr/zarara girmez)';
+                    } else {
+                        $cariNotu = ' · Paraşüt carisi bulunamadı — karttan elle seç';
+                    }
+                }
+                $flash = 'Müşteri kaydedildi · ' . $name . $fiyatNotu . $cariNotu;
                 $month = $postMonth;
                 $acikPost = $category;
             } catch (\Throwable $e) {
@@ -370,6 +417,70 @@ require __DIR__ . '/partials/header.php';
             <button class="btn-action btn-primaryx flex-fill" type="submit"><i class="bi bi-check2"></i> <?= Helpers::e(ay_label_tr($month)) ?> fiyatını kaydet</button>
           </div>
         </form>
+      </div>
+      <?php endif; ?>
+
+      <?php if ($edit):
+        // fable-076 (Ömer, 14 Ağu): "yeni müşteri eklediğimde otomatik senkron olsun."
+        // Satış faturası müşteriye YALNIZ Paraşüt cari id'siyle bağlanır. Bağ yoksa fatura
+        // "eşleşmemiş gelir" olur → müşteri kâr/zarar karnesinde çıkmaz. Burası o bağın
+        // GÖRÜNÜR halidir: bağlıysa hangi cari, değilse uyarı + seçim.
+        $pcId = (int) $edit['id'];
+        $pcBagli = $repo->parasutBagliMi($pcId);
+        $pcMevcut = trim((string) ($edit['parasut_id'] ?? ''));
+        $pcListe = \Uysa\Parasut::configured()
+            ? $repo->parasutCariListesi(static fn(): array => \Uysa\Parasut::contacts(),
+                ($_GET['cari_tazele'] ?? '') === '1')
+            : [];
+        $pcSahipli = $repo->parasutSahipliCariler();
+        $pcAdaylar = $pcBagli ? [] : $repo->parasutCariAdaylari((string) $edit['name'], $pcListe, $pcSahipli, $pcId);
+        $pcAdayId = array_column($pcAdaylar, 'parasut_id');
+        $pcAltAdet = 0;
+        foreach ($pcSahipli as $k => $v) { if ($v === $pcId && $k !== $pcMevcut) { $pcAltAdet++; } }
+      ?>
+      <div class="cardx card-pad" id="parasut-cari">
+        <div class="gt-h"><i class="bi bi-link-45deg"></i> PARAŞÜT CARİSİ</div>
+        <?php if (!$pcListe): ?>
+          <div class="empty-state">Paraşüt cari listesi okunamadı — bağ değiştirilemez (mevcut bağ korunuyor).</div>
+        <?php else: ?>
+          <?php if ($pcBagli): ?>
+            <p class="row-meta" style="margin-bottom:8px"><i class="bi bi-check-circle" style="color:var(--green)"></i>
+              Bağlı — bu müşterinin faturaları kâr/zarara <strong>düşüyor</strong>.
+              <?php if ($pcAltAdet > 0): ?>(<?= $pcAltAdet ?> cari alt firmalardan geliyor)<?php endif; ?></p>
+          <?php else: ?>
+            <p class="row-meta" style="margin-bottom:8px"><i class="bi bi-exclamation-triangle" style="color:var(--red)"></i>
+              <strong>Bağlı değil</strong> — bu müşteriye kesilen faturalar kâr/zararda
+              "eşleşmemiş gelir" olarak kalır, karnede görünmez.
+              <?= $pcAdaylar ? 'Aşağıdaki ' . count($pcAdaylar) . ' aday işaretlendi; doğru olanı seç.' : '' ?></p>
+          <?php endif; ?>
+          <form method="post" class="af-row">
+            <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
+            <input type="hidden" name="action" value="parasut_cari">
+            <input type="hidden" name="id" value="<?= $pcId ?>">
+            <label class="field"><span>Cari</span>
+              <select class="inputx" name="pc_id">
+                <option value="">— bağlı değil —</option>
+                <?php foreach ($pcListe as $c):
+                  $cid2 = (string) $c['parasut_id'];
+                  $sahip = $pcSahipli[$cid2] ?? 0;
+                  $baskasi = $sahip > 0 && $sahip !== $pcId;
+                  $etiket = $c['name'] . ($c['tax_number'] ? ' · ' . $c['tax_number'] : '');
+                  if (in_array($cid2, $pcAdayId, true)) { $etiket = '★ ' . $etiket; }
+                  if ($baskasi) { $etiket .= '  (başka müşteride)'; }
+                ?>
+                  <option value="<?= Helpers::e($cid2) ?>"<?= $cid2 === $pcMevcut ? ' selected' : '' ?><?= $baskasi ? ' disabled' : '' ?>><?= Helpers::e($etiket) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </label>
+            <div class="row-actions" style="margin-top:8px">
+              <button class="btn-action btn-primaryx" type="submit"><i class="bi bi-link"></i> Cariyi bağla</button>
+              <a class="btn-action btn-ghost" href="musteriler.php?edit=<?= $pcId ?>&ay=<?= Helpers::e($month) ?>&cari_tazele=1#parasut-cari"><i class="bi bi-arrow-clockwise"></i> Listeyi tazele</a>
+            </div>
+          </form>
+          <p class="text-muted" style="font-size:12px;margin-top:6px">
+            Faturası <strong>birden çok şirkete</strong> kesiliyorsa (ör. CANTAŞ) ek carileri
+            <a href="#alt-firmalar">Alt firmalar</a> bölümünden ekle — oradaki cariler de bu müşteriye sayılır.</p>
+        <?php endif; ?>
       </div>
       <?php endif; ?>
 

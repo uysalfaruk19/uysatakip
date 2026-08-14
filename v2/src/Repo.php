@@ -325,6 +325,196 @@ final class Repo
         return $out;
     }
 
+    // ── fable-076: YENİ MÜŞTERİ → PARAŞÜT CARİSİ OTO-BAĞLAMA ─────────────────
+    // Ömer (14 Ağu): "yeni müşteri eklediğimde otomatik senkron olsun."
+    // Gerçek sorun: satış faturası SADECE contact_id ile müşteriye bağlanıyor
+    // (customers.parasut_id veya musteri_altfirma.parasut_contact_id). Yeni müşterinin
+    // ikisi de boş olduğu için faturası "eşleşmemiş gelir" olarak kalıyor, karnede
+    // görünmüyordu. Burası o bağı müşteri kaydedilirken kurar.
+    //
+    // KÖR BAĞLAMA YOK (bot-korukoru-yapma-sor): yalnız TEK aday varken bağlanır.
+    // Birden çok aday varsa (CANLI örnek: Paraşüt'te 3 ayrı CANTAŞ carisi) hiçbir şey
+    // yazılmaz, adaylar ekrana çıkar, seçim Ömer'in olur.
+
+    /**
+     * Bir Paraşüt cari adının Kokpit müşteri adına ne kadar uyduğu (PÜR — ağ yok).
+     * 3 = birebir · 2 = cari adı müşteri adıyla BAŞLIYOR ("CANTAŞ" → "CANTAŞ BAKIR...")
+     * 1 = biri diğerini içeriyor · 0 = alakasız.
+     * Ünvan ekleri (A.Ş., LTD. ŞTİ. vb.) atılır — yoksa hiçbir ad tutmaz.
+     */
+    public function parasutAdSkoru(string $musteriAd, string $cariAd): int
+    {
+        $sil = static function (string $s): string {
+            $s = preg_replace('/\b(anonim|limited|sirketi|sti|ltd|a\.?s|san|sanayi|ve|tic|ticaret|
+                 uretim|imalat|hizmetleri|holding)\b/xiu', ' ', $s) ?? $s;
+            return Helpers::normalizeName($s);
+        };
+        $m = $sil($musteriAd);
+        $c = $sil($cariAd);
+        if ($m === '' || $c === '') {
+            return 0;
+        }
+        if ($m === $c) {
+            return 3;
+        }
+        if (str_starts_with($c, $m) || str_starts_with($m, $c)) {
+            return 2;
+        }
+        // 4 harften kısa parçada "içeriyor" tesadüfi olur (ör. "er" → "ermetal" değil).
+        if (mb_strlen($m) >= 4 && (str_contains($c, $m) || str_contains($m, $c))) {
+            return 1;
+        }
+        return 0;
+    }
+
+    /**
+     * Bir müşteri adı için Paraşüt cari adayları (PÜR — ağ yok, test edilebilir).
+     * BAŞKA müşteriye bağlı cariler adaylıktan DÜŞER (bir cari iki müşteriye bağlanamaz).
+     * En yüksek skorlu grup döner: 3 varsa yalnız 3'ler, yoksa 2'ler, yoksa 1'ler.
+     * @param array<int,array{parasut_id:string,name:string,tax_number?:string}> $contacts
+     * @param array<string,int> $sahipli contact_id => o cariyi kullanan customer_id
+     * @return array<int,array{parasut_id:string,name:string,tax_number:string,skor:int}>
+     */
+    public function parasutCariAdaylari(string $musteriAd, array $contacts, array $sahipli = [], int $customerId = 0): array
+    {
+        $bulunan = [];
+        foreach ($contacts as $c) {
+            $pid = trim((string) ($c['parasut_id'] ?? ''));
+            if ($pid === '') {
+                continue;
+            }
+            $sahip = $sahipli[$pid] ?? 0;
+            if ($sahip > 0 && $sahip !== $customerId) {
+                continue; // başkasının carisi — aday değil
+            }
+            $skor = $this->parasutAdSkoru($musteriAd, (string) ($c['name'] ?? ''));
+            if ($skor > 0) {
+                $bulunan[] = ['parasut_id' => $pid, 'name' => (string) $c['name'],
+                    'tax_number' => (string) ($c['tax_number'] ?? ''), 'skor' => $skor];
+            }
+        }
+        if ($bulunan === []) {
+            return [];
+        }
+        $enIyi = max(array_column($bulunan, 'skor'));
+        return array_values(array_filter($bulunan, static fn(array $a): bool => $a['skor'] === $enIyi));
+    }
+
+    /**
+     * Hangi Paraşüt carisi hangi müşteriye bağlı: contact_id => customer_id.
+     * Hem customers.parasut_id hem musteri_altfirma.parasut_contact_id taranır
+     * (satisFaturaIsle eşleşmeyi ikisinden de kurar — burası onunla AYNI kaynağı okur).
+     * @return array<string,int>
+     */
+    public function parasutSahipliCariler(): array
+    {
+        $out = [];
+        foreach ($this->pdo->query(
+            "SELECT id, parasut_id FROM customers WHERE parasut_id IS NOT NULL AND parasut_id <> ''"
+        )->fetchAll() as $r) {
+            $out[(string) $r['parasut_id']] = (int) $r['id'];
+        }
+        try {
+            foreach ($this->pdo->query(
+                "SELECT customer_id, parasut_contact_id FROM musteri_altfirma
+                 WHERE parasut_contact_id IS NOT NULL AND parasut_contact_id <> ''"
+            )->fetchAll() as $r) {
+                $out[(string) $r['parasut_contact_id']] ??= (int) $r['customer_id'];
+            }
+        } catch (\PDOException $e) {
+            error_log('[UYSA v2 parasutSahipliCariler] altfirma okunamadı: ' . $e->getMessage());
+        }
+        return $out;
+    }
+
+    /**
+     * Müşterinin Paraşüt cari bağı KURULU mu (kendi carisi ya da alt firma carisi)?
+     * satisFaturaIsle'in eşleşme kuralıyla birebir aynı soruyu sorar.
+     */
+    public function parasutBagliMi(int $customerId): bool
+    {
+        $st = $this->pdo->prepare(
+            "SELECT 1 FROM customers WHERE id = ? AND parasut_id IS NOT NULL AND parasut_id <> ''"
+        );
+        $st->execute([$customerId]);
+        if ($st->fetchColumn() !== false) {
+            return true;
+        }
+        try {
+            $st = $this->pdo->prepare(
+                "SELECT 1 FROM musteri_altfirma
+                 WHERE customer_id = ? AND parasut_contact_id IS NOT NULL AND parasut_contact_id <> ''"
+            );
+            $st->execute([$customerId]);
+            return $st->fetchColumn() !== false;
+        } catch (\PDOException $e) {
+            return false;
+        }
+    }
+
+    /**
+     * Müşteriyi Paraşüt carisine OTO-BAĞLA. Zaten bağlıysa dokunmaz.
+     * TEK aday varsa bağlar ('baglandi'), birden çoksa YAZMAZ ('secim' + adaylar),
+     * hiç yoksa 'yok'. Paraşüt'e çağrı YAPMAZ — cari listesi dışarıdan verilir
+     * (müşteri kaydı ağ hatasına takılmasın).
+     * @param array<int,array{parasut_id:string,name:string,tax_number?:string}> $contacts
+     * @return array{durum:string,parasut_id:string,ad:string,adaylar:array}
+     */
+    public function parasutCariOtoBagla(int $customerId, string $musteriAd, array $contacts): array
+    {
+        $bos = ['durum' => 'yok', 'parasut_id' => '', 'ad' => '', 'adaylar' => []];
+        if ($customerId <= 0 || $contacts === []) {
+            return $bos;
+        }
+        if ($this->parasutBagliMi($customerId)) {
+            return ['durum' => 'zaten', 'parasut_id' => '', 'ad' => '', 'adaylar' => []];
+        }
+        $adaylar = $this->parasutCariAdaylari($musteriAd, $contacts, $this->parasutSahipliCariler(), $customerId);
+        if ($adaylar === []) {
+            return $bos;
+        }
+        if (count($adaylar) > 1) {
+            return ['durum' => 'secim', 'parasut_id' => '', 'ad' => '', 'adaylar' => $adaylar];
+        }
+        $this->pdo->prepare('UPDATE customers SET parasut_id = ? WHERE id = ?')
+            ->execute([$adaylar[0]['parasut_id'], $customerId]);
+        return ['durum' => 'baglandi', 'parasut_id' => $adaylar[0]['parasut_id'],
+            'ad' => $adaylar[0]['name'], 'adaylar' => $adaylar];
+    }
+
+    /**
+     * Paraşüt cari listesi ÖNBELLEĞİ (ayarlar tablosunda JSON).
+     * Ekran her açılışta Paraşüt'e gitmez (hız + 429 riski). $tazele ile zorlanır.
+     * @param callable():array $cek Paraşüt'ten cari listesini getiren fonksiyon
+     * @return array<int,array{parasut_id:string,name:string,tax_number:string}>
+     */
+    public function parasutCariListesi(callable $cek, bool $tazele = false, int $omurSaat = 24): array
+    {
+        $ham = $this->ayar('parasut_cari_cache');
+        $zaman = (string) ($this->ayar('parasut_cari_cache_at') ?? '');
+        $eski = $zaman === '' || (time() - strtotime($zaman)) > $omurSaat * 3600;
+        if (!$tazele && !$eski && $ham !== null && $ham !== '') {
+            $d = json_decode($ham, true);
+            if (is_array($d) && $d !== []) {
+                return $d;
+            }
+        }
+        try {
+            $liste = $cek();
+        } catch (\Throwable $e) {
+            error_log('[UYSA v2 parasutCariListesi] ' . $e->getMessage());
+            $liste = [];
+        }
+        if ($liste === []) {
+            // Paraşüt'e ulaşılamadıysa ESKİ önbellek korunur — boş liste yazıp bağı koparmayız.
+            $d = $ham !== null && $ham !== '' ? json_decode($ham, true) : [];
+            return is_array($d) ? $d : [];
+        }
+        $this->ayarSet('parasut_cari_cache', json_encode($liste, JSON_UNESCAPED_UNICODE));
+        $this->ayarSet('parasut_cari_cache_at', date('Y-m-d H:i:s'));
+        return $liste;
+    }
+
     /**
      * Paraşüt contact'ını Kokpit müşterisiyle eşleştir (PÜR — ağ yok, test edilebilir).
      * Öncelik: 1) parasut_id (zaten bağlı), 2) vergi no, 3) ad-normalize (Helpers::normalizeName).
