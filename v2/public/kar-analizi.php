@@ -74,7 +74,8 @@ function f044_miktar(float $m): string
     return $s;
 }
 
-$eyebrow = ay_label_tr($month);
+// fable-078: yıllık moddayken üst başlıkta ay adı yazmaz (ekran o ayı göstermiyor).
+$eyebrow = $donem === 'yil' ? $yil . ' yılı' : ay_label_tr($month);
 $pageTitle = 'Kâr Analizi';
 $active = 'rapor';
 require __DIR__ . '/partials/header.php';
