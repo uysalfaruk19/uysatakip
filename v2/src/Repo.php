@@ -492,37 +492,29 @@ final class Repo
             'ad' => $adaylar[0]['name'], 'adaylar' => $adaylar, 'digerleri' => $digerleri];
     }
 
+    /** İstek içi bellek — aynı sayfada birden çok kez Paraşüt'e gidilmesin. */
+    private ?array $cariMemo = null;
+
     /**
-     * Paraşüt cari listesi ÖNBELLEĞİ (ayarlar tablosunda JSON).
-     * Ekran her açılışta Paraşüt'e gitmez (hız + 429 riski). $tazele ile zorlanır.
+     * Paraşüt cari listesi. Kalıcı önbellek YOK (ayar.deger VARCHAR(500), liste sığmıyor;
+     * blob için ayrı tablo açmak bu iş için fazla mühendislik). İstek başına TEK çağrı yeter:
+     * müşteri kartı seyrek açılır, senkron günde 2 kez koşar.
+     * Paraşüt'e ulaşılamazsa BOŞ liste döner — çağıran "liste okunamadı" der, MEVCUT BAĞA DOKUNMAZ.
      * @param callable():array $cek Paraşüt'ten cari listesini getiren fonksiyon
      * @return array<int,array{parasut_id:string,name:string,tax_number:string}>
      */
-    public function parasutCariListesi(callable $cek, bool $tazele = false, int $omurSaat = 24): array
+    public function parasutCariListesi(callable $cek, bool $tazele = false): array
     {
-        $ham = $this->ayar('parasut_cari_cache');
-        $zaman = (string) ($this->ayar('parasut_cari_cache_at') ?? '');
-        $eski = $zaman === '' || (time() - strtotime($zaman)) > $omurSaat * 3600;
-        if (!$tazele && !$eski && $ham !== null && $ham !== '') {
-            $d = json_decode($ham, true);
-            if (is_array($d) && $d !== []) {
-                return $d;
-            }
+        if (!$tazele && $this->cariMemo !== null) {
+            return $this->cariMemo;
         }
         try {
-            $liste = $cek();
+            $this->cariMemo = $cek();
         } catch (\Throwable $e) {
             error_log('[UYSA v2 parasutCariListesi] ' . $e->getMessage());
-            $liste = [];
+            $this->cariMemo = [];
         }
-        if ($liste === []) {
-            // Paraşüt'e ulaşılamadıysa ESKİ önbellek korunur — boş liste yazıp bağı koparmayız.
-            $d = $ham !== null && $ham !== '' ? json_decode($ham, true) : [];
-            return is_array($d) ? $d : [];
-        }
-        $this->ayarSet('parasut_cari_cache', json_encode($liste, JSON_UNESCAPED_UNICODE));
-        $this->ayarSet('parasut_cari_cache_at', date('Y-m-d H:i:s'));
-        return $liste;
+        return $this->cariMemo;
     }
 
     /**
