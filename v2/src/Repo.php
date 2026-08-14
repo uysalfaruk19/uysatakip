@@ -671,6 +671,20 @@ final class Repo
      *   durum:string,hata_mesaj?:?string,tasiyici_ok?:bool,entered_by?:string} $d
      * @return bool yazıldı mı (false = zaten 'kesildi', dokunulmadı)
      */
+    /**
+     * fable-080: Kokpit'in o gün için BİLDİĞİ Paraşüt belge id'leri (uzlaştırma için).
+     * @return array<int,string>
+     */
+    public function irsaliyeDocIdleri(string $gun): array
+    {
+        $st = $this->pdo->prepare(
+            "SELECT parasut_doc_id FROM parasut_irsaliye_log
+             WHERE gun = ? AND parasut_doc_id IS NOT NULL AND parasut_doc_id <> ''"
+        );
+        $st->execute([$gun]);
+        return array_map('strval', $st->fetchAll(PDO::FETCH_COLUMN));
+    }
+
     public function irsaliyeLogKaydet(int $customerId, string $gun, array $d): bool
     {
         $mevcut = $this->irsaliyeLog($customerId, $gun);

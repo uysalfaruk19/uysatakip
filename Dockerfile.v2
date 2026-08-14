@@ -9,8 +9,13 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/* \
  && docker-php-ext-install pdo pdo_mysql zip
 
-RUN printf "upload_max_filesize=30M\npost_max_size=32M\nmemory_limit=256M\nmax_execution_time=120\nexpose_php=Off\n" \
-    > /usr/local/etc/php/conf.d/uysa.ini
+# fable-080 (14 Ağu vakası): oturumlar konteyner içindeki /tmp'deydi → her `up --build`
+# TÜM oturumları siliyordu. Ömer irsaliye keserken deploy'a denk geldi, "oturum doğrulaması
+# başarısız" alıp iş yarıda kaldı; aynı tuzak garsonları da atıyordu. Oturum dizini KALICI
+# volume'a taşındı (compose: uysatakip_sessions) → güncelleme artık kimseyi düşürmez.
+RUN printf "upload_max_filesize=30M\npost_max_size=32M\nmemory_limit=256M\nmax_execution_time=120\nexpose_php=Off\nsession.save_path=/var/lib/php-sessions\nsession.gc_maxlifetime=28800\n" \
+    > /usr/local/etc/php/conf.d/uysa.ini \
+ && mkdir -p /var/lib/php-sessions && chmod 1733 /var/lib/php-sessions
 
 WORKDIR /var/www/html
 

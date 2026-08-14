@@ -335,6 +335,24 @@ final class ParasutYaz
         $sorguYapildi = $q['net'] === 'ok' && $q['status'] >= 200 && $q['status'] < 300;
         if ($sorguYapildi) {
             $mevcut = self::ayniGunBelge($q['data'], $gun, $parasutId);
+            // fable-080 (14 Ağu ölçümü): LİSTE yanıtında relationships.contact HER ZAMAN BOŞ gelir
+            // (ölçtüm: 6/6 belgede boş). Yani ayniGunBelge'nin cari eşleşmesi fiilen çalışmıyor;
+            // kalkan TAMAMEN filter[contact_id]'nin sunucuda uygulanmasına bağlı. Paraşüt bir gün
+            // bu filtreyi yok sayarsa (bilinmeyen parametreler sessizce yok sayılır) o günün İLK
+            // belgesi herkese "zaten var" dedirtir ve İRSALİYELER SESSİZCE KESİLMEZ.
+            // Çare: adayın carisini TEK BELGE ucundan teyit et — orada contact DOLU geliyor.
+            if ($mevcut !== null) {
+                $teyit = $this->cariTeyit((string) ($mevcut['id'] ?? ''), $parasutId);
+                if ($teyit === false) {
+                    $mevcut = null;   // başka müşterinin belgesiymiş → kesime devam
+                } elseif ($teyit === null) {
+                    // Teyit edilemedi. Mükerrer e-İrsaliye GERİ ALINAMAZ, eksik irsaliye elle
+                    // kesilebilir → belirsizlikte KESME, insana bırak (fable-023 kilit deseni).
+                    return $this->hataYaz($customerId, $gun, $kalemler, $toplam, $actor, 'bilinmiyor',
+                        'Paraşüt\'te bu güne ait bir belge göründü ama kime ait olduğu doğrulanamadı — '
+                        . 'mükerrer kesmemek için durduruldu. Paraşüt\'ten bakıp "Çözüm" ile karar verin.');
+                }
+            }
             if ($mevcut !== null) {
                 $this->repo->irsaliyeLogKaydet($customerId, $gun, [
                     'parasut_doc_id' => (string) ($mevcut['id'] ?? ''),
@@ -652,6 +670,124 @@ final class ParasutYaz
             }
         }
         return null;
+    }
+
+    /**
+     * fable-080 (Ömer, 14 Ağu) — GÜN UZLAŞTIRMA: Paraşüt'te KESİLMİŞ ama Kokpit'e YAZILAMAMIŞ
+     * irsaliyeleri bulup log'a işler.
+     *
+     * 14 Ağu vakası: CEOTHERM'in irsaliyesi Paraşüt'te kesildi ve GİB'e gitti, ama tam o anda
+     * konteyner yeniden başlatıldığı için yanıt kaybolup Kokpit'e yazılamadı. Ekranda "kesilmedi"
+     * göründü — tekrar basılsa MÜKERRER e-İrsaliye olurdu (geri alınamaz).
+     * Artık irsaliye ekranı her açıldığında bu uzlaştırma çalışır; kayıp kayıt sessiz kalmaz.
+     *
+     * SALT DÜZELTME: Paraşüt'e hiçbir şey yazmaz, yalnız GET + yerel log INSERT.
+     * Kişi sayısı UYDURULMAZ — Paraşüt'ün stok hareketinden okunur.
+     * @return array<int,string> insan diliyle yapılanlar (boş = her şey zaten yerinde)
+     */
+    public function gunUzlastir(string $gun): array
+    {
+        if (!self::aktif()) {
+            return [];
+        }
+        $q = $this->cagir('GET', '/shipment_documents?' . http_build_query([
+            'filter[issue_date]' => $gun, 'sort' => '-issue_date', 'page[size]' => 25,
+        ]), null);
+        if ($q['net'] !== 'ok' || $q['status'] < 200 || $q['status'] >= 300) {
+            return [];
+        }
+        $bilinen = $this->repo->irsaliyeDocIdleri($gun);   // Kokpit'in bildiği doc_id'ler
+        $sahipli = $this->repo->parasutSahipliCariler();   // contact_id => customer_id
+        $yapilan = [];
+        foreach (($q['data']['data'] ?? []) as $d) {
+            $docId = (string) ($d['id'] ?? '');
+            $issue = substr((string) ($d['attributes']['issue_date'] ?? ''), 0, 10);
+            if ($docId === '' || $issue !== $gun || in_array($docId, $bilinen, true)) {
+                continue;
+            }
+            $ozet = $this->belgeOzeti($docId);
+            if ($ozet === null || $ozet['contact_id'] === '') {
+                continue;   // kime ait olduğu okunamadı → uydurma YOK, dokunma
+            }
+            $cid = $sahipli[$ozet['contact_id']] ?? 0;
+            if ($cid <= 0) {
+                continue;   // Kokpit müşterisi değil (elle kesilmiş başka belge olabilir)
+            }
+            if ($this->repo->irsaliyeLog($cid, $gun) !== null) {
+                continue;   // o müşteri için zaten kayıt var (başka doc) — karışıklık yaratma
+            }
+            $this->repo->irsaliyeLogKaydet($cid, $gun, [
+                'parasut_doc_id' => $docId,
+                'despatch_no'    => $ozet['despatch_no'],
+                'kalemler'       => [],
+                'toplam_kisi'    => $ozet['miktar'],
+                'durum'          => 'kesildi',
+                'hata_mesaj'     => 'Paraşüt\'te kesilmiş ama Kokpit\'e yazılamamıştı (yanıt kayboldu) '
+                    . '— otomatik uzlaştırıldı. Kişi sayısı Paraşüt belgesinden okundu.',
+                'tasiyici_ok'    => true,
+                'gonderim'       => 'gonderildi',
+                'entered_by'     => 'uzlastirma',
+            ]);
+            $yapilan[] = sprintf('%s (%s · %d kişi) Paraşüt\'te kesilmişti, Kokpit\'e işlendi',
+                $this->repo->customer($cid)['name'] ?? ('#' . $cid), $ozet['despatch_no'] ?: $docId,
+                $ozet['miktar']);
+        }
+        return $yapilan;
+    }
+
+    /**
+     * fable-080: TEK BELGE özeti — cari + miktar + irsaliye no.
+     * Liste ucu cari vermiyor, tek belge ucu veriyor; miktar stock_movements'tan gelir
+     * (shipment_document_details include'u bu hesapta BOŞ dönüyor — 14 Ağu'da ölçüldü).
+     * @return array{contact_id:string,miktar:int,despatch_no:?string}|null
+     */
+    private function belgeOzeti(string $docId): ?array
+    {
+        $r = $this->cagir('GET', '/shipment_documents/' . rawurlencode($docId)
+            . '?include=contact,stock_movements', null);
+        if ($r['net'] !== 'ok' || $r['status'] < 200 || $r['status'] >= 300) {
+            return null;
+        }
+        $d = $r['data']['data'] ?? [];
+        $cid = (string) ($d['relationships']['contact']['data']['id'] ?? '');
+        $miktar = 0.0;
+        foreach (($r['data']['included'] ?? []) as $i) {
+            $tip = (string) ($i['type'] ?? '');
+            if ($tip === 'contacts' && $cid === '') {
+                $cid = (string) ($i['id'] ?? '');
+            } elseif ($tip === 'stock_movements') {
+                $miktar += abs((float) ($i['attributes']['quantity'] ?? 0));
+            }
+        }
+        return ['contact_id' => $cid, 'miktar' => (int) round($miktar),
+            'despatch_no' => self::despatchNo($d)];
+    }
+
+    /**
+     * fable-080: Bir irsaliye belgesi GERÇEKTEN bu cariye mi ait? (liste yanıtı cari bilgisi
+     * vermiyor; TEK BELGE ucu veriyor — 14 Ağu'da ölçüldü.)
+     * @return bool|null true=bu cari · false=başka cari · null=okunamadı (KARAR VERME)
+     */
+    private function cariTeyit(string $docId, string $parasutId): ?bool
+    {
+        if ($docId === '' || $parasutId === '') {
+            return null;
+        }
+        $r = $this->cagir('GET', '/shipment_documents/' . rawurlencode($docId) . '?include=contact', null);
+        if ($r['net'] !== 'ok' || $r['status'] < 200 || $r['status'] >= 300) {
+            return null;
+        }
+        $d = $r['data']['data'] ?? [];
+        $cid = (string) ($d['relationships']['contact']['data']['id'] ?? '');
+        if ($cid === '') {
+            foreach (($r['data']['included'] ?? []) as $i) {
+                if (($i['type'] ?? '') === 'contacts') {
+                    $cid = (string) ($i['id'] ?? '');
+                    break;
+                }
+            }
+        }
+        return $cid === '' ? null : ($cid === $parasutId);
     }
 
     private static function despatchNo(array $doc): ?string

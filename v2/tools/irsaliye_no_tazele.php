@@ -22,6 +22,9 @@ declare(strict_types=1);
  *   php tools/irsaliye_no_tazele.php --tum      # sınırsız (geçmişi de tarar)
  *   php tools/irsaliye_no_tazele.php --limit=50 # en fazla 50 kayıt sor
  *
+ * fable-080: numara tazelemeden ÖNCE gün uzlaştırması koşar (Paraşüt'te kesilip
+ * Kokpit'e yazılamamış irsaliyeyi yakalar — mükerrer kesim kalkanı).
+ *
  * Cron: her 20 dakikada bir → docker exec uysatakip-v2 php /var/www/html/tools/irsaliye_no_tazele.php
  * Kill-switch: cron satırını sil (script tek başına zararsız, salt-okuma).
  */
@@ -50,6 +53,19 @@ foreach (array_slice($argv, 1) as $arg) {
 
 $pdo = Db::pdo();
 $repo = new Repo($pdo);
+
+// fable-080 (14 Ağu vakası): Paraşüt'te KESİLMİŞ ama Kokpit'e YAZILAMAMIŞ irsaliye kalabilir
+// (yanıt kaybolursa — o gün konteyner yeniden başladığı için CEOTHERM böyle kayboldu ve ekranda
+// "kesilmedi" göründü; tekrar basılsa MÜKERRER e-İrsaliye olacaktı). Numara tazelemeden ÖNCE
+// bugünü ve dünü uzlaştır: Paraşüt gerçeği neyse Kokpit onu bilsin.
+$uzlas = new ParasutYaz($repo);
+foreach ([date('Y-m-d'), date('Y-m-d', strtotime('-1 day'))] as $uGun) {
+    foreach ($uzlas->gunUzlastir($uGun) as $satir) {
+        echo "UZLAŞTIRMA: $satir
+";
+        uysa_audit('irsaliye_uzlastirma', 'cron', $uGun, $satir, 'local');
+    }
+}
 
 $gunden = $tum ? null : date('Y-m-d', strtotime('-' . $gun . ' day'));
 $eksik = $repo->despatchNosuEksikIrsaliyeler($gunden, $limit);

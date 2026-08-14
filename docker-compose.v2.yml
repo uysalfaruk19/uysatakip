@@ -8,9 +8,21 @@ services:
     restart: unless-stopped
     env_file: .env.v2
     depends_on: []
+    volumes:
+      # fable-023: Paraşüt kredensiyali şifreli dosyadan okunur; anahtar AYRI yolda (root, 400).
+      - /root/uysatakip/.parasut.enc:/run/secrets/parasut.enc:ro
+      - /root/.parasut.key:/run/secrets/parasut.key:ro
+      # fable-080: PHP oturumları KALICI. Eskiden konteyner içindeki /tmp'deydi; her
+      # `up --build` herkesi düşürüyordu (14 Ağu: Ömer irsaliye keserken oturumu düştü,
+      # "oturum doğrulaması başarısız" ile iş yarıda kaldı ve bir irsaliye Paraşüt'te
+      # kesilip Kokpit'e yazılamadı). Artık güncelleme oturumu bozmaz.
+      - uysatakip_sessions:/var/lib/php-sessions
     ports:
       - "127.0.0.1:8093:8080"
     networks: [uysanet]
+
+volumes:
+  uysatakip_sessions:
 
 networks:
   uysanet:
