@@ -349,7 +349,14 @@ require __DIR__ . '/partials/header.php';
                 <?php else: ?>
                   <tr><td><?= $kaynak === 'fatura' ? 'Fatura geliri' : 'Gelir' ?></td><td class="num">₺ <?= Helpers::money($k['gelir']) ?></td></tr>
                 <?php endif; ?>
-                  <tr><td>Gıda / işletme gideri</td><td class="num">− ₺ <?= Helpers::money($k['gider']) ?></td></tr>
+                  <?php // fable-077 (Ömer 2 kez sordu: "taşımada gıda gideri neden var?"): TAŞIMA
+                        // müşterisinde bu satırda GIDA YOKTUR — yemeği biz üretmiyoruz, alış zaten
+                        // ayrı satırda. Buradaki tutar genel işletme giderinin (yakıt, telefon, harç)
+                        // ciro oranıyla düşen payıdır. Etiket bunu söylemeliydi. ?>
+                  <tr>
+                    <td><?= $k['tasima'] ? 'Genel gider payı <span class="text-muted" style="font-size:11px">(ciro oranıyla)</span>' : 'Gıda / işletme gideri' ?></td>
+                    <td class="num">− ₺ <?= Helpers::money($k['gider']) ?></td>
+                  </tr>
                   <tr><td>Personel</td><td class="num">− ₺ <?= Helpers::money($k['personel']) ?></td></tr>
                   <tr style="border-top:2px solid var(--line-2)">
                     <td><strong>Net kâr</strong></td>
