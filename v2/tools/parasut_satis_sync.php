@@ -67,6 +67,36 @@ if ($kuru) {
 }
 
 $repo = new Repo(Db::pdo());
+
+// fable-076 (Ömer: "yeni müşteri eklediğimde otomatik senkron olsun") — ÖZ-ONARIM:
+// Müşteri kaydında oto-bağlama denenir; ama Ömer önce Kokpit'e müşteriyi ekleyip cariyi
+// SONRA Paraşüt'te açarsa o an aday yoktur ve bağ hiç kurulmaz. Senkron her koştuğunda
+// bağsız aktif müşteriler için tekrar dener → sıra ne olursa olsun kendini toparlar.
+// Yine KÖR BAĞLAMA YOK: tek aday varsa bağlar, birden çoksa dokunmaz ve raporlar.
+$otoBagli = [];
+$otoSecim = [];
+try {
+    $cariler = $repo->parasutCariListesi(static fn(): array => Parasut::contacts(), true);
+    // array_merge — "+" sayısal anahtarlarda ikinci diziyi YUTAR (taşıma müşterileri düşerdi).
+    $hepsi = array_merge($repo->listCustomersByCategory('uretim'), $repo->listCustomersByCategory('tasima'));
+    foreach ($hepsi as $c) {
+        $cid = (int) $c['id'];
+        if ($repo->parasutBagliMi($cid)) {
+            continue;
+        }
+        $s = $repo->parasutCariOtoBagla($cid, (string) $c['name'], $cariler);
+        if ($s['durum'] === 'baglandi') {
+            $otoBagli[] = $c['name'] . ' → ' . $s['ad'];
+            uysa_audit('parasut_cari_otobagla', 'cron', (string) $cid,
+                json_encode(['parasut_id' => $s['parasut_id'], 'ad' => $s['ad']], JSON_UNESCAPED_UNICODE), '');
+        } elseif ($s['durum'] === 'secim') {
+            $otoSecim[] = $c['name'] . ' (' . count($s['adaylar']) . ' aday)';
+        }
+    }
+} catch (\Throwable $e) {
+    fwrite(STDERR, 'uyarı: cari oto-bağlama atlandı (' . $e->getMessage() . ")\n");
+}
+
 // fable-049d: tedarikçi carileri (account_type=supplier) — bunlara kesilen fatura ALIŞ İADESİDİR.
 // Ağ hatası olursa iade tespiti ad eşleşmesine düşer (senkron durmaz).
 $tedContactIds = [];
@@ -90,6 +120,15 @@ printf("Paraşüt satış senkronu (%s): %d yeni · %d güncellendi · %d deği�
     number_format($sonuc['tutar'], 2, ',', '.'),
     $si['iade'] > 0 ? ' · ' . $si['iade'] . ' iade/iptal ATLANDI' : '',
     $si['atlanan'] > 0 ? ' · ' . $si['atlanan'] . ' fatura-dışı belge atlandı' : '');
+
+// fable-076: bu koşuda kurulan/kurulamayan cari bağları — sessiz kalma.
+if ($otoBagli) {
+    printf("🔗 %d müşteri Paraşüt carisine OTO-BAĞLANDI: %s\n", count($otoBagli), implode(' · ', $otoBagli));
+}
+if ($otoSecim) {
+    printf("❓ %d müşteride birden çok aday cari var, BAĞLANMADI (Müşteriler > kart > Paraşüt carisi): %s\n",
+        count($otoSecim), implode(' · ', $otoSecim));
+}
 
 // fable-049d: tedarikçiye kesilen fatura = ALIŞ İADESİ → gelire değil, gidere (negatif) yazıldı.
 if ((int) ($sonuc['alis_iadesi'] ?? 0) > 0) {
