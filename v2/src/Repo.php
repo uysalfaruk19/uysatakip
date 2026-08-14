@@ -821,6 +821,34 @@ final class Repo
      * @param string|null $gunden 'YYYY-MM-DD' (null = sınırsız)
      * @return array<int,array{id:int,customer_id:int,gun:string,parasut_doc_id:string}>
      */
+    /**
+     * fable-081: numarası boş kalmış KESİLMİŞ faturalar (Paraşüt'ten tazelenecekler).
+     * @return array<int,array{id:int,parasut_fatura_id:string}>
+     */
+    public function faturaNosuEksikler(int $limit = 100): array
+    {
+        $st = $this->pdo->query(
+            "SELECT id, parasut_fatura_id FROM parasut_fatura_log
+             WHERE durum = 'kesildi' AND (fatura_no IS NULL OR fatura_no = '')
+               AND parasut_fatura_id IS NOT NULL AND parasut_fatura_id <> ''
+             ORDER BY id DESC LIMIT " . max(1, $limit)
+        );
+        $out = [];
+        foreach ($st->fetchAll() as $r) {
+            $out[] = ['id' => (int) $r['id'], 'parasut_fatura_id' => (string) $r['parasut_fatura_id']];
+        }
+        return $out;
+    }
+
+    /** fable-081: bulunan fatura numarasını yaz (dolu numaranın üstüne YAZMAZ). */
+    public function faturaNosuYaz(int $id, string $no): void
+    {
+        $this->pdo->prepare(
+            "UPDATE parasut_fatura_log SET fatura_no = ?
+             WHERE id = ? AND (fatura_no IS NULL OR fatura_no = '')"
+        )->execute([$no, $id]);
+    }
+
     public function despatchNosuEksikIrsaliyeler(?string $gunden = null, int $limit = 200): array
     {
         $sql = "SELECT id, customer_id, gun, parasut_doc_id FROM parasut_irsaliye_log

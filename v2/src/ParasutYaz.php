@@ -966,6 +966,41 @@ final class ParasutYaz
      * @param array<int,array{id:int,parasut_doc_id:string}> $kayitlar
      * @return array{tarandi:int,bulundu:int,bos:int,hata:int}
      */
+    /**
+     * fable-081 (14 Ağu): FATURA numarası da kesim anında boş kalıyor (irsaliyedeki desenin
+     * aynısı — numara Paraşüt'te birkaç saniye sonra doğuyor, log'a NULL yazılıyordu).
+     * 2. hafta kesiminde 12 faturanın numarası elle dolduruldu; bir daha elle yapılmasın.
+     * SALT-OKUMA + yerel UPDATE; Paraşüt'e hiçbir şey yazmaz, dolu numaranın üstüne yazmaz.
+     * @return array{tarandi:int,bulundu:int,bos:int,hata:int}
+     */
+    public function faturaNolariTazele(int $enFazla = 100): array
+    {
+        $s = ['tarandi' => 0, 'bulundu' => 0, 'bos' => 0, 'hata' => 0];
+        foreach ($this->repo->faturaNosuEksikler($enFazla) as $r) {
+            $s['tarandi']++;
+            $fid = trim((string) ($r['parasut_fatura_id'] ?? ''));
+            if ($fid === '') {
+                $s['hata']++;
+                continue;
+            }
+            $q = $this->cagir('GET', '/sales_invoices/' . rawurlencode($fid), null);
+            if ($q['net'] !== 'ok' || $q['status'] < 200 || $q['status'] >= 300) {
+                $s['hata']++;
+                usleep(800000);
+                continue;
+            }
+            $no = trim((string) ($q['data']['data']['attributes']['invoice_no'] ?? ''));
+            if ($no === '') {
+                $s['bos']++;
+            } else {
+                $this->repo->faturaNosuYaz((int) $r['id'], $no);
+                $s['bulundu']++;
+            }
+            usleep(800000);   // irsaliye tazelemesiyle aynı hız sınırı disiplini
+        }
+        return $s;
+    }
+
     public function despatchNolariTazele(array $kayitlar, int $enFazla = 200): array
     {
         $sonuc = ['tarandi' => 0, 'bulundu' => 0, 'bos' => 0, 'hata' => 0];

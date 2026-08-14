@@ -67,6 +67,18 @@ foreach ([date('Y-m-d'), date('Y-m-d', strtotime('-1 day'))] as $uGun) {
     }
 }
 
+// fable-081: FATURA numarasi da kesim aninda bos kaliyor (irsaliyedeki desenin aynisi).
+// 14 Agu 2. hafta kesiminde 12 fatura numarasi elle dolduruldu — bir daha elle yapilmasin.
+$fr = (new ParasutYaz($repo))->faturaNolariTazele(100);
+if ($fr['bulundu'] > 0 || $fr['hata'] > 0) {
+    printf("Fatura no: tarandi %d · bulundu %d · hala bos %d · hata %d
+",
+        $fr['tarandi'], $fr['bulundu'], $fr['bos'], $fr['hata']);
+    if ($fr['bulundu'] > 0) {
+        uysa_audit('fatura_no_tazele', 'cron', date('Y-m-d'), json_encode($fr, JSON_UNESCAPED_UNICODE), 'local');
+    }
+}
+
 $gunden = $tum ? null : date('Y-m-d', strtotime('-' . $gun . ' day'));
 $eksik = $repo->despatchNosuEksikIrsaliyeler($gunden, $limit);
 
