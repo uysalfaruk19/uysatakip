@@ -357,11 +357,14 @@ final class Repo
         if ($m === $c) {
             return 3;
         }
-        if (str_starts_with($c, $m) || str_starts_with($m, $c)) {
+        // 4 harften kısa ad TESADÜFEN ön-ek olur ("AK" → "AKILLI ÇÖZÜMLER", "ER" → "ER METAL").
+        // Kısa adda oto-bağlama YAPILMAZ; kart üzerinden elle seçilir (yanlış bağ = başkasının
+        // faturasını bu müşteriye yazmak demektir).
+        $kisa = mb_strlen($m) < 4 || mb_strlen($c) < 4;
+        if (!$kisa && (str_starts_with($c, $m) || str_starts_with($m, $c))) {
             return 2;
         }
-        // 4 harften kısa parçada "içeriyor" tesadüfi olur (ör. "er" → "ermetal" değil).
-        if (mb_strlen($m) >= 4 && (str_contains($c, $m) || str_contains($m, $c))) {
+        if (!$kisa && (str_contains($c, $m) || str_contains($m, $c))) {
             return 1;
         }
         return 0;
