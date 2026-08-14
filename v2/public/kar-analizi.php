@@ -241,6 +241,27 @@ require __DIR__ . '/partials/header.php';
           <div class="gt-pulse-n gizli" id="gida-rakam"><?= $gida['kisi_basi'] > 0 ? '₺' . Helpers::money($gida['kisi_basi']) : '—' ?></div>
           <div class="gt-pulse-l">1 kişilik gıda maliyeti <i class="bi bi-chevron-down chev"></i></div>
         </div>
+        <?php // fable-079 (Ömer, 14 Ağu: "uyarıyı koy"): gıda haritasında OLMAYAN tedarikçi
+              // maliyeti SESSİZCE düşük gösterir (YOPA ₺18.871 böyle kaçmıştı). Karar verilmemiş
+              // her tedarikçi burada görünür; "gıda değil" işaretlenenler bir daha çıkmaz.
+              $gidaEksik = $repo->gidaHaritasiEksik($month);
+              $gidaEksikTutar = array_sum(array_column($gidaEksik, 'tutar')); ?>
+        <?php if ($gidaEksik): ?>
+        <div class="row-meta" style="margin-top:8px;color:var(--red);line-height:1.5">
+          <i class="bi bi-exclamation-triangle-fill"></i>
+          <strong><?= count($gidaEksik) ?> tedarikçi</strong> gıda haritasında yok
+          (₺<?= Helpers::money($gidaEksikTutar) ?>) — <strong>bu tutar kişi başı maliyete GİRMİYOR</strong>.
+          Gıdaysa eşleştir, değilse "Gıda değil" işaretle ki bir daha sorulmasın:
+          <div style="margin-top:5px">
+            <?php $ge = [];
+            foreach (array_slice($gidaEksik, 0, 5) as $e) { $ge[] = $e['ad'] . ' ₺' . Helpers::money($e['tutar']); }
+            echo Helpers::e(implode(' · ', $ge));
+            if (count($gidaEksik) > 5) { echo ' · +' . (count($gidaEksik) - 5); } ?>
+          </div>
+          <a class="btn-action btn-ghost" style="margin-top:6px" href="tedarikci-eslestirme.php?ay=<?= Helpers::e($month) ?>">
+            Tedarikçi eşleştirmeye git <i class="bi bi-arrow-right"></i></a>
+        </div>
+        <?php endif; ?>
         <?php if ($gida['kirilimlar']): ?>
         <div id="gida-kirilim" style="display:none;margin-top:6px">
           <div class="gt-pulse-l" style="margin-bottom:6px">gıda alımları ₺<?= Helpers::money($gida['toplam']) ?> · üretim <?= number_format($gida['kisi_toplam'], 0, ',', '.') ?> kişi</div>

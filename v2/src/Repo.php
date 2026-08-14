@@ -6616,6 +6616,44 @@ final class Repo
      * Tedarikçi → gıda kırılım eşlemesi. Sadece kaydı olanlar döner (satır yok = gıda costu DIŞI).
      * @return array<string,?string> normAnahtar → kirilim_kod (null olabilir = yine gıda costu dışı)
      */
+    /** fable-079: "gıda değil, bilerek dışarıda" işareti (kırılım kodu değil, karar kaydı). */
+    public const GIDA_HARIC = '_haric';
+
+    /**
+     * fable-079 (Ömer, 14 Ağu — "uyarıyı koy"): kişi başı gıda maliyeti SESSİZCE eksik çıkmasın.
+     *
+     * O ay gider faturası olan ama gıda haritasında HİÇ kaydı olmayan tedarikçileri döndürür.
+     * Bunlar ne gıda sayılıyor ne de "gıda değil" işaretli — yani kimse karar VERMEMİŞ.
+     * YOPA vakası tam buydu: gıda tedarikçisiydi, haritada yoktu, maliyet ₺10.561 eksik çıkıyordu
+     * ve bunu ancak tesadüfen fark ettik.
+     *
+     * '_haric' işaretliler BURAYA GİRMEZ — yakıt/kira/telefon bir kez işaretlenince susar.
+     * @return array<int,array{ad:string,tutar:float,adet:int}> tutara göre azalan
+     */
+    public function gidaHaritasiEksik(string $ay): array
+    {
+        $map = $this->tedarikciGidaMap();   // anahtar => kod ('_haric' dahil)
+        $st = $this->pdo->prepare(
+            "SELECT t.source, t.category, t.description, t.amount, s.name AS supplier_name
+             FROM transactions t LEFT JOIN suppliers s ON s.id = t.supplier_id
+             WHERE t.type = 'gider' AND substr(t.tx_date,1,7) = ?
+               AND (t.category IS NULL OR t.category NOT IN ('Personel', 'Taşıma alış'))"
+        );
+        $st->execute([$ay]);
+        $out = [];
+        foreach ($st->fetchAll() as $r) {
+            $ad = $this->txFirma($r);
+            if (isset($map[self::normTedarikci($ad)])) {
+                continue;   // gıda kırılımı VAR ya da '_haric' işaretli → karar verilmiş
+            }
+            $out[$ad] ??= ['ad' => $ad, 'tutar' => 0.0, 'adet' => 0];
+            $out[$ad]['tutar'] += (float) $r['amount'];
+            $out[$ad]['adet']++;
+        }
+        usort($out, static fn(array $a, array $b): int => $b['tutar'] <=> $a['tutar']);
+        return array_values($out);
+    }
+
     public function tedarikciGidaMap(): array
     {
         $out = [];
@@ -6637,7 +6675,11 @@ final class Repo
         }
         if ($kirilimKod !== null && $kirilimKod !== '') {
             $valid = array_column($this->gidaKirilimlar(), 'kod');
-            if (!in_array($kirilimKod, $valid, true)) {
+            // fable-079: '_haric' = "gıda DEĞİL, bilerek dışarıda" işareti. Kırılım listesinde
+            // yoktur (gidaCostOzet onu adMap'te bulamayıp doğal olarak hesaba katmaz) ama
+            // kaydı DURUR — böylece "karar verilmemiş" ile "gıda değil" ayrılır ve eksik
+            // uyarısı yakıt/kira gibi kalemler için gürültü yapmaz.
+            if (!in_array($kirilimKod, $valid, true) && $kirilimKod !== self::GIDA_HARIC) {
                 $kirilimKod = null;
             }
         } else {

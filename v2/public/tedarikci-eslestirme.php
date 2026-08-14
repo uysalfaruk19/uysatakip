@@ -146,7 +146,12 @@ require __DIR__ . '/partials/header.php';
                   <div class="field" style="margin-bottom:8px;max-width:320px">
                     <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Gıda kırılımı</label>
                     <select class="selectx" name="gida_kirilim" style="width:100%">
-                      <option value="" <?= $gsel === null ? 'selected' : '' ?>>Gıda costuna girmez</option>
+                      <?php // fable-079: "karar verilmedi" (boş) ile "gıda DEĞİL" (_haric) ayrı şeyler.
+                            // Boş kalan tedarikçi Kâr/Zarar'da UYARI üretir — gıda tedarikçisi
+                            // haritaya girmeyi unutulursa maliyet sessizce düşük çıkmasın diye.
+                            // '_haric' seçilince o tedarikçi bir daha uyarı vermez. ?>
+                      <option value="" <?= $gsel === null ? 'selected' : '' ?>>— karar verilmedi (uyarır) —</option>
+                      <option value="<?= Repo::GIDA_HARIC ?>" <?= $gsel === Repo::GIDA_HARIC ? 'selected' : '' ?>>Gıda değil — hesaba girmesin (uyarma)</option>
                       <?php foreach ($gidaKirilimlar as $gk): ?>
                         <option value="<?= Helpers::e($gk['kod']) ?>" <?= $gsel === $gk['kod'] ? 'selected' : '' ?>><?= Helpers::e($gk['ad']) ?></option>
                       <?php endforeach; ?>
