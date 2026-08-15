@@ -252,7 +252,8 @@ require __DIR__ . '/partials/header.php';
           <table class="tablex"><tbody>
             <?php $pOran = (float) ($ka['personel_oran'] ?? 1.0); ?>
             <tr><td>Personel (işveren maliyeti)<?= $pOran < 0.999
-                ? ' <span class="text-muted" style="font-size:11px">· ayın %' . number_format($pOran * 100, 0) . ''i (faturalanan döneme oranlandı)</span>'
+                ? ' <span class="text-muted" style="font-size:11px">· ayın %'
+                  . number_format($pOran * 100, 0) . '&#39;i (faturalanan döneme oranlandı)</span>'
                 : '' ?></td>
               <td class="num">₺ <?= Helpers::money($ka['uretim']['personel'] + $ka['tasima']['personel']) ?></td></tr>
             <tr><td>Gıda / işletme giderleri (bize kesilen faturalar)</td><td class="num">₺ <?= Helpers::money($ka['uretim']['gider'] + $ka['tasima']['gider']) ?></td></tr>
