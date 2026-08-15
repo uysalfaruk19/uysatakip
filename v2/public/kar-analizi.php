@@ -220,8 +220,58 @@ require __DIR__ . '/partials/header.php';
           <div class="gt-pulse-l">net kâr · marj <?= marj_pct($ka['toplam_marj']) ?></div>
         </div>
         <div class="gt-scale">
-          <div class="row"><span class="gl">Gelir ₺<?= Helpers::money($ka['toplam_gelir']) ?></span><span class="gd">Gider ₺<?= Helpers::money($gider) ?></span></div>
+          <?php // fable-083 (Ömer, 15 Ağu): "gelir ve gidere tıklayınca nabzın detayları açılsın."
+                // Gelir NEDEN o kadar, gider NEYDEN oluşuyor — rakamın kaynağı tek tıkla görünür. ?>
+          <div class="row">
+            <span class="gl tap-rakam" role="button" tabindex="0" onclick="toggleKart('nabiz-gelir')"
+                  style="cursor:pointer">Gelir ₺<?= Helpers::money($ka['toplam_gelir']) ?> <i class="bi bi-chevron-down" style="font-size:10px"></i></span>
+            <span class="gd tap-rakam" role="button" tabindex="0" onclick="toggleKart('nabiz-gider')"
+                  style="cursor:pointer">Gider ₺<?= Helpers::money($gider) ?> <i class="bi bi-chevron-down" style="font-size:10px"></i></span>
+          </div>
           <div class="gt-track deficit"><div class="gt-fill left" style="width: <?= $scalePct ?>%"></div></div>
+        </div>
+
+        <div id="nabiz-gelir-detay" style="display:none;margin-top:10px">
+          <table class="tablex"><tbody>
+            <tr><td>Üretim müşterilerine kesilen faturalar</td><td class="num">₺ <?= Helpers::money($ka['uretim']['gelir']) ?></td></tr>
+            <tr><td>Taşıma müşterilerine kesilen faturalar</td><td class="num">₺ <?= Helpers::money($ka['tasima']['satis']) ?></td></tr>
+            <?php if (($ka['eslesmemis_gelir'] ?? 0) > 0): ?>
+            <tr><td>Kokpit müşterisi olmayan carilere kesilen</td><td class="num">₺ <?= Helpers::money((float) $ka['eslesmemis_gelir']) ?></td></tr>
+            <?php endif; ?>
+            <tr style="border-top:2px solid var(--line-2)"><td><strong>Toplam gelir</strong></td>
+              <td class="num"><strong>₺ <?= Helpers::money($ka['toplam_gelir']) ?></strong></td></tr>
+          </tbody></table>
+          <p class="row-meta" style="margin-top:6px"><i class="bi bi-receipt"></i>
+            <?= $kaynak === 'fatura'
+                ? 'Kaynak: <strong>bizim kestiğimiz satış faturaları</strong> (KDV hariç), faturanın kapsadığı döneme göre.'
+                : 'Kaynak: <strong>üretim tahakkuku</strong> (kişi × fiyat) — henüz faturalanmamışlar da dahil.' ?></p>
+        </div>
+
+        <div id="nabiz-gider-detay" style="display:none;margin-top:10px">
+          <?php // Gider = gelir − net. Kalemleri karnedeki paylarla BİREBİR aynı kaynaktan gelir. ?>
+          <table class="tablex"><tbody>
+            <?php $pOran = (float) ($ka['personel_oran'] ?? 1.0); ?>
+            <tr><td>Personel (işveren maliyeti)<?= $pOran < 0.999
+                ? ' <span class="text-muted" style="font-size:11px">· ayın %' . number_format($pOran * 100, 0) . ''i (faturalanan döneme oranlandı)</span>'
+                : '' ?></td>
+              <td class="num">₺ <?= Helpers::money($ka['uretim']['personel'] + $ka['tasima']['personel']) ?></td></tr>
+            <tr><td>Gıda / işletme giderleri (bize kesilen faturalar)</td><td class="num">₺ <?= Helpers::money($ka['uretim']['gider'] + $ka['tasima']['gider']) ?></td></tr>
+            <?php if ($ka['tasima']['alis'] > 0): ?>
+            <tr><td>Taşıma alışı (satın alınan yemek)</td><td class="num">₺ <?= Helpers::money($ka['tasima']['alis']) ?></td></tr>
+            <?php endif; ?>
+            <?php if ($ka['tasima']['sabit'] > 0): ?>
+            <tr><td>Taşıma sabit gideri</td><td class="num">₺ <?= Helpers::money($ka['tasima']['sabit']) ?></td></tr>
+            <?php endif; ?>
+            <?php if ($ka['dagitilmamis'] > 0): ?>
+            <tr><td>Dağıtılmamış <span class="text-muted" style="font-size:11px">(hiçbir müşteriye atanmamış personel/gider)</span></td>
+              <td class="num">₺ <?= Helpers::money($ka['dagitilmamis']) ?></td></tr>
+            <?php endif; ?>
+            <tr style="border-top:2px solid var(--line-2)"><td><strong>Toplam gider</strong></td>
+              <td class="num"><strong>₺ <?= Helpers::money($gider) ?></strong></td></tr>
+          </tbody></table>
+          <p class="row-meta" style="margin-top:6px"><i class="bi bi-info-circle"></i>
+            Gider yalnız <strong>bize kesilen faturalar değildir</strong> — personel maliyeti de buraya girer
+            (fatura gelmez, bordrodan gelir). En büyük kalem genelde personeldir.</p>
         </div>
         <div class="gt-mini">
           <div><div class="gt-mn <?= $ka['uretim']['net'] < 0 ? 'bad' : 'ok' ?>">₺<?= number_format(round($ka['uretim']['net']), 0, ',', '.') ?></div><div class="gt-ml">Üretim kârı</div></div>

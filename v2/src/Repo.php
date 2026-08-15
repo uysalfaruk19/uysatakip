@@ -5786,10 +5786,25 @@ final class Repo
      *   - genel: o ay üretim HACMİNE (production.persons) oranlı tüm üretim müşterilerine.
      *     Hacim 0 ise aktif üretim müşterilerine eşit; üretim müşterisi yoksa dağıtılmamış.
      *   - atama yok: dağıtılmamış.
-     * @return array{per_customer:array<int,float>,dagitilmamis:float,toplam:float}
+     *
+     * fable-083 (Ömer, 15 Ağu — "gider neye göre yapılmış?"): $sonTarih verilirse personel
+     * maliyeti O GÜNE KADAR ORANLANIR. Şart: fatura bazlı kâr/zararda gelir ve gider faturaları
+     * zaten kapsam gününe kırpılıyor (fable-048); personel kırpılmadığı için 14 GÜNLÜK GELİRE
+     * 31 GÜNLÜK MAAŞ biniyordu ve kâr suni olarak DÜŞÜK çıkıyordu (Ağustos: net 54.023 →
+     * oranlanınca 334.909). null = eski davranış (tam ay) — üretim modu ve diğer çağrılar aynen.
+     * @return array{per_customer:array<int,float>,dagitilmamis:float,toplam:float,oran:float}
      */
-    public function personelDagitim(string $ay): array
+    public function personelDagitim(string $ay, ?string $sonTarih = null): array
     {
+        // Gün oranı: kapsanan gün / ayın gün sayısı. Ay sonu ya da null ise 1.0 (kırpma yok).
+        $oran = 1.0;
+        if ($sonTarih !== null && preg_match('/^\d{4}-\d{2}-\d{2}$/', $sonTarih)) {
+            $ayGun = (int) date('t', (int) strtotime($ay . '-01'));
+            $kapsananGun = (int) substr($sonTarih, 8, 2);
+            if (substr($sonTarih, 0, 7) === $ay && $ayGun > 0 && $kapsananGun > 0 && $kapsananGun < $ayGun) {
+                $oran = $kapsananGun / $ayGun;
+            }
+        }
         // Üretim hacmi (o ay production.persons) ve toplam
         $uretimVol = [];
         $totalVol = 0.0;
@@ -5808,7 +5823,7 @@ final class Repo
         $toplam = 0.0;
         foreach ($this->listPersonel() as $p) {
             $pid = (int) $p['id'];
-            $yuklu = $this->personelYukluMaliyet($pid, $ay)['yuklu_toplam'];
+            $yuklu = $this->personelYukluMaliyet($pid, $ay)['yuklu_toplam'] * $oran;
             $toplam += $yuklu;
             if ($yuklu <= 0) {
                 continue;
@@ -5856,7 +5871,8 @@ final class Repo
                 $dagitilmamis += $yuklu;
             }
         }
-        return ['per_customer' => $per, 'dagitilmamis' => $dagitilmamis, 'toplam' => $toplam];
+        return ['per_customer' => $per, 'dagitilmamis' => $dagitilmamis,
+            'toplam' => $toplam, 'oran' => $oran];
     }
 
     /**
@@ -7715,7 +7731,8 @@ final class Repo
         // Ömer 7 günde bir kesiyor; kapsam_son = son faturanın kapsadığı gün.
         $kapsam = $fatura['kapsam_son'] ?? null;
         $giderD = $this->giderDagitim($ay, $kapsam);
-        $persD = $this->personelDagitim($ay);
+        // fable-083: personel de AYNI kapsama oranlanır — yoksa 14 günlük gelire 31 günlük maaş biner.
+        $persD = $this->personelDagitim($ay, $kapsam);
         $giderMap = $giderD['per_customer'];
         $persMap = $persD['per_customer'];
         $faturaMap = $fatura['per_customer'];
@@ -7808,6 +7825,8 @@ final class Repo
             'faturasiz_musteri' => $faturasizMusteri,
             'fatura' => $fatura,
             'eslesmemis_gelir' => $eslesmemis,
+            // fable-083: personel hangi oranla alındı (ekran "yarım ay maaşı" olduğunu yazsın)
+            'personel_oran' => (float) ($persD['oran'] ?? 1.0),
         ];
     }
 
