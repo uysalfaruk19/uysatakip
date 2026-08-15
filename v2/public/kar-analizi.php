@@ -474,7 +474,7 @@ require __DIR__ . '/partials/header.php';
                 <span class="text-muted" style="font-size:12px"><?= $kaynak === 'fatura'
                     ? ((int) $k['fatura_adedi']) . ' fatura'
                     : 'tahakkuk (üretim) hesabı' ?></span>
-                <a class="btn-action btn-ghost" href="rapor.php?musteri=<?= (int) $k['id'] ?>&ay=<?= $month ?>&geri=kar">Detay<?= $donem === 'yil' ? ' · ' . Helpers::e(ay_label_tr($month)) : '' ?> <i class="bi bi-arrow-right"></i></a>
+                <a class="btn-action btn-ghost" href="rapor.php?musteri=<?= (int) $k['id'] ?>&ay=<?= $month ?>&geri=kar&kaynak=<?= Helpers::e($kaynak) ?>">Detay<?= $donem === 'yil' ? ' · ' . Helpers::e(ay_label_tr($month)) : '' ?> <i class="bi bi-arrow-right"></i></a>
               </div>
             </div>
           </details>

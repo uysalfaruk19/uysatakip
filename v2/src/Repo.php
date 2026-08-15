@@ -7340,6 +7340,38 @@ final class Repo
      * $giderMap / $persMap verilirse yeniden hesaplanmaz (karAnalizi toplu çağrı için).
      * @return array{category,ciro,alis,sabit,pay_gider,pay_personel,net}
      */
+    /**
+     * fable-084 (Ömer, 15 Ağu: "başka mantıksal hata var mı" → denetimde çıktı):
+     * Müşteri detay sayfası ile Kâr/Zarar karnesi AYNI müşteri için FARKLI net gösteriyordu
+     * (Ağustos TALAY: karne 123.622 vs detay 234.229). Sebep: karne fatura bazlı + döneme
+     * kırpılmış, detay ise ESKİ hesabı (üretim tahakkuku + kırpılmamış gider/personel)
+     * kullanıyordu. Ömer karneden "Detay"a tıklayınca hangi rakamın doğru olduğu belirsizdi.
+     *
+     * Bu metot kâr satırını KARNENİN TA KENDİSİNDEN çeker — sapma matematiksel olarak imkânsız.
+     * Müşteri o ay karnede yoksa (faturası kesilmemiş) null döner; çağıran eski hesaba düşebilir.
+     * @return array{category:string,ciro:float,alis:float,sabit:float,pay_gider:float,pay_personel:float,net:float,marj:float}|null
+     */
+    public function musteriKarSatiri(int $customerId, string $ay, ?string $kaynak = null): ?array
+    {
+        $k = $this->karAnaliziKaynak($ay, $kaynak);
+        foreach ($k['uretim']['rows'] as $r) {
+            if ((int) $r['customer_id'] === $customerId) {
+                return ['category' => 'uretim', 'ciro' => (float) $r['gelir'], 'alis' => 0.0, 'sabit' => 0.0,
+                    'pay_gider' => (float) $r['gider'], 'pay_personel' => (float) $r['personel'],
+                    'net' => (float) $r['net'], 'marj' => (float) $r['marj']];
+            }
+        }
+        foreach ($k['tasima']['rows'] as $r) {
+            if ((int) $r['customer_id'] === $customerId) {
+                return ['category' => 'tasima', 'ciro' => (float) $r['satis'], 'alis' => (float) $r['alis'],
+                    'sabit' => (float) $r['sabit'], 'pay_gider' => (float) $r['gider'],
+                    'pay_personel' => (float) $r['personel'], 'net' => (float) $r['net'],
+                    'marj' => (float) $r['marj']];
+            }
+        }
+        return null;
+    }
+
     public function customerNetKarlilik(int $customerId, string $ay, ?array $giderMap = null, ?array $persMap = null): array
     {
         $payGider = ($giderMap ?? $this->giderDagitim($ay)['per_customer'])[$customerId] ?? 0.0;

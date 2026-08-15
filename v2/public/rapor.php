@@ -21,6 +21,13 @@ $geriKar = ($_GET['geri'] ?? '') === 'kar';
 $geriUrl = $geriKar ? 'kar-analizi.php?ay=' . rawurlencode((string) ($_GET['ay'] ?? '')) : null;
 $geriEtiket = $geriKar ? 'Kâr analizine dön' : 'Rapora dön';
 $drill = $drillId ? $repo->customer($drillId) : null;
+// fable-084 (Ömer, 15 Ağu denetimi): bu sayfadaki net kâr, Kâr/Zarar KARNESİYLE AYNI olmalı.
+// Eskiden burası üretim tahakkuku + kırpılmamış gider/personel kullanıyordu; karne ise fatura
+// bazlı + döneme kırpılmış. Aynı müşteri iki ekranda FARKLI kâr gösteriyordu (Ağustos TALAY:
+// 123.622 vs 234.229). Artık kâr satırı doğrudan karneden çekilir; karnede yoksa (faturası
+// kesilmemiş) eski hesaba düşülür ve bu ekranda AÇIKÇA yazılır.
+$karKaynak = (string) ($_GET['kaynak'] ?? '');
+$karSatir = $drillId ? $repo->musteriKarSatiri($drillId, $month, $karKaynak !== '' ? $karKaynak : null) : null;
 
 $pageTitle = $drill ? $drill['name'] : 'Kâr / Zarar';
 $eyebrow = $drill ? ('Müşteri raporu · ' . ay_label_tr($month)) : ay_label_tr($month);
@@ -38,9 +45,14 @@ if ($drill) {
         $brut = (float) $t['brut'];
         $net = (float) $t['net'];
         $trend = $repo->customerMonthlyProfit($drillId);
-        $nk = $repo->customerNetKarlilik($drillId, $month);
+        $nk = $karSatir ?? $repo->customerNetKarlilik($drillId, $month);
         ?>
         <a class="btn-action btn-ghost" href="<?= Helpers::e($geriUrl ?? ('rapor.php?ay=' . $month)) ?>"><i class="bi bi-arrow-left"></i> <?= Helpers::e($geriEtiket) ?></a>
+        <?php if ($karSatir === null): // fable-084: karnede yok → eski hesap; sessiz kalma ?>
+        <p class="row-meta" style="margin:6px 0;color:var(--red)"><i class="bi bi-exclamation-triangle"></i>
+          Bu müşterinin <?= Helpers::e(ay_label_tr($month)) ?> faturası henüz kesilmedi — aşağıdaki net kâr
+          <strong>üretim tahakkukundan</strong> hesaplandı, Kâr/Zarar karnesindeki rakamla aynı olmayabilir.</p>
+        <?php endif; ?>
         <div class="summary-grid">
           <div class="summary-card tint-orange"><p class="label">Adet (bu ay, Bugün sayımı)</p><p class="metric"><?= number_format($adet, 0, ',', '.') ?></p></div>
           <div class="summary-card tint-blue"><p class="label">Birim alış / satış</p><p class="metric small">₺ <?= Helpers::money((float) $t['alis']) ?> / ₺ <?= Helpers::money((float) $t['satis']) ?></p></div>
@@ -82,7 +94,7 @@ if ($drill) {
         // ÜRETİM: gün gün öğün kırılımı — fable-020: haftalık gruplu + eksik gün görünür
         $grid = $repo->customerWeeklyGrid($drillId, $month);
         $sumKisi = $grid['kisi']; $sumTutar = $grid['tutar'];
-        $nk = $repo->customerNetKarlilik($drillId, $month);
+        $nk = $karSatir ?? $repo->customerNetKarlilik($drillId, $month);
         // fable-020: bar grafik + boş durum için kayıtlı günleri düzleştir (kaynak = weekly grid)
         $recordedDays = []; $barMax = 0;
         foreach ($grid['weeks'] as $wk) {
@@ -95,6 +107,11 @@ if ($drill) {
         $missingCount = (int) $grid['missing'];
         ?>
         <a class="btn-action btn-ghost" href="<?= Helpers::e($geriUrl ?? ('rapor.php?ay=' . $month)) ?>"><i class="bi bi-arrow-left"></i> <?= Helpers::e($geriEtiket) ?></a>
+        <?php if ($karSatir === null): // fable-084: karnede yok → eski hesap; sessiz kalma ?>
+        <p class="row-meta" style="margin:6px 0;color:var(--red)"><i class="bi bi-exclamation-triangle"></i>
+          Bu müşterinin <?= Helpers::e(ay_label_tr($month)) ?> faturası henüz kesilmedi — aşağıdaki net kâr
+          <strong>üretim tahakkukundan</strong> hesaplandı, Kâr/Zarar karnesindeki rakamla aynı olmayabilir.</p>
+        <?php endif; ?>
         <div class="summary-grid">
           <div class="summary-card tint-orange"><p class="label">Ay toplam kişi</p><p class="metric"><?= number_format($sumKisi, 0, ',', '.') ?></p></div>
           <div class="summary-card tint-green"><p class="label">Ay cirosu</p><p class="metric">₺ <?= Helpers::money($sumTutar) ?></p></div>
