@@ -17,7 +17,9 @@ use PDO;
  */
 class Push
 {
-    public const KINDS = ['menu', 'talep_cevap', 'talep_yeni', 'siparis', 'reminder', 'manuel'];
+    // fable-085: 'kritik' = gün sonu irsaliye uyarısı gibi, sessiz saatte bile geçmesi
+    // gereken bildirimler. Listede yoksa log'a 'manuel' diye düşüyordu (tür kayboluyordu).
+    public const KINDS = ['menu', 'talep_cevap', 'talep_yeni', 'siparis', 'reminder', 'manuel', 'kritik'];
     public const DEAD_REASONS = ['BadDeviceToken', 'Unregistered', 'ExpiredToken'];
 
     private PDO $pdo;
