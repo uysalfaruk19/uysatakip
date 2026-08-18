@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * fable-086 (Ömer, 18 Ağu): "13:00'te hatırlatma, 23:00'te hâlâ kesilmediyse OTOMATİK kessin."
+ * fable-086 (Ömer, 18 Ağu): "13:00'te hatırlatma, 16:00'da hâlâ kesilmediyse OTOMATİK kessin."
  *
  * ⚠️ Bu script GERİ DÖNÜLMEZ iş yapar: e-İrsaliye GİB'e gider, iptali ayrı bir süreçtir.
  * Standart kural "geri dönülmez katmana otomatik müdahale yok" idi; Ömer 18 Ağu'da bilerek
@@ -16,11 +16,11 @@ declare(strict_types=1);
  *   4) Şalter: ayar `irsaliye_oto_kesim` = 0 yapılırsa hiç kesmez (kill-switch).
  *   5) Sonuç HER HÂLDE bildirilir — kesilen de, kesilemeyen de push olarak düşer.
  *
- * NOT (Ömer'e söylendi): 23:00'te kesilen belge sevk saatini 23:00 taşır; yemek öğlen
- * sevk edilmiş olsa da belge o saatte düzenlenmiş görünür.
+ * SAAT NOTU: Ömer önce 23:00 dedi, sonra 16:00'ya çekti — belgenin sevk saati gerçek
+ * sevkiyata daha yakın olsun ve müdahale için 13:00 hatırlatmasından sonra 3 saat kalsın.
  *
  * Kullanım:  php tools/irsaliye_oto_kes.php [--kuru]
- * Cron (host UTC; TR 23:00 = UTC 20:00):
+ * Cron (host UTC; TR 16:00 = UTC 13:00):
  *   0 20 * * * root docker exec uysatakip-v2 php /var/www/html/tools/irsaliye_oto_kes.php
  */
 
