@@ -185,7 +185,9 @@ class Push
         $res = ['sent' => 0, 'dead' => 0, 'failed' => 0, 'devices' => count($tokens), 'suppressed' => false];
 
         // Sessiz saat: OLAY bildirimleri bastırılır (manuel = bildirim.php muaf).
-        if ($kind !== 'manuel' && $this->inQuietHours()) {
+        // fable-085: 'kritik' de MUAF — gün sonu irsaliye uyarısı 23:00'te düşer ve sessiz
+        // saate (21:00–07:00) denk gelir; bastırılırsa uyarının hiçbir anlamı kalmaz.
+        if (!in_array($kind, ['manuel', 'kritik'], true) && $this->inQuietHours()) {
             $res['suppressed'] = true;
             $this->log($kind, $customerId, $userId, $ref, $title, $body, 0, 0, true);
             return $res;
