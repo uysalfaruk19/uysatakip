@@ -21,7 +21,7 @@ declare(strict_types=1);
  *
  * Kullanım:  php tools/irsaliye_oto_kes.php [--kuru]
  * Cron (host UTC; TR 16:00 = UTC 13:00):
- *   0 20 * * * root docker exec uysatakip-v2 php /var/www/html/tools/irsaliye_oto_kes.php
+ *   0 13 * * * root docker exec uysatakip-v2 php /var/www/html/tools/irsaliye_oto_kes.php
  */
 
 if (PHP_SAPI !== 'cli') {
