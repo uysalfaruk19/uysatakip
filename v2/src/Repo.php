@@ -671,6 +671,60 @@ final class Repo
      *   durum:string,hata_mesaj?:?string,tasiyici_ok?:bool,entered_by?:string} $d
      * @return bool yazıldı mı (false = zaten 'kesildi', dokunulmadı)
      */
+    // ── fable-087: BİLDİRİM OKUMA (Ömer, 19 Ağu: "girince okuyacak yer yok") ──────────
+    // Bildirimler push_log'a yazılıyordu ama uygulamada okunacak yer yoktu; rozet düşüyor,
+    // içerik görünmüyordu. Yönetici bildirimi = toAdmins ile gidenler (customer_id ve
+    // user_id NULL). Okundu bilgisi kullanıcı bazlı tek zaman damgasıyla tutulur.
+
+    /**
+     * Yöneticiye giden bildirimler (en yeni önce). Bastırılmış (suppressed) olanlar da
+     * gösterilir — "gönderilemedi ama olay oldu" bilgisi kaybolmasın.
+     * @return array<int,array<string,mixed>>
+     */
+    public function yoneticiBildirimleri(int $limit = 50): array
+    {
+        $st = $this->pdo->prepare(
+            'SELECT id, kind, ref, title, body, sent, suppressed, created_at
+               FROM push_log
+              WHERE customer_id IS NULL AND user_id IS NULL
+              ORDER BY id DESC LIMIT ' . max(1, min(200, $limit))
+        );
+        $st->execute();
+        return $st->fetchAll();
+    }
+
+    /** Kullanıcının son okumasından sonra düşen bildirim sayısı (rozet). */
+    public function okunmamisBildirim(int $userId): int
+    {
+        try {
+            $st = $this->pdo->prepare('SELECT bildirim_okundu_at FROM users WHERE id = ?');
+            $st->execute([$userId]);
+            $son = $st->fetchColumn();
+        } catch (\PDOException $e) {
+            return 0;   // migrate_053 uygulanmadıysa sessiz 0 — sayfa açılmaya devam etsin
+        }
+        $sql = 'SELECT COUNT(*) FROM push_log WHERE customer_id IS NULL AND user_id IS NULL';
+        $args = [];
+        if ($son !== false && $son !== null && $son !== '') {
+            $sql .= ' AND created_at > ?';
+            $args[] = (string) $son;
+        }
+        $st = $this->pdo->prepare($sql);
+        $st->execute($args);
+        return (int) $st->fetchColumn();
+    }
+
+    /** Bildirimleri okundu işaretle (rozet sıfırlanır). */
+    public function bildirimleriOkundu(int $userId): void
+    {
+        try {
+            $this->pdo->prepare('UPDATE users SET bildirim_okundu_at = ? WHERE id = ?')
+                ->execute([date('Y-m-d H:i:s'), $userId]);
+        } catch (\PDOException $e) {
+            error_log('[UYSA v2 bildirimleriOkundu] ' . $e->getMessage());
+        }
+    }
+
     /**
      * fable-080: Kokpit'in o gün için BİLDİĞİ Paraşüt belge id'leri (uzlaştırma için).
      * @return array<int,string>
