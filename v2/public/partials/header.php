@@ -42,7 +42,7 @@ $eyebrow = $eyebrow ?? ($selam . ' ' . ($u['display_name'] ?: $u['username']) . 
     <div class="d-flex align-items-center gap-2">
       <?php if (Auth::isAdmin($u)):
         $f087Yeni = 0;
-        try { $f087Yeni = (new Repo(Db::pdo()))->okunmamisBildirim((int) $u['id']); }
+        try { $f087Yeni = (new Repo(Db::pdo()))->okunmamisBildirim((int) $u['uid']); }
         catch (\Throwable $e) { $f087Yeni = 0; }   // bildirim sayacı sayfayı ASLA çökertmez
       ?>
       <a class="icon-btn" href="bildirimler.php" aria-label="Bildirimler" style="position:relative">

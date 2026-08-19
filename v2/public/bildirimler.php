@@ -21,8 +21,8 @@ if (!Auth::isAdmin($u)) {
 }
 
 $liste = $repo->yoneticiBildirimleri(60);
-$yeni = $repo->okunmamisBildirim((int) $u['id']);   // okundu işaretlemeden ÖNCE oku
-$repo->bildirimleriOkundu((int) $u['id']);
+$yeni = $repo->okunmamisBildirim((int) $u['uid']);   // okundu işaretlemeden ÖNCE oku
+$repo->bildirimleriOkundu((int) $u['uid']);
 
 /** Bildirim türüne göre ikon + renk. */
 function f087_gorunum(string $kind): array
