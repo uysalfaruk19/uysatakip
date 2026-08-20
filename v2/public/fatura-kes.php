@@ -22,6 +22,26 @@ $pdo = Db::pdo();
 $repo = new Repo($pdo);
 $isAdmin = Auth::isAdmin($u);
 
+/**
+ * fable-082b (Ömer, 21 Ağu: "21'in faturalarını kestik ama kâr/zararda 14 gözüküyor"):
+ * Kesim sonrası satış senkronu. Kâr/Zarar ekranı satis_faturasi tablosunu okur; o tablo Paraşüt
+ * senkronundan beslenir. Kesimden sonra cron koşana kadar ekran eski kapsamı gösteriyordu.
+ * fable-082'de bu senkron YALNIZ toplu kesim yoluna eklenmişti; ekran ise faturaları TEK TEK
+ * kesiyor (kes+tek) → o yolda hiç çalışmadı, 41 dk cron beklendi. Artık İKİ YOL DA burayı çağırır.
+ * Hata olursa kesim sonucu ETKİLENMEZ (cron nasılsa yakalar), yalnız loga düşer.
+ */
+$kesimSonrasiSenkron = static function (Repo $repo, string $son, int $basarili): void {
+    if ($basarili <= 0) {
+        return;
+    }
+    try {
+        $si = Uysa\Parasut::salesInvoicesForMonth(substr($son, 0, 7));
+        $repo->satisFaturaIsle($si['invoices'], Uysa\Parasut::supplierContactIds());
+    } catch (\Throwable $e) {
+        error_log('[UYSA v2 fatura-kes] kesim sonrası satış senkronu atlandı: ' . $e->getMessage());
+    }
+};
+
 /** Aylık adayın (bölüşümlü/tekil) fatura parçalarını kur — contact id DAİMA sunucuda çözülür. */
 $aylikParts = static function (array $a, array $dagilim) use ($repo): array {
     $parts = [];
@@ -343,6 +363,7 @@ if ($method === 'POST') {
         uysa_audit('fatura_kesim', (string) $u['username'], $bas . '..' . $son, json_encode([
             'tek' => $tek, 'basarili' => $basarili, 'toplam' => count($sonuclar), 'kapali' => $kapali,
         ], JSON_UNESCAPED_UNICODE), client_ip());
+        $kesimSonrasiSenkron($repo, $son, $basarili);   // fable-082b: bu yol atlanmıştı
         Helpers::json(['ok' => true, 'kapali' => $kapali, 'basarili' => $basarili, 'sonuclar' => $sonuclar]);
     }
 
@@ -405,14 +426,7 @@ if ($method === 'POST') {
         // "N gündür fatura kesilmemiş" demeye devam ediyordu — kullanıcı senkronu BEKLEMEMELİ.
         // Kesim başarılıysa aynı ay hemen senkronlanır; hata olursa kesim sonucu ETKİLENMEZ
         // (cron nasılsa yakalar), yalnız loga düşer.
-        if ($basarili > 0) {
-            try {
-                $si = Uysa\Parasut::salesInvoicesForMonth(substr($son, 0, 7));
-                $repo->satisFaturaIsle($si['invoices'], Uysa\Parasut::supplierContactIds());
-            } catch (\Throwable $e) {
-                error_log('[UYSA v2 fatura-kes] kesim sonrası satış senkronu atlandı: ' . $e->getMessage());
-            }
-        }
+        $kesimSonrasiSenkron($repo, $son, $basarili);
 
         Helpers::json(['ok' => true, 'kapali' => $kapali, 'basarili' => $basarili, 'sonuclar' => $sonuclar]);
     }
