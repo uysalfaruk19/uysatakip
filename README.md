@@ -1,37 +1,13 @@
-# UYSA ERP v1 (ARŞİV) 🗄️
+# UYSA ERP v3.0 🍽️
 
-> ## ⚠️ BU DOSYA v1 ARŞİVİDİR — CANLI SİSTEMİ ANLATMAZ
->
-> Aşağıdaki Railway + MySQL kurulumu **artık kullanılmıyor**. Canlı sistem
-> 14 Ağustos 2026'dan beri kendi sunucumuzda Docker ile çalışıyor.
->
-> | | Canlı gerçek |
-> |---|---|
-> | Adres | https://uysatakip.uysa019.cloud (Traefik arkasında) |
-> | Aktif kod | **`v2/`** — `v2/router.php` tek giriş, `v2/public/` web kökü |
-> | Çalışma şekli | `php -S` + `router.php` (Apache yok → **`.htaccess` okunmaz**) |
-> | İmaj / compose | `Dockerfile.v2` · `docker-compose.v2.yml` (`uysatakip-v2`) |
-> | Veritabanı | MariaDB konteyneri `uysatakip-db`, şema `uysa_v2` |
-> | Oturumlar | kalıcı volume `uysatakip_sessions` (konteyner `/tmp` DEĞİL) |
->
-> **Bu README'nin anlattığı v1** (kökteki `public/index.html`, `public/uysa_api.php`,
-> `sql/`, `tests/`) donmuş arşivdir: canlıda `/eski/` altında **salt-okunur** yaşar,
-> kendi eski DB'sini (`uysa_db`) okur. Yeni iş v1'e YAZILMAZ.
->
-> Güncel mimari ve dizin haritası: **`AGENTS.md`** · Faz kapsamı: **`v2/README.md`**
->
-> _Aşağısı v1 dönemine ait; API tabloları yalnız arşiv/karşılaştırma içindir._
-
----
-
-Yemek Sektörü Yönetim Sistemi — v1 dönemi: Railway + MySQL Production Deploy
+Yemek Sektörü Yönetim Sistemi — Railway + MySQL Production Deploy
 
 ## 🏗️ Mimari
 
 ```
 uysa-project/
 ├── public/
-│   ├── index.html        # v1 SPA — ARŞİV (canlıda /eski/ altında salt-okunur)
+│   ├── index.html        # Ana ERP uygulaması (845KB, 14 modül)
 │   ├── uysa_api.php      # PHP API v3.0 (storage, auth, file, audit)
 │   ├── uysa_migrate.html # Veri migration paneli
 │   ├── health.php        # Railway health check
@@ -158,4 +134,4 @@ Mount Path: /app/public/uploads
 14. 🌐 **Portal** — Müşteri Portalı
 
 ---
-*UYSA ERP v1 arşivi © 2025 — canlı sistem için AGENTS.md ve v2/README.md*
+*UYSA ERP v3.0 © 2025*
