@@ -218,6 +218,17 @@ $priceMonth = substr($date, 0, 7);
 // gömülmez). Varsayılan %30 — bu eşiğin altındaki fark normal dalgalanma sayılır.
 $sapmaEsigi = max(0.05, $repo->ayarNum('bugun_sapma_esigi_yuzde', 30.0) / 100);
 $tatilGunu = $repo->tatilMi($date);
+// aksiyon-faz2: kişi başı TOPLAM maliyet (gıda + personel + diğer), ay başından bugüne.
+// Tahmini kâr bundan türer; hiçbiri hesaplanamıyorsa 0 kalır ve kâr satırı basılmaz.
+$kbAy = substr($date, 0, 7);
+$kisiBasiMaliyet = 0.0;
+try {
+    $kisiBasiMaliyet = (float) $repo->gidaCostOzet($kbAy)['kisi_basi']
+        + (float) $repo->personelCostOzetUretim($kbAy)['kisi_basi']
+        + (float) $repo->digerCostOzet($kbAy)['kisi_basi'];
+} catch (\Throwable $e) {
+    $kisiBasiMaliyet = 0.0;   // maliyet hesabı bu ekranı ASLA çökertmez
+}
 $tatilAd = '';
 if ($tatilGunu) {
     $tl = $repo->resmiTatiller(true, $date, $date);
@@ -283,7 +294,9 @@ foreach ($grid as $r) {
     $on = $repo->onerilenKisi($cid, $date);
     $oneri = null;
     $sapma = null;
-    if ($on !== null) {
+    // Resmî tatilde sayı meşru olarak düşer (fable-057: hafta içi fatura kişisi kuralı da
+    // uygulanmaz) — o gün sapma uyarısı YANLIŞ POZİTİF olur, hiç basılmaz. Öneri de anlamsız.
+    if ($on !== null && !$tatilGunu) {
         if ($val === 0) {
             $oneri = $on['oneri'];
         } elseif ($on['ortalama'] > 0) {
@@ -382,7 +395,16 @@ require __DIR__ . '/partials/header.php';
         <div class="gt-h"><i class="bi bi-broadcast"></i> GÜNÜN NABZI</div>
         <div class="gt-pulse">
           <div class="gt-pulse-n">₺<span id="sum-amount"><?= Helpers::money($sumA) ?></span></div>
-          <div class="gt-pulse-l"><?= $date === Helpers::today() ? 'bugünkü ciro' : Helpers::e(date('d.m', strtotime($date))) . ' cirosu' ?></div>
+          <div class="gt-pulse-l"><?= $date === Helpers::today() ? 'bugünkü ciro' : Helpers::e(date('d.m', strtotime($date))) . ' cirosu' ?><?php
+            // aksiyon-faz2: TAHMİNİ KÂR — ciro − (gerçek kişi × ay başından bugüne kişi başı
+            // maliyet). "tahmini" etiketi ZORUNLU: gider faturaları geç geldiği için ay ortasında
+            // maliyet düşük, kâr şişkin görünür (bilinen davranış, bug değil). Maliyet
+            // hesaplanamıyorsa (ay başı, gider yok) satır HİÇ basılmaz — sıfır kâr yazmak yalan olur.
+            if ($kisiBasiMaliyet > 0 && $sumP > 0):
+              $tahminiKar = $sumA - ($sumP * $kisiBasiMaliyet);
+              $marj = $sumA > 0 ? ($tahminiKar / $sumA) * 100 : 0; ?>
+            <span class="gt-tahmin">tahmini kâr ₺<?= Helpers::money($tahminiKar) ?> · %<?= number_format($marj, 0, ',', '.') ?><small>ay başından bugüne maliyetle</small></span>
+          <?php endif; ?></div>
         </div>
         <div class="gt-prog">
           <div class="gt-prog-top"><span>Sayı girişi</span><b id="sum-filled"><?= $filled ?>/<?= $total ?> girildi</b></div>

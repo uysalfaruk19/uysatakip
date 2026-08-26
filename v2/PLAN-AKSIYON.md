@@ -114,5 +114,12 @@ Her faz bitince bu dosyanın altına tarih + faz + commit yazılır; oturum kopa
   input 70 · fiyatsız müşteride buton pasif ve zorla tıklansa da yazmıyor · çift tık bozmuyor ·
   yazılan kayıt geri alındı ve geri alındığı doğrulandı. Ekran mesajı hatası yakalandı ve
   düzeltildi ("geçmiş veri yetersiz" → "aylık fiyatı girilmemiş").
-- **SIRADAKİ:** Faz 3 (Gelen ekranı: sipariş + talep tek kuyruk, eski URL'ler redirect).
+- 2026-08-26: **Faz 2 kapatıldı** — eksik kalan iki madde tamamlandı: (a) TAHMİNİ KÂR ciro
+  altında ("tahmini · ay başından bugüne maliyetle"; maliyet hesaplanamıyorsa satır hiç
+  basılmaz), elle hesapla birebir doğrulandı (56.945 − 220×384,80 = −27.710,33 = ekrandaki
+  rakam); (b) eşik + tatil testleri (OneriEsikTest 4/4) — eşik ayardan değişiyor, alt sınır %5,
+  ve RESMÎ TATİLDE sapma uyarısı hiç basılmıyor (yanlış pozitif kapatıldı: tatilde sayı meşru
+  olarak düşer, fable-057 fatura-kişi kuralı da o gün uygulanmaz).
+- **SIRADAKİ:** Faz 3 (Gelen ekranı: sipariş + talep tek kuyruk, eski URL'ler redirect —
+  siparisler.php/talepler.php 302 + query paramları KORUNARAK, push deep-link'i kırılmasın).
 
