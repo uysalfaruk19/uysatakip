@@ -37,6 +37,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         if (!$o) {
             $flash = 'Sipariş bulunamadı.';
             $flashOk = false;
+        } elseif (($o['status'] ?? '') !== 'gonderildi') {
+            // Çift POST / tarayıcıda geri + tekrar gönder: sipariş zaten karara bağlanmış.
+            $flash = 'Bu sipariş zaten ' . ($o['status'] === 'onaylandi' ? 'onaylanmış' : 'reddedilmiş') . '. Düzeltme Bugün ekranından yapılır.';
+            $flashOk = false;
         } elseif ($action === 'approve') {
             $res = $repo->approveOrder($orderId);
             if ($res) {

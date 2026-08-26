@@ -153,5 +153,18 @@ Her faz bitince bu dosyanın altına tarih + faz + commit yazılır; oturum kopa
 - 2026-08-26: **Faz 9 tamam** — `haccp.php` Operasyon grubuna bağlandı (gıda güvenliği kaydı,
   silinmedi); `yakinda.php` komple kaldırıldı (dosya + referans yok, 404 doğrulandı).
   Ölü link denetimi: 28 ekran, **118 link, kırık 0**.
-- **SIRADAKİ:** deploy (rollback → push → VPS pull → build → duman testi).
+- 2026-08-26: **Deploy öncesi son denetim** — üç iş:
+  (a) **BULUNAN GERÇEK BUG kapatıldı:** `approveOrder`/`rejectOrder` sipariş DURUMUNU kontrol
+  etmiyordu. Çift POST (çift tık / tarayıcıda geri + tekrar gönder) üretimi YENİDEN yazıyor,
+  arada Bugün ekranından elle düzeltilen sayıyı EZİYOR ve müşteriye ikinci bildirim
+  gönderiyordu. Artık yalnız `status='gonderildi'` iken işlem yapılıyor; ekranda sebebi yazılı
+  ("Bu sipariş zaten onaylanmış. Düzeltme Bugün ekranından yapılır."). SiparisIdempotentTest 4/4
+  + tarayıcıda çift POST tatbikatı (değer değişmedi).
+  (b) **Faz 1 senkron testi koşuldu:** kar-analizi ve ay-kapanışı aynı ay için AYNI net kâr
+  (₺-178.035,00); rapor.php artık kâr rakamı basmıyor, adı "Üretim raporu".
+  (c) **PHP sürüm farkı:** canlı imaj `php:8.2-cli`, geliştirme WSL'de 8.5. Eklenen kodda
+  8.3+ sözdizimi taraması yapıldı (json_validate / #[Override] / typed const / enum / match) —
+  temiz. Yine de deploy sonrası duman testi bu yüzden zorunlu.
+- **DEPLOY:** `v2/tools/deploy-aksiyon.sh` hazır (rollback → kod → imaj → duman testi, geri
+  dönüş komutu ekrana yazılır). SSH bu oturumda kapalı olduğu için çalıştırma Ömer'de.
 

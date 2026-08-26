@@ -22,7 +22,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     } else {
         $action = (string) ($_POST['action'] ?? '');
         $orderId = (int) ($_POST['order_id'] ?? 0);
-        if ($action === 'approve') {
+        $onceden = $orderId > 0 ? $repo->orderById($orderId) : null;
+        if ($onceden && ($onceden['status'] ?? '') !== 'gonderildi') {
+            // aksiyon-faz3: mükerrer onay/ret kalkanı — sebebi ekranda yazılı.
+            $flash = 'Bu sipariş zaten ' . ($onceden['status'] === 'onaylandi' ? 'onaylanmış' : 'reddedilmiş') . '. Düzeltme Bugün ekranından yapılır.';
+            $flashOk = false;
+        } elseif ($action === 'approve') {
             $o = $repo->orderById($orderId); // url + tarih için (approve status'u değiştirir, tarihi değil)
             $res = $repo->approveOrder($orderId);
             if ($res) {

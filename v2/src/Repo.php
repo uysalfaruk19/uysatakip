@@ -3490,6 +3490,13 @@ final class Repo
         if (!$o) {
             return null;
         }
+        // aksiyon-faz3: MÜKERRER ONAY KALKANI. Karara bağlanmış sipariş ikinci kez onaylanamaz.
+        // Eskiden çift POST (çift tık / tarayıcıda geri + tekrar gönder) üretimi YENİDEN yazıyordu;
+        // arada Bugün ekranından sayı elle düzeltildiyse o düzeltmeyi EZİYORDU. Üstelik her
+        // tekrar müşteriye yeni bildirim üretiyordu. (Sipariş köprüsü idempotency dersi.)
+        if (($o['status'] ?? '') !== 'gonderildi') {
+            return null;
+        }
         $cust = $this->customer((int) $o['customer_id']);
         if (!$cust) {
             return null;
@@ -3528,6 +3535,12 @@ final class Repo
     {
         $o = $this->orderById($orderId);
         if (!$o) {
+            return false;
+        }
+        // aksiyon-faz3: onaylanmış siparişi "reddet" ile geri almak üretim kaydını SİLMEZ —
+        // ekran "reddedildi" derken üretim durur, iki ekran çelişir. Karara bağlanmış sipariş
+        // burada değişmez; düzeltme Bugün ekranından sayıyı düzenleyerek yapılır.
+        if (($o['status'] ?? '') !== 'gonderildi') {
             return false;
         }
         $this->pdo->prepare("UPDATE orders SET status = 'reddedildi' WHERE id = ?")->execute([$orderId]);
