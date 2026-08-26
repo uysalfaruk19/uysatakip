@@ -73,6 +73,16 @@ $eyebrow = 'Malzeme stok takibi';
 $active = '';
 require __DIR__ . '/partials/header.php';
 ?>
+      <?php
+      // aksiyon-faz7: karar rakamı — kaç kalemin siparişi gerekiyor (kritik olanlar ilk sırada).
+      $kritikSayi = count($critical);
+      $kararRakam = $kritikSayi . ' kalem';
+      $kararAlt = 'sipariş edilmesi gerekiyor';
+      $durumMetin = $kritikSayi > 0 ? ($kritikSayi . ' kalem asgari stoğun altında') : '';
+      $durumNot = $kritikSayi > 0 ? 'sipariş listesi aşağıda hazır' : '';
+      $durumBtn = null;
+      require __DIR__ . '/partials/karar.php';
+      ?>
       <?php if ($flash): ?><div class="flash <?= $flashOk ? 'ok' : 'err' ?>"><?= Helpers::e($flash) ?></div><?php endif; ?>
 
       <div class="stat-stack">

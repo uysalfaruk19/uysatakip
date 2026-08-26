@@ -267,9 +267,11 @@ $tasima = $repo->listCustomersByCategory('tasima');
 // Özet rakamları mevcut Repo metotlarından; yeni hesap YOK (tek kaynak korunur).
 $uretimCiro = 0.0;
 $uretimKisi = 0;
+$musteriAy = [];   // aksiyon-faz6: müşteri bazlı ay özeti — AYNI döngüden, yeni sorgu yok
 foreach ($repo->monthProductionByCustomer($month, 'uretim') as $r) {
     $uretimCiro += (float) $r['ciro'];
     $uretimKisi += (int) $r['persons'];
+    $musteriAy[(int) $r['customer_id']] = ['ciro' => (float) $r['ciro'], 'kisi' => (int) $r['persons']];
 }
 // Taşıma kârı zaten satır satır tasimaProfit ile hesaplanıyordu; ÖNCE topla, listede yeniden çağırma.
 $tasimaKar = [];
@@ -311,8 +313,61 @@ require __DIR__ . '/partials/header.php';
 ?>
       <?php if ($flash): ?><div class="flash <?= $flashOk ? 'ok' : 'err' ?>"><?= Helpers::e($flash) ?></div><?php endif; ?>
 
+      <?php
+      // aksiyon-faz6: KARAR RAKAMI + AKILLI DURUM. Fiyatı girilmemiş müşteri sessizce
+      // "₺0,00 kişi başı" yazıyordu; o müşterinin cirosu 0 hesaplanır, faturası boş çıkar.
+      // Artık ekranın en üstünde sayısıyla söyleniyor ve satırında da işaretli.
+      $fiyatsizlar = [];
+      foreach (array_merge($uretim, $tasima) as $c) {
+          if ((float) $repo->priceFor((int) $c['id'], $month)['unit_price'] <= 0) {
+              $fiyatsizlar[] = $c;
+          }
+      }
+      $aktifSayi = count($uretim) + count($tasima);
+      ?>
+      <?php if (!$formOpen && !$edit): ?>
+      <div class="cardx card-pad gt-nabiz-sm">
+        <div class="gt-pulse">
+          <div class="gt-pulse-n"><?= $aktifSayi ?></div>
+          <?php // Taşıma tarafında "ciro" değil KÂR tutuluyor (tasimaProfit); ikisini toplamak
+                // farklı iki şeyi toplamak olurdu. Etiket ne gösterdiğini açıkça yazar. ?>
+          <div class="gt-pulse-l">aktif müşteri · <?= Helpers::e(ay_label_tr($month)) ?> üretim cirosu ₺<?= number_format(round($uretimCiro), 0, ',', '.') ?></div>
+        </div>
+      </div>
+      <?php if ($fiyatsizlar): ?>
+      <div class="cardx card-pad akilli-durum">
+        <div class="ad-metin">
+          <b><?= count($fiyatsizlar) ?> müşterinin <?= Helpers::e(ay_label_tr($month)) ?> fiyatı girilmemiş</b>
+          <span class="ad-not">fiyatsız müşteride ciro 0 hesaplanır, fatura boş çıkar</span>
+        </div>
+        <a class="btn-action btn-primaryx" href="musteriler.php?edit=<?= (int) $fiyatsizlar[0]['id'] ?>&ay=<?= Helpers::e($month) ?>">Fiyat gir</a>
+      </div>
+      <?php endif; ?>
+      <?php endif; ?>
+
       <?php if (!$formOpen): ?>
         <a class="btn-action btn-primaryx btn-full" href="musteriler.php?yeni=1"><i class="bi bi-person-plus"></i> Müşteri ekle</a>
+      <?php endif; ?>
+
+      <?php // aksiyon-faz6: müşteri detayında KARAR RAKAMI (bu ayki tutar) ve tek akıllı uyarı.
+            // Paraşüt carisi bağlı değilse fatura o müşterinin karnesine düşmez — sebebi burada
+            // yazılı (kokpit-parasut-cari-bagi: bağ YALNIZ contact_id ile kurulur, ad eşleşmesi yok). ?>
+      <?php if ($edit): $mAy = $musteriAy[(int) $edit['id']] ?? null; ?>
+      <div class="cardx card-pad gt-nabiz-sm">
+        <div class="gt-pulse">
+          <div class="gt-pulse-n">₺<?= number_format(round($mAy['ciro'] ?? 0), 0, ',', '.') ?></div>
+          <div class="gt-pulse-l"><?= Helpers::e(ay_label_tr($month)) ?> · <?= number_format($mAy['kisi'] ?? 0, 0, ',', '.') ?> kişi</div>
+        </div>
+      </div>
+      <?php if (($edit['parasut_id'] ?? '') === '' || $edit['parasut_id'] === null): ?>
+      <div class="cardx card-pad akilli-durum">
+        <div class="ad-metin">
+          <b>Paraşüt carisi bağlı değil</b>
+          <span class="ad-not">bu müşterinin faturası kâr karnesine düşmez</span>
+        </div>
+        <a class="btn-action btn-secondaryx" href="parasut.php">Cariyi bağla</a>
+      </div>
+      <?php endif; ?>
       <?php endif; ?>
 
       <div class="fab-sheet" id="musteri-form" style="<?= $formOpen ? '' : 'display:none' ?>">
@@ -654,7 +709,10 @@ require __DIR__ . '/partials/header.php';
               <div class="row-title"><span class="status-dot"></span><strong><?= Helpers::e($c['name']) ?></strong>
                 <?php if (($c['parasut_bakiye'] ?? null) !== null): ?><span class="badge-soft <?= (float) $c['parasut_bakiye'] < 0 ? 'badge-neg' : 'badge-ok' ?>" title="Paraşüt muhasebe bakiyesi">Paraşüt ₺ <?= Helpers::money((float) $c['parasut_bakiye']) ?></span><?php endif; ?>
               </div>
-              <p class="row-meta">₺ <?= Helpers::money($repo->priceFor((int) $c['id'], $month)['unit_price']) ?> kişi başı · <?= Helpers::e(ay_label_tr($month)) ?></p>
+              <?php // aksiyon-faz6: fiyatsız müşteri "₺0,00" diye sessizce geçmesin — satırda
+                    // sebebi ve tek dokunuşluk çıkış yolu yazılı. ?>
+              <?php $satirFiyat = (float) $repo->priceFor((int) $c['id'], $month)['unit_price']; ?>
+              <p class="row-meta"><?php if ($satirFiyat > 0): ?>₺ <?= Helpers::money($satirFiyat) ?> kişi başı · <?= Helpers::e(ay_label_tr($month)) ?><?php else: ?><span class="fiyat-yok">fiyat girilmemiş</span> · <a href="musteriler.php?edit=<?= (int) $c['id'] ?>&ay=<?= Helpers::e($month) ?>" class="fiyat-gir">Fiyat gir</a><?php endif; ?></p>
             </div>
             <div class="actions-row" style="justify-content:flex-end">
               <a class="icon-btn" href="musteriler.php?edit=<?= (int) $c['id'] ?>" aria-label="Düzenle"><i class="bi bi-pencil"></i></a>

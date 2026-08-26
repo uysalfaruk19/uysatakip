@@ -14,8 +14,13 @@ $u = Auth::requireLogin();
 
 $gruplar = [
     'Operasyon' => [
-        ['mutfak.php', 'bi-fire', 'Mutfak görünümü', 'Günün üretim listesi'],
-        ['sevkiyat.php', 'bi-truck', 'Sevkiyat / teslimat', 'Teslimat takibi'],
+        // aksiyon-faz9: HACCP ekranı 284 satırdı ama v2'de HİÇBİR menüde yoktu — v1'in ana
+        // sayfasında linki vardı, taşınırken menüye bağlanmamış. Gıda güvenliği kaydı olduğu
+        // için silinmedi, erişilir hale getirildi.
+        ['haccp.php', 'bi-thermometer-half', 'HACCP kontrol', 'Günlük gıda güvenliği panosu'],
+        ['mutfak.php', 'bi-fire', 'Mutfak görünümü', 'Günün üretim listesi (Bugün ekranındaki gün şeridinden de açılır)'],
+        ['sevkiyat.php', 'bi-truck', 'Sevkiyat / teslimat', 'Teslimat takibi (Bugün ekranındaki gün şeridinden de açılır)'],
+        ['ay-kapanisi.php', 'bi-calendar2-check', 'Ay kapanışı', 'Kontrol listesi + devir (Finans ekranından da açılır)'],
     ],
     'Yönetim' => [
         ['musteriler.php?yeni=1', 'bi-person-plus', 'Müşteri ekle', 'Yeni müşteri kartı'],

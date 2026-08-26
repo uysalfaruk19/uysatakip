@@ -246,6 +246,15 @@ $eyebrow = 'Maaş / çalışma günü · ' . ay_label_tr($month);
 $active = '';
 require __DIR__ . '/partials/header.php';
 ?>
+      <?php
+      // aksiyon-faz7: karar rakamı — bu ayın personel gideri ve kaç kişiye dağıldığı.
+      $kararRakam = '₺' . number_format(round((float) $aylikToplam), 0, ',', '.');
+      $kararAlt = ay_label_tr($month) . ' personel gideri · ' . count($personeller) . ' kişi';
+      $durumMetin = '';
+      $durumNot = '';
+      $durumBtn = null;
+      require __DIR__ . '/partials/karar.php';
+      ?>
       <?php if ($flash): ?><div class="flash <?= $flashOk ? 'ok' : 'err' ?>"><?= Helpers::e($flash) ?></div><?php endif; ?>
 
       <form method="get" class="date-row">

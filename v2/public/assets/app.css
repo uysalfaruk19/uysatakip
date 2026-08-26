@@ -3381,3 +3381,12 @@ body.meal-open {
   font-size: 13px;
   flex: 0 0 auto;
 }
+.fiyat-yok {
+  color: var(--red);
+  font-weight: 640;
+}
+.fiyat-gir {
+  color: var(--primary);
+  font-weight: 700;
+  text-decoration: underline;
+}

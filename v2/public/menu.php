@@ -263,6 +263,19 @@ $pageTitle = $edit ? 'Menü düzenle' : 'Menüler';
 $active = 'menu';
 require __DIR__ . '/partials/header.php';
 ?>
+      <?php
+      // aksiyon-faz7: karar rakamı — kaç menü var, kaçı yayında. Yayınlanmamış menü müşteriye
+      // görünmez; sayısı sıfırdan büyükse durum satırında söylenir.
+      $yayindaSayi = 0;
+      foreach ($menus as $m) { if ((string) ($m['status'] ?? '') === 'published') { $yayindaSayi++; } }
+      $taslakSayi = count($menus) - $yayindaSayi;
+      $kararRakam = $yayindaSayi . ' menü';
+      $kararAlt = 'yayında' . ($taslakSayi > 0 ? ' · ' . $taslakSayi . ' taslak' : '');
+      $durumMetin = $taslakSayi > 0 ? ($taslakSayi . ' menü yayınlanmadı') : '';
+      $durumNot = $taslakSayi > 0 ? 'yayınlanmayan menü müşteri uygulamasında görünmez' : '';
+      $durumBtn = null;
+      require __DIR__ . '/partials/karar.php';
+      ?>
       <?php if ($flash): ?><div class="flash <?= $flashOk ? 'ok' : 'err' ?>"><?= Helpers::e($flash) ?></div><?php endif; ?>
 
       <div class="quick-tiles">

@@ -466,6 +466,31 @@ $eyebrow = 'Paraşüt satış faturası + e-Fatura';
 $active = '';
 require __DIR__ . '/partials/header.php';
 ?>
+      <?php
+      // aksiyon-faz7: karar rakamı — kaç fatura kesilebilir ve tutarı ne. Seçilemeyenlerin
+      // SEBEBİ zaten satırında yazıyor; burada sadece kaç tanesinin beklediği söyleniyor.
+      // Aday satırında 'tutar' alanı YOK; kişi ('toplam') ve birim fiyat ('birim') var —
+      // tutar bunlardan türetilir. Birim fiyatı olmayan satır tutara katılmaz (yalan rakam olurdu).
+      $adayTutar = 0.0;
+      $adayKisi = 0;
+      $secilemez = 0;
+      foreach ($adaylar as $a) {
+          if (!empty($a['secilebilir'])) {
+              $adayKisi += (int) ($a['toplam'] ?? 0);
+              $adayTutar += (float) ($a['toplam'] ?? 0) * (float) ($a['birim'] ?? 0);
+          } else {
+              $secilemez++;
+          }
+      }
+      $kararRakam = $secilebilirSayi . ' fatura';
+      $kararAlt = $adayTutar > 0
+          ? ('₺' . number_format(round($adayTutar), 0, ',', '.') . ' · ' . number_format($adayKisi, 0, ',', '.') . ' kişi')
+          : 'kesilmeye hazır';
+      $durumMetin = $secilemez > 0 ? ($secilemez . ' aday kesilemiyor') : '';
+      $durumNot = $secilemez > 0 ? 'sebebi satırında yazılı (cari bağı, tutar, dönem)' : '';
+      $durumBtn = null;
+      require __DIR__ . '/partials/karar.php';
+      ?>
       <?php if (!$isAdmin): ?>
         <div class="flash err">Bu ekran yalnız yetkili kullanıcıya açıktır.</div>
       <?php else: ?>

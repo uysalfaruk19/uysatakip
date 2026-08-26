@@ -139,5 +139,19 @@ Her faz bitince bu dosyanın altına tarih + faz + commit yazılır; oturum kopa
   müşteri cari bakiyelerinin pozitif toplamı yazılıyor (mockup'taki "3 tahsilat bekliyor"
   uydurma olurdu). Bekleyen adım amber çerçeveli; hiç belge yoksa şerit basılmaz.
   BelgeZinciriTest 5/5. Elle doğrulama: 100.000+105.000+110.000 = **₺315.000** = ekrandaki rakam.
-- **SIRADAKİ:** Faz 6 (Müşteriler listesi + müşteri detayı sadeleştirmesi).
+- 2026-08-26: **Faz 6 tamam** — Müşteriler listesinde karar rakamı + "N müşterinin fiyatı
+  girilmemiş" uyarısı; fiyatsız satırda "fiyat girilmemiş · Fiyat gir" (önceden sessizce
+  "₺0,00 kişi başı" yazıyordu). Detayda karar rakamı (o ayki tutar/kişi) + Paraşüt carisi
+  bağlı değilse tek uyarı. ALAN KAYBI YOK: 13 form alanı ve tüm bloklar yerinde (ölçüldü).
+  Not: taşıma tarafında "ciro" değil KÂR tutulduğu için ikisi toplanmadı, etiket bunu yazıyor.
+- 2026-08-26: **Faz 7-8 tamam** — ortak `partials/karar.php` bileşeni (karar rakamı + akıllı
+  durum + sessizlik kuralı tek yerde) ve şu ekranlara uygulandı: Mutfak, Sevkiyat, Stok,
+  Teklifler, Fatura Kes, Personel, Menü, Ay kapanışı. Uydurma rakam kapatıldı: teklifte
+  `fiyat` yerine `birim_fiyat`, "aylık potansiyel" yerine "günlük" (iş günü sayısı varsayım
+  olurdu); fatura adayında `tutar` alanı yok → `toplam × birim` türetildi; menüde durum
+  değerleri `draft/published`.
+- 2026-08-26: **Faz 9 tamam** — `haccp.php` Operasyon grubuna bağlandı (gıda güvenliği kaydı,
+  silinmedi); `yakinda.php` komple kaldırıldı (dosya + referans yok, 404 doğrulandı).
+  Ölü link denetimi: 28 ekran, **118 link, kırık 0**.
+- **SIRADAKİ:** deploy (rollback → push → VPS pull → build → duman testi).
 

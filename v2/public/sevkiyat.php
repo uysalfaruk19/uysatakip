@@ -62,6 +62,16 @@ $eyebrow = 'Günün teslimatları';
 $active = '';
 require __DIR__ . '/partials/header.php';
 ?>
+      <?php
+      // aksiyon-faz7: karar rakamı — bugün kaç teslimat var, kaçı kapandı.
+      $bekleyenTeslim = $total - $done;
+      $kararRakam = $total . ' teslimat';
+      $kararAlt = gun_label_tr($date) . ' · ' . $done . ' tamamlandı';
+      $durumMetin = $bekleyenTeslim > 0 ? ($bekleyenTeslim . ' teslimat bekliyor') : '';
+      $durumNot = '';
+      $durumBtn = null;
+      require __DIR__ . '/partials/karar.php';
+      ?>
       <?php // aksiyon-faz4: gün şeridi — aynı günün üç görünümü (Bugün ile aynı bileşen). ?>
       <nav class="gun-serit" aria-label="Gün görünümleri">
         <a href="bugun.php?date=<?= Helpers::e($date) ?>">Giriş</a>

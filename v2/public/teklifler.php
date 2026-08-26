@@ -256,6 +256,31 @@ $eyebrow = 'Müşteri adayı takibi';
 $active = '';
 require __DIR__ . '/partials/header.php';
 ?>
+      <?php
+      // aksiyon-faz7: karar rakamı — cevap bekleyen teklif, kaç kişilik iş ve GÜNLÜK karşılığı.
+      // "Aylık potansiyel" yazmıyoruz: iş günü sayısı tekliften teklife değişir, çarpmak varsayım olur.
+      $bekleyenTeklif = 0;
+      $potansiyelKisi = 0;
+      $gunlukTutar = 0.0;
+      $enEskiGun = 0;
+      foreach ($list as $t) {
+          if (in_array((string) ($t['durum'] ?? ''), ['gonderildi', 'taslak'], true)) {
+              $bekleyenTeklif++;
+              $potansiyelKisi += (int) ($t['kisi'] ?? 0);
+              $gunlukTutar += (float) ($t['kisi'] ?? 0) * (float) ($t['birim_fiyat'] ?? 0);
+              $g = (int) floor((time() - strtotime((string) ($t['created_at'] ?? 'now'))) / 86400);
+              $enEskiGun = max($enEskiGun, $g);
+          }
+      }
+      $kararRakam = $bekleyenTeklif . ' bekleyen';
+      $kararAlt = $potansiyelKisi > 0
+          ? ($potansiyelKisi . ' kişilik iş · günlük ₺' . number_format(round($gunlukTutar), 0, ',', '.'))
+          : 'cevap bekleyen teklif';
+      $durumMetin = $enEskiGun >= 7 ? ('en eski teklif ' . $enEskiGun . ' gündür cevapsız') : '';
+      $durumNot = '';
+      $durumBtn = null;
+      require __DIR__ . '/partials/karar.php';
+      ?>
       <?php if ($flash): ?><div class="flash <?= $flashOk ? 'ok' : 'err' ?>"><?= Helpers::e($flash) ?></div><?php endif; ?>
 
       <div class="stat-stack">

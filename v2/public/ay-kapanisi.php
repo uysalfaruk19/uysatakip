@@ -69,6 +69,21 @@ require __DIR__ . '/partials/header.php';
         </div>
       </div>
 
+      <?php
+      // aksiyon-faz7: akıllı durum — kaç madde eksik ve kapanışa kaç gün kaldı.
+      // Sessizlik kuralı: uyarı yoksa satır hiç basılmaz.
+      $akEksik = (int) $sum['warning_count'];
+      $akKalan = (int) floor((strtotime(date('Y-m-t', strtotime($month . '-01'))) - strtotime(date('Y-m-d'))) / 86400);
+      ?>
+      <?php if ($akEksik > 0): ?>
+      <div class="cardx card-pad akilli-durum">
+        <div class="ad-metin">
+          <b><?= $akEksik ?> madde eksik</b>
+          <?php if ($akKalan > 0): ?><span class="ad-not">kapanışa <?= $akKalan ?> gün</span><?php endif; ?>
+        </div>
+      </div>
+      <?php endif; ?>
+
       <div class="section-head"><div class="gt-h" style="margin:0"><i class="bi bi-check2-square"></i> KONTROL LİSTESİ</div><span class="text-muted" style="font-size:12px"><?= Helpers::e(ay_label_tr($month)) ?></span></div>
       <?php // fable-047 (Ömer): analiz edilmiş maddeler — satıra dokun, detay AŞAĞI açılsın. ?>
       <div class="cardx card-pad">

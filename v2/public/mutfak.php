@@ -37,6 +37,21 @@ $eyebrow = 'Günlük üretim iş emri';
 $active = '';
 require __DIR__ . '/partials/header.php';
 ?>
+      <?php
+      // aksiyon-faz7: karar rakamı — bugün mutfaktan kaç porsiyon çıkacak.
+      $mutfakToplam = 0;
+      foreach ($kitchen as $m) { $mutfakToplam += (int) ($m['total'] ?? 0); }
+      $eksikGiris = 0;
+      foreach ($repo->dayGridAllMeals($date) as $r) {
+          if ((int) $r['ogle'] + (int) $r['aksam'] + (int) $r['kumanya'] === 0) { $eksikGiris++; }
+      }
+      $kararRakam = number_format($mutfakToplam, 0, ',', '.') . ' kişi';
+      $kararAlt = gun_label_tr($date) . ' · üretilecek';
+      $durumMetin = $eksikGiris > 0 ? ($eksikGiris . ' müşterinin sayısı girilmemiş') : '';
+      $durumNot = $eksikGiris > 0 ? 'bu liste eksik olabilir' : '';
+      $durumBtn = $eksikGiris > 0 ? ['Bugün ekranına git', 'bugun.php?date=' . $date] : null;
+      require __DIR__ . '/partials/karar.php';
+      ?>
       <?php // aksiyon-faz4: gün şeridi — aynı günün üç görünümü (Bugün ile aynı bileşen). ?>
       <nav class="gun-serit" aria-label="Gün görünümleri">
         <a href="bugun.php?date=<?= Helpers::e($date) ?>">Giriş</a>
