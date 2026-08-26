@@ -133,5 +133,11 @@ Her faz bitince bu dosyanın altına tarih + faz + commit yazılır; oturum kopa
   korunuyor; (+) menüsü sadeleşti (Gelen[rozet] · Fatura Kes · Borçlarım · Müşteri ekle · Diğer
   modüller); Mutfak/Sevkiyat gün şeridine, Ay kapanışı Finans'a taşındı. Ölü link denetimi:
   21 ekrandan toplanan **109 link, hepsi 200**.
-- **SIRADAKİ:** Faz 5 (Finans belge zinciri: kesildi → mail bekliyor → alacak).
+- 2026-08-26: **Faz 5 tamam** — `Repo::belgeZinciri()` + Finans'ta tek şerit:
+  kesildi (fatura.durum) → mail bekliyor (mail_kuyruk.durum) → **tahsil edilmedi (₺)**.
+  Üçüncü adım fatura ADEDİ DEĞİL tutar: fatura bazında tahsilat bu şemadan türetilemiyor,
+  müşteri cari bakiyelerinin pozitif toplamı yazılıyor (mockup'taki "3 tahsilat bekliyor"
+  uydurma olurdu). Bekleyen adım amber çerçeveli; hiç belge yoksa şerit basılmaz.
+  BelgeZinciriTest 5/5. Elle doğrulama: 100.000+105.000+110.000 = **₺315.000** = ekrandaki rakam.
+- **SIRADAKİ:** Faz 6 (Müşteriler listesi + müşteri detayı sadeleştirmesi).
 

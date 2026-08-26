@@ -3207,6 +3207,72 @@ final class Repo
         return array_values($grup);
     }
 
+    /**
+     * aksiyon-faz5: BELGE ZİNCİRİ — bir ayın faturası nerede takıldı?
+     *   kesildi (fatura.durum) → mail bekliyor (mail_kuyruk.durum) → tahsil edilmemiş alacak
+     *
+     * NOT (veri güvenilirliği): fatura BAZINDA tahsilat durumu bu şemadan TÜRETİLEMEZ —
+     * `fatura` tablosunda ödeme alanı yok, tahsilat müşteri cari hareketi olarak tutuluyor.
+     * Bu yüzden üçüncü adım "N tahsilat bekliyor" değil, müşteri carilerinden gelen TOPLAM
+     * AÇIK ALACAK'tır. Ekranda da böyle yazılır; fatura sayısı gibi göstermek yalan olurdu.
+     *
+     * @return array{kesildi:int,taslak:int,mail_bekliyor:int,mail_hata:int,alacak:float}
+     */
+    public function belgeZinciri(string $ay): array
+    {
+        $st = $this->pdo->prepare(
+            "SELECT COALESCE(SUM(CASE WHEN durum = 'kesildi' THEN 1 ELSE 0 END),0) AS kesildi,
+                    COALESCE(SUM(CASE WHEN durum = 'taslak'  THEN 1 ELSE 0 END),0) AS taslak
+             FROM fatura WHERE ay = ?"
+        );
+        $st->execute([$ay]);
+        $f = $st->fetch() ?: ['kesildi' => 0, 'taslak' => 0];
+
+        // Mail kuyruğu ay filtresi taşımaz (belge bazlı); o ayın faturalarına ait satırlar sayılır.
+        $mailBekleyen = 0;
+        $mailHata = 0;
+        try {
+            $st = $this->pdo->prepare(
+                "SELECT durum, COUNT(*) AS n FROM mail_kuyruk
+                  WHERE tur = 'fatura' AND substr(created_at, 1, 7) = ?
+                  GROUP BY durum"
+            );
+            $st->execute([$ay]);
+            foreach ($st->fetchAll() as $r) {
+                if ($r['durum'] === 'bekliyor') {
+                    $mailBekleyen = (int) $r['n'];
+                } elseif ($r['durum'] === 'hata') {
+                    $mailHata = (int) $r['n'];
+                }
+            }
+        } catch (\Throwable $e) {
+            $mailBekleyen = 0;   // mail kuyruğu kurulu değilse zincir yine çizilir
+            $mailHata = 0;
+        }
+
+        // Açık alacak: müşteri cari bakiyelerinin POZİTİF toplamı (bize borçlu olanlar).
+        $alacak = 0.0;
+        foreach ($this->pdo->query(
+            "SELECT party_id,
+                    COALESCE(SUM(CASE WHEN direction='borc' THEN amount ELSE 0 END),0)
+                  - COALESCE(SUM(CASE WHEN direction='alacak' THEN amount ELSE 0 END),0) AS bakiye
+             FROM cari_entries WHERE party_type='customer' GROUP BY party_id"
+        )->fetchAll() as $r) {
+            $b = (float) $r['bakiye'];
+            if ($b > 0) {
+                $alacak += $b;
+            }
+        }
+
+        return [
+            'kesildi'       => (int) $f['kesildi'],
+            'taslak'        => (int) $f['taslak'],
+            'mail_bekliyor' => $mailBekleyen,
+            'mail_hata'     => $mailHata,
+            'alacak'        => $alacak,
+        ];
+    }
+
     public function monthFinanceTotals(string $month): array
     {
         $st = $this->pdo->prepare(

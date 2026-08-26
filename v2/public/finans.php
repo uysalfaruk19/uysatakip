@@ -232,6 +232,32 @@ require __DIR__ . '/partials/header.php';
       <?php /* fable-013: Taşıma karlılığı + Kâr dökümü kartları Finans'tan kaldırıldı;
          detay Kâr/Zarar'da (rapor.php). Finans = özet sayfası. */ ?>
       <?php
+      // aksiyon-faz5: BELGE ZİNCİRİ — faturanın nerede takıldığı tek şeritte.
+      // Üçüncü adım fatura ADEDİ değil TUTAR: fatura bazında tahsilat bu şemadan türetilemiyor
+      // (fatura tablosunda ödeme alanı yok), müşteri carisinden gelen açık alacak yazılır.
+      $zincir = $repo->belgeZinciri($month);
+      $zincirVar = $zincir['kesildi'] > 0 || $zincir['taslak'] > 0 || $zincir['alacak'] > 0.005;
+      ?>
+      <?php if ($zincirVar): ?>
+      <div class="cardx card-pad">
+        <div class="gt-h"><i class="bi bi-link-45deg"></i> BELGE ZİNCİRİ</div>
+        <div class="belge-zincir">
+          <a class="bz-adim<?= $zincir['taslak'] > 0 ? ' bz-bekliyor' : '' ?>" href="fatura-kes.php">
+            <b><?= $zincir['kesildi'] ?></b><span>fatura kesildi<?= $zincir['taslak'] > 0 ? ' · ' . $zincir['taslak'] . ' taslak' : '' ?></span>
+          </a>
+          <i class="bi bi-arrow-right bz-ok" aria-hidden="true"></i>
+          <a class="bz-adim<?= $zincir['mail_bekliyor'] > 0 || $zincir['mail_hata'] > 0 ? ' bz-bekliyor' : '' ?>" href="ayarlar.php">
+            <b><?= $zincir['mail_bekliyor'] ?></b><span>mail bekliyor<?= $zincir['mail_hata'] > 0 ? ' · ' . $zincir['mail_hata'] . ' hata' : '' ?></span>
+          </a>
+          <i class="bi bi-arrow-right bz-ok" aria-hidden="true"></i>
+          <a class="bz-adim<?= $zincir['alacak'] > 0.005 ? ' bz-bekliyor' : '' ?>" href="cari.php">
+            <b>₺<?= number_format(round($zincir['alacak']), 0, ',', '.') ?></b><span>tahsil edilmedi</span>
+          </a>
+        </div>
+      </div>
+      <?php endif; ?>
+
+      <?php
       // aksiyon-faz4: AY KAPANIŞI — (+) menüsünden buraya taşındı; ay sonu işi finansın parçası.
       // Kalan gün ay sonuna göre hesaplanır; geçmiş aya bakılıyorsa "kapanış" bağlantısı yine
       // çalışır ama geri sayım yazılmaz (geçmiş bir eşiği saymak yanıltır).

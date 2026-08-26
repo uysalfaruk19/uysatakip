@@ -3338,3 +3338,46 @@ body.meal-open {
   border-color: var(--primary);
   color: #fff;
 }
+
+/* ── aksiyon-faz5: belge zinciri (kesildi → mail → alacak) ──────────────── */
+.belge-zincir {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  margin-top: 8px;
+}
+.bz-adim {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+  padding: 10px 6px;
+  border-radius: 12px;
+  background: var(--surface-2, rgba(0, 0, 0, 0.03));
+  border: 1px solid var(--line);
+  text-decoration: none;
+  color: inherit;
+}
+.bz-adim b {
+  display: block;
+  font-size: 17px;
+  font-weight: 820;
+  line-height: 1.15;
+}
+.bz-adim span {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.bz-adim.bz-bekliyor {
+  border-color: var(--amber);
+}
+.bz-adim.bz-bekliyor b {
+  color: var(--amber);
+}
+.bz-ok {
+  align-self: center;
+  color: var(--muted);
+  font-size: 13px;
+  flex: 0 0 auto;
+}
