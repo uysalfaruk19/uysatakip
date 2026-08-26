@@ -3180,3 +3180,59 @@ body.meal-open {
   gap: 10px;
   margin-top: 10px;
 }
+
+/* ── aksiyon-faz2: öneri sayısı · tek dokunuş onay · sapma uyarısı ───────── */
+.akilli-durum {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-block: 12px;
+  margin-bottom: 10px;
+}
+.akilli-durum .ad-metin {
+  font-size: 13.5px;
+  min-width: 0;
+}
+.akilli-durum .ad-metin b {
+  font-weight: 780;
+}
+.akilli-durum .ad-not {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.akilli-durum .btn-action {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.oneri-onay {
+  appearance: none;
+  border: 1px solid var(--primary);
+  background: transparent;
+  color: var(--primary);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 4px 9px;
+  margin-left: 8px;
+  border-radius: 999px;
+  cursor: pointer;
+  min-height: 26px;
+}
+.oneri-onay:disabled {
+  border-color: var(--line);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+.oneri-sapma {
+  display: block;
+  margin-top: 2px;
+  color: var(--red);
+  font-weight: 640;
+}
+.customer-row.oneri-kabul .count-input {
+  font-weight: 800;
+}

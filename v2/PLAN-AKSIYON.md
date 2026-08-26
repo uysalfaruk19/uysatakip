@@ -106,3 +106,13 @@ Her faz bitince bu dosyanın altına tarih + faz + commit yazılır; oturum kopa
 - 2026-08-26: Faz 0 tamam — dal açıldı, plan yazıldı, tahsilat varsayımı çürütüldü (fatura bazında
   ödeme alanı yok → zincir 3. adımı ay bazlı alacak), oturum kalıcılığı doğrulandı
   (`uysatakip_sessions` volume, rebuild kullanıcıyı atmaz).
+- 2026-08-26: **Faz 1 tamam** (commit 11f4428) — rapor.php "Üretim raporu", finans linki
+  kar-analizi'ye, karar rakamı filtrelerin üstüne. Test: 449 koştu, kırmızılar değişiklik
+  ÖNCESİNDE de vardı.
+- 2026-08-26: **Faz 2 tamam** — `Repo::onerilenKisi()` + Bugün ekranı öneri/onay/sapma/akıllı
+  durum. 6 yeni test (OneriTest) yeşil, suite 455. Gerçek tarayıcıda doğrulandı: onay →
+  input 70 · fiyatsız müşteride buton pasif ve zorla tıklansa da yazmıyor · çift tık bozmuyor ·
+  yazılan kayıt geri alındı ve geri alındığı doğrulandı. Ekran mesajı hatası yakalandı ve
+  düzeltildi ("geçmiş veri yetersiz" → "aylık fiyatı girilmemiş").
+- **SIRADAKİ:** Faz 3 (Gelen ekranı: sipariş + talep tek kuyruk, eski URL'ler redirect).
+

@@ -2898,6 +2898,44 @@ final class Repo
     }
 
     /**
+     * aksiyon-faz2: ÖNERİ SAYISI — son 4 haftanın AYNI GÜNÜNDE girilmiş toplam kişi ortalaması.
+     *
+     * Boş satıra "yaz" demek yerine sistemin bildiği sayıyı önerir; kullanıcı tek dokunuşla
+     * onaylar. Tahmin UYDURULMAZ: en az 3 veri noktası yoksa null döner (yeni müşteride ya da
+     * düzensiz çalışan müşteride yanlış sayı önermektense hiç önermemek doğru — veri
+     * güvenilirliği). Ortalama anomali uyarısında da kullanılır (girilen sayı ortalamadan
+     * eşik kadar saparsa satırda tek satır uyarı çıkar).
+     *
+     * @return array{oneri:int,ortalama:float,nokta:int}|null
+     */
+    public function onerilenKisi(int $customerId, string $date, int $minNokta = 3): ?array
+    {
+        $gunler = [];
+        foreach ([1, 2, 3, 4] as $h) {
+            $gunler[] = date('Y-m-d', strtotime($date . ' -' . $h . ' week'));
+        }
+        $st = $this->pdo->prepare(
+            'SELECT prod_date, SUM(persons) AS toplam
+               FROM production
+              WHERE customer_id = ? AND prod_date IN (?, ?, ?, ?)
+              GROUP BY prod_date'
+        );
+        $st->execute(array_merge([$customerId], $gunler));
+        $toplamlar = [];
+        foreach ($st->fetchAll() as $r) {
+            $t = (int) $r['toplam'];
+            if ($t > 0) {
+                $toplamlar[] = $t;
+            }
+        }
+        if (count($toplamlar) < $minNokta) {
+            return null;
+        }
+        $ort = array_sum($toplamlar) / count($toplamlar);
+        return ['oneri' => (int) round($ort), 'ortalama' => $ort, 'nokta' => count($toplamlar)];
+    }
+
+    /**
      * fable-027c: Son N günde (hedef gün hariç) akşam/kumanya kaydı var mıydı?
      * Kesim onayında "dün kırılımlıydı, bugün tek öğün" uyarısının kaynağı.
      */

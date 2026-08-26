@@ -130,7 +130,8 @@
       if (vars === null && f.varsayilan) vars = f.kod;
     });
     firms.forEach(function (f) {
-      if (vars === null && (f.sabit === null || f.sabit === undefined)) vars = f.kod;
+      if (vars === null && (f.sabit === null || f.sabit === undefined))
+        vars = f.kod;
     });
     return vars === null ? firms[firms.length - 1].kod : vars;
   }
@@ -191,7 +192,13 @@
     var input = row.querySelector(".count-input");
     var p = clampP(input ? input.value : 0);
     var fk = parseInt(row.getAttribute("data-fatura-kisi") || "", 10);
-    if (p > 0 && !isNaN(fk) && fk > 0 && window.BUGUN_HAFTA_ICI && !window.BUGUN_TATIL) {
+    if (
+      p > 0 &&
+      !isNaN(fk) &&
+      fk > 0 &&
+      window.BUGUN_HAFTA_ICI &&
+      !window.BUGUN_TATIL
+    ) {
       return fk;
     }
     return p;
@@ -203,9 +210,13 @@
     var elle = rowElle(row);
     return elle
       ? altFirmaElleDagit(billP, elle, firms)
-      // fable-060: resmi tatilde oran kuralı UYGULANMAZ (hafta sonu gibi) — tamamı
-      // varsayılan firmaya gelir, Ömer oradan istediği firmaya taşır.
-      : altFirmaDagit(billP, firms, !!window.BUGUN_HAFTA_ICI && !window.BUGUN_TATIL);
+      : // fable-060: resmi tatilde oran kuralı UYGULANMAZ (hafta sonu gibi) — tamamı
+        // varsayılan firmaya gelir, Ömer oradan istediği firmaya taşır.
+        altFirmaDagit(
+          billP,
+          firms,
+          !!window.BUGUN_HAFTA_ICI && !window.BUGUN_TATIL,
+        );
   }
 
   function syncAltSplit(row, billP, p) {
@@ -283,6 +294,39 @@
     }
   });
 
+  // ── aksiyon-faz2: öneri onayı ────────────────────────────────
+  // Sistem son 4 haftadan sayıyı biliyor; kullanıcı tek dokunuşla kabul eder. Otomatik
+  // YAZILMAZ — değer input'a düşer, kayıt yine "Kaydet" ile olur (geri alınabilir kalsın).
+  function oneriUygula(row) {
+    var input = row.querySelector(".count-input[data-oneri]");
+    if (!input || (parseInt(input.value, 10) || 0) > 0) return false;
+    input.value = parseInt(input.getAttribute("data-oneri"), 10) || 0;
+    row.classList.add("oneri-kabul");
+    syncFromTotal(row);
+    return true;
+  }
+
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest("[data-oneri-onay]");
+    if (!btn || btn.disabled) return;
+    e.preventDefault();
+    var row = btn.closest(".customer-row");
+    if (row && oneriUygula(row)) recalc();
+  });
+
+  var toplu = document.getElementById("oneri-toplu");
+  if (toplu) {
+    toplu.addEventListener("click", function (e) {
+      e.preventDefault();
+      var n = 0;
+      document.querySelectorAll(".customer-row").forEach(function (row) {
+        var b = row.querySelector("[data-oneri-onay]");
+        if (b && !b.disabled && oneriUygula(row)) n++;
+      });
+      if (n) recalc();
+    });
+  }
+
   // ── fable-023a: kırılım penceresi ────────────────────────────
   var mealModal = document.getElementById("meal-modal");
   var mealRow = null;
@@ -300,7 +344,13 @@
 
   function esc(x) {
     return String(x == null ? "" : x).replace(/[&<>"']/g, function (c) {
-      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+      return {
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      }[c];
     });
   }
 
@@ -323,14 +373,19 @@
     var pay = firmPaylar(mealRow, billP) || {};
     var html = "";
     firms.forEach(function (f) {
-      var n = elle && Object.prototype.hasOwnProperty.call(elle, f.kod)
-        ? clampP(elle[f.kod])
-        : pay[f.kod] || 0;
+      var n =
+        elle && Object.prototype.hasOwnProperty.call(elle, f.kod)
+          ? clampP(elle[f.kod])
+          : pay[f.kod] || 0;
       html +=
         '<label class="firm-split-row"><span>' +
         esc(f.ad) +
         '</span><input class="firm-in" type="number" inputmode="numeric" min="0" ' +
-        'data-kod="' + esc(f.kod) + '" value="' + n + '"></label>';
+        'data-kod="' +
+        esc(f.kod) +
+        '" value="' +
+        n +
+        '"></label>';
     });
     list.innerHTML = html;
     var badge = document.getElementById("firm-badge");
@@ -357,17 +412,24 @@
     var totEl = document.getElementById("firm-total");
     if (totEl) {
       totEl.innerHTML =
-        "Toplam: <strong>" + sum.toLocaleString("tr-TR") +
-        "</strong> / hedef <strong>" + hedef.toLocaleString("tr-TR") + "</strong> kişi";
+        "Toplam: <strong>" +
+        sum.toLocaleString("tr-TR") +
+        "</strong> / hedef <strong>" +
+        hedef.toLocaleString("tr-TR") +
+        "</strong> kişi";
       totEl.classList.toggle("bad", sum !== hedef);
     }
     var warn = document.getElementById("firm-warn");
     var fark = sum - hedef;
     var msg = "";
     if (hedef <= 0) {
-      msg = "Bu güne kişi sayısı girilmemiş — önce satırdaki sayacı doldurup kaydet.";
+      msg =
+        "Bu güne kişi sayısı girilmemiş — önce satırdaki sayacı doldurup kaydet.";
     } else if (fark !== 0) {
-      msg = Math.abs(fark).toLocaleString("tr-TR") + " kişi " + (fark > 0 ? "fazla" : "eksik") +
+      msg =
+        Math.abs(fark).toLocaleString("tr-TR") +
+        " kişi " +
+        (fark > 0 ? "fazla" : "eksik") +
         " — toplam hedefe eşit olmadan kaydedilmez.";
     }
     if (warn) {
@@ -403,9 +465,14 @@
     if (otomatige) {
       gizli("altfirma_oto", "1");
     } else {
-      document.querySelectorAll("#meal-modal-firmlist .firm-in").forEach(function (el) {
-        gizli("altfirma[" + el.getAttribute("data-kod") + "]", String(clampP(el.value)));
-      });
+      document
+        .querySelectorAll("#meal-modal-firmlist .firm-in")
+        .forEach(function (el) {
+          gizli(
+            "altfirma[" + el.getAttribute("data-kod") + "]",
+            String(clampP(el.value)),
+          );
+        });
     }
     closeMealModal();
     if (form.requestSubmit) form.requestSubmit();
@@ -424,7 +491,8 @@
     if (nameEl) nameEl.textContent = row.getAttribute("data-name") || "";
     var titleEl = document.getElementById("meal-modal-title");
     var hasFirms = (row.getAttribute("data-altfirma") || "") !== "";
-    if (titleEl) titleEl.textContent = hasFirms ? "Firma kırılımı" : "Öğün kırılımı";
+    if (titleEl)
+      titleEl.textContent = hasFirms ? "Firma kırılımı" : "Öğün kırılımı";
     // fable-058 (Ömer): alt firmalı müşteride ÖĞÜN kırılımı hiç gösterilmez — tek öğün
     // çalışıyorlar ve pencere ekrana sığmıyordu. Sayı satırdaki sayaçtan girilir.
     var ogunAlan = mealModal.querySelector(".meal-fields");
@@ -452,7 +520,8 @@
     var first = hasFirms
       ? mealModal.querySelector("#meal-modal-firmlist .firm-in")
       : document.getElementById("meal-in-ogle");
-    if (!first) first = mealModal.querySelector(".actions-row [data-meal-close]");
+    if (!first)
+      first = mealModal.querySelector(".actions-row [data-meal-close]");
     if (first) first.focus();
   }
 
@@ -500,7 +569,11 @@
   if (firmOtoBtn) {
     firmOtoBtn.addEventListener("click", function () {
       if (!mealRow) return;
-      if (!confirm("Bu günün elle girilen firma kırılımı silinsin ve dağılım yeniden firma desenine göre hesaplansın mı?")) {
+      if (
+        !confirm(
+          "Bu günün elle girilen firma kırılımı silinsin ve dağılım yeniden firma desenine göre hesaplansın mı?",
+        )
+      ) {
         return;
       }
       submitFirmSplit(true);
@@ -513,7 +586,8 @@
       if (!mealRow) return;
       // fable-059: alt firmalı müşteride Kaydet = FİRMA kırılımı kaydı (öğün alanları gizli)
       if (rowFirms(mealRow).length) {
-        if (firmUpdateTotal() !== rowHedef(mealRow) || rowHedef(mealRow) <= 0) return;
+        if (firmUpdateTotal() !== rowHedef(mealRow) || rowHedef(mealRow) <= 0)
+          return;
         mealSaveBtn.disabled = true; // çift tık koruması
         submitFirmSplit(false);
         return;

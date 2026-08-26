@@ -214,6 +214,9 @@ $rowsData = [];
 $priceMonth = substr($date, 0, 7);
 // fable-057 (ekran ayağı): resmi tatilde hafta içi FATURA KİŞİSİ kuralı uygulanmaz — kayıt
 // tarafı bunu zaten yapıyordu (POST), ekran hâlâ 70 kişiden ciro/kırılım gösteriyordu.
+// aksiyon-faz2: sapma uyarısı eşiği yüzde olarak ayardan gelir (zaman/eşik kuralları koda
+// gömülmez). Varsayılan %30 — bu eşiğin altındaki fark normal dalgalanma sayılır.
+$sapmaEsigi = max(0.05, $repo->ayarNum('bugun_sapma_esigi_yuzde', 30.0) / 100);
 $tatilGunu = $repo->tatilMi($date);
 $tatilAd = '';
 if ($tatilGunu) {
@@ -274,11 +277,28 @@ foreach ($grid as $r) {
         }
         $altLabel = implode(' · ', $parts);
     }
+    // aksiyon-faz2: ÖNERİ + SAPMA. Boş satıra sistemin bildiği sayı önerilir (son 4 haftanın
+    // aynı günü); girilmiş satırda sayı ortalamadan eşik kadar saparsa TEK satır uyarı çıkar.
+    // Sessizlik kuralı: her şey normalse hiçbir rozet/uyarı basılmaz.
+    $on = $repo->onerilenKisi($cid, $date);
+    $oneri = null;
+    $sapma = null;
+    if ($on !== null) {
+        if ($val === 0) {
+            $oneri = $on['oneri'];
+        } elseif ($on['ortalama'] > 0) {
+            $fark = ($val - $on['ortalama']) / $on['ortalama'];
+            if (abs($fark) >= $sapmaEsigi) {
+                $sapma = ['yuzde' => $fark * 100, 'ortalama' => $on['ortalama']];
+            }
+        }
+    }
     $rowsData[] = [
         'cid' => $cid, 'name' => $r['name'], 'price' => $price, 'val' => $val, 'amt' => $amt,
         'meals' => $meals, 'split' => $splitLabel, 'fk' => $fkRow, // fable-040: fatura kişi kuralı
         'alt' => $altLabel, 'altfirma' => $altFirmalar,            // fable-051: gün kırılımı
         'elle' => $elleKirilim,                                    // fable-059: elle giriş kaydı
+        'oneri' => $oneri, 'sapma' => $sapma,                      // aksiyon-faz2
     ];
 }
 $total = count($rowsData);
@@ -389,6 +409,51 @@ require __DIR__ . '/partials/header.php';
         // fable-057/059: resmi tatilde hafta içi fatura kişisi kuralı UYGULANMAZ → o gün hedef
         // girilen sayının kendisidir (elle firma kırılımı da bu hedefi bölmek zorunda).
         window.BUGUN_TATIL = <?= $tatilGunu ? 'true' : 'false' ?>;</script>
+      <?php
+      // aksiyon-faz2: AKILLI DURUM SATIRI — ekranın "ne bekliyor + tek dokunuş" katı.
+      // Sessizlik kuralı: bekleyen yoksa satır hiç basılmaz.
+      $bekleyenSayi = 0;
+      $onerilebilir = 0;
+      $fiyatsizBekleyen = 0;   // önerisi var ama fiyatı yok → sebebi DOĞRU söylenmeli
+      foreach ($rowsData as $rd) {
+          if ($rd['val'] === 0) {
+              $bekleyenSayi++;
+              if ($rd['oneri'] === null) {
+                  continue;
+              }
+              if ($rd['price'] > 0) {
+                  $onerilebilir++;
+              } else {
+                  $fiyatsizBekleyen++;
+              }
+          }
+      }
+      // Kesim: o günün siparişi bir gün önce 16:00'da kilitlenir. Geçmişse geri sayım gösterilmez
+      // (geçmiş bir eşiği saymak kullanıcıya yalan söyler).
+      $kesimKalan = '';
+      $kalanSn = Helpers::orderDeadline($date) - time();
+      if ($kalanSn > 0) {
+          $sa = intdiv($kalanSn, 3600);
+          $dk = intdiv($kalanSn % 3600, 60);
+          $kesimKalan = $sa > 0 ? ('kesime ' . $sa . 'sa ' . $dk . 'dk') : ('kesime ' . $dk . 'dk');
+      }
+      ?>
+      <?php if ($bekleyenSayi > 0): ?>
+      <div class="cardx card-pad akilli-durum">
+        <div class="ad-metin">
+          <b><?= $bekleyenSayi ?> müşteri bekliyor</b><?= $kesimKalan !== '' ? ' · ' . Helpers::e($kesimKalan) : '' ?>
+          <?php if ($onerilebilir === 0): ?>
+          <span class="ad-not"><?= $fiyatsizBekleyen > 0
+              ? ($fiyatsizBekleyen . ' müşterinin aylık fiyatı girilmemiş — önce fiyat')
+              : 'geçmiş veri yetersiz — öneri yok' ?></span>
+          <?php endif; ?>
+        </div>
+        <?php if ($onerilebilir > 0): ?>
+        <button type="button" class="btn-action btn-primaryx" id="oneri-toplu">Önerilenleri onayla</button>
+        <?php endif; ?>
+      </div>
+      <?php endif; ?>
+
       <?php // fable-034b (denetim): mockup sırası → MÜŞTERİ SAYILARI önce, HIZLI ERİŞİM sonra (aşağıda) ?>
       <form method="post" id="bugun-form">
         <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
@@ -444,11 +509,16 @@ require __DIR__ . '/partials/header.php';
                 </div>
                 <!-- fable-029b/030 (Ömer): bu ekranda PARA GÖRÜNMEZ (birim fiyat + gün tutarı kaldırıldı;
                      sayım sırasında ekran başkalarına açık olabiliyor). "girilmedi" uyarısı + kırılım kalır. -->
-                <p class="row-meta"><span class="row-amt"><?= $missing ? 'girilmedi' : '' ?></span><span class="meal-split"<?= $r['split'] === '' ? ' hidden' : '' ?>><?= Helpers::e($r['split']) ?></span><?php if ($r['altfirma']): ?><span class="alt-split<?= $r['elle'] ? ' is-elle' : '' ?>"<?= $r['alt'] === '' ? ' hidden' : '' ?> title="<?= $r['elle'] ? 'Firma kırılımı bu güne ELLE girildi — değiştirmek için müşteri adına dokun' : 'Fatura bölüşümü (firma deseni) — elle girmek için müşteri adına dokun' ?>"><?= Helpers::e($r['alt']) ?></span><?php endif; ?></p>
+                <p class="row-meta"><span class="row-amt"><?= $missing ? ($r['oneri'] !== null ? 'önerilen ' . (int) $r['oneri'] : 'girilmedi') : '' ?></span><?php
+                  // aksiyon-faz2: tek dokunuşluk onay, önerinin hemen yanında. Fiyatı olmayan
+                  // müşteride PASİF — sayı girilse de ciro 0 çıkardı; sebebi buton başlığında.
+                  if ($missing && $r['oneri'] !== null): $fiyatsiz = $r['price'] <= 0; ?><button type="button" class="oneri-onay" data-oneri-onay="<?= (int) $r['oneri'] ?>"<?= $fiyatsiz ? ' disabled aria-disabled="true" title="Aylık fiyatı girilmemiş — önce fiyat girilmeli"' : ' aria-label="Öneriyi onayla"' ?>><i class="bi bi-check-lg" aria-hidden="true"></i> onayla</button><?php endif; ?><?php
+                  // aksiyon-faz2: sapma uyarısı — YALNIZ sapan satırda. "%32 düşük — son 4 hafta ortalaması 85"
+                  if ($r['sapma'] !== null): ?><span class="oneri-sapma">%<?= number_format(abs($r['sapma']['yuzde']), 0, ',', '.') ?> <?= $r['sapma']['yuzde'] < 0 ? 'düşük' : 'yüksek' ?> — son 4 hafta ortalaması <?= (int) round($r['sapma']['ortalama']) ?></span><?php endif; ?><span class="meal-split"<?= $r['split'] === '' ? ' hidden' : '' ?>><?= Helpers::e($r['split']) ?></span><?php if ($r['altfirma']): ?><span class="alt-split<?= $r['elle'] ? ' is-elle' : '' ?>"<?= $r['alt'] === '' ? ' hidden' : '' ?> title="<?= $r['elle'] ? 'Firma kırılımı bu güne ELLE girildi — değiştirmek için müşteri adına dokun' : 'Fatura bölüşümü (firma deseni) — elle girmek için müşteri adına dokun' ?>"><?= Helpers::e($r['alt']) ?></span><?php endif; ?></p>
               </div>
               <div class="counter">
                 <button class="step-btn" type="button" data-step="-5">−</button>
-                <input class="count-input" inputmode="numeric" type="number" min="0" name="persons[<?= $r['cid'] ?>]" value="<?= $r['val'] > 0 ? $r['val'] : '' ?>">
+                <input class="count-input" inputmode="numeric" type="number" min="0" name="persons[<?= $r['cid'] ?>]" value="<?= $r['val'] > 0 ? $r['val'] : '' ?>"<?= $r['oneri'] !== null ? ' placeholder="' . (int) $r['oneri'] . '" data-oneri="' . (int) $r['oneri'] . '"' : '' ?>>
                 <button class="step-btn" type="button" data-step="5">+</button>
               </div>
               <input type="hidden" class="m-ogle" name="meal_ogle[<?= $r['cid'] ?>]" value="<?= $r['meals']['ogle'] ?>">
