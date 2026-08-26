@@ -62,6 +62,12 @@ $eyebrow = 'Günün teslimatları';
 $active = '';
 require __DIR__ . '/partials/header.php';
 ?>
+      <?php // aksiyon-faz4: gün şeridi — aynı günün üç görünümü (Bugün ile aynı bileşen). ?>
+      <nav class="gun-serit" aria-label="Gün görünümleri">
+        <a href="bugun.php?date=<?= Helpers::e($date) ?>">Giriş</a>
+        <a class="<?= 'sevkiyat' === 'mutfak' ? 'active' : '' ?>" href="mutfak.php?date=<?= Helpers::e($date) ?>">Mutfak</a>
+        <a class="<?= 'sevkiyat' === 'sevkiyat' ? 'active' : '' ?>" href="sevkiyat.php?date=<?= Helpers::e($date) ?>">Sevkiyat</a>
+      </nav>
       <div class="date-row">
         <a class="icon-btn" href="sevkiyat.php?date=<?= $prevDay ?>" aria-label="Önceki gün"><i class="bi bi-chevron-left"></i></a>
         <form method="get" class="date-pill">

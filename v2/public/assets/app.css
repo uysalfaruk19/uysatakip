@@ -3249,3 +3249,92 @@ body.meal-open {
   font-size: 11px;
   opacity: 0.8;
 }
+
+/* ── aksiyon-faz3: GELEN — sipariş + talep tek kuyruk ───────────────────── */
+.gelen-liste {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.gelen-kart {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-left: 4px solid var(--primary);
+}
+.gelen-kart.gelen-talep {
+  border-left-color: var(--amber);
+}
+.gelen-govde {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.gelen-ust {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  justify-content: space-between;
+}
+.gelen-ust strong {
+  font-weight: 760;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gelen-zaman {
+  flex: 0 0 auto;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.gelen-baslik {
+  margin: 3px 0 0;
+  font-size: 14px;
+}
+.gelen-eylem {
+  flex: 0 0 auto;
+}
+.gelen-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.gelen-eylem .btn-action {
+  white-space: nowrap;
+  min-width: 92px;
+}
+.fab-menu .fab-rozet {
+  display: inline-block;
+  min-width: 20px;
+  padding: 0 6px;
+  margin-left: 6px;
+  background: var(--red);
+  color: #fff;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+}
+/* aksiyon-faz4: Bugün ekranı gün şeridi (giriş · mutfak · sevkiyat) */
+.gun-serit {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.gun-serit a {
+  flex: 1 1 0;
+  text-align: center;
+  padding: 9px 6px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--muted);
+  text-decoration: none;
+}
+.gun-serit a.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}

@@ -120,6 +120,18 @@ Her faz bitince bu dosyanın altına tarih + faz + commit yazılır; oturum kopa
   rakam); (b) eşik + tatil testleri (OneriEsikTest 4/4) — eşik ayardan değişiyor, alt sınır %5,
   ve RESMÎ TATİLDE sapma uyarısı hiç basılmıyor (yanlış pozitif kapatıldı: tatilde sayı meşru
   olarak düşer, fable-057 fatura-kişi kuralı da o gün uygulanmaz).
-- **SIRADAKİ:** Faz 3 (Gelen ekranı: sipariş + talep tek kuyruk, eski URL'ler redirect —
-  siparisler.php/talepler.php 302 + query paramları KORUNARAK, push deep-link'i kırılmasın).
+- 2026-08-26: **Faz 3 tamam** — `gelen.php`: bekleyen sipariş + açık talep TEK kuyrukta, en eski
+  önce; tür yalnız sol şeritten (lacivert/turuncu), filtre çubuğu yok. Sipariş onay/ret satır
+  içinde, siparisler.php ile AYNI akış (CSRF + `uysa_audit` + `addCustomerEvent`). Talep cevabı
+  mevcut ekrana götürür — yeni cevap kutusu uydurulmadı.
+  **KARAR DEĞİŞİKLİĞİ:** siparisler.php/talepler.php redirect EDİLMEDİ, olduğu gibi duruyor.
+  Sebep: haftalık cetvel, talep filtreleri ve cevap kutusu orada; redirect işlev kaybı olurdu.
+  Deep-link'ler (`/m/...`, `talepler.php?r=`) kırılmadı. Gelen = üst kuyruk, eskiler = detay.
+  Tatbikat: BOMİ siparişi onaylandı → üretime 80 kişi yazıldı (₺21.200) → audit `siparis_onayla`
+  + `customer_events` kaydı doğrulandı → GERİ ALINDI, yarın üretim 0'a döndü.
+- 2026-08-26: **Faz 4 tamam** — gün şeridi (Giriş · Mutfak · Sevkiyat) üç ekranda da, tarih
+  korunuyor; (+) menüsü sadeleşti (Gelen[rozet] · Fatura Kes · Borçlarım · Müşteri ekle · Diğer
+  modüller); Mutfak/Sevkiyat gün şeridine, Ay kapanışı Finans'a taşındı. Ölü link denetimi:
+  21 ekrandan toplanan **109 link, hepsi 200**.
+- **SIRADAKİ:** Faz 5 (Finans belge zinciri: kesildi → mail bekliyor → alacak).
 

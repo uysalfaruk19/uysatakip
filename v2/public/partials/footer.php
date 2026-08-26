@@ -9,6 +9,16 @@ $tabs = [
   'rapor'      => ['Kâr/Zarar', 'bi-graph-up-arrow'],
   'finans'     => ['Finans', 'bi-wallet2'],
 ];
+// aksiyon-faz4: (+) menüsündeki Gelen rozeti — cevap bekleyen sipariş + açık talep sayısı.
+// Sayaç bu menüyü ASLA çökertmez; hata olursa rozet basılmaz (sessizce yok sayılır).
+$fabGelenSayi = 0;
+try {
+    if (isset($repo) && $repo instanceof Uysa\Repo) {
+        $fabGelenSayi = count($repo->pendingOrders()) + count($repo->allRequests(['status' => 'acik']));
+    }
+} catch (\Throwable $e) {
+    $fabGelenSayi = 0;
+}
 ?>
   </section><!-- /.screen-stack -->
 </main>
@@ -35,11 +45,14 @@ $tabs = [
 <div class="fab-menu" id="fab-menu" role="menu">
   <?php // fable-048a (Ömer): hızlı erişimde/alt barda olmayan işler burada — Fatura Kes
         // hızlı erişimden buraya taşındı; mutfak/sevkiyat da boş kalmasın diye eklendi. ?>
+  <?php // aksiyon-faz4: (+) yalnız "gelen iş" ve "yeni kayıt" için. Mutfak ve Sevkiyat GÜNÜN
+        // işleri → Bugün ekranının gün şeridine taşındı; Ay kapanışı ay sonu işi → Finans'ta.
+        // Hiçbir sayfa silinmedi, erişim yeri değişti. ?>
+  <a href="gelen.php"><i class="bi bi-inbox"></i> Gelen<?php
+    if (!empty($fabGelenSayi)): ?> <span class="fab-rozet"><?= (int) $fabGelenSayi ?></span><?php endif; ?></a>
   <a href="fatura-kes.php"><i class="bi bi-receipt-cutoff"></i> Fatura Kes</a>
   <a href="cari.php?sekme=borclarim"><i class="bi bi-arrow-up-right-circle"></i> Borçlarım</a>
-  <a href="mutfak.php"><i class="bi bi-fire"></i> Mutfak görünümü</a>
-  <a href="sevkiyat.php"><i class="bi bi-truck"></i> Sevkiyat / teslimat</a>
-  <a href="ay-kapanisi.php"><i class="bi bi-calendar2-check"></i> Ay kapanışı</a>
+  <a href="musteriler.php?yeni=1"><i class="bi bi-person-plus"></i> Müşteri ekle</a>
   <a href="moduller.php"><i class="bi bi-grid-3x3-gap"></i> Diğer modüller…</a>
 </div>
 

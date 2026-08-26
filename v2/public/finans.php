@@ -231,6 +231,20 @@ require __DIR__ . '/partials/header.php';
 
       <?php /* fable-013: Taşıma karlılığı + Kâr dökümü kartları Finans'tan kaldırıldı;
          detay Kâr/Zarar'da (rapor.php). Finans = özet sayfası. */ ?>
+      <?php
+      // aksiyon-faz4: AY KAPANIŞI — (+) menüsünden buraya taşındı; ay sonu işi finansın parçası.
+      // Kalan gün ay sonuna göre hesaplanır; geçmiş aya bakılıyorsa "kapanış" bağlantısı yine
+      // çalışır ama geri sayım yazılmaz (geçmiş bir eşiği saymak yanıltır).
+      $ayBitis = date('Y-m-t', strtotime($month . '-01'));
+      $kalanGun = (int) floor((strtotime($ayBitis) - strtotime(date('Y-m-d'))) / 86400);
+      ?>
+      <a class="cardx card-pad" href="ay-kapanisi.php?ay=<?= $month ?>" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <div><h2 style="margin:0">Ay kapanışı</h2><p class="row-meta" style="margin:2px 0 0"><?= $kalanGun > 0
+            ? ('kapanışa ' . $kalanGun . ' gün · kontrol listesi')
+            : 'kontrol listesi ve devir' ?></p></div>
+        <i class="bi bi-chevron-right" style="font-size:18px;color:var(--primary)"></i>
+      </a>
+
       <a class="cardx card-pad" href="kar-analizi.php?ay=<?= $month ?>" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
         <div><h2 style="margin:0">Kâr / Zarar</h2><p class="row-meta" style="margin:2px 0 0">Net kâr, kişi başı maliyet kırılımı, müşteri karnesi</p></div>
         <i class="bi bi-chevron-right" style="font-size:18px;color:var(--primary)"></i>

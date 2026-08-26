@@ -431,6 +431,14 @@ require __DIR__ . '/partials/header.php';
         // fable-057/059: resmi tatilde hafta içi fatura kişisi kuralı UYGULANMAZ → o gün hedef
         // girilen sayının kendisidir (elle firma kırılımı da bu hedefi bölmek zorunda).
         window.BUGUN_TATIL = <?= $tatilGunu ? 'true' : 'false' ?>;</script>
+      <?php // aksiyon-faz4: GÜN ŞERİDİ — aynı günün üç görünümü tek yerde. Mutfak ve Sevkiyat
+            // (+) menüsünde "yeni kayıt" işlerinin arasında duruyordu; ikisi de GÜNÜN işi. ?>
+      <nav class="gun-serit" aria-label="Gün görünümleri">
+        <a class="active" href="bugun.php?date=<?= Helpers::e($date) ?>">Giriş</a>
+        <a href="mutfak.php?date=<?= Helpers::e($date) ?>">Mutfak</a>
+        <a href="sevkiyat.php?date=<?= Helpers::e($date) ?>">Sevkiyat</a>
+      </nav>
+
       <?php
       // aksiyon-faz2: AKILLI DURUM SATIRI — ekranın "ne bekliyor + tek dokunuş" katı.
       // Sessizlik kuralı: bekleyen yoksa satır hiç basılmaz.
