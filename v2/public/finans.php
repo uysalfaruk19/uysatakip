@@ -231,8 +231,8 @@ require __DIR__ . '/partials/header.php';
 
       <?php /* fable-013: Taşıma karlılığı + Kâr dökümü kartları Finans'tan kaldırıldı;
          detay Kâr/Zarar'da (rapor.php). Finans = özet sayfası. */ ?>
-      <a class="cardx card-pad" href="rapor.php?ay=<?= $month ?>" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-        <div><h2 style="margin:0">Kâr / Zarar detayı</h2><p class="row-meta" style="margin:2px 0 0">Firma bazlı ciro, taşıma kâr/zarar, net karlılık dökümü</p></div>
+      <a class="cardx card-pad" href="kar-analizi.php?ay=<?= $month ?>" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <div><h2 style="margin:0">Kâr / Zarar</h2><p class="row-meta" style="margin:2px 0 0">Net kâr, kişi başı maliyet kırılımı, müşteri karnesi</p></div>
         <i class="bi bi-chevron-right" style="font-size:18px;color:var(--primary)"></i>
       </a>
 

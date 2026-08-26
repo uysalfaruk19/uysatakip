@@ -1,0 +1,108 @@
+# PLAN — Aksiyon deseni uygulaması (branch: `tasarim-aksiyon`)
+
+Ömer, 26 Ağu 2026: _"2. aksiyon odaklı akış şeklinde tümüne el at"_ → _"tasarımı tamamle sonra canlıya gönder"_.
+Tasarım kaynağı: `D:\claude\vault\projeler\uysa-erp-v2\tasarim-onerileri\` + kurgu denetimi.
+
+**Teslim biçimi:** hepsi bu dalda geliştirilir, TEK deploy ile canlıya çıkar (Ömer'in cümlesi bu sırayı
+söylüyor). Her faz sonunda uygulanmış ekranın gerçek tarayıcı görüntüsü Ömer'e gösterilir — mockup
+onayı tek başına yeterli değil (`omer-tasarim-zevki`: iki tur mockup onaylandı, uygulanmış hali reddedildi).
+
+## AKSİYON DESENİ (her ekranda aynı beş kural)
+
+1. **Karar rakamı** — en üstte tek büyük rakam.
+2. **Akıllı durum + tek eylem** — tek satır durum + o satırı kapatan tek buton.
+3. **Satır içi eylemli akış** — tek sütun liste, eylem satırın içinde.
+4. **Sessizlik** — sorun yoksa uyarı yok; yalnız sapan satır işaretlenir.
+5. **Tek birincil buton** — altta tek koyu buton; eksik varsa pasif.
+
+## Değişmez kısıtlar
+
+- **Eski URL'ler ÖLMEZ.** `siparisler.php`, `talepler.php`, `rapor.php` kalır (redirect) — push
+  deep-link'leri ve iOS WebView bunları hedefliyor. Kırılan deep-link sahada sessiz arıza.
+- **`public/m/` (müşteri PWA) kapsam dışı** — mockup'lar yönetici tarafı.
+- Şema değişirse: `migrate_0NN.sql` idempotent + `_sqlite.sql` eşi + `schema_v2.sql` senkron.
+- Her mutasyon ucunda CSRF + `audit` kaydı. SQL daima prepared.
+- Paraşüt SALT-OKUMA. Bot API yazma sınırı değişmez. `/eski` salt-okunur kalır.
+- Test: PHPUnit + gerçek tarayıcı (Playwright) + kıran girdiler (boş/0/negatif/Türkçe/çift tık).
+
+## Faz sırası (bağımlılık sırasına göre)
+
+### Faz 1 — Mükerrer kâr/zarar (en düşük risk, en görünür kazanç)
+
+- `rapor.php` sayfa başlığı "Kâr / Zarar" → **"Üretim raporu"** (modüllerdeki adıyla aynı).
+- `finans.php` içindeki "Kâr / Zarar detayı" bloğu → tek satır link (`kar-analizi.php`).
+- `kar-analizi.php` aksiyon desenine geçer: tek net kâr rakamı + üç kişi başı maliyet kutusu +
+  müşteri karnesi listesi (satır → drill).
+- **Bitti-tanımı:** üç ekranda "kâr/zarar" tek anlama geliyor; aynı ay için üç ekran aynı net kârı
+  gösteriyor (senkron testi); rapor.php URL'i çalışıyor; PHPUnit yeşil.
+
+### Faz 2 — Bugün ekranı (desenin kalbi)
+
+Yeni backend:
+
+- **Öneri sayısı**: son 4 haftanın aynı günü `production.persons` ortalaması. <3 veri noktası varsa
+  öneri GÖSTERİLMEZ. Asla otomatik yazılmaz — yalnız dokunuşla. Yazarken `entered_by='uysa'`,
+  `unit_price_snap` o ayın `customer_price`'ından; **fiyat yoksa onay pasif**.
+- **Anomali**: sapma eşiği `ayar` tablosunda parametrik (varsayılan %30). Yalnız sapan satırda uyarı.
+- **Kesim geri sayımı**: `Helpers` kesim saatinden (müşteri bazlı ayar dahil).
+- **Tahmini kâr**: ay-bugüne gerçekleşen kişi başı gıda maliyeti (gıda faturaları / ÜRETİM kişisi) —
+  "tahmini" etiketi zorunlu, ay ortası şişkinlik uyarısı korunur.
+- **Bitti-tanımı:** öneri onayı üretim kaydı yazıyor ve geri alınabiliyor; fiyatsız müşteride onay
+  pasif; 3'ten az veri olan müşteride öneri yok; anomali eşiği ayardan değişiyor; çift tık mükerrer
+  kayıt üretmiyor; gerçek tarayıcıda `element.value` ile doğrulandı.
+
+### Faz 3 — Gelen (sipariş + talep tek kuyruk)
+
+- Yeni `gelen.php`: `pendingOrders()` + `allRequests()` tek listede, tür şeritle ayrılır.
+- `siparisler.php` ve `talepler.php` → `gelen.php`'ye redirect (URL'ler yaşar).
+- **Bitti-tanımı:** onay/ret ve cevap uçları çalışıyor, audit yazıyor; eski URL'ler redirect ediyor;
+  push deep-link'i hâlâ doğru ekrana düşüyor.
+
+### Faz 4 — Navigasyon
+
+- Mutfak + Sevkiyat → Bugün'ün içinde sekme. Ay kapanışı → Finans.
+- (+) menüsü yalnız yeni kayıt: Gider ekle · Fatura kes · Müşteri ekle.
+- `moduller.php` kalır ama küçülür (taşınanlar çıkar).
+- **Bitti-tanımı:** her eski link bir yere çıkıyor (ölü link yok), tab bar 5 sekme kuralını koruyor.
+
+### Faz 5 — Finans
+
+- Belge zinciri: **kesildi** (`fatura.durum='kesildi'`) → **mail** (`mail_kuyruk.durum`) →
+  **alacak** (`cari_entries` müşteri bakiyesi toplamı).
+  ⚠️ Mockup'taki "3 tahsilat bekliyor" FATURA BAZINDA türetilemez (`fatura` tablosunda ödeme alanı
+  yok) — zincirin 3. adımı ay bazlı toplam alacak olarak uygulanır.
+- **Bitti-tanımı:** üç adımın da rakamı sorgudan geliyor, elle sayı yok; "Bekleyenleri gör" doğru
+  filtreli listeye gidiyor.
+
+### Faz 6 — Müşteriler + müşteri detayı
+
+- Liste: karar rakamı + fiyatı girilmemişte satır içi "Fiyat gir".
+- Detay: 737 satırlık form → üç kart (Aylık fiyat · Alt firmalar · Sabit kalemler) + "Düzenle".
+- **Bitti-tanımı:** hiçbir alan kaybolmadı (alan sayımı yapılır), kaydetme tek POST, bağlı alanlar
+  birlikte güncelleniyor.
+
+### Faz 7 — Fatura Kes · Menü · Mutfak · Sevkiyat
+
+### Faz 8 — Stok · Personel · Teklifler · Ay kapanışı
+
+### Faz 9 — Öksüzler
+
+- `haccp.php` menüye bağlanır (Operasyon grubu) — gıda güvenliği kaydı, silinmez.
+- `yakinda.php` komple kaldırılır (route + link + dosya).
+
+## Deploy (tek sefer, tüm fazlar bitince)
+
+1. Rollback önce: VPS'te DB dump + çalışan imaj tag'i not edilir.
+2. Lokal commit → GitHub push → VPS `git pull` → `docker build -f Dockerfile.v2` → `up -d`.
+   `docker cp` YOK, inline SSH heredoc YOK (script + scp).
+3. Pencere: 14:30 push cron'u ve 15:30 kesim saatine çakışmaz; sabah erken ya da akşam.
+4. Duman testi: login → Bugün → bir üretim girişi yaz → **geri al** → geri alındığını doğrula.
+5. Ömer'e tek fiziksel adım: iOS app'ten aç, bir sayı gir, kaydettiğini gör.
+
+## Kaldığın yer çapası
+
+Her faz bitince bu dosyanın altına tarih + faz + commit yazılır; oturum koparsa buradan devam edilir.
+
+- 2026-08-26: Faz 0 tamam — dal açıldı, plan yazıldı, tahsilat varsayımı çürütüldü (fatura bazında
+  ödeme alanı yok → zincir 3. adımı ay bazlı alacak), oturum kalıcılığı doğrulandı
+  (`uysatakip_sessions` volume, rebuild kullanıcıyı atmaz).

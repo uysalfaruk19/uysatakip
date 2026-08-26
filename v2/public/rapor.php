@@ -29,7 +29,10 @@ $drill = $drillId ? $repo->customer($drillId) : null;
 $karKaynak = (string) ($_GET['kaynak'] ?? '');
 $karSatir = $drillId ? $repo->musteriKarSatiri($drillId, $month, $karKaynak !== '' ? $karKaynak : null) : null;
 
-$pageTitle = $drill ? $drill['name'] : 'Kâr / Zarar';
+// Bu ekranın adı modüllerde "Üretim raporu"ydu ama sayfa başlığı "Kâr / Zarar" yazıyordu;
+// alt bardaki Kâr/Zarar sekmesi ise kar-analizi.php'ye iner. Aynı isim iki ekranda = hangi
+// rakam doğru belirsizliği. Kâr/Zarar TEK ekran (kar-analizi), burası üretim raporu.
+$pageTitle = $drill ? $drill['name'] : 'Üretim raporu';
 $eyebrow = $drill ? ('Müşteri raporu · ' . ay_label_tr($month)) : ay_label_tr($month);
 $active = 'rapor';
 

@@ -37,3 +37,6 @@ build/
 # Paraşüt OAuth token cache (yerel çalıştırmada oluşur — SIR, asla commit edilmez)
 v2/storage/
 
+
+# lokal dev veritabanı (tools/dev-server.sh)
+/tmp/uysa-dev.sqlite

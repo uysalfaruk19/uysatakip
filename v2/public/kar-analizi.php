@@ -147,72 +147,8 @@ require __DIR__ . '/partials/header.php';
         </div>
       </div>
 
-      <?php // fable-048 (Ömer): VERİ KAYNAĞI — gerçek fatura mı, üretim tahakkuku mu ?>
-      <div class="segmented" style="margin-bottom:8px">
-        <a class="chip <?= $kaynak === 'fatura' ? 'active' : '' ?>" href="kar-analizi.php?<?= Helpers::e($qs(['kaynak' => 'fatura'])) ?>"><i class="bi bi-receipt"></i> Fatura (gerçek)</a>
-        <a class="chip <?= $kaynak === 'uretim' ? 'active' : '' ?>" href="kar-analizi.php?<?= Helpers::e($qs(['kaynak' => 'uretim'])) ?>"><i class="bi bi-calculator"></i> Üretim (tahakkuk)</a>
-      </div>
-
-      <!-- fable-039: Kâr/Zarar → Üretim | Taşıma ayrımı -->
-      <div class="segmented" style="margin-bottom:12px">
-        <a class="chip <?= $tab === 'tumu' ? 'active' : '' ?>" href="kar-analizi.php?<?= Helpers::e($qs(['tab' => 'tumu'])) ?>">Tümü</a>
-        <a class="chip <?= $tab === 'uretim' ? 'active' : '' ?>" href="kar-analizi.php?<?= Helpers::e($qs(['tab' => 'uretim'])) ?>">Üretim</a>
-        <a class="chip <?= $tab === 'tasima' ? 'active' : '' ?>" href="kar-analizi.php?<?= Helpers::e($qs(['tab' => 'tasima'])) ?>">Taşıma</a>
-      </div>
-
-      <?php if (!empty($ka['fatura_devre_disi'])): // migrate_047 uygulanmadı → tahakkuka düşüldü, gizlenmiyor ?>
-      <div class="cardx card-pad" style="padding-block:10px">
-        <div style="font-size:12.5px;font-weight:600;color:var(--red)"><i class="bi bi-exclamation-triangle-fill"></i> Fatura bazlı kâr/zarar henüz kurulmadı (satış faturası tablosu yok).</div>
-        <div class="row-meta" style="margin-top:4px">Aşağıdaki rakamlar ÜRETİM (tahakkuk) hesabıdır. Kurulum: <code>sql/migrate_047.sql</code> + <code>tools/parasut_satis_sync.php</code>.</div>
-      </div>
-      <?php endif; ?>
-
-      <?php // fable-078: kapsam/gecikme AYLIK bilgidir (son fatura, kapsanan gün) —
-           // yıllık toplamda yanıltır, gösterilmez. ?>
-      <?php if ($donem === 'ay' && $kaynak === 'fatura'): // fable-048: FATURA KAPSAMI — eksikliği açıkça yaz (veri güvenilirliği) ?>
-      <div class="cardx card-pad" style="padding-block:10px">
-        <?php if ($fbilgi && $fbilgi['adet'] > 0): ?>
-          <div style="font-size:12.5px;font-weight:600">
-            <i class="bi bi-receipt" style="color:var(--primary)"></i>
-            <?= (int) $fbilgi['adet'] ?> fatura · son fatura <?= Helpers::e(date('d.m.Y', strtotime((string) $fbilgi['son_fatura']))) ?>
-            · kapsanan dönem 1–<?= Helpers::e(f048_gun_tr((string) $fbilgi['kapsam_son'])) ?>
-          </div>
-          <?php if ($fbilgi['uyari']): ?>
-          <div class="row-meta" style="margin-top:5px;color:var(--red)">
-            <i class="bi bi-info-circle-fill"></i> <?= (int) $fbilgi['gecikme_gun'] ?> gündür fatura kesilmemiş —
-            <?= Helpers::e(date('d.m.Y', strtotime((string) $fbilgi['kapsam_son']))) ?> sonrası henüz faturalanmadı, bu ekrandaki gelir O KADARINI gösterir.
-          </div>
-          <?php endif; ?>
-          <?php if ($fbilgi['eslesmemis_adet'] > 0): ?>
-          <div class="row-meta" style="margin-top:5px">
-            <i class="bi bi-question-circle"></i> <?= (int) $fbilgi['eslesmemis_adet'] ?> fatura Kokpit müşterisiyle eşleşmedi
-            (₺<?= Helpers::money((float) $fbilgi['eslesmemis_net']) ?>) — aşağıda "eşleşmemiş gelir" olarak ayrı duruyor:
-            <?php $adlar = [];
-            foreach (array_slice($fbilgi['eslesmemis'], 0, 4) as $e) { $adlar[] = $e['ad'] . ' ₺' . Helpers::money((float) $e['net']); }
-            echo Helpers::e(implode(' · ', $adlar));
-            if (count($fbilgi['eslesmemis']) > 4) { echo ' · +' . (count($fbilgi['eslesmemis']) - 4); } ?>
-          </div>
-          <?php endif; ?>
-          <?php // fable-048c (Fable): faturası henüz kesilmemiş müşteri hesaba GİRMEZ — gizlemek
-                // yerine burada bildirilir (yoksa "kârım neden düşük" sorusu cevapsız kalır). ?>
-          <?php $fsz = $ka['faturasiz_musteri'] ?? []; if ($fsz): ?>
-          <div class="row-meta" style="margin-top:5px">
-            <i class="bi bi-hourglass-split"></i> <?= count($fsz) ?> müşteri bu ay HENÜZ faturalanmadı —
-            hesaba katılmadı (ne geliri ne maliyeti):
-            <?php $fa = [];
-            foreach (array_slice($fsz, 0, 4) as $m) { $fa[] = $m['name'] . ' (maliyet ₺' . Helpers::money((float) $m['maliyet']) . ')'; }
-            echo Helpers::e(implode(' · ', $fa));
-            if (count($fsz) > 4) { echo ' · +' . (count($fsz) - 4); } ?>
-          </div>
-          <?php endif; ?>
-        <?php else: ?>
-          <div style="font-size:12.5px;font-weight:600"><i class="bi bi-exclamation-triangle" style="color:var(--red)"></i> Bu ay için kayıtlı satış faturası yok.</div>
-          <div class="row-meta" style="margin-top:4px">Paraşüt satış senkronu henüz çalışmadıysa gelir boş görünür — gerçek rakam için
-            <a href="kar-analizi.php?<?= Helpers::e($qs(['kaynak' => 'uretim'])) ?>" style="text-decoration:underline">Üretim (tahakkuk)</a> moduna bak.</div>
-        <?php endif; ?>
-      </div>
-      <?php endif; ?>
-
+      <?php // Aksiyon deseni: KARAR RAKAMI en üstte. Filtreler ve kapsam uyarıları
+           // altına indi — ekrana girer girmez görülecek şey net kâr.  ?>
       <div class="cardx card-pad">
         <div class="gt-h"><i class="bi bi-broadcast"></i> <?= $donem === 'yil' ? 'YILIN NABZI' : 'AYIN NABZI' ?></div>
         <div class="gt-pulse">
@@ -280,6 +216,72 @@ require __DIR__ . '/partials/header.php';
           <div><div class="gt-mn"><?= marj_pct($ka['toplam_marj']) ?></div><div class="gt-ml">Toplam marj</div></div>
         </div>
       </div>
+
+      <?php // fable-048 (Ömer): VERİ KAYNAĞI — gerçek fatura mı, üretim tahakkuku mu ?>
+      <div class="segmented" style="margin-bottom:8px">
+        <a class="chip <?= $kaynak === 'fatura' ? 'active' : '' ?>" href="kar-analizi.php?<?= Helpers::e($qs(['kaynak' => 'fatura'])) ?>"><i class="bi bi-receipt"></i> Fatura (gerçek)</a>
+        <a class="chip <?= $kaynak === 'uretim' ? 'active' : '' ?>" href="kar-analizi.php?<?= Helpers::e($qs(['kaynak' => 'uretim'])) ?>"><i class="bi bi-calculator"></i> Üretim (tahakkuk)</a>
+      </div>
+
+      <!-- fable-039: Kâr/Zarar → Üretim | Taşıma ayrımı -->
+      <div class="segmented" style="margin-bottom:12px">
+        <a class="chip <?= $tab === 'tumu' ? 'active' : '' ?>" href="kar-analizi.php?<?= Helpers::e($qs(['tab' => 'tumu'])) ?>">Tümü</a>
+        <a class="chip <?= $tab === 'uretim' ? 'active' : '' ?>" href="kar-analizi.php?<?= Helpers::e($qs(['tab' => 'uretim'])) ?>">Üretim</a>
+        <a class="chip <?= $tab === 'tasima' ? 'active' : '' ?>" href="kar-analizi.php?<?= Helpers::e($qs(['tab' => 'tasima'])) ?>">Taşıma</a>
+      </div>
+
+      <?php if (!empty($ka['fatura_devre_disi'])): // migrate_047 uygulanmadı → tahakkuka düşüldü, gizlenmiyor ?>
+      <div class="cardx card-pad" style="padding-block:10px">
+        <div style="font-size:12.5px;font-weight:600;color:var(--red)"><i class="bi bi-exclamation-triangle-fill"></i> Fatura bazlı kâr/zarar henüz kurulmadı (satış faturası tablosu yok).</div>
+        <div class="row-meta" style="margin-top:4px">Aşağıdaki rakamlar ÜRETİM (tahakkuk) hesabıdır. Kurulum: <code>sql/migrate_047.sql</code> + <code>tools/parasut_satis_sync.php</code>.</div>
+      </div>
+      <?php endif; ?>
+
+      <?php // fable-078: kapsam/gecikme AYLIK bilgidir (son fatura, kapsanan gün) —
+           // yıllık toplamda yanıltır, gösterilmez. ?>
+      <?php if ($donem === 'ay' && $kaynak === 'fatura'): // fable-048: FATURA KAPSAMI — eksikliği açıkça yaz (veri güvenilirliği) ?>
+      <div class="cardx card-pad" style="padding-block:10px">
+        <?php if ($fbilgi && $fbilgi['adet'] > 0): ?>
+          <div style="font-size:12.5px;font-weight:600">
+            <i class="bi bi-receipt" style="color:var(--primary)"></i>
+            <?= (int) $fbilgi['adet'] ?> fatura · son fatura <?= Helpers::e(date('d.m.Y', strtotime((string) $fbilgi['son_fatura']))) ?>
+            · kapsanan dönem 1–<?= Helpers::e(f048_gun_tr((string) $fbilgi['kapsam_son'])) ?>
+          </div>
+          <?php if ($fbilgi['uyari']): ?>
+          <div class="row-meta" style="margin-top:5px;color:var(--red)">
+            <i class="bi bi-info-circle-fill"></i> <?= (int) $fbilgi['gecikme_gun'] ?> gündür fatura kesilmemiş —
+            <?= Helpers::e(date('d.m.Y', strtotime((string) $fbilgi['kapsam_son']))) ?> sonrası henüz faturalanmadı, bu ekrandaki gelir O KADARINI gösterir.
+          </div>
+          <?php endif; ?>
+          <?php if ($fbilgi['eslesmemis_adet'] > 0): ?>
+          <div class="row-meta" style="margin-top:5px">
+            <i class="bi bi-question-circle"></i> <?= (int) $fbilgi['eslesmemis_adet'] ?> fatura Kokpit müşterisiyle eşleşmedi
+            (₺<?= Helpers::money((float) $fbilgi['eslesmemis_net']) ?>) — aşağıda "eşleşmemiş gelir" olarak ayrı duruyor:
+            <?php $adlar = [];
+            foreach (array_slice($fbilgi['eslesmemis'], 0, 4) as $e) { $adlar[] = $e['ad'] . ' ₺' . Helpers::money((float) $e['net']); }
+            echo Helpers::e(implode(' · ', $adlar));
+            if (count($fbilgi['eslesmemis']) > 4) { echo ' · +' . (count($fbilgi['eslesmemis']) - 4); } ?>
+          </div>
+          <?php endif; ?>
+          <?php // fable-048c (Fable): faturası henüz kesilmemiş müşteri hesaba GİRMEZ — gizlemek
+                // yerine burada bildirilir (yoksa "kârım neden düşük" sorusu cevapsız kalır). ?>
+          <?php $fsz = $ka['faturasiz_musteri'] ?? []; if ($fsz): ?>
+          <div class="row-meta" style="margin-top:5px">
+            <i class="bi bi-hourglass-split"></i> <?= count($fsz) ?> müşteri bu ay HENÜZ faturalanmadı —
+            hesaba katılmadı (ne geliri ne maliyeti):
+            <?php $fa = [];
+            foreach (array_slice($fsz, 0, 4) as $m) { $fa[] = $m['name'] . ' (maliyet ₺' . Helpers::money((float) $m['maliyet']) . ')'; }
+            echo Helpers::e(implode(' · ', $fa));
+            if (count($fsz) > 4) { echo ' · +' . (count($fsz) - 4); } ?>
+          </div>
+          <?php endif; ?>
+        <?php else: ?>
+          <div style="font-size:12.5px;font-weight:600"><i class="bi bi-exclamation-triangle" style="color:var(--red)"></i> Bu ay için kayıtlı satış faturası yok.</div>
+          <div class="row-meta" style="margin-top:4px">Paraşüt satış senkronu henüz çalışmadıysa gelir boş görünür — gerçek rakam için
+            <a href="kar-analizi.php?<?= Helpers::e($qs(['kaynak' => 'uretim'])) ?>" style="text-decoration:underline">Üretim (tahakkuk)</a> moduna bak.</div>
+        <?php endif; ?>
+      </div>
+      <?php endif; ?>
 
       <?php // fable-078: kişi başı maliyet kartları AYLIK kavramdır (o ayın kişi sayısına
            // bölünür) — yıllık toplamda anlamı olmaz, gösterilmez. ?>
