@@ -11,7 +11,9 @@ set -euo pipefail
 
 REPO="${REPO:-/root/uysatakip}"
 COMPOSE="${COMPOSE:-docker-compose.v2.yml}"
-SERVIS="${SERVIS:-uysatakip-v2}"
+SERVIS="${SERVIS:-app-v2}"           # compose'daki servis adı
+KONTEYNER="${KONTEYNER:-uysatakip-v2}"
+DB_KONTEYNER="${DB_KONTEYNER:-uysatakip-db}"
 DAL="${DAL:-tasarim-aksiyon}"
 DAMGA="$(date +%Y%m%d-%H%M)"
 YEDEK_DIZIN="/root/kokpit-rollback"
@@ -25,28 +27,33 @@ echo
 echo "=== 1) ROLLBACK YEDEĞİ (önce geri dönüş yolu) ======================="
 mkdir -p "$YEDEK_DIZIN"
 # 1a. Çalışan imajı etiketle — geri dönüş tek komut olsun
-ESKI_IMAJ="$(docker compose -f "$COMPOSE" images -q "$SERVIS" 2>/dev/null | head -1 || true)"
+ESKI_IMAJ="$(docker inspect "$KONTEYNER" --format '{{.Image}}' 2>/dev/null || true)"
 if [ -n "$ESKI_IMAJ" ]; then
   docker tag "$ESKI_IMAJ" "kokpit-rollback:$DAMGA"
   echo "  imaj etiketlendi → kokpit-rollback:$DAMGA"
 else
-  echo "  UYARI: çalışan imaj bulunamadı, imaj rollback'i YOK"
+  echo "  DURDU: çalışan imaj bulunamadı, geri dönüş yolu olmadan devam edilmez"
+  exit 1
 fi
-# 1b. Veritabanı dökümü (.env.v2'deki DB — uysa_v2)
+# 1b. Veritabanı dökümü — DB ayrı konteynerde (mariadb), dump oradan alınır.
 set +u
 # shellcheck disable=SC1091
 source .env.v2 2>/dev/null || true
 set -u
 DUMP="$YEDEK_DIZIN/uysa_v2-$DAMGA.sql.gz"
-if command -v mysqldump >/dev/null 2>&1; then
-  mysqldump -h "${DB_HOST:-127.0.0.1}" -P "${DB_PORT:-3306}" -u "${DB_USER:-root}" \
-    ${DB_PASS:+-p"$DB_PASS"} "${DB_NAME:-uysa_v2}" | gzip > "$DUMP"
-else
-  docker exec "$(docker ps --filter name=mysql --filter name=maria -q | head -1)" \
-    mysqldump -u "${DB_USER:-root}" ${DB_PASS:+-p"$DB_PASS"} "${DB_NAME:-uysa_v2}" | gzip > "$DUMP"
+docker exec "$DB_KONTEYNER" mariadb-dump \
+  -u "${DB_USER:-uysa}" -p"${DB_PASS:-}" "${DB_NAME:-uysa_v2}" 2>/dev/null \
+  | gzip > "$DUMP" \
+  || docker exec "$DB_KONTEYNER" mysqldump \
+       -u "${DB_USER:-uysa}" -p"${DB_PASS:-}" "${DB_NAME:-uysa_v2}" | gzip > "$DUMP"
+# Boş/bozuk dump ile devam edilmez — geri dönüş yolu gerçekten var olmalı.
+BOYUT="$(stat -c %s "$DUMP")"
+if [ "$BOYUT" -lt 10000 ]; then
+  echo "  DURDU: DB dökümü çok küçük ($BOYUT byte) — yedek güvenilir değil"
+  exit 1
 fi
 ls -lh "$DUMP"
-echo "  DB dökümü alındı."
+echo "  DB dökümü alındı ($BOYUT byte)."
 
 echo
 echo "=== 2) KOD ========================================================="
