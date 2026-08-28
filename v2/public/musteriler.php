@@ -163,7 +163,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             }
             $yazilan = 0;
             $kilitli = 0;
-            foreach ((array) ($_POST['ogle'] ?? []) as $gun => $_) {
+            // Bölüşümlü müşteride (CANTAŞ/Marmara) ekranda TEK giriş vardır ve o FATURA sayısıdır
+            // (Ömer: "üretim toplamı 50'yi istemiyorum, fatura istiyorum"). Öğün kutuları
+            // gönderilmez → üretim kaydı KORUNUR; yalnız faturalanacak tutar güncellenir.
+            $gunAnahtarlari = array_unique(array_merge(
+                array_keys((array) ($_POST['ogle'] ?? [])),
+                array_keys((array) ($_POST['fatura'] ?? []))
+            ));
+            foreach ($gunAnahtarlari as $gun) {
                 $gun = (string) $gun;
                 $m = $mevcut[$gun] ?? null;
                 if ($m === null) {
@@ -173,14 +180,30 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     $kilitli++;
                     continue;   // belgesi kesilmiş gün DEĞİŞTİRİLMEZ (sessiz de geçilmez, sayılır)
                 }
-                $yeni = [
-                    'ogle'    => max(0, (int) ($_POST['ogle'][$gun] ?? 0)),
-                    'aksam'   => max(0, (int) ($_POST['aksam'][$gun] ?? 0)),
-                    'kumanya' => max(0, (int) ($_POST['kumanya'][$gun] ?? 0)),
-                ];
-                $uToplam = array_sum($yeni);
                 $fatRaw = trim((string) ($_POST['fatura'][$gun] ?? ''));
-                $fatKisi = $fatRaw === '' ? $uToplam : max(0, (int) $fatRaw);
+                if (!isset($_POST['ogle'][$gun])) {
+                    // Yalnız fatura sayısı geldi: üretim olduğu gibi kalır. Gün boşsa (hiç üretim
+                    // kaydı yok) girilen sayı üretim olarak da yazılır — o gün gerçekten o kadar
+                    // yemek çıkmış demektir, yoksa kayıt hiç oluşmaz ve fatura da doğmaz.
+                    $fatKisi = $fatRaw === '' ? 0 : max(0, (int) $fatRaw);
+                    $yeni = [
+                        'ogle'    => $m['ogle'] > 0 ? $m['ogle'] : $fatKisi,
+                        'aksam'   => $m['aksam'],
+                        'kumanya' => $m['kumanya'],
+                    ];
+                    if ($fatKisi <= 0) {
+                        $yeni = ['ogle' => 0, 'aksam' => 0, 'kumanya' => 0];   // 0 = günü sil
+                    }
+                    $uToplam = array_sum($yeni);
+                } else {
+                    $yeni = [
+                        'ogle'    => max(0, (int) ($_POST['ogle'][$gun] ?? 0)),
+                        'aksam'   => max(0, (int) ($_POST['aksam'][$gun] ?? 0)),
+                        'kumanya' => max(0, (int) ($_POST['kumanya'][$gun] ?? 0)),
+                    ];
+                    $uToplam = array_sum($yeni);
+                    $fatKisi = $fatRaw === '' ? $uToplam : max(0, (int) $fatRaw);
+                }
                 $degisti = $yeni['ogle'] !== $m['ogle'] || $yeni['aksam'] !== $m['aksam']
                     || $yeni['kumanya'] !== $m['kumanya'] || $fatKisi !== $m['fatura_kisi'];
                 if (!$degisti) {
@@ -622,11 +645,14 @@ if ($sayimMusteri):
                 ?>
                   <th class="num" style="white-space:nowrap" title="<?= Helpers::e((string) $f['ad']) ?> — desenden hesaplanır, fatura bu kırılımdan kesilir"><?= Helpers::e($fKisa) ?></th>
                 <?php endforeach; ?>
-                <?php if ($sFirmalar): ?><th class="num">Toplam</th><?php endif; ?>
-                <th class="num">Öğle<?= $sFirmalar ? ' <span class="row-meta">(giriş)</span>' : '' ?></th>
-                <?php if ($ogunVar['aksam']): ?><th class="num">Akşam</th><?php endif; ?>
-                <?php if ($ogunVar['kumanya']): ?><th class="num">Kumanya</th><?php endif; ?>
-                <?php if (!$sFirmalar): ?><th class="num">Fatura kişisi</th><?php endif; ?>
+                <?php if ($sFirmalar): ?>
+                  <th class="num">Fatura sayısı</th>
+                <?php else: ?>
+                  <th class="num">Öğle</th>
+                  <?php if ($ogunVar['aksam']): ?><th class="num">Akşam</th><?php endif; ?>
+                  <?php if ($ogunVar['kumanya']): ?><th class="num">Kumanya</th><?php endif; ?>
+                  <th class="num">Fatura kişisi</th>
+                <?php endif; ?>
                 <th>Durum</th>
               </tr></thead>
               <tbody>
@@ -644,20 +670,22 @@ if ($sayimMusteri):
                     <td class="num" style="font-size:15px<?= $fk > 0 ? ';font-weight:700' : ';color:var(--muted)' ?>"><?= $fk > 0 ? $fk : '—' ?></td>
                   <?php endforeach; ?>
                   <?php if ($sFirmalar): ?>
-                    <td class="num row-meta"><?= $kirToplam > 0 ? $kirToplam : '—' ?></td>
-                  <?php endif; ?>
-                  <td class="num"><input type="number" min="0" name="ogle[<?= $g['gun'] ?>]" value="<?= $g['ogle'] ?: '' ?>" style="<?= $st ?>"<?= $ro ?>></td>
-                  <?php if ($ogunVar['aksam']): ?>
-                    <td class="num"><input type="number" min="0" name="aksam[<?= $g['gun'] ?>]" value="<?= $g['aksam'] ?: '' ?>" style="<?= $st ?>"<?= $ro ?>></td>
-                  <?php endif; ?>
-                  <?php if ($ogunVar['kumanya']): ?>
-                    <td class="num"><input type="number" min="0" name="kumanya[<?= $g['gun'] ?>]" value="<?= $g['kumanya'] ?: '' ?>" style="<?= $st ?>"<?= $ro ?>></td>
-                  <?php endif; ?>
-                  <?php // Bölüşümlü müşteride fatura kişisi ayrı sütun değil: firma sayılarının
-                        // toplamı zaten odur. Değeri korumak için gizli alanla taşınır. ?>
-                  <?php if ($sFirmalar): ?>
-                    <input type="hidden" name="fatura[<?= $g['gun'] ?>]" value="<?= $g['fatura_kisi'] ?: '' ?>">
+                    <?php // Ömer (28 Ağu): "üretim toplamı 50'yi istemiyorum, FATURA istiyorum —
+                          // Temmuz Excel'imdeki desene bak." O tabloda üretim sütunu yok; her
+                          // firmanın fatura sayısı var. Bu yüzden bölüşümlü müşteride TEK giriş
+                          // vardır ve o FATURA sayısıdır; firma kırılımı ondan doğar.
+                          // Üretim (persons) kaydı korunur — kişi başı gıda maliyeti ona bölünüyor. ?>
+                    <td class="num"><input type="number" min="0" name="fatura[<?= $g['gun'] ?>]" value="<?= $g['fatura_kisi'] ?: '' ?>"
+                        title="Faturalanacak kişi — firma kırılımı bundan hesaplanır"
+                        style="width:80px;font-size:16px;text-align:right<?= $kilitli ? ';opacity:.55' : '' ?>"<?= $ro ?>></td>
                   <?php else: ?>
+                    <td class="num"><input type="number" min="0" name="ogle[<?= $g['gun'] ?>]" value="<?= $g['ogle'] ?: '' ?>" style="<?= $st ?>"<?= $ro ?>></td>
+                    <?php if ($ogunVar['aksam']): ?>
+                      <td class="num"><input type="number" min="0" name="aksam[<?= $g['gun'] ?>]" value="<?= $g['aksam'] ?: '' ?>" style="<?= $st ?>"<?= $ro ?>></td>
+                    <?php endif; ?>
+                    <?php if ($ogunVar['kumanya']): ?>
+                      <td class="num"><input type="number" min="0" name="kumanya[<?= $g['gun'] ?>]" value="<?= $g['kumanya'] ?: '' ?>" style="<?= $st ?>"<?= $ro ?>></td>
+                    <?php endif; ?>
                     <td class="num"><input type="number" min="0" name="fatura[<?= $g['gun'] ?>]" value="<?= $g['fatura_kisi'] ?: '' ?>"
                         placeholder="=üretim" title="Boş bırakılırsa üretim toplamıyla aynı"
                         style="width:80px;font-size:16px;text-align:right<?= $kilitli ? ';opacity:.55' : '' ?><?= $g['fatura_kisi'] !== $g['uretim'] ? ';font-weight:700' : '' ?>"<?= $ro ?>></td>
