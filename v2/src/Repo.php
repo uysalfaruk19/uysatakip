@@ -747,8 +747,8 @@ final class Repo
         }
         $durum = in_array($d['durum'] ?? '', ['kesildi', 'hata', 'bilinmiyor'], true) ? $d['durum'] : 'hata';
         // fable-023d/e: gönderim (resmileştirme) ve mail paylaşımı kesimden ayrı adımlar — ayrı izlenir.
-        $gonderim = in_array($d['gonderim'] ?? '', ['gonderildi', 'hata', 'yok'], true) ? $d['gonderim'] : 'yok';
-        $mail = in_array($d['mail'] ?? '', ['gonderildi', 'hata', 'yok'], true) ? $d['mail'] : 'yok';
+        $gonderim = in_array($d['gonderim'] ?? '', ['gonderildi', 'hata', 'yok', 'sirada'], true) ? $d['gonderim'] : 'yok';
+        $mail = in_array($d['mail'] ?? '', ['gonderildi', 'hata', 'yok', 'sirada'], true) ? $d['mail'] : 'yok';
         $args = [
             $d['parasut_doc_id'] ?? null,
             $d['despatch_no'] ?? null,
@@ -1351,8 +1351,8 @@ final class Repo
         // fable-091: 'ekstra' = aylık müşterinin ay içinde biriken tek seferlik kalemleri.
         $tip  = $enum((string) ($d['tip'] ?? 'irsaliye'), ['irsaliye', 'aylik', 'sabit', 'ekstra'], 'irsaliye');
         $durum = $enum((string) ($d['durum'] ?? 'hata'), ['kesildi', 'hata', 'bilinmiyor', 'iptal'], 'hata');
-        $resm = $enum((string) ($d['resmilestirme'] ?? 'yok'), ['gonderildi', 'hata', 'yok'], 'yok');
-        $mail = $enum((string) ($d['mail'] ?? 'yok'), ['gonderildi', 'hata', 'yok'], 'yok');
+        $resm = $enum((string) ($d['resmilestirme'] ?? 'yok'), ['gonderildi', 'hata', 'yok', 'sirada'], 'yok');
+        $mail = $enum((string) ($d['mail'] ?? 'yok'), ['gonderildi', 'hata', 'yok', 'sirada'], 'yok');
         $sql = 'INSERT INTO parasut_fatura_log
                     (customer_id, donem_bas, donem_son, tip, sabit_kalem_id, parasut_contact_id, parasut_fatura_id,
                      fatura_no, alt_ad, kalemler, toplam_kisi, toplam_tutar, durum, resmilestirme, mail,
@@ -1400,10 +1400,10 @@ final class Repo
                 $args[] = in_array($d['durum'], ['kesildi', 'hata', 'bilinmiyor', 'iptal'], true) ? $d['durum'] : 'hata';
             } elseif ($k === 'resmilestirme') {
                 $set[] = 'resmilestirme = ?';
-                $args[] = in_array($d['resmilestirme'], ['gonderildi', 'hata', 'yok'], true) ? $d['resmilestirme'] : 'yok';
+                $args[] = in_array($d['resmilestirme'], ['gonderildi', 'hata', 'yok', 'sirada'], true) ? $d['resmilestirme'] : 'yok';
             } elseif ($k === 'mail') {
                 $set[] = 'mail = ?';
-                $args[] = in_array($d['mail'], ['gonderildi', 'hata', 'yok'], true) ? $d['mail'] : 'yok';
+                $args[] = in_array($d['mail'], ['gonderildi', 'hata', 'yok', 'sirada'], true) ? $d['mail'] : 'yok';
             } else {
                 $set[] = "$k = ?";
                 $args[] = $d[$k];
