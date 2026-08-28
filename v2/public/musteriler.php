@@ -51,11 +51,16 @@ if ($sayimId && ($_GET['xlsx'] ?? '') === '1') {
         . ($xFirma ? ' · FİRMA BAZLI YEMEK DAĞILIMI' : ' · AYLIK YEMEK SAYIMI')];
     $kalin[] = 1;
     $rows[] = [];
-    $bas = ['Tarih', 'Gün', 'Öğle'];
-    if ($xAksam) { $bas[] = 'Akşam'; }
-    if ($xKumanya) { $bas[] = 'Kumanya'; }
-    $bas[] = 'Fatura kişisi';
+    // Ömer'in Temmuz dosyasındaki desen: TARİH | HC | CANTAŞ | BAKIR — ÜRETİM sütunu YOK.
+    // Bölüşümlü müşteride Excel de aynı: firma sayıları + fatura sayısı.
+    $bas = ['Tarih', 'Gün'];
     foreach ($xFirma as $f) { $bas[] = (string) $f['ad']; }
+    if (!$xFirma) {
+        $bas[] = 'Öğle';
+        if ($xAksam) { $bas[] = 'Akşam'; }
+        if ($xKumanya) { $bas[] = 'Kumanya'; }
+    }
+    $bas[] = $xFirma ? 'Fatura sayısı' : 'Fatura kişisi';
     $bas[] = 'Durum / Tutar';
     $rows[] = $bas;
     $kalin[] = count($rows);
@@ -69,25 +74,31 @@ if ($sayimId && ($_GET['xlsx'] ?? '') === '1') {
         $gF = 0; $gFirma = [];
         foreach ($xFirma as $f) { $gFirma[$f['kod']] = 0; }
         foreach ($grup as $g) {
-            $sat = [date('d.m.Y', (int) strtotime($g['gun'])), $g['gun_adi'], $g['ogle'] ?: null];
-            if ($xAksam) { $sat[] = $g['aksam'] ?: null; }
-            if ($xKumanya) { $sat[] = $g['kumanya'] ?: null; }
-            $sat[] = $g['fatura_kisi'] ?: null;
+            $sat = [date('d.m.Y', (int) strtotime($g['gun'])), $g['gun_adi']];
             foreach ($xFirma as $f) {
                 $fk = (int) ($xKir[$g['gun']][$f['kod']] ?? 0);
                 $sat[] = $fk ?: null;
                 $gFirma[$f['kod']] += $fk;
                 $fToplam[$f['kod']] += $fk;
             }
+            if (!$xFirma) {
+                $sat[] = $g['ogle'] ?: null;
+                if ($xAksam) { $sat[] = $g['aksam'] ?: null; }
+                if ($xKumanya) { $sat[] = $g['kumanya'] ?: null; }
+            }
+            $sat[] = $g['fatura_kisi'] ?: null;
             $sat[] = $g['kilit'] !== '' ? $g['kilit'] : ($g['uretim'] === 0 ? 'boş' : 'açık');
             $rows[] = $sat;
             $gF += $g['fatura_kisi'];
         }
-        $ara = [Repo::donemEtiketi($dn, $xm) . ' TOPLAM', '', null];
-        if ($xAksam) { $ara[] = null; }
-        if ($xKumanya) { $ara[] = null; }
-        $ara[] = $gF;
+        $ara = [Repo::donemEtiketi($dn, $xm) . ' TOPLAM', ''];
         foreach ($xFirma as $f) { $ara[] = $gFirma[$f['kod']]; }
+        if (!$xFirma) {
+            $ara[] = null;
+            if ($xAksam) { $ara[] = null; }
+            if ($xKumanya) { $ara[] = null; }
+        }
+        $ara[] = $gF;
         $ara[] = round($gF * $xBirim, 2);
         $rows[] = $ara;
         $kalin[] = count($rows);
@@ -95,11 +106,14 @@ if ($sayimId && ($_GET['xlsx'] ?? '') === '1') {
         $tF += $gF;
     }
 
-    $son = ['AY TOPLAMI', '', null];
-    if ($xAksam) { $son[] = null; }
-    if ($xKumanya) { $son[] = null; }
-    $son[] = $tF;
+    $son = ['AY TOPLAMI', ''];
     foreach ($xFirma as $f) { $son[] = $fToplam[$f['kod']]; }
+    if (!$xFirma) {
+        $son[] = null;
+        if ($xAksam) { $son[] = null; }
+        if ($xKumanya) { $son[] = null; }
+    }
+    $son[] = $tF;
     $son[] = round($tF * $xBirim, 2);
     $rows[] = $son;
     $kalin[] = count($rows);
