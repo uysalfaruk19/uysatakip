@@ -79,6 +79,17 @@ if ($fr['bulundu'] > 0 || $fr['hata'] > 0) {
     }
 }
 
+// fable-095: Kâr/Zarar'ın okuduğu satış kopyasında numara boş kalabiliyor (numara kesimden
+// saniyeler sonra doğuyor, kesim sonrası senkron o anda çekiyor, sonraki senkron "değişmedi"
+// deyip doldurmuyor). Kokpit'in kendi kesim kaydından eşleştirilir — dışarıya çağrı yok.
+$es = $repo->satisFaturaNolariniEslestir();
+if ($es > 0) {
+    printf("Satış kopyası: %d faturanın numarası Kokpit kaydından tamamlandı.
+", $es);
+    uysa_audit('satis_fatura_no_esle', 'cron', date('Y-m-d'),
+        json_encode(['guncellenen' => $es], JSON_UNESCAPED_UNICODE), 'local');
+}
+
 $gunden = $tum ? null : date('Y-m-d', strtotime('-' . $gun . ' day'));
 $eksik = $repo->despatchNosuEksikIrsaliyeler($gunden, $limit);
 

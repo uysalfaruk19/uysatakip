@@ -903,6 +903,35 @@ final class Repo
         )->execute([$no, $id]);
     }
 
+    /**
+     * fable-095 (28 Ağu genel taraması): Kâr/Zarar'ın okuduğu `satis_faturasi` kopyasında
+     * fatura numarası BOŞ kalabiliyor. Sebep: numara Paraşüt'te kesimden birkaç saniye sonra
+     * doğuyor, kesim sonrası satış senkronu tam o anda çekiyor; sonraki senkron ise kaydı
+     * "değişmedi" sayıp numarayı doldurmuyor. Tutar/ciro doğru, yalnız numara görünmüyordu
+     * (28 Ağu'da TALAY'ın UY02026000000173'ü böyle boş kalmıştı).
+     *
+     * Çözüm dışarıdan veri çekmez: Kokpit'in KENDİ kesim kaydındaki numarayı, aynı Paraşüt
+     * belge id'sine sahip satış kopyasına yazar. Dolu numaranın üstüne yazmaz.
+     * @return int güncellenen satır sayısı
+     */
+    public function satisFaturaNolariniEslestir(): int
+    {
+        try {
+            $st = $this->pdo->prepare(
+                "UPDATE satis_faturasi s
+                    JOIN parasut_fatura_log l ON l.parasut_fatura_id = s.parasut_id
+                     SET s.fatura_no = l.fatura_no
+                   WHERE (s.fatura_no IS NULL OR s.fatura_no = '')
+                     AND l.fatura_no IS NOT NULL AND l.fatura_no <> ''"
+            );
+            $st->execute();
+            return $st->rowCount();
+        } catch (\PDOException $e) {
+            error_log('[UYSA v2 fable-095] satış fatura no eşleştirmesi atlandı: ' . $e->getMessage());
+            return 0;
+        }
+    }
+
     public function despatchNosuEksikIrsaliyeler(?string $gunden = null, int $limit = 200): array
     {
         $sql = "SELECT id, customer_id, gun, parasut_doc_id FROM parasut_irsaliye_log
