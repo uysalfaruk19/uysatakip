@@ -250,7 +250,19 @@
       var amt = billP * price;
       var amtEl = row.querySelector(".row-amt");
       // fable-030 (Ömer): satırda para GÖSTERİLMEZ — sadece "girilmedi" uyarısı
-      if (amtEl) amtEl.textContent = p > 0 ? "" : "girilmedi";
+      // aksiyon-faz10: sunucunun bastığı "önerilen N" metnini EZMEZ. Eskiden recalc her
+      // yüklemede "girilmedi" yazıp öneri rakamını siliyordu; kullanıcı rakamı görmeden
+      // onaylamak zorunda kalıyordu (kendi kuralımızın ihlali).
+      if (amtEl) {
+        if (p > 0) {
+          amtEl.textContent = "";
+        } else {
+          var oneriInput = row.querySelector(".count-input[data-oneri]");
+          amtEl.textContent = oneriInput
+            ? "önerilen " + oneriInput.getAttribute("data-oneri")
+            : "girilmedi";
+        }
+      }
       var dot = row.querySelector(".status-dot");
       if (dot) dot.classList.toggle("warn", p === 0);
       row.classList.toggle("missing", p === 0);
@@ -267,7 +279,12 @@
     var sf = document.getElementById("sum-filled");
     if (sp) sp.textContent = totPersons.toLocaleString("tr-TR");
     // fable-023a: "₺" işareti span'ın DIŞINDA (bugun.php) — buraya da yazınca "₺ ₺" çıkıyordu
-    if (sa) sa.textContent = fmt(totAmount);
+    // aksiyon-faz10: Bugün ekranında ciro kuruşsuz (data-tamsayi) — büyük punto taşmasın.
+    if (sa) {
+      sa.textContent = sa.getAttribute("data-tamsayi")
+        ? Math.round(totAmount).toLocaleString("tr-TR")
+        : fmt(totAmount);
+    }
     if (sf) sf.textContent = filled + "/" + rows.length + " girildi";
   }
 
@@ -302,8 +319,31 @@
     if (!input || (parseInt(input.value, 10) || 0) > 0) return false;
     input.value = parseInt(input.getAttribute("data-oneri"), 10) || 0;
     row.classList.add("oneri-kabul");
+    // aksiyon-faz10: onaylanan satırda buton kalmaz — iş bitti, ekran sussun.
+    var btn = row.querySelector("[data-oneri-onay]");
+    if (btn) btn.remove();
+    input.removeAttribute("data-oneri");
     syncFromTotal(row);
     return true;
+  }
+
+  // Akıllı durum satırı ("N müşteri bekliyor") onaydan sonra da doğru sayıyı göstermeli;
+  // sayfa yenilenene kadar eski sayı kalırsa ekran yalan söyler.
+  function akilliDurumTazele() {
+    var kart = document.querySelector(".akilli-durum");
+    if (!kart) return;
+    var kalan = 0;
+    document.querySelectorAll(".customer-row").forEach(function (row) {
+      var i = row.querySelector(".count-input");
+      if (i && !(parseInt(i.value, 10) > 0)) kalan++;
+    });
+    var b = kart.querySelector(".ad-metin b");
+    if (b) b.textContent = kalan + " müşteri bekliyor";
+    // Onaylanacak öneri kalmadıysa toplu buton da kalkar — basınca hiçbir şey olmayan
+    // buton bırakmak, ekranın "iş var" demesi demektir.
+    var toplu = document.getElementById("oneri-toplu");
+    if (toplu && !document.querySelector("[data-oneri-onay]:not([disabled])")) toplu.remove();
+    if (kalan === 0) kart.remove();
   }
 
   document.addEventListener("click", function (e) {
@@ -311,7 +351,10 @@
     if (!btn || btn.disabled) return;
     e.preventDefault();
     var row = btn.closest(".customer-row");
-    if (row && oneriUygula(row)) recalc();
+    if (row && oneriUygula(row)) {
+      recalc();
+      akilliDurumTazele();
+    }
   });
 
   var toplu = document.getElementById("oneri-toplu");
@@ -323,7 +366,10 @@
         var b = row.querySelector("[data-oneri-onay]");
         if (b && !b.disabled && oneriUygula(row)) n++;
       });
-      if (n) recalc();
+      if (n) {
+        recalc();
+        akilliDurumTazele();
+      }
     });
   }
 

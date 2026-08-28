@@ -388,14 +388,20 @@ require __DIR__ . '/partials/header.php';
 
       <?php if ($flash): ?><div class="flash <?= $flashOk ? 'ok' : 'err' ?>"><?= Helpers::e($flash) ?></div><?php endif; ?>
 
-      <!-- fable-034: GÜNÜN NABZI (mockup birebir) — koca ciro + ilerleme + 3 mini stat
-           fable-046: .gt-nabiz-sm = kompakt sürüm (Ömer: ekranın çok yerini kaplıyordu).
-           Sınıf SADECE bu kartta; kar-analizi/finans nabız kartları değişmedi. -->
-      <div class="cardx card-pad gt-nabiz-sm">
-        <div class="gt-h"><i class="bi bi-broadcast"></i> GÜNÜN NABZI</div>
-        <div class="gt-pulse">
-          <div class="gt-pulse-n">₺<span id="sum-amount"><?= Helpers::money($sumA) ?></span></div>
-          <div class="gt-pulse-l"><?= $date === Helpers::today() ? 'bugünkü ciro' : Helpers::e(date('d.m', strtotime($date))) . ' cirosu' ?><?php
+      <!-- aksiyon-faz10 (Ömer: "değişiklik çok az"): YERLEŞİM yeniden kuruldu, katman
+           eklemek yetmedi. Artık ekran ÜÇ BLOK: (1) tek büyük ciro + yanında tahmini kâr,
+           (2) akıllı durum + tek eylem, (3) sade müşteri listesi. Kart başlığı, ilerleme
+           çubuğu ve 3 mini stat KALDIRILDI — aynı bilgi tek ince satırda ve akıllı durum
+           satırında zaten var; ekranın yarısını kaplamalarının karşılığı yoktu. -->
+      <div class="cardx card-pad gt-nabiz-sm gt-nabiz-sade">
+        <div class="gt-pulse gt-pulse-yan">
+          <div class="gt-pulse-sol">
+          <?php // aksiyon-faz10: bu ekranda ciro KURUŞSUZ — kuruş, büyük punto rakamı ikinci
+                // satıra kırıyordu. Hesap değişmedi, yalnız gösterim yuvarlanıyor. ?>
+          <div class="gt-pulse-n">₺<span id="sum-amount" data-tamsayi="1"><?= number_format(round($sumA), 0, ',', '.') ?></span></div>
+          <div class="gt-pulse-l"><?= $date === Helpers::today() ? 'bugünkü ciro' : Helpers::e(date('d.m', strtotime($date))) . ' cirosu' ?></div>
+          </div>
+          <div class="gt-pulse-sag"><?php
             // aksiyon-faz2: TAHMİNİ KÂR — ciro − (gerçek kişi × ay başından bugüne kişi başı
             // maliyet). "tahmini" etiketi ZORUNLU: gider faturaları geç geldiği için ay ortasında
             // maliyet düşük, kâr şişkin görünür (bilinen davranış, bug değil). Maliyet
@@ -403,27 +409,16 @@ require __DIR__ . '/partials/header.php';
             if ($kisiBasiMaliyet > 0 && $sumP > 0):
               $tahminiKar = $sumA - ($sumP * $kisiBasiMaliyet);
               $marj = $sumA > 0 ? ($tahminiKar / $sumA) * 100 : 0; ?>
-            <span class="gt-tahmin">tahmini kâr ₺<?= Helpers::money($tahminiKar) ?> · %<?= number_format($marj, 0, ',', '.') ?><small>ay başından bugüne maliyetle</small></span>
+            <span class="gt-tahmin">tahmini kâr<b>₺<?= Helpers::money($tahminiKar) ?> · %<?= number_format($marj, 0, ',', '.') ?></b><small>ay başından bugüne maliyetle</small></span>
           <?php endif; ?></div>
         </div>
-        <div class="gt-prog">
-          <div class="gt-prog-top"><span>Sayı girişi</span><b id="sum-filled"><?= $filled ?>/<?= $total ?> girildi</b></div>
-          <div class="gt-track"><div class="gt-fill" style="width: <?= $progPct ?>%"></div></div>
-        </div>
-        <div class="gt-mini">
-          <div>
-            <div class="gt-mn" id="sum-persons"><?= number_format($sumP, 0, ',', '.') ?></div>
-            <div class="gt-ml">Toplam kişi</div>
-          </div>
-          <div>
-            <div class="gt-mn<?= $irsaliyeKesildi > 0 ? ' ok' : '' ?>"><?= $irsaliyeKesildi ?>/<?= $irsaliyeGirilen ?></div>
-            <div class="gt-ml">İrsaliye kesildi</div>
-          </div>
-          <div>
-            <div class="gt-mn<?= $bekleyenSayi > 0 ? ' bad' : ' ok' ?>"><?= $bekleyenSayi ?></div>
-            <div class="gt-ml">Bekleyen</div>
-          </div>
-        </div>
+        <?php // Üç mini stat kartı yerine tek ince satır — aynı üç rakam, ekranın onda biri kadar yer.
+              // "girildi" sayacı JS'in güncellediği #sum-filled ile aynı düğüm (recalc bozulmasın). ?>
+        <p class="gt-sade-satir">
+          <span id="sum-persons"><?= number_format($sumP, 0, ',', '.') ?></span> kişi
+          · <b id="sum-filled"><?= $filled ?>/<?= $total ?> girildi</b>
+          <?php if ($irsaliyeGirilen > 0): ?> · <?= $irsaliyeKesildi ?>/<?= $irsaliyeGirilen ?> irsaliye<?php endif; ?>
+        </p>
       </div>
 
       <?php // fable-040: günlük ciro nabzı fatura kişisinden — kural yalnız hafta içi (Pzt–Cum) uygulanır ?>
