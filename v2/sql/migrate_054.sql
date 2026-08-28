@@ -8,8 +8,8 @@ ALTER TABLE customers ADD COLUMN fatura_oto_kesim TINYINT(1) NOT NULL DEFAULT 1;
 UPDATE customers SET fatura_oto_kesim = 0 WHERE name LIKE '%CANTA%';
 
 -- 2) Ekstra kalem: irsaliyesiz (aylık) müşterilerin ay içinde biriken tek seferlik kalemleri.
---    Ay sonu faturasına EK SATIR olarak girer. fatura_log_id dolduğu an bir daha faturalanmaz
---    (mükerrer kalkanı — sabit kalemdeki "aynı ay ikinci kez kesilmez" kuralının eşi).
+--    Ay sonu faturasına girer. fatura_log_id dolduğu an bir daha faturalanmaz (mükerrer
+--    kalkanı — sabit kalemdeki "aynı ay ikinci kez kesilmez" kuralının eşi).
 CREATE TABLE IF NOT EXISTS musteri_ekstra_kalem (
   id                 INT UNSIGNED NOT NULL AUTO_INCREMENT,
   customer_id        INT UNSIGNED NOT NULL,

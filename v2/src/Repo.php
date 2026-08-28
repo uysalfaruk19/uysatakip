@@ -1153,6 +1153,22 @@ final class Repo
         return $st->rowCount();
     }
 
+    /** 4xx sonrası geri açma: belge Paraşüt'te OLUŞMADIYSA kalemler tekrar faturalanabilir olur. */
+    public function ekstraKalemleriFaturadanCoz(array $ids, int $faturaLogId): int
+    {
+        $ids = array_values(array_filter(array_map('intval', $ids), static fn(int $x): bool => $x > 0));
+        if (!$ids) {
+            return 0;
+        }
+        $yer = implode(',', array_fill(0, count($ids), '?'));
+        $st = $this->pdo->prepare(
+            "UPDATE musteri_ekstra_kalem SET fatura_log_id = NULL
+              WHERE id IN ($yer) AND fatura_log_id = ?"
+        );
+        $st->execute(array_merge($ids, [$faturaLogId]));
+        return $st->rowCount();
+    }
+
     // ── ORTAK KONTROLLER ────────────────────────────────────────────────────────────────
     // fable-091: bu kontroller fable-029'da fatura-kes.php içine GÖMÜLÜYDU. Otomatik kesim
     // de aynı kapılardan geçmek zorunda; mantık iki yere kopyalanırsa ekran ile otomatik
@@ -1332,7 +1348,8 @@ final class Repo
     {
         $enum = static fn(string $v, array $ok, string $def): string => in_array($v, $ok, true) ? $v : $def;
         // fable-065: 'sabit' = üretimden bağımsız, her ay aynı tutarlı kalem (musteri_sabit_fatura)
-        $tip  = $enum((string) ($d['tip'] ?? 'irsaliye'), ['irsaliye', 'aylik', 'sabit'], 'irsaliye');
+        // fable-091: 'ekstra' = aylık müşterinin ay içinde biriken tek seferlik kalemleri.
+        $tip  = $enum((string) ($d['tip'] ?? 'irsaliye'), ['irsaliye', 'aylik', 'sabit', 'ekstra'], 'irsaliye');
         $durum = $enum((string) ($d['durum'] ?? 'hata'), ['kesildi', 'hata', 'bilinmiyor', 'iptal'], 'hata');
         $resm = $enum((string) ($d['resmilestirme'] ?? 'yok'), ['gonderildi', 'hata', 'yok'], 'yok');
         $mail = $enum((string) ($d['mail'] ?? 'yok'), ['gonderildi', 'hata', 'yok'], 'yok');
