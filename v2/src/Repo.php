@@ -1193,6 +1193,35 @@ final class Repo
         return $out;
     }
 
+    /**
+     * fable-093 (Ömer, 28 Ağu): "CANTAŞ özelinde sayıları fatura bazlı göreyim... aylık toplam
+     * sayıları da CANTAŞ/HC vs diye 3 firmanın ayrı toplamı özette yazsın."
+     *
+     * Bölüşümlü müşterinin GÜN GÜN alt firma kırılımı. altFirmaDagilim() ile aynı desen ve aynı
+     * kaynak — orası dönemi toplar, burası günü günü verir (ekranda ve Excel'de aynı rakamlar
+     * çıksın diye ikisi de aynı gunFaturaKisiMap + elle giriş + tatil kurallarını kullanır).
+     * @return array<string,array<string,int>> gun => (alt firma kodu => kişi)
+     */
+    public function altFirmaGunGun(int $customerId, string $bas, string $son): array
+    {
+        $firmalar = $this->altFirmalar($customerId);
+        if (!$firmalar) {
+            return [];
+        }
+        $elle = $this->altFirmaElleAralik($customerId, $bas, $son);
+        $tatilSet = [];
+        foreach ($this->resmiTatiller(true, $bas, $son) as $t) {
+            $tatilSet[(string) $t['tarih']] = true;
+        }
+        $out = [];
+        foreach ($this->gunFaturaKisiMap($customerId, $bas, $son) as $gun => $kisi) {
+            $out[$gun] = isset($elle[$gun])
+                ? self::altFirmaElleDagit($kisi, $elle[$gun], $firmalar)
+                : self::altFirmaGunDagit($kisi, $gun, $firmalar, isset($tatilSet[$gun]));
+        }
+        return $out;
+    }
+
     /** Fatura dönemi grubunun insan okunur etiketi (aylikSayimGrid 'donem' alanı için). */
     public static function donemEtiketi(int $donem, string $ay): string
     {

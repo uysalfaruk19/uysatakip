@@ -21,6 +21,115 @@ $formOpen = isset($_GET['yeni']) || isset($_GET['edit']);
 $editId = (int) ($_GET['edit'] ?? 0) ?: null;
 // fable-092: aylık sayım paneli (müşteri satırındaki takvim ikonu)
 $sayimId = (int) ($_GET['sayim'] ?? 0) ?: null;
+
+// ── fable-093: aylık sayımın EXCEL çıktısı (Ömer: "bir de Excel olarak indirebileyim") ──
+// Ekranla AYNI kaynaktan üretilir (aylikSayimGrid + altFirmaGunGun) — dosyada başka, ekranda
+// başka rakam çıkmasın. Sayılar gerçek sayı yazılır ki Ömer dosyada toplam alabilsin.
+if ($sayimId && ($_GET['xlsx'] ?? '') === '1') {
+    $xm = (string) ($_GET['ay'] ?? date('Y-m'));
+    if (!preg_match('/^\d{4}-\d{2}$/', $xm)) {
+        $xm = date('Y-m');
+    }
+    $xc = $repo->customer($sayimId);
+    if ($xc === null) {
+        http_response_code(404);
+        exit('Müşteri bulunamadı.');
+    }
+    $xGrid = $repo->aylikSayimGrid($sayimId, $xm);
+    $xBirim = (float) $repo->priceFor($sayimId, $xm)['unit_price'];
+    $xFirma = $repo->altFirmalar($sayimId);
+    $xKir = $xFirma ? $repo->altFirmaGunGun($sayimId, $xm . '-01', date('Y-m-t', strtotime($xm . '-01'))) : [];
+    $xAksam = $xKumanya = false;
+    foreach ($xGrid as $g) {
+        if ($g['aksam'] > 0) { $xAksam = true; }
+        if ($g['kumanya'] > 0) { $xKumanya = true; }
+    }
+
+    $rows = [];
+    $kalin = [];
+    $rows[] = [mb_strtoupper((string) $xc['name'], 'UTF-8') . ' — ' . mb_strtoupper(ay_label_tr($xm), 'UTF-8')
+        . ($xFirma ? ' · FİRMA BAZLI YEMEK DAĞILIMI' : ' · AYLIK YEMEK SAYIMI')];
+    $kalin[] = 1;
+    $rows[] = [];
+    $bas = ['Tarih', 'Gün', 'Öğle'];
+    if ($xAksam) { $bas[] = 'Akşam'; }
+    if ($xKumanya) { $bas[] = 'Kumanya'; }
+    $bas[] = 'Üretim';
+    $bas[] = 'Fatura kişisi';
+    foreach ($xFirma as $f) { $bas[] = (string) $f['ad']; }
+    $bas[] = 'Durum';
+    $rows[] = $bas;
+    $kalin[] = count($rows);
+
+    $fToplam = [];
+    foreach ($xFirma as $f) { $fToplam[$f['kod']] = 0; }
+    $tU = 0; $tF = 0;
+    for ($dn = 1; $dn <= 5; $dn++) {
+        $grup = array_values(array_filter($xGrid, static fn(array $x): bool => $x['donem'] === $dn));
+        if (!$grup) { continue; }
+        $gU = 0; $gF = 0; $gFirma = [];
+        foreach ($xFirma as $f) { $gFirma[$f['kod']] = 0; }
+        foreach ($grup as $g) {
+            $sat = [date('d.m.Y', (int) strtotime($g['gun'])), $g['gun_adi'], $g['ogle'] ?: null];
+            if ($xAksam) { $sat[] = $g['aksam'] ?: null; }
+            if ($xKumanya) { $sat[] = $g['kumanya'] ?: null; }
+            $sat[] = $g['uretim'] ?: null;
+            $sat[] = $g['fatura_kisi'] ?: null;
+            foreach ($xFirma as $f) {
+                $fk = (int) ($xKir[$g['gun']][$f['kod']] ?? 0);
+                $sat[] = $fk ?: null;
+                $gFirma[$f['kod']] += $fk;
+                $fToplam[$f['kod']] += $fk;
+            }
+            $sat[] = $g['kilit'] !== '' ? $g['kilit'] : ($g['uretim'] === 0 ? 'boş' : 'açık');
+            $rows[] = $sat;
+            $gU += $g['uretim']; $gF += $g['fatura_kisi'];
+        }
+        $ara = [Repo::donemEtiketi($dn, $xm) . ' TOPLAM', '', null];
+        if ($xAksam) { $ara[] = null; }
+        if ($xKumanya) { $ara[] = null; }
+        $ara[] = $gU;
+        $ara[] = $gF;
+        foreach ($xFirma as $f) { $ara[] = $gFirma[$f['kod']]; }
+        $ara[] = '₺' . number_format($gF * $xBirim, 2, ',', '.');
+        $rows[] = $ara;
+        $kalin[] = count($rows);
+        $rows[] = [];
+        $tU += $gU; $tF += $gF;
+    }
+
+    $son = ['AY TOPLAMI', '', null];
+    if ($xAksam) { $son[] = null; }
+    if ($xKumanya) { $son[] = null; }
+    $son[] = $tU;
+    $son[] = $tF;
+    foreach ($xFirma as $f) { $son[] = $fToplam[$f['kod']]; }
+    $rows[] = $son;
+    $kalin[] = count($rows);
+    $rows[] = [];
+    $rows[] = ['Kişi başı', $xBirim];
+    $rows[] = ['Toplam tutar', round($tF * $xBirim, 2)];
+    $kalin[] = count($rows);
+    if ($xFirma) {
+        $rows[] = [];
+        $rows[] = ['FATURA BAZLI TOPLAM (' . count($xFirma) . ' ayrı e-Fatura)'];
+        $kalin[] = count($rows);
+        foreach ($xFirma as $f) {
+            $rows[] = [(string) $f['ad'], $fToplam[$f['kod']], round($fToplam[$f['kod']] * $xBirim, 2)];
+        }
+    }
+
+    // Dosya adı ASCII: Türkçe karakter indirme başlığında (Content-Disposition) bozulur.
+    $adHam = strtr((string) $xc['name'], ['ç'=>'c','Ç'=>'C','ğ'=>'g','Ğ'=>'G','ı'=>'i','İ'=>'I',
+        'ö'=>'o','Ö'=>'O','ş'=>'s','Ş'=>'S','ü'=>'u','Ü'=>'U']);
+    $ad = trim((string) preg_replace('/[^A-Za-z0-9]+/', '-', $adHam), '-') . '-' . $xm . '-sayim.xlsx';
+    $bin = \Uysa\XlsxSayim::yaz($rows, 'Firma Dağılım', $kalin);
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment; filename="' . $ad . '"');
+    header('Content-Length: ' . strlen($bin));
+    echo $bin;
+    exit;
+}
 // fable-046: işlem sonrası hangi liste bloğu açık kalsın ('uretim' | 'tasima' | '').
 $acikPost = '';
 
@@ -410,6 +519,15 @@ if ($sayimMusteri):
     $oncekiAy = date('Y-m', strtotime($month . '-01 -1 month'));
     $ayUretim = 0; $ayFatura = 0;
     foreach ($sGrid as $g) { $ayUretim += $g['uretim']; $ayFatura += $g['fatura_kisi']; }
+    // fable-093 (Ömer): "CANTAŞ özelinde sayıları FATURA BAZLI göreyim; 3 firmanın ayrı toplamı
+    // özette yazsın." Marmara da 2 firmalı — kırılım alt firması olan HER müşteride görünür.
+    $sFirmalar = $repo->altFirmalar($sayimId);
+    $sKirilim = $sFirmalar ? $repo->altFirmaGunGun($sayimId, $month . '-01', date('Y-m-t', strtotime($month . '-01'))) : [];
+    $sFirmaToplam = [];
+    foreach ($sFirmalar as $f) { $sFirmaToplam[$f['kod']] = 0; }
+    foreach ($sKirilim as $pay) {
+        foreach ($pay as $kod => $adet) { $sFirmaToplam[$kod] = ($sFirmaToplam[$kod] ?? 0) + (int) $adet; }
+    }
 ?>
       <div class="cardx card-pad">
         <div class="head-row">
@@ -421,12 +539,56 @@ if ($sayimMusteri):
           <span class="chip active"><?= Helpers::e(ay_label_tr($month)) ?></span>
           <a class="chip" href="musteriler.php?sayim=<?= $sayimId ?>&ay=<?= $sonrakiAy ?>"><?= Helpers::e(ay_label_tr($sonrakiAy)) ?> ›</a>
         </div>
-        <p class="row-meta" style="margin:0 0 12px">
+        <p class="row-meta" style="margin:0 0 10px">
           Kişi başı <strong>₺<?= Helpers::money($sBirim) ?></strong> ·
           Ay toplamı <strong><?= $ayUretim ?></strong> üretim / <strong><?= $ayFatura ?></strong> fatura kişisi
           <?php if ($ayFatura !== $ayUretim): ?><span class="badge-soft">fark <?= $ayFatura - $ayUretim ?></span><?php endif; ?>
           <br>Boş güne sayı girip kaydedebilirsin — <strong>fatura bu sayılardan kesilir</strong>.
           İrsaliyesi/faturası kesilmiş günler kilitlidir (belge ile kayıt ayrışmasın).
+        </p>
+
+        <?php if ($sFirmalar): ?>
+          <?php // fable-093: FATURA BAZLI özet — bu müşteriye ayın sonunda kaç ayrı e-Fatura
+                // kesileceği ve her birinin kişi/tutarı. Kırılım desenden hesaplanır (hafta içi
+                // sabit kota + kalan varsayılana), faturanın kullandığı kaynağın ta kendisidir. ?>
+          <div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:12px">
+            <div class="head-row" style="margin-bottom:6px">
+              <strong>Fatura bazlı aylık toplam</strong>
+              <span class="row-meta"><?= count($sFirmalar) ?> ayrı e-Fatura · <?= Helpers::e(ay_label_tr($month)) ?></span>
+            </div>
+            <table class="tbl">
+              <thead><tr><th>Firma</th><th class="num">Kişi</th><th class="num">Tutar</th></tr></thead>
+              <tbody>
+              <?php $fTopKisi = 0; $fTopTutar = 0.0; foreach ($sFirmalar as $f):
+                  $fk = (int) ($sFirmaToplam[$f['kod']] ?? 0);
+                  $ft = $fk * $sBirim;
+                  $fTopKisi += $fk; $fTopTutar += $ft;
+              ?>
+                <tr>
+                  <td><?= Helpers::e((string) $f['ad']) ?><?= $f['varsayilan'] ? ' <span class="row-meta">(kalan buraya)</span>' : '' ?></td>
+                  <td class="num"><strong><?= $fk ?></strong></td>
+                  <td class="num">₺<?= Helpers::money($ft) ?></td>
+                </tr>
+              <?php endforeach; ?>
+                <tr style="border-top:2px solid var(--line)">
+                  <td><strong>TOPLAM</strong></td>
+                  <td class="num"><strong><?= $fTopKisi ?></strong></td>
+                  <td class="num"><strong>₺<?= Helpers::money($fTopTutar) ?></strong></td>
+                </tr>
+              </tbody>
+            </table>
+            <?php if ($fTopKisi !== $ayFatura): ?>
+              <p class="row-meta" style="margin:6px 0 0;color:var(--danger)">
+                ⚠ Kırılım toplamı (<?= $fTopKisi ?>) ay fatura kişisinden (<?= $ayFatura ?>) farklı — kontrol edin.
+              </p>
+            <?php endif; ?>
+          </div>
+        <?php endif; ?>
+
+        <p style="margin:0 0 12px">
+          <a class="btn-action btn-ghost" href="musteriler.php?sayim=<?= $sayimId ?>&ay=<?= Helpers::e($month) ?>&xlsx=1">
+            <i class="bi bi-file-earmark-excel"></i> Excel indir
+          </a>
         </p>
 
         <form method="post">
@@ -453,6 +615,9 @@ if ($sayimMusteri):
                 <?php if ($ogunVar['aksam']): ?><th class="num">Akşam</th><?php endif; ?>
                 <?php if ($ogunVar['kumanya']): ?><th class="num">Kumanya</th><?php endif; ?>
                 <th class="num">Fatura kişisi</th>
+                <?php foreach ($sFirmalar as $f): ?>
+                  <th class="num" title="Desenden hesaplanır — fatura bu kırılımdan kesilir"><?= Helpers::e(mb_substr((string) $f['ad'], 0, 12)) ?></th>
+                <?php endforeach; ?>
                 <th>Durum</th>
               </tr></thead>
               <tbody>
@@ -473,6 +638,11 @@ if ($sayimMusteri):
                   <td class="num"><input type="number" min="0" name="fatura[<?= $g['gun'] ?>]" value="<?= $g['fatura_kisi'] ?: '' ?>"
                       placeholder="=üretim" title="Boş bırakılırsa üretim toplamıyla aynı"
                       style="width:80px;font-size:16px;text-align:right<?= $kilitli ? ';opacity:.55' : '' ?><?= $g['fatura_kisi'] !== $g['uretim'] ? ';font-weight:700' : '' ?>"<?= $ro ?>></td>
+                  <?php foreach ($sFirmalar as $f):
+                      $fk = (int) ($sKirilim[$g['gun']][$f['kod']] ?? 0);
+                  ?>
+                    <td class="num row-meta"><?= $fk > 0 ? $fk : '—' ?></td>
+                  <?php endforeach; ?>
                   <td class="row-meta">
                     <?php if ($kilitli): ?>
                       🔒 <?= Helpers::e($g['kilit']) ?><?= $g['irsaliye_no'] !== '' ? ' · ' . Helpers::e($g['irsaliye_no']) : '' ?>
