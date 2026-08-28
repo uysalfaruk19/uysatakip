@@ -146,41 +146,16 @@ if ($method === 'POST') {
                     }
                     $gunler[] = $g;
                 }
-                // ── fable-029: SİSTEM KONTROLLERİ — Ömer'in elle yaptığı doğrulamalar otomatik ──
-                $kontroller = [];
-                $uretim = $repo->customerMealsRange($cid, $bas, $son);
+                // ── fable-029 SİSTEM KONTROLLERİ — fable-091'de Repo'ya taşındı ──
+                // Otomatik kesim (tools/fatura_oto_kes.php) AYNI kontrolleri çağırır. Mantık iki
+                // yere kopyalanırsa ekran ile otomatik zamanla ayrışır ve "ekranda kırmızı görünen
+                // şey otomatikte kesilir" olur. Fark davranışta: burada kırmızı UYARIDIR (Ömer
+                // bakıp yine de kesebilir), otomatik kesimde KESMEME sebebidir.
                 $irsGunSet = [];
                 foreach ($gunler as $g) {
                     $irsGunSet[$g['gun']] = true;
                 }
-                $irssiz = [];
-                $uretimTop = 0;
-                foreach ($uretim as $ur) {
-                    $uretimTop += (int) $ur['toplam'];
-                    if ((int) $ur['toplam'] > 0 && !isset($irsGunSet[$ur['gun']])) {
-                        $irssiz[] = date('d.m', strtotime($ur['gun']));
-                    }
-                }
-                if ($irssiz) {
-                    $kontroller[] = ['ok' => false, 'txt' => 'Üretim kaydı olup KESİLMİŞ İRSALİYESİ OLMAYAN gün: '
-                        . implode(', ', $irssiz) . ' — bu günler faturaya GİRMEYECEK.'];
-                } else {
-                    $kontroller[] = ['ok' => true, 'txt' => 'Dönemdeki tüm üretim günlerinin irsaliyesi kesilmiş ve faturada (' . count($gunler) . ' gün).'];
-                }
-                if ($uretimTop !== (int) $p['toplam']) {
-                    $kontroller[] = ['ok' => false, 'txt' => 'Fatura toplamı (' . (int) $p['toplam']
-                        . ' kişi) üretim kayıtları toplamından (' . $uretimTop . ') FARKLI — fark ' . ($uretimTop - (int) $p['toplam']) . ' kişi.'];
-                } else {
-                    $kontroller[] = ['ok' => true, 'txt' => 'Fatura toplamı üretim kayıtlarıyla birebir (' . $uretimTop . ' kişi).'];
-                }
-                $sonF = $repo->sonKesilenFatura($cid, $bas);
-                if ($sonF !== null && $sonF['kisi'] > 0) {
-                    $farkYuzde = (int) round((($p['toplam'] - $sonF['kisi']) / $sonF['kisi']) * 100);
-                    $kiyasTxt = 'Önceki fatura (' . date('d.m', strtotime($sonF['donem_bas'])) . '–' . date('d.m', strtotime($sonF['donem_son']))
-                        . '): ' . $sonF['kisi'] . ' kişi · ₺' . number_format($sonF['tutar'], 2, ',', '.')
-                        . ' — bu dönem ' . (int) $p['toplam'] . ' kişi (' . ($farkYuzde >= 0 ? '+' : '') . $farkYuzde . '%).';
-                    $kontroller[] = ['ok' => abs($farkYuzde) <= 25, 'txt' => $kiyasTxt];
-                }
+                $kontroller = $repo->faturaKontrolleriIrsaliye($cid, $bas, $son, (int) $p['toplam'], $irsGunSet);
 
                 $plan[] = ['key' => $key, 'customer_id' => $cid, 'tip' => 'irsaliye'];
                 $genelNet += $p['hesap']['net'];
@@ -218,44 +193,13 @@ if ($method === 'POST') {
                 // yoksa "kayıtsız gün" listesi ayın sadece bir haftasını denetlerdi.
                 $kBas = (string) ($a['donem_bas'] ?? $bas);
                 $kSon = (string) ($a['donem_son'] ?? $son);
-                $kontroller = [];
                 $gunlerAy = $repo->customerMealsRange($cid, $kBas, $kSon);
-                $kayitliSet = [];
-                foreach ($gunlerAy as $g) {
-                    if ((int) $g['toplam'] > 0) {
-                        $kayitliSet[$g['gun']] = true;
-                    }
-                }
-                // Dönem içi GEÇMİŞ hafta içi günlerden kaydı olmayanlar (eksik gün → fatura düşük kalır)
-                $eksikGun = [];
-                for ($d = strtotime($kBas); $d <= min(strtotime($kSon), strtotime('yesterday')); $d += 86400) {
-                    if ((int) date('N', $d) <= 5 && !isset($kayitliSet[date('Y-m-d', $d)])) {
-                        $eksikGun[] = date('d.m', $d);
-                    }
-                }
-                if ($eksikGun) {
-                    $kontroller[] = ['ok' => false, 'txt' => 'Kayıtsız hafta içi gün: ' . implode(', ', $eksikGun)
-                        . ' — bu günler toplama girmiyor (eksikse önce Bugün ekranından girin).'];
-                } else {
-                    $kontroller[] = ['ok' => true, 'txt' => 'Dönemin geçmiş hafta içi günlerinin tamamı kayıtlı (' . count($kayitliSet) . ' gün).'];
-                }
                 // fable-051: bölüşümlü müşteride hedef = dönemin FATURA kişisi (fable-040 kuralı
                 // varsa üretimden farklı: CANTAŞ 50/70). Yoksa eskisi gibi üretim adedi.
                 $hedefAdet = (($a['bolusum'] ?? null) && (int) ($a['fatura_adet'] ?? 0) > 0)
                     ? (int) $a['fatura_adet'] : (int) $a['adet'];
-                if ($sumKisi !== $hedefAdet) {
-                    $kontroller[] = ['ok' => false, 'txt' => 'Bölüşüm toplamı (' . $sumKisi . ') sistem toplamından ('
-                        . $hedefAdet . ') farklı — fark ' . ($sumKisi - $hedefAdet) . ' kişi.'];
-                } else {
-                    $kontroller[] = ['ok' => true, 'txt' => 'Bölüşüm toplamı sistem toplamıyla birebir (' . $sumKisi . ' kişi).'];
-                }
-                $sonF = $repo->sonKesilenFatura($cid, $bas);
-                if ($sonF !== null && $sonF['kisi'] > 0) {
-                    $farkYuzde = (int) round((($sumKisi - $sonF['kisi']) / $sonF['kisi']) * 100);
-                    $kontroller[] = ['ok' => abs($farkYuzde) <= 25, 'txt' => 'Önceki fatura dönemi ('
-                        . date('d.m', strtotime($sonF['donem_bas'])) . '–' . date('d.m', strtotime($sonF['donem_son'])) . '): '
-                        . $sonF['kisi'] . ' kişi — bu dönem ' . $sumKisi . ' kişi (' . ($farkYuzde >= 0 ? '+' : '') . $farkYuzde . '%).'];
-                }
+                // fable-091: kontroller Repo'da — otomatik kesim de aynı kapılardan geçer.
+                $kontroller = $repo->faturaKontrolleriAylik($cid, $kBas, $kSon, $sumKisi, $hedefAdet, $bas);
 
                 $plan[] = ['key' => $key, 'customer_id' => $cid, 'tip' => 'aylik', 'parts' => $parts];
                 $genelNet += $altNet;
