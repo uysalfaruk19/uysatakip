@@ -25,11 +25,13 @@ declare(strict_types=1);
  * Aylık müşteriler (irsaliyesiz) YALNIZ ay kapanış gününde kesilir: aylık fatura + sabit kalem
  * + o ayın ekstra kalemleri.
  *
- * Kullanım:  php tools/fatura_oto_kes.php [--kuru] [--gun=YYYY-MM-DD]
- *   --kuru: hiçbir şey kesmez, ne keseceğini yazar (ön bildirim de bunu kullanır).
- *   --gun : kesim gününü taklit et (test). Kesim günü değilse yine de çalışmaz.
- * Cron (host UTC; TR 13:30 = UTC 10:30):
- *   30 10 * * * root docker exec uysatakip-v2 php /var/www/html/tools/fatura_oto_kes.php
+ * Kullanım:  php tools/fatura_oto_kes.php [--kuru|--onbildirim] [--gun=YYYY-MM-DD]
+ *   --kuru       : hiçbir şey kesmez, ne keseceğini yazar.
+ *   --onbildirim : kuru koşar + "13:30'da şunlar kesilecek" özetini push eder (13:05 cron'u).
+ *   --gun        : kesim gününü taklit et (test) — kesmez, bildirim de göndermez.
+ * Cron (host UTC; TR 13:05 = UTC 10:05, TR 13:30 = UTC 10:30):
+ *   5  10 * * * root ... fatura_oto_kes.php --onbildirim
+ *   30 10 * * * root ... fatura_oto_kes.php
  */
 
 if (PHP_SAPI !== 'cli') {
@@ -45,7 +47,11 @@ use Uysa\Push;
 use Uysa\Repo;
 
 $args = array_slice($argv, 1);
-$kuru = in_array('--kuru', $args, true);
+// --onbildirim: kesimden 25 dk önce "şunlar kesilecek" özetini push eder, HİÇBİR ŞEY KESMEZ.
+// Ayrı script değil bayrak: aday/kontrol mantığı iki yere kopyalanırsa bildirimde görünen ile
+// kesilen ayrışır — Ömer'e "şunlar kesilecek" deyip başka şey kesmek en kötü hata olurdu.
+$onBildirim = in_array('--onbildirim', $args, true);
+$kuru = $onBildirim || in_array('--kuru', $args, true);
 $pdo = Db::pdo();
 $repo = new Repo($pdo);
 $bugun = date('Y-m-d');
@@ -56,7 +62,8 @@ foreach ($args as $a) {
             exit("Geçersiz --gun: {$v}\n");
         }
         $bugun = $v;
-        $kuru = true;   // taklit gün gerçek kesim yapmaz
+        $kuru = true;          // taklit gün gerçek kesim yapmaz
+        $onBildirim = false;   // ...ve gerçek bildirim de göndermez
     }
 }
 $damga = date('Y-m-d H:i:s');
@@ -138,6 +145,12 @@ foreach ($repo->faturaAdaylari($bas, $son) as $a) {
     $ad = (string) $a['name'];
     $tip = (string) $a['tip'];
 
+    // Aylık ve sabit kalemler YALNIZ ay kapanışında değerlendirilir. Bu eleme EN ÖNDE olmalı:
+    // haftalık turda aylık müşteri "ay kapanınca kesilir" diye atlanan sayılırsa her hafta
+    // bildirimde 3 gereksiz satır çıkar ve gerçek sorunlar arasında kaybolur.
+    if (($tip === 'aylik' || $tip === 'sabit') && !$aySonu) {
+        continue;
+    }
     if (!$repo->faturaOtoAcik($cid)) {
         $atlanan[] = ['ad' => $ad, 'sebep' => 'otomatik kesim kapalı (elle kesilir)'];
         continue;
@@ -146,10 +159,6 @@ foreach ($repo->faturaAdaylari($bas, $son) as $a) {
         $atlanan[] = ['ad' => $ad . ($tip === 'sabit' ? ' · ' . $a['kalem_ad'] : ''),
             'sebep' => (string) ($a['sebep'] ?: 'kesilemez')];
         continue;
-    }
-    // Aylık ve sabit kalemler YALNIZ ay kapanışında kesilir.
-    if (($tip === 'aylik' || $tip === 'sabit') && !$aySonu) {
-        continue;   // sessiz: haftalık turda görünmesi normal, atlanan sayılmaz
     }
 
     if ($tip === 'irsaliye') {
@@ -258,6 +267,27 @@ foreach ($atlanan as $x) {
     printf("  ATLANDI  %-26s %s\n", mb_substr($x['ad'], 0, 26), $x['sebep']);
 }
 
+if ($onBildirim) {
+    echo "  [ÖN BİLDİRİM] hiçbir fatura kesilmedi.\n";
+    if (!$kesilecek && !$atlanan) {
+        echo "  Kesilecek fatura yok — bildirim gönderilmedi.\n";
+        exit(0);
+    }
+    $sat = array_map(static fn(array $k): string => $k['ad'] . ' (' . $k['ozet'] . ')', $kesilecek);
+    $govde = date('d.m', (int) strtotime($bas)) . '–' . date('d.m.Y', (int) strtotime($son)) . ' · '
+        . ($kesilecek
+            ? count($kesilecek) . ' fatura, toplam ₺' . number_format($toplamNet, 2, ',', '.') . ': ' . implode(' · ', $sat)
+            : 'kesilecek fatura yok');
+    if ($atlanan) {
+        $govde .= ' | ' . count($atlanan) . ' atlandı: '
+            . implode(' · ', array_map(static fn(array $x): string => $x['ad'] . ' (' . $x['sebep'] . ')', $atlanan));
+    }
+    $govde .= ' — 13:30\'da otomatik kesilecek. İstemiyorsanız Fatura ekranından otomatik kesimi kapatın.';
+    $r = $push->toAdmins('13:30\'da ' . count($kesilecek) . ' fatura kesilecek', $govde,
+        ['url' => '/fatura-kes.php'], 'kritik', 'fatura_on:' . $bugun);
+    printf("  Bildirim: %d cihaz · %d gönderildi\n", (int) $r['devices'], (int) $r['sent']);
+    exit(0);
+}
 if ($kuru) {
     echo "  [KURU PROVA] hiçbir fatura kesilmedi.\n";
     exit(0);
