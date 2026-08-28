@@ -22,7 +22,10 @@ declare(strict_types=1);
  *
  * Kill-switch: ayar `irsaliye_dogrulama` = 0.
  *
- * Kullanım:  php tools/irsaliye_parasut_dogrula.php [--kuru]
+ * Kullanım:  php tools/irsaliye_parasut_dogrula.php [--kuru] [--gun=YYYY-MM-DD]
+ *   --gun: geçmiş bir günü elle kontrol etmek ve TESTİ SINAMAK için. "Bugün 0 bulundu"
+ *          sonucu tek başına okumanın çalıştığını kanıtlamaz (bozuk okuma da 0 döner);
+ *          irsaliyesi kesilmiş bir güne bakıp dolu sonuç görmek kanıtlar.
  * Cron (host UTC; TR 16:00 = UTC 13:00):
  *   0 13 * * * root docker exec uysatakip-v2 php /var/www/html/tools/irsaliye_parasut_dogrula.php
  */
@@ -39,10 +42,21 @@ use Uysa\ParasutYaz;
 use Uysa\Push;
 use Uysa\Repo;
 
-$kuru = in_array('--kuru', array_slice($argv, 1), true);
+$args = array_slice($argv, 1);
+$kuru = in_array('--kuru', $args, true);
 $pdo = Db::pdo();
 $repo = new Repo($pdo);
 $gun = date('Y-m-d');
+foreach ($args as $a) {
+    if (str_starts_with($a, '--gun=')) {
+        $v = substr($a, 6);
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $v) || $v !== date('Y-m-d', (int) strtotime($v))) {
+            exit("Geçersiz --gun (YYYY-MM-DD bekleniyor): {$v}\n");
+        }
+        $gun = $v;
+        $kuru = true;   // geçmiş gün elle inceleniyor — o güne ait bildirim ÜRETİLMEZ
+    }
+}
 $damga = date('Y-m-d H:i:s');
 $gunTr = date('d.m.Y', (int) strtotime($gun));
 
