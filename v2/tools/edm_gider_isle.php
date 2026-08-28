@@ -62,7 +62,11 @@ $gidaAnahtar = array_keys($mapRows);
 $yazilacak = [];
 $atla = [];
 $mevcutSay = 0;
-$kontrol = $p->prepare("SELECT COUNT(*) FROM transactions WHERE parasut_id = ?");
+// fable-097b: mükerrer kalkanı fatura NUMARASINA bakar — parasut_id VEYA description'da, HER
+// kaynakta. Ömer'in elle girişleri source='gib' + parasut_id BOŞ, numara yalnız açıklamada;
+// yalnız 'xls-<no>' bakan ilk sürüm bunları yakalayamadı ve 16 Temmuz faturasını çift yazdı
+// (28 Ağu tatbikatında ikinci koşuda çıktı, silindi). Numara uzun ve benzersiz → LIKE güvenli.
+$kontrol = $p->prepare("SELECT COUNT(*) FROM transactions WHERE parasut_id = ? OR parasut_id LIKE ? OR description LIKE ?");
 
 foreach ($kayitlar as $k) {
     $no = (string) ($k['no'] ?? '');
@@ -79,10 +83,10 @@ foreach ($kayitlar as $k) {
         continue;
     }
     $pid = 'xls-' . $no;
-    $kontrol->execute([$pid]);
+    $kontrol->execute([$pid, '%' . $no . '%', '%' . $no . '%']);
     if ((int) $kontrol->fetchColumn() > 0) {
         $mevcutSay++;
-        continue; // idempotency: zaten var
+        continue; // idempotency: bu fatura numarası zaten herhangi bir kayıtta var
     }
     $desc = $bilgi['ad'] . ' · ' . $no;
     // gıda maliyetine düşer mi? (description map anahtarını içeriyor mu)
