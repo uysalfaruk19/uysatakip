@@ -16,12 +16,14 @@ declare(strict_types=1);
  *   4) Şalter: ayar `irsaliye_oto_kesim` = 0 yapılırsa hiç kesmez (kill-switch).
  *   5) Sonuç HER HÂLDE bildirilir — kesilen de, kesilemeyen de push olarak düşer.
  *
- * SAAT NOTU: Ömer önce 23:00 dedi, sonra 16:00'ya çekti — belgenin sevk saati gerçek
- * sevkiyata daha yakın olsun ve müdahale için 13:00 hatırlatmasından sonra 3 saat kalsın.
+ * SAAT NOTU: Ömer önce 23:00 dedi, sonra 16:00'ya çekti; 28 Ağu'da 12:30'a aldı — kesim artık
+ * ASIL YOL (hatırlatma değil). Sıra tersine döndü: önce oto kesim (12:30), sonra 16:00'da
+ * Paraşüt'ten sonuç kontrolü (irsaliye_parasut_dogrula.php). 13:00 hatırlatması kaldırıldı:
+ * kesim ondan önce olduğu için "hatırlat" adımı gürültüye dönüşüyordu.
  *
  * Kullanım:  php tools/irsaliye_oto_kes.php [--kuru]
- * Cron (host UTC; TR 16:00 = UTC 13:00):
- *   0 13 * * * root docker exec uysatakip-v2 php /var/www/html/tools/irsaliye_oto_kes.php
+ * Cron (host UTC; TR 12:30 = UTC 09:30):
+ *   30 9 * * * root docker exec uysatakip-v2 php /var/www/html/tools/irsaliye_oto_kes.php
  */
 
 if (PHP_SAPI !== 'cli') {

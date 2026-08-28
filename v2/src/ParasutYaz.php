@@ -673,6 +673,51 @@ final class ParasutYaz
     }
 
     /**
+     * fable-090 (Ömer, 28 Ağu) — 16:00 doğrulaması KAYNAĞA sorar: "Paraşüt'ten kontrol edilsin."
+     * O günün Paraşüt'teki irsaliyelerinin SAHİPLERİNİ döndürür: customer_id => belge no.
+     *
+     * Yerel loga bakmak yetmez: 14 Ağu'da belge Paraşüt'e gitti ama Kokpit'e yazılamadı
+     * (bkz. gunUzlastir) — o hâlde yerel log "kesilmedi" der, gerçek "kesildi"dir.
+     *
+     * NULL = "bakamadım" (ağ/oturum hatası), BOŞ DİZİ = "baktım, hiç yok". İkisi karıştırılırsa
+     * erişilemeyen Paraşüt "hiçbiri kesilmemiş" gibi okunur ve yanlış alarm üretir.
+     * @return array<int,string>|null
+     */
+    public function gunIrsaliyeSahipleri(string $gun): ?array
+    {
+        if (!self::aktif()) {
+            return null;
+        }
+        // page[size] üst sınırı 25 (Paraşüt tuzağı) — günlük irsaliye sayısı bunun çok altında,
+        // yine de dolu sayfa gelirse çağıran tarafa "eksik olabilir" diyebilmek için sayıyoruz.
+        $q = $this->cagir('GET', '/shipment_documents?' . http_build_query([
+            'filter[issue_date]' => $gun, 'sort' => '-issue_date', 'page[size]' => 25,
+        ]), null);
+        if ($q['net'] !== 'ok' || $q['status'] < 200 || $q['status'] >= 300) {
+            return null;
+        }
+        $sahipli = $this->repo->parasutSahipliCariler();   // contact_id => customer_id
+        $out = [];
+        foreach (($q['data']['data'] ?? []) as $d) {
+            $docId = (string) ($d['id'] ?? '');
+            $issue = substr((string) ($d['attributes']['issue_date'] ?? ''), 0, 10);
+            if ($docId === '' || $issue !== $gun) {
+                continue;
+            }
+            // Liste ucu cari İLİŞKİSİNİ BOŞ döner (Paraşüt tuzağı) — sahibi tek belge ucundan okunur.
+            $ozet = $this->belgeOzeti($docId);
+            if ($ozet === null || $ozet['contact_id'] === '') {
+                continue;
+            }
+            $cid = $sahipli[$ozet['contact_id']] ?? 0;
+            if ($cid > 0) {
+                $out[$cid] = $ozet['despatch_no'] !== '' ? $ozet['despatch_no'] : $docId;
+            }
+        }
+        return $out;
+    }
+
+    /**
      * fable-080 (Ömer, 14 Ağu) — GÜN UZLAŞTIRMA: Paraşüt'te KESİLMİŞ ama Kokpit'e YAZILAMAMIŞ
      * irsaliyeleri bulup log'a işler.
      *
