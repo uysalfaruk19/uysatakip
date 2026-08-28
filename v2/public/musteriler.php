@@ -93,8 +93,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     $tutar = $ogun === 'ogle'
                         ? round(($fatKisi - $yeni['aksam'] - $yeni['kumanya']) * $birim, 2)
                         : null;
+                    // entered_by ENUM('musteri','uysa','bot') — kullanıcı adı YAZILAMAZ
+                    // (denendi: "Data truncated" fatal'ı). Kimin girdiği audit kaydında duruyor.
                     $repo->upsertProduction($pid, $gun, $kisi, $birim, $ogun,
-                        (string) $u['username'], null, null, $tutar !== null ? max(0.0, $tutar) : null);
+                        'uysa', null, null, $tutar !== null ? max(0.0, $tutar) : null);
                 }
                 $yazilan++;
             }
