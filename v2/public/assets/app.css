@@ -3236,19 +3236,6 @@ body.meal-open {
 .customer-row.oneri-kabul .count-input {
   font-weight: 800;
 }
-.gt-tahmin {
-  display: block;
-  margin-top: 4px;
-  color: var(--muted);
-  font-size: 12.5px;
-  font-weight: 640;
-}
-.gt-tahmin small {
-  display: block;
-  font-weight: 500;
-  font-size: 11px;
-  opacity: 0.8;
-}
 
 /* ── aksiyon-faz3: GELEN — sipariş + talep tek kuyruk ───────────────────── */
 .gelen-liste {
@@ -3394,44 +3381,9 @@ body.meal-open {
 /* ── aksiyon-faz10: Bugün ekranı üç bloğa indi (Ömer: "değişiklik çok az") ──
    Nabız kartı: ciro solda BÜYÜK, tahmini kâr sağda soluk; ilerleme çubuğu ve
    üç mini stat kartı kalktı, yerine tek ince satır. */
-.gt-nabiz-sade .gt-pulse-yan {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 14px;
-}
-.gt-nabiz-sade .gt-pulse-sol {
-  min-width: 0;
-}
 .gt-nabiz-sade .gt-pulse-n {
   font-size: clamp(30px, 9vw, 40px);
   line-height: 1.05;
-}
-.gt-nabiz-sade .gt-pulse-sag {
-  flex: 0 0 auto;
-  text-align: right;
-  max-width: 46%;
-}
-.gt-nabiz-sade .gt-tahmin {
-  display: block;
-  margin: 0;
-  font-size: 11.5px;
-  color: var(--muted);
-  font-weight: 600;
-}
-.gt-nabiz-sade .gt-tahmin b {
-  display: block;
-  font-size: 14px;
-  font-weight: 800;
-  color: var(--ink, inherit);
-  margin-top: 1px;
-}
-.gt-nabiz-sade .gt-tahmin small {
-  display: block;
-  font-size: 10px;
-  font-weight: 500;
-  opacity: 0.75;
-  margin-top: 1px;
 }
 .gt-sade-satir {
   margin: 10px 0 0;

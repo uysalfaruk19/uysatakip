@@ -218,17 +218,6 @@ $priceMonth = substr($date, 0, 7);
 // gömülmez). Varsayılan %30 — bu eşiğin altındaki fark normal dalgalanma sayılır.
 $sapmaEsigi = max(0.05, $repo->ayarNum('bugun_sapma_esigi_yuzde', 30.0) / 100);
 $tatilGunu = $repo->tatilMi($date);
-// aksiyon-faz2: kişi başı TOPLAM maliyet (gıda + personel + diğer), ay başından bugüne.
-// Tahmini kâr bundan türer; hiçbiri hesaplanamıyorsa 0 kalır ve kâr satırı basılmaz.
-$kbAy = substr($date, 0, 7);
-$kisiBasiMaliyet = 0.0;
-try {
-    $kisiBasiMaliyet = (float) $repo->gidaCostOzet($kbAy)['kisi_basi']
-        + (float) $repo->personelCostOzetUretim($kbAy)['kisi_basi']
-        + (float) $repo->digerCostOzet($kbAy)['kisi_basi'];
-} catch (\Throwable $e) {
-    $kisiBasiMaliyet = 0.0;   // maliyet hesabı bu ekranı ASLA çökertmez
-}
 $tatilAd = '';
 if ($tatilGunu) {
     $tl = $repo->resmiTatiller(true, $date, $date);
@@ -394,23 +383,14 @@ require __DIR__ . '/partials/header.php';
            çubuğu ve 3 mini stat KALDIRILDI — aynı bilgi tek ince satırda ve akıllı durum
            satırında zaten var; ekranın yarısını kaplamalarının karşılığı yoktu. -->
       <div class="cardx card-pad gt-nabiz-sm gt-nabiz-sade">
-        <div class="gt-pulse gt-pulse-yan">
-          <div class="gt-pulse-sol">
+        <?php // aksiyon-faz11 (Ömer): TAHMİNİ KÂR KALDIRILDI — gizlenmedi, hesabı da silindi
+              // (her açılışta 3 maliyet sorgusu koşuyordu). Kâr rakamı Kâr/Zarar ekranında,
+              // gerçek kaynağından okunur; iki yerde iki ayrı kâr rakamı olmasın. ?>
+        <div class="gt-pulse">
           <?php // aksiyon-faz10: bu ekranda ciro KURUŞSUZ — kuruş, büyük punto rakamı ikinci
                 // satıra kırıyordu. Hesap değişmedi, yalnız gösterim yuvarlanıyor. ?>
           <div class="gt-pulse-n">₺<span id="sum-amount" data-tamsayi="1"><?= number_format(round($sumA), 0, ',', '.') ?></span></div>
           <div class="gt-pulse-l"><?= $date === Helpers::today() ? 'bugünkü ciro' : Helpers::e(date('d.m', strtotime($date))) . ' cirosu' ?></div>
-          </div>
-          <div class="gt-pulse-sag"><?php
-            // aksiyon-faz2: TAHMİNİ KÂR — ciro − (gerçek kişi × ay başından bugüne kişi başı
-            // maliyet). "tahmini" etiketi ZORUNLU: gider faturaları geç geldiği için ay ortasında
-            // maliyet düşük, kâr şişkin görünür (bilinen davranış, bug değil). Maliyet
-            // hesaplanamıyorsa (ay başı, gider yok) satır HİÇ basılmaz — sıfır kâr yazmak yalan olur.
-            if ($kisiBasiMaliyet > 0 && $sumP > 0):
-              $tahminiKar = $sumA - ($sumP * $kisiBasiMaliyet);
-              $marj = $sumA > 0 ? ($tahminiKar / $sumA) * 100 : 0; ?>
-            <span class="gt-tahmin">tahmini kâr<b>₺<?= Helpers::money($tahminiKar) ?> · %<?= number_format($marj, 0, ',', '.') ?></b><small>ay başından bugüne maliyetle</small></span>
-          <?php endif; ?></div>
         </div>
         <?php // Üç mini stat kartı yerine tek ince satır — aynı üç rakam, ekranın onda biri kadar yer.
               // "girildi" sayacı JS'in güncellediği #sum-filled ile aynı düğüm (recalc bozulmasın). ?>

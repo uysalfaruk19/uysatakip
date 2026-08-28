@@ -1037,6 +1037,222 @@ final class Repo
         return array_values($out);
     }
 
+    // ═══ fable-091 (Ömer, 28 Ağu): FATURA OTOMATİK KESİMİ ═══════════════════════════════
+    //
+    // Ömer'in düzeltmesi: "irsaliye kesilen her firma 7'şer günlük aralıkla faturalandırılır.
+    // GÜN değil TARİH bazlı." Bugüne kadarki kesimler Cumartesi–Cuma görünüyordu ama bu
+    // tesadüftü (1 Ağustos cumartesiye denk geldi); Temmuz'da 25–31 kesilmişti ve tarih
+    // desenine uymuyordu. Doğru kural: dönemler ayın TARİHİNE göre sabit.
+
+    /**
+     * Verilen gün bir fatura kesim günü mü? Öyleyse hangi dönem?
+     * Kesim günleri: 7 · 14 · 21 · 28 · ayın son günü (28'den büyükse).
+     * 28 çeken şubatta 28 hem son hafta hem AY KAPANIŞIDIR (ek kapanış günü yoktur);
+     * 29 çeken şubatta son dönem tek günlüktür (29–29).
+     * @return array{bas:string,son:string,tip:string}|null  tip: 'hafta' | 'ay_sonu'
+     */
+    public static function faturaDonemi(string $gun): ?array
+    {
+        $ts = strtotime($gun);
+        if ($ts === false) {
+            return null;
+        }
+        $d = (int) date('j', $ts);
+        $ayGun = (int) date('t', $ts);
+        $ay = date('Y-m', $ts);
+        $sonGun = date('Y-m-d', $ts);
+
+        if ($d === 7 || $d === 14 || $d === 21) {
+            $bas = ['7' => '01', '14' => '08', '21' => '15'][(string) $d];
+            return ['bas' => $ay . '-' . $bas, 'son' => $sonGun, 'tip' => 'hafta'];
+        }
+        if ($d === 28) {
+            // 28 günlük ayda 28 = ayın son günü → aynı gün ay kapanışı da yapılır.
+            return ['bas' => $ay . '-22', 'son' => $sonGun, 'tip' => $ayGun === 28 ? 'ay_sonu' : 'hafta'];
+        }
+        if ($d === $ayGun && $ayGun > 28) {
+            return ['bas' => $ay . '-29', 'son' => $sonGun, 'tip' => 'ay_sonu'];
+        }
+        return null;
+    }
+
+    /** Müşteri otomatik kesime dahil mi (CANTAŞ hariç tutuldu — 3 ayrı e-Faturaya bölünüyor). */
+    public function faturaOtoAcik(int $customerId): bool
+    {
+        try {
+            $st = $this->pdo->prepare('SELECT fatura_oto_kesim FROM customers WHERE id = ?');
+            $st->execute([$customerId]);
+            $v = $st->fetchColumn();
+            return $v === false || (int) $v === 1;
+        } catch (\PDOException $e) {
+            error_log('[UYSA v2 faturaOtoAcik] kolon yok (migrate_054?): ' . $e->getMessage());
+            return false;   // kolon yoksa OTOMATİK KESME — güvenli varsayılan
+        }
+    }
+
+    // ── Ekstra kalemler (irsaliyesiz/aylık müşteriler; ay içinde girilir, ay sonu faturaya girer)
+
+    /**
+     * Bir müşterinin bir ayındaki ekstra kalemleri. $yalnizFaturasiz=true ise henüz
+     * faturalanmamışlar (kesim bunu kullanır — faturalanmış kalem ikinci kez girmez).
+     * @return list<array<string,mixed>>
+     */
+    public function ekstraKalemler(int $customerId, string $ay, bool $yalnizFaturasiz = false): array
+    {
+        try {
+            $sql = 'SELECT * FROM musteri_ekstra_kalem WHERE customer_id = ? AND ay = ?'
+                 . ($yalnizFaturasiz ? ' AND fatura_log_id IS NULL' : '')
+                 . ' ORDER BY id';
+            $st = $this->pdo->prepare($sql);
+            $st->execute([$customerId, $ay]);
+            return $st->fetchAll();
+        } catch (\PDOException $e) {
+            error_log('[UYSA v2 ekstraKalem] tablo yok (migrate_054?): ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    public function ekstraKalemEkle(int $customerId, string $ay, array $d): int
+    {
+        $st = $this->pdo->prepare(
+            'INSERT INTO musteri_ekstra_kalem
+                (customer_id, ay, ad, adet, birim_fiyat, kdv_orani, parasut_product_id, aciklama, entered_by)
+             VALUES (?,?,?,?,?,?,?,?,?)'
+        );
+        $st->execute([
+            $customerId, $ay, (string) $d['ad'], (float) ($d['adet'] ?? 1),
+            (float) ($d['birim_fiyat'] ?? 0), (float) ($d['kdv_orani'] ?? 10),
+            ($d['parasut_product_id'] ?? '') !== '' ? (string) $d['parasut_product_id'] : null,
+            ($d['aciklama'] ?? '') !== '' ? (string) $d['aciklama'] : null,
+            (string) ($d['entered_by'] ?? ''),
+        ]);
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    /** Faturalanmamış ekstra kalem silinebilir; faturalanan SİLİNMEZ (iz kalır). */
+    public function ekstraKalemSil(int $id): bool
+    {
+        $st = $this->pdo->prepare('DELETE FROM musteri_ekstra_kalem WHERE id = ? AND fatura_log_id IS NULL');
+        $st->execute([$id]);
+        return $st->rowCount() > 0;
+    }
+
+    /** Kesilen faturaya bağla — mükerrer kalkanı: bağlanan kalem bir daha faturaya girmez. */
+    public function ekstraKalemleriFaturayaBagla(array $ids, int $faturaLogId): int
+    {
+        $ids = array_values(array_filter(array_map('intval', $ids), static fn(int $x): bool => $x > 0));
+        if (!$ids) {
+            return 0;
+        }
+        $yer = implode(',', array_fill(0, count($ids), '?'));
+        $st = $this->pdo->prepare(
+            "UPDATE musteri_ekstra_kalem SET fatura_log_id = ?
+              WHERE id IN ($yer) AND fatura_log_id IS NULL"
+        );
+        $st->execute(array_merge([$faturaLogId], $ids));
+        return $st->rowCount();
+    }
+
+    // ── ORTAK KONTROLLER ────────────────────────────────────────────────────────────────
+    // fable-091: bu kontroller fable-029'da fatura-kes.php içine GÖMÜLÜYDU. Otomatik kesim
+    // de aynı kapılardan geçmek zorunda; mantık iki yere kopyalanırsa ekran ile otomatik
+    // zamanla ayrışır ve "ekranda kırmızı görünen şey otomatikte kesilir" olur. Tek kaynak.
+    //
+    // Ekranda kırmızı kontrol UYARIDIR (Ömer bakıp yine de kesebilir); OTOMATİK kesimde
+    // kırmızı = KESME. Bu farkı çağıran taraf uygular, kontroller sadece durumu bildirir.
+
+    /**
+     * İrsaliyeli (haftalık) fatura kontrolleri.
+     * @param array<string,bool> $irsGunSet faturaya girecek irsaliye günleri (gun => true)
+     * @return list<array{ok:bool,txt:string}>
+     */
+    public function faturaKontrolleriIrsaliye(int $cid, string $bas, string $son, int $faturaToplam, array $irsGunSet): array
+    {
+        $kontroller = [];
+        $irssiz = [];
+        $uretimTop = 0;
+        foreach ($this->customerMealsRange($cid, $bas, $son) as $ur) {
+            $uretimTop += (int) $ur['toplam'];
+            if ((int) $ur['toplam'] > 0 && !isset($irsGunSet[$ur['gun']])) {
+                $irssiz[] = date('d.m', (int) strtotime((string) $ur['gun']));
+            }
+        }
+        $kontroller[] = $irssiz
+            ? ['ok' => false, 'txt' => 'Üretim kaydı olup KESİLMİŞ İRSALİYESİ OLMAYAN gün: '
+                . implode(', ', $irssiz) . ' — bu günler faturaya GİRMEYECEK.']
+            : ['ok' => true, 'txt' => 'Dönemdeki tüm üretim günlerinin irsaliyesi kesilmiş ve faturada ('
+                . count($irsGunSet) . ' gün).'];
+
+        $kontroller[] = $uretimTop !== $faturaToplam
+            ? ['ok' => false, 'txt' => 'Fatura toplamı (' . $faturaToplam . ' kişi) üretim kayıtları toplamından ('
+                . $uretimTop . ') FARKLI — fark ' . ($uretimTop - $faturaToplam) . ' kişi.']
+            : ['ok' => true, 'txt' => 'Fatura toplamı üretim kayıtlarıyla birebir (' . $uretimTop . ' kişi).'];
+
+        $k = $this->faturaKiyasKontrol($cid, $bas, $faturaToplam);
+        if ($k !== null) {
+            $kontroller[] = $k;
+        }
+        return $kontroller;
+    }
+
+    /**
+     * Aylık (irsaliyesiz) fatura kontrolleri. Dönem AYIN TAMAMIDIR (fable-055).
+     * @return list<array{ok:bool,txt:string}>
+     */
+    public function faturaKontrolleriAylik(int $cid, string $kBas, string $kSon, int $sumKisi, int $hedefAdet, string $kiyasOncesi): array
+    {
+        $kontroller = [];
+        $kayitliSet = [];
+        foreach ($this->customerMealsRange($cid, $kBas, $kSon) as $g) {
+            if ((int) $g['toplam'] > 0) {
+                $kayitliSet[(string) $g['gun']] = true;
+            }
+        }
+        // Dönem içi GEÇMİŞ hafta içi günlerden kaydı olmayanlar (eksik gün → fatura düşük kalır)
+        $eksikGun = [];
+        for ($d = (int) strtotime($kBas); $d <= min((int) strtotime($kSon), (int) strtotime('yesterday')); $d += 86400) {
+            if ((int) date('N', $d) <= 5 && !isset($kayitliSet[date('Y-m-d', $d)])) {
+                $eksikGun[] = date('d.m', $d);
+            }
+        }
+        $kontroller[] = $eksikGun
+            ? ['ok' => false, 'txt' => 'Kayıtsız hafta içi gün: ' . implode(', ', $eksikGun)
+                . ' — bu günler toplama girmiyor (eksikse önce Bugün ekranından girin).']
+            : ['ok' => true, 'txt' => 'Dönemin geçmiş hafta içi günlerinin tamamı kayıtlı ('
+                . count($kayitliSet) . ' gün).'];
+
+        $kontroller[] = $sumKisi !== $hedefAdet
+            ? ['ok' => false, 'txt' => 'Bölüşüm toplamı (' . $sumKisi . ') sistem toplamından ('
+                . $hedefAdet . ') farklı — fark ' . ($sumKisi - $hedefAdet) . ' kişi.']
+            : ['ok' => true, 'txt' => 'Bölüşüm toplamı sistem toplamıyla birebir (' . $sumKisi . ' kişi).'];
+
+        $k = $this->faturaKiyasKontrol($cid, $kiyasOncesi, $sumKisi);
+        if ($k !== null) {
+            $kontroller[] = $k;
+        }
+        return $kontroller;
+    }
+
+    /**
+     * Önceki fatura dönemiyle kıyas (%25 eşik). Kıyaslanacak geçmiş fatura yoksa null.
+     * @return array{ok:bool,txt:string}|null
+     */
+    public function faturaKiyasKontrol(int $cid, string $oncesinde, int $buDonemKisi): ?array
+    {
+        $sonF = $this->sonKesilenFatura($cid, $oncesinde);
+        if ($sonF === null || (int) $sonF['kisi'] <= 0) {
+            return null;
+        }
+        $farkYuzde = (int) round((($buDonemKisi - $sonF['kisi']) / $sonF['kisi']) * 100);
+        return [
+            'ok' => abs($farkYuzde) <= 25,
+            'txt' => 'Önceki fatura (' . date('d.m', (int) strtotime((string) $sonF['donem_bas'])) . '–'
+                . date('d.m', (int) strtotime((string) $sonF['donem_son'])) . '): ' . $sonF['kisi']
+                . ' kişi · ₺' . number_format((float) $sonF['tutar'], 2, ',', '.')
+                . ' — bu dönem ' . $buDonemKisi . ' kişi (' . ($farkYuzde >= 0 ? '+' : '') . $farkYuzde . '%).',
+        ];
+    }
+
     /**
      * fable-029: Müşterinin SON kesilmiş faturası (önceki dönemle kıyas kontrolü için).
      * Aylıkta parçalar ayrı satır olduğundan dönem toplamı döner.
