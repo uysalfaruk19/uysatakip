@@ -13,7 +13,8 @@
 set -u
 DIZIN="/root/uysatakip/gonder"
 OFU="root@31.97.45.60"
-OFU_DIZIN="/docker/openclaw-lhto/data/gonder"
+OFU_DIZIN="/docker/openclaw-lhto/data/gonder"        # HOST yolu (scp hedefi)
+OFU_KAP_DIZIN="/data/gonder"                          # KONTEYNER yolu (openclaw bunu görür)
 KONTEYNER="openclaw-lhto-openclaw-1"
 LOG="/var/log/uysatakip-wa-gonder.log"
 
@@ -54,7 +55,7 @@ for meta in "$DIZIN"/*.json; do
 
   cikti="$(ssh -o BatchMode=yes -o ConnectTimeout=60 "$OFU" \
     "docker exec $KONTEYNER openclaw message send --channel whatsapp --target '$hedef' \
-     --media $OFU_DIZIN/$gonderilecekAd --force-document -m \"$mesaj\" --json" 2>&1)"
+     --media $OFU_KAP_DIZIN/$gonderilecekAd --force-document -m \"$mesaj\" --json" 2>&1)"
   if echo "$cikti" | grep -q '"messageId"'; then
     mid="$(echo "$cikti" | grep -oP '"messageId":\s*"\K[^"]+' | head -1)"
     yaz "GONDERILDI $ad -> $hedef (messageId=$mid)"
