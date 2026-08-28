@@ -6626,14 +6626,19 @@ final class Repo
         // Belge kaynaklı kayıtlarda (Paraşüt / GİB listesi) açıklama "FİRMA · BELGE" biçimindedir.
         // Eskiden yalnız 'parasut' okunuyordu; GİB'den işlenenler "Elle girilen" torbasına düşüp
         // borç listesinde firma bazında GÖRÜNMÜYORDU (POLATOĞLU vakası).
+        // fable-099 (Ömer, 28 Ağu): 'mail' de belge kaynağıdır. EDM/mail kanalından işlenen
+        // tedarikçi faturaları (BALCI/ÖRS/YOPA...) 'source=mail' olduğu için "Elle girilen"
+        // torbasına düşüyordu; oysa açıklaması "FİRMA · BELGE" biçiminde. Artık firma buradan
+        // çözülür → borç kendi tedarikçisinin altında görünür (sistem bütün olsun).
         $src = (string) ($r['source'] ?? 'manuel');
-        if ($src === 'parasut' || $src === 'gib') {
+        if ($src === 'parasut' || $src === 'gib' || $src === 'mail') {
             $d = (string) ($r['description'] ?? '');
             $firma = trim(explode(' · ', $d)[0] ?? '');
             if ($firma !== '') {
                 return $firma;
             }
-            return $src === 'gib' ? 'GİB listesi (tedarikçi bilinmiyor)' : 'Paraşüt (tedarikçi bilinmiyor)';
+            return $src === 'gib' ? 'GİB listesi (tedarikçi bilinmiyor)'
+                : ($src === 'mail' ? 'Mail (tedarikçi bilinmiyor)' : 'Paraşüt (tedarikçi bilinmiyor)');
         }
         // fable-043: elle girilen + tedarikçi seçili → tedarikçi ADI (firma karnesi/eşleştirme/gıda
         // hepsi bu tek kaynaktan; supplier yoksa eski 'Elle girilen · kategori' fallback korunur).
