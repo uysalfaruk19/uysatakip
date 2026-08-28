@@ -22,8 +22,8 @@ declare(strict_types=1);
  *   KAPI 4  ParasutYaz'ın kendi kalkanları: onay imzası · claim-first irsaliye kilidi ·
  *           mükerrer kontrolü · ay kapanmadan aylık kesilmez.
  *
- * Aylık müşteriler (irsaliyesiz) YALNIZ ay kapanış gününde kesilir: aylık fatura + sabit kalem
- * + o ayın ekstra kalemleri.
+ * Aylık müşteriler (irsaliyesiz) YALNIZ ay kapanış gününde kesilir: aylık fatura + sabit kalem.
+ * Yemek sayısı düzeltmesi Müşteriler ekranından yapılır (ek kalem/ürün YOK — Ömer 28 Ağu).
  *
  * Kullanım:  php tools/fatura_oto_kes.php [--kuru|--onbildirim] [--gun=YYYY-MM-DD]
  *   --kuru       : hiçbir şey kesmez, ne keseceğini yazar.
@@ -232,28 +232,6 @@ foreach ($repo->faturaAdaylari($bas, $son) as $a) {
         'net' => $altNet];
 }
 
-// ── Ekstra kalemler (yalnız ay kapanışında, aylık/irsaliyesiz müşteriler) ────
-if ($aySonu) {
-    $ay = substr($son, 0, 7);
-    foreach ($pdo->query('SELECT id, name FROM customers WHERE is_active = 1 AND irsaliye_aktif = 0 ORDER BY name') as $c) {
-        $cid = (int) $c['id'];
-        if (!$repo->faturaOtoAcik($cid)) {
-            continue;
-        }
-        $ek = $repo->ekstraKalemler($cid, $ay, true);
-        if (!$ek) {
-            continue;
-        }
-        $net = 0.0;
-        foreach ($ek as $k) {
-            $net += round((float) $k['adet'] * (float) $k['birim_fiyat'], 2) * (1 + (float) $k['kdv_orani'] / 100);
-        }
-        $kesilecek[] = ['tip' => 'ekstra', 'cid' => $cid, 'ad' => (string) $c['name'] . ' · ekstra',
-            'ay' => $ay, 'ozet' => count($ek) . ' kalem · ₺' . number_format($net, 2, ',', '.'),
-            'net' => round($net, 2)];
-    }
-}
-
 $toplamNet = 0.0;
 foreach ($kesilecek as $k) {
     $toplamNet += (float) $k['net'];
@@ -310,8 +288,6 @@ foreach ($kesilecek as $k) {
         $sonuclar[] = [$k['ad'], $kesici->createSalesInvoice($k['cid'], $bas, $son, $ctx)];
     } elseif ($k['tip'] === 'sabit') {
         $sonuclar[] = [$k['ad'], $kesici->createFixedInvoice((int) $k['kalem_id'], (string) $k['ay'], $ctx)];
-    } elseif ($k['tip'] === 'ekstra') {
-        $sonuclar[] = [$k['ad'], $kesici->createExtraInvoice($k['cid'], (string) $k['ay'], $ctx)];
     } else {
         foreach ($k['parts'] as $pt) {
             if ((int) $pt['kisi'] <= 0) {

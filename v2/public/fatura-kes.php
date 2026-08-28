@@ -75,38 +75,14 @@ if ($method === 'POST') {
     }
     $action = (string) ($body['action'] ?? '');
 
-    // ── fable-091: ekstra kalem + otomatik kesim şalteri ──────────────────────
-    // Bunlar klasik form POST'u (JSON değil) ve PRG ile biter — F5'te mükerrer kayıt olmasın.
-    // JSON uçlarından ÖNCE yakalanır: onların bas/son doğrulaması bu formlarda yok.
-    if ($action === 'ekstra_ekle' || $action === 'ekstra_sil' || $action === 'oto_salter') {
-        $don = 'fatura-kes.php?bas=' . urlencode((string) ($_POST['bas'] ?? date('Y-m-01')))
-             . '&son=' . urlencode((string) ($_POST['son'] ?? date('Y-m-t')));
-        if ($action === 'oto_salter') {
-            $repo->ayarSet('fatura_oto_kesim', $repo->ayar('fatura_oto_kesim', '1') === '1' ? '0' : '1');
-            uysa_audit('fatura_oto_salter', (string) $u['username'], date('Y-m-d'),
-                json_encode(['yeni' => $repo->ayar('fatura_oto_kesim', '1')], JSON_UNESCAPED_UNICODE), client_ip());
-            header('Location: ' . $don . '#ekstra');
-            exit;
-        }
-        if ($action === 'ekstra_sil') {
-            $repo->ekstraKalemSil((int) ($_POST['id'] ?? 0));
-            header('Location: ' . $don . '#ekstra');
-            exit;
-        }
-        $cid = (int) ($_POST['customer_id'] ?? 0);
-        $ay = (string) ($_POST['ay'] ?? date('Y-m'));
-        $ad = trim((string) ($_POST['ad'] ?? ''));
-        $adet = (float) str_replace(',', '.', (string) ($_POST['adet'] ?? '1'));
-        $birim = (float) str_replace(',', '.', (string) ($_POST['birim_fiyat'] ?? '0'));
-        if ($cid > 0 && $ad !== '' && $adet > 0 && $birim > 0 && preg_match('/^\d{4}-\d{2}$/', $ay)) {
-            $repo->ekstraKalemEkle($cid, $ay, [
-                'ad' => $ad, 'adet' => $adet, 'birim_fiyat' => $birim,
-                'kdv_orani' => (float) str_replace(',', '.', (string) ($_POST['kdv_orani'] ?? '10')),
-                'aciklama' => trim((string) ($_POST['aciklama'] ?? '')),
-                'entered_by' => (string) $u['username'],
-            ]);
-        }
-        header('Location: ' . $don . '#ekstra');
+    // ── fable-091: otomatik kesim şalteri (klasik form POST + PRG, JSON değil) ──
+    // JSON uçlarından ÖNCE yakalanır: onların bas/son doğrulaması bu formda yok.
+    if ($action === 'oto_salter') {
+        $repo->ayarSet('fatura_oto_kesim', $repo->ayar('fatura_oto_kesim', '1') === '1' ? '0' : '1');
+        uysa_audit('fatura_oto_salter', (string) $u['username'], date('Y-m-d'),
+            json_encode(['yeni' => $repo->ayar('fatura_oto_kesim', '1')], JSON_UNESCAPED_UNICODE), client_ip());
+        header('Location: fatura-kes.php?bas=' . urlencode((string) ($_POST['bas'] ?? date('Y-m-01')))
+             . '&son=' . urlencode((string) ($_POST['son'] ?? date('Y-m-t'))));
         exit;
     }
 
@@ -518,31 +494,23 @@ require __DIR__ . '/partials/header.php';
       </form>
 
       <?php
-      // ── fable-091: OTOMATİK KESİM durumu + EKSTRA KALEMLER ───────────────────
-      // Ömer (28 Ağu): "irsaliyesiz olan faturalara ekstra eklenecek alan kurgula, ay içinde
-      // ekstralara yazayım." Ekstra yalnız aylık (irsaliyesiz) müşterilere girilir; ay sonu
-      // otomatik kesiminde AYRI bir faturaya dönüşür (bölüşümlü müşteride hangi parçaya
-      // gireceği belirsiz kalmasın diye ana cariye tek fatura).
+      // ── fable-091: otomatik fatura kesimi şalteri ────────────────────────────
+      // Ömer (28 Ağu, düzeltme): "ekstra eklemeyi kaldır, direkt sayı ekleyelim müşteri
+      // ekranından." Ek ürün/kalem YOK — boş güne yemek sayısı girilir, fatura o sayıdan doğar.
       $otoAcik = $repo->ayar('fatura_oto_kesim', '1') === '1';
-      $ekstraUrun = trim((string) $repo->ayar('ekstra_urun_id', ''));
-      $aylikMusteriler = $pdo->query(
-          'SELECT id, name, fatura_oto_kesim FROM customers WHERE is_active = 1 AND irsaliye_aktif = 0 ORDER BY name'
-      )->fetchAll();
-      $ekstraAy = date('Y-m', strtotime($son));
       ?>
-      <div class="cardx card-pad" id="ekstra">
+      <div class="cardx card-pad">
         <div class="head-row">
-          <h2>Otomatik kesim &amp; ekstra kalemler</h2>
-          <span class="row-meta">
-            <?= $otoAcik ? '🟢 Otomatik kesim AÇIK' : '🔴 Otomatik kesim KAPALI' ?>
-          </span>
+          <h2>Otomatik fatura kesimi</h2>
+          <span class="row-meta"><?= $otoAcik ? '🟢 AÇIK' : '🔴 KAPALI' ?></span>
         </div>
         <p class="row-meta" style="margin:0 0 10px">
           Faturalar <strong>ayın 7 · 14 · 21 · 28 ve son günü</strong> saat <strong>13:30</strong>'da
-          otomatik kesilir (13:05'te "kesilecek" bildirimi düşer). İrsaliyeleri eksik olan gün
-          kesim yapılmaz. CANTAŞ otomatiğe dahil değildir — elle kesilir.
+          otomatik kesilir (13:05'te "kesilecek" bildirimi düşer). O günün irsaliyeleri eksikse
+          kesim yapılmaz. <strong>CANTAŞ otomatiğe dahil değildir</strong> — elle kesilir.
+          Yemek sayısı düzeltmesi <a href="musteriler.php">Müşteriler</a> ekranından yapılır.
         </p>
-        <form method="post" style="margin:0 0 14px">
+        <form method="post" style="margin:0">
           <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
           <input type="hidden" name="action" value="oto_salter">
           <input type="hidden" name="bas" value="<?= Helpers::e($bas) ?>">
@@ -551,78 +519,6 @@ require __DIR__ . '/partials/header.php';
             <?= $otoAcik ? 'Otomatik kesimi KAPAT' : 'Otomatik kesimi AÇ' ?>
           </button>
         </form>
-
-        <?php if ($ekstraUrun === ''): ?>
-          <div class="uyari-kutu" style="margin:0 0 12px">
-            <i class="bi bi-exclamation-triangle"></i>
-            <strong>Ekstra ürün id tanımlı değil.</strong> Paraşüt kalemsiz fatura kabul etmiyor;
-            ekstra kalem girilebilir ama ürün id girilene kadar <strong>faturaya dönüşmez</strong>.
-            Ayarlardan <code>ekstra_urun_id</code> değerine Paraşüt'teki hizmet ürününün id'sini yazın.
-          </div>
-        <?php endif; ?>
-
-        <?php foreach ($aylikMusteriler as $am):
-            $amId = (int) $am['id'];
-            $kalemler = $repo->ekstraKalemler($amId, $ekstraAy);
-        ?>
-          <div style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px">
-            <div class="head-row" style="margin-bottom:8px">
-              <strong><?= Helpers::e((string) $am['name']) ?></strong>
-              <span class="row-meta">
-                <?= Helpers::e(date('m.Y', strtotime($ekstraAy . '-01'))) ?> ·
-                <?= (int) $am['fatura_oto_kesim'] === 1 ? 'ay sonu otomatik' : 'elle kesilir' ?>
-              </span>
-            </div>
-            <?php if ($kalemler): ?>
-              <table class="tbl" style="margin-bottom:8px">
-                <thead><tr><th>Kalem</th><th class="num">Adet</th><th class="num">Birim</th>
-                  <th class="num">KDV</th><th class="num">Tutar</th><th>Durum</th><th></th></tr></thead>
-                <tbody>
-                <?php foreach ($kalemler as $k):
-                    $tutar = round((float) $k['adet'] * (float) $k['birim_fiyat'], 2);
-                    $faturali = $k['fatura_log_id'] !== null;
-                ?>
-                  <tr>
-                    <td><?= Helpers::e((string) $k['ad']) ?></td>
-                    <td class="num"><?= rtrim(rtrim(number_format((float) $k['adet'], 2, ',', '.'), '0'), ',') ?></td>
-                    <td class="num">₺<?= Helpers::money((float) $k['birim_fiyat']) ?></td>
-                    <td class="num">%<?= rtrim(rtrim(number_format((float) $k['kdv_orani'], 2), '0'), '.') ?></td>
-                    <td class="num">₺<?= Helpers::money($tutar) ?></td>
-                    <td><?= $faturali ? '<span class="row-meta">faturalandı</span>' : 'bekliyor' ?></td>
-                    <td class="num">
-                      <?php if (!$faturali): ?>
-                        <form method="post" style="display:inline">
-                          <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
-                          <input type="hidden" name="action" value="ekstra_sil">
-                          <input type="hidden" name="id" value="<?= (int) $k['id'] ?>">
-                          <input type="hidden" name="bas" value="<?= Helpers::e($bas) ?>">
-                          <input type="hidden" name="son" value="<?= Helpers::e($son) ?>">
-                          <button type="submit" class="btn btn-ghost btn-sm" title="Sil"><i class="bi bi-trash"></i></button>
-                        </form>
-                      <?php endif; ?>
-                    </td>
-                  </tr>
-                <?php endforeach; ?>
-                </tbody>
-              </table>
-            <?php else: ?>
-              <div class="row-meta" style="margin-bottom:8px">Bu ay ekstra kalem girilmemiş.</div>
-            <?php endif; ?>
-            <form method="post" class="date-row" style="gap:8px;flex-wrap:wrap;align-items:flex-end">
-              <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
-              <input type="hidden" name="action" value="ekstra_ekle">
-              <input type="hidden" name="customer_id" value="<?= $amId ?>">
-              <input type="hidden" name="ay" value="<?= Helpers::e($ekstraAy) ?>">
-              <input type="hidden" name="bas" value="<?= Helpers::e($bas) ?>">
-              <input type="hidden" name="son" value="<?= Helpers::e($son) ?>">
-              <input type="text" name="ad" placeholder="Kalem adı" required style="min-width:180px;font-size:16px">
-              <input type="text" name="adet" value="1" placeholder="Adet" style="width:80px;font-size:16px" inputmode="decimal">
-              <input type="text" name="birim_fiyat" placeholder="Birim ₺" required style="width:120px;font-size:16px" inputmode="decimal">
-              <input type="text" name="kdv_orani" value="10" placeholder="KDV %" style="width:80px;font-size:16px" inputmode="decimal">
-              <button type="submit" class="btn btn-primary">Ekstra ekle</button>
-            </form>
-          </div>
-        <?php endforeach; ?>
       </div>
 
       <div class="cardx card-pad" id="ftr-step-secim">

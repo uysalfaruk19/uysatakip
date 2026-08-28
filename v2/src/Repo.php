@@ -1090,83 +1090,116 @@ final class Repo
         }
     }
 
-    // ── Ekstra kalemler (irsaliyesiz/aylık müşteriler; ay içinde girilir, ay sonu faturaya girer)
-
     /**
-     * Bir müşterinin bir ayındaki ekstra kalemleri. $yalnizFaturasiz=true ise henüz
-     * faturalanmamışlar (kesim bunu kullanır — faturalanmış kalem ikinci kez girmez).
+     * fable-092 (Ömer, 28 Ağu): "müşteri isimlerinin yanına aylık sayı (haftalık ayrımlarla)
+     * görebileceğim bir ikon ekle; orada sayı değiştirdiğimde faturaya da senkronize olsun...
+     * boş güne yemek sayısı ekleyeceğim."
+     *
+     * Ayın gün gün sayım tablosu. Her gün için ÜRETİM kişisi (persons) ve FATURA kişisi
+     * (amount ÷ birim) AYRI döner — CANTAŞ'ta ikisi farklıdır (üretim 50, fatura 70; fark
+     * amount'a biner, fable-040). Tek sayıya indirilirse ya fatura eksik kesilir ya gıda
+     * maliyeti (kişi başı = gıda faturası ÷ ÜRETİM kişisi) bozulur.
+     *
+     * KİLİT: irsaliyesi kesilmiş ya da faturalanmış gün DEĞİŞTİRİLEMEZ — değişirse belge ile
+     * kayıt ayrışır, fatura kontrolleri kırmızı yanar ve o dönem hiç kesilemez.
      * @return list<array<string,mixed>>
      */
-    public function ekstraKalemler(int $customerId, string $ay, bool $yalnizFaturasiz = false): array
+    public function aylikSayimGrid(int $customerId, string $ay): array
     {
+        $bas = $ay . '-01';
+        $son = date('Y-m-t', strtotime($bas));
+        $fiyat = (float) $this->priceFor($customerId, $ay)['unit_price'];
+
+        $st = $this->pdo->prepare(
+            'SELECT prod_date, meal, persons, amount, unit_price_snap FROM production
+              WHERE customer_id = ? AND prod_date BETWEEN ? AND ?'
+        );
+        $st->execute([$customerId, $bas, $son]);
+        $uretim = [];
+        foreach ($st->fetchAll() as $r) {
+            $g = (string) $r['prod_date'];
+            $uretim[$g][(string) $r['meal']] = (int) $r['persons'];
+            $uretim[$g]['_tutar'] = ($uretim[$g]['_tutar'] ?? 0.0) + (float) $r['amount'];
+            $bf = (float) $r['unit_price_snap'];
+            if ($bf > 0.0001) {
+                $uretim[$g]['_birim'] = $bf;
+            }
+        }
+
+        // İrsaliye / fatura durumu — kilit bundan doğar.
+        $irs = [];
         try {
-            $sql = 'SELECT * FROM musteri_ekstra_kalem WHERE customer_id = ? AND ay = ?'
-                 . ($yalnizFaturasiz ? ' AND fatura_log_id IS NULL' : '')
-                 . ' ORDER BY id';
-            $st = $this->pdo->prepare($sql);
-            $st->execute([$customerId, $ay]);
-            return $st->fetchAll();
+            $st2 = $this->pdo->prepare(
+                "SELECT gun, despatch_no, fatura_log_id FROM parasut_irsaliye_log
+                  WHERE customer_id = ? AND gun BETWEEN ? AND ? AND durum = 'kesildi'"
+            );
+            $st2->execute([$customerId, $bas, $son]);
+            foreach ($st2->fetchAll() as $r) {
+                $irs[(string) $r['gun']] = ['no' => (string) ($r['despatch_no'] ?? ''),
+                    'faturali' => $r['fatura_log_id'] !== null];
+            }
         } catch (\PDOException $e) {
-            error_log('[UYSA v2 ekstraKalem] tablo yok (migrate_054?): ' . $e->getMessage());
-            return [];
+            error_log('[UYSA v2 aylikSayim] irsaliye log okunamadı: ' . $e->getMessage());
         }
-    }
-
-    public function ekstraKalemEkle(int $customerId, string $ay, array $d): int
-    {
-        $st = $this->pdo->prepare(
-            'INSERT INTO musteri_ekstra_kalem
-                (customer_id, ay, ad, adet, birim_fiyat, kdv_orani, parasut_product_id, aciklama, entered_by)
-             VALUES (?,?,?,?,?,?,?,?,?)'
-        );
-        $st->execute([
-            $customerId, $ay, (string) $d['ad'], (float) ($d['adet'] ?? 1),
-            (float) ($d['birim_fiyat'] ?? 0), (float) ($d['kdv_orani'] ?? 10),
-            ($d['parasut_product_id'] ?? '') !== '' ? (string) $d['parasut_product_id'] : null,
-            ($d['aciklama'] ?? '') !== '' ? (string) $d['aciklama'] : null,
-            (string) ($d['entered_by'] ?? ''),
-        ]);
-        return (int) $this->pdo->lastInsertId();
-    }
-
-    /** Faturalanmamış ekstra kalem silinebilir; faturalanan SİLİNMEZ (iz kalır). */
-    public function ekstraKalemSil(int $id): bool
-    {
-        $st = $this->pdo->prepare('DELETE FROM musteri_ekstra_kalem WHERE id = ? AND fatura_log_id IS NULL');
-        $st->execute([$id]);
-        return $st->rowCount() > 0;
-    }
-
-    /** Kesilen faturaya bağla — mükerrer kalkanı: bağlanan kalem bir daha faturaya girmez. */
-    public function ekstraKalemleriFaturayaBagla(array $ids, int $faturaLogId): int
-    {
-        $ids = array_values(array_filter(array_map('intval', $ids), static fn(int $x): bool => $x > 0));
-        if (!$ids) {
-            return 0;
+        // İrsaliyesiz (aylık) müşteride kilit AYIN faturasından gelir.
+        $ayFaturali = false;
+        try {
+            $st3 = $this->pdo->prepare(
+                "SELECT COUNT(*) FROM parasut_fatura_log
+                  WHERE customer_id = ? AND donem_son = ? AND tip IN ('aylik','sabit') AND durum = 'kesildi'"
+            );
+            $st3->execute([$customerId, $son]);
+            $ayFaturali = (int) $st3->fetchColumn() > 0;
+        } catch (\PDOException $e) {
+            error_log('[UYSA v2 aylikSayim] fatura log okunamadı: ' . $e->getMessage());
         }
-        $yer = implode(',', array_fill(0, count($ids), '?'));
-        $st = $this->pdo->prepare(
-            "UPDATE musteri_ekstra_kalem SET fatura_log_id = ?
-              WHERE id IN ($yer) AND fatura_log_id IS NULL"
-        );
-        $st->execute(array_merge([$faturaLogId], $ids));
-        return $st->rowCount();
+
+        $out = [];
+        $adGun = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
+        for ($d = (int) strtotime($bas); $d <= (int) strtotime($son); $d += 86400) {
+            $g = date('Y-m-d', $d);
+            $u = $uretim[$g] ?? [];
+            $ogle = (int) ($u['ogle'] ?? 0);
+            $aksam = (int) ($u['aksam'] ?? 0);
+            $kumanya = (int) ($u['kumanya'] ?? 0);
+            $uToplam = $ogle + $aksam + $kumanya;
+            $birim = (float) ($u['_birim'] ?? $fiyat);
+            $faturaKisi = $birim > 0.0001 ? (int) round(((float) ($u['_tutar'] ?? 0)) / $birim) : $uToplam;
+
+            $kilit = '';
+            if (isset($irs[$g])) {
+                $kilit = $irs[$g]['faturali'] ? 'faturalandı' : 'irsaliye kesildi';
+            } elseif ($ayFaturali) {
+                $kilit = 'ay faturalandı';
+            }
+            $gunNo = (int) date('j', $d);
+            $out[] = [
+                'gun'         => $g,
+                'gun_no'      => $gunNo,
+                'gun_adi'     => $adGun[(int) date('N', $d) - 1],
+                'haftasonu'   => (int) date('N', $d) >= 6,
+                'ogle'        => $ogle,
+                'aksam'       => $aksam,
+                'kumanya'     => $kumanya,
+                'uretim'      => $uToplam,
+                'fatura_kisi' => $faturaKisi,
+                'birim'       => $birim,
+                'irsaliye_no' => $irs[$g]['no'] ?? '',
+                'kilit'       => $kilit,
+                // Fatura dönemi grubu: 1-7 · 8-14 · 15-21 · 22-28 · 29-son (Repo::faturaDonemi ile aynı)
+                'donem'       => $gunNo <= 7 ? 1 : ($gunNo <= 14 ? 2 : ($gunNo <= 21 ? 3 : ($gunNo <= 28 ? 4 : 5))),
+            ];
+        }
+        return $out;
     }
 
-    /** 4xx sonrası geri açma: belge Paraşüt'te OLUŞMADIYSA kalemler tekrar faturalanabilir olur. */
-    public function ekstraKalemleriFaturadanCoz(array $ids, int $faturaLogId): int
+    /** Fatura dönemi grubunun insan okunur etiketi (aylikSayimGrid 'donem' alanı için). */
+    public static function donemEtiketi(int $donem, string $ay): string
     {
-        $ids = array_values(array_filter(array_map('intval', $ids), static fn(int $x): bool => $x > 0));
-        if (!$ids) {
-            return 0;
-        }
-        $yer = implode(',', array_fill(0, count($ids), '?'));
-        $st = $this->pdo->prepare(
-            "UPDATE musteri_ekstra_kalem SET fatura_log_id = NULL
-              WHERE id IN ($yer) AND fatura_log_id = ?"
-        );
-        $st->execute(array_merge($ids, [$faturaLogId]));
-        return $st->rowCount();
+        $sonGun = (int) date('t', (int) strtotime($ay . '-01'));
+        $ar = [1 => [1, 7], 2 => [8, 14], 3 => [15, 21], 4 => [22, 28], 5 => [29, $sonGun]];
+        [$b, $s] = $ar[$donem] ?? [1, $sonGun];
+        return sprintf('%02d–%02d', $b, $s);
     }
 
     // ── ORTAK KONTROLLER ────────────────────────────────────────────────────────────────
@@ -1348,8 +1381,7 @@ final class Repo
     {
         $enum = static fn(string $v, array $ok, string $def): string => in_array($v, $ok, true) ? $v : $def;
         // fable-065: 'sabit' = üretimden bağımsız, her ay aynı tutarlı kalem (musteri_sabit_fatura)
-        // fable-091: 'ekstra' = aylık müşterinin ay içinde biriken tek seferlik kalemleri.
-        $tip  = $enum((string) ($d['tip'] ?? 'irsaliye'), ['irsaliye', 'aylik', 'sabit', 'ekstra'], 'irsaliye');
+        $tip  = $enum((string) ($d['tip'] ?? 'irsaliye'), ['irsaliye', 'aylik', 'sabit'], 'irsaliye');
         $durum = $enum((string) ($d['durum'] ?? 'hata'), ['kesildi', 'hata', 'bilinmiyor', 'iptal'], 'hata');
         $resm = $enum((string) ($d['resmilestirme'] ?? 'yok'), ['gonderildi', 'hata', 'yok', 'sirada'], 'yok');
         $mail = $enum((string) ($d['mail'] ?? 'yok'), ['gonderildi', 'hata', 'yok', 'sirada'], 'yok');

@@ -19,6 +19,8 @@ $flash = '';
 $flashOk = true;
 $formOpen = isset($_GET['yeni']) || isset($_GET['edit']);
 $editId = (int) ($_GET['edit'] ?? 0) ?: null;
+// fable-092: aylık sayım paneli (müşteri satırındaki takvim ikonu)
+$sayimId = (int) ($_GET['sayim'] ?? 0) ?: null;
 // fable-046: işlem sonrası hangi liste bloğu açık kalsın ('uretim' | 'tasima' | '').
 $acikPost = '';
 
@@ -37,6 +39,77 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             uysa_audit('musteri_pasif', $u['username'], (string) $pid, null, client_ip());
             $flash = 'Müşteri pasifleştirildi.';
         }
+    } elseif (($_POST['action'] ?? '') === 'sayim_kaydet') {
+        // fable-092 (Ömer, 28 Ağu): "boş güne yemek sayısı ekleyeceğim... sayı değiştirdiğimde
+        // kaydettiğimde faturaya da senkronize olsun." Fatura zaten production'dan doğduğu için
+        // senkron ayrı bir iş değil — kayıt production'a yazılır, fatura oradan okur.
+        //
+        // ÜRETİM ve FATURA kişisi AYRI yazılır (fable-040: CANTAŞ üretim 50 / fatura 70; fark
+        // amount'a biner). Tek sayıya indirilirse ya fatura eksik kesilir ya kişi başı gıda
+        // maliyeti bozulur. Fatura kişisi boş bırakılırsa üretimle aynı kabul edilir.
+        $pid = (int) ($_POST['id'] ?? 0);
+        $sAy = (string) ($_POST['ay'] ?? date('Y-m'));
+        if ($pid > 0 && preg_match('/^\d{4}-\d{2}$/', $sAy)) {
+            $birim = (float) $repo->priceFor($pid, $sAy)['unit_price'];
+            $mevcut = [];
+            foreach ($repo->aylikSayimGrid($pid, $sAy) as $sg) {
+                $mevcut[$sg['gun']] = $sg;
+            }
+            $yazilan = 0;
+            $kilitli = 0;
+            foreach ((array) ($_POST['ogle'] ?? []) as $gun => $_) {
+                $gun = (string) $gun;
+                $m = $mevcut[$gun] ?? null;
+                if ($m === null) {
+                    continue;
+                }
+                if ($m['kilit'] !== '') {
+                    $kilitli++;
+                    continue;   // belgesi kesilmiş gün DEĞİŞTİRİLMEZ (sessiz de geçilmez, sayılır)
+                }
+                $yeni = [
+                    'ogle'    => max(0, (int) ($_POST['ogle'][$gun] ?? 0)),
+                    'aksam'   => max(0, (int) ($_POST['aksam'][$gun] ?? 0)),
+                    'kumanya' => max(0, (int) ($_POST['kumanya'][$gun] ?? 0)),
+                ];
+                $uToplam = array_sum($yeni);
+                $fatRaw = trim((string) ($_POST['fatura'][$gun] ?? ''));
+                $fatKisi = $fatRaw === '' ? $uToplam : max(0, (int) $fatRaw);
+                $degisti = $yeni['ogle'] !== $m['ogle'] || $yeni['aksam'] !== $m['aksam']
+                    || $yeni['kumanya'] !== $m['kumanya'] || $fatKisi !== $m['fatura_kisi'];
+                if (!$degisti) {
+                    continue;
+                }
+                // Fatura kişisi farkı ÖĞLE kaydının tutarına bindirilir (fable-040 deseni).
+                foreach (['ogle', 'aksam', 'kumanya'] as $ogun) {
+                    $kisi = $yeni[$ogun];
+                    if ($kisi <= 0 && ($m[$ogun] ?? 0) <= 0) {
+                        continue;   // hiç olmayan öğüne 0 yazma
+                    }
+                    if ($kisi <= 0) {
+                        $repo->deleteProduction($pid, $gun, $ogun);
+                        continue;
+                    }
+                    $tutar = $ogun === 'ogle'
+                        ? round(($fatKisi - $yeni['aksam'] - $yeni['kumanya']) * $birim, 2)
+                        : null;
+                    $repo->upsertProduction($pid, $gun, $kisi, $birim, $ogun,
+                        (string) $u['username'], null, null, $tutar !== null ? max(0.0, $tutar) : null);
+                }
+                $yazilan++;
+            }
+            uysa_audit('sayim_kaydet', $u['username'], (string) $pid,
+                json_encode(['ay' => $sAy, 'gun' => $yazilan, 'kilitli' => $kilitli], JSON_UNESCAPED_UNICODE), client_ip());
+            $flash = $yazilan > 0
+                ? $yazilan . ' gün güncellendi — fatura bu sayılardan kesilir.'
+                : 'Değişiklik yok.';
+            if ($kilitli > 0) {
+                $flash .= ' ' . $kilitli . ' gün belgesi kesildiği için değiştirilmedi.';
+            }
+        }
+        header('Location: musteriler.php?sayim=' . $pid . '&ay=' . urlencode($sAy)
+             . '&m=' . urlencode((string) $flash));
+        exit;
     } elseif (($_POST['action'] ?? '') === 'parasut_cari') {
         // fable-076: oto-bağlama karar veremediğinde (0 ya da >1 aday) seçimi Ömer yapar.
         // Cari BAŞKA müşteriye bağlıysa kabul edilmez — bir cari iki müşteriye bağlanırsa
@@ -312,6 +385,114 @@ $active = 'musteriler';
 require __DIR__ . '/partials/header.php';
 ?>
       <?php if ($flash): ?><div class="flash <?= $flashOk ? 'ok' : 'err' ?>"><?= Helpers::e($flash) ?></div><?php endif; ?>
+      <?php if (($_GET['m'] ?? '') !== ''): ?><div class="flash ok"><?= Helpers::e((string) $_GET['m']) ?></div><?php endif; ?>
+
+<?php
+// ══════════════ fable-092: AYLIK SAYIM PANELİ ══════════════
+// Ömer (28 Ağu): "müşteri isimlerinin yanına aylık sayı (haftalık ayrımlarla) görebileceğim
+// bir ikon ekle; orada sayı değiştirdiğimde kaydettiğimde faturaya da senkronize olsun...
+// boş güne yemek sayısı ekleyeceğim."
+// Senkron ayrı bir iş DEĞİL: fatura zaten production'dan doğuyor, buraya yazılan sayı
+// doğrudan faturanın kaynağı olur. Haftalık ayrım = FATURA dönemleri (1-7/8-14/15-21/22-28/29-son).
+$sayimMusteri = $sayimId ? $repo->customer($sayimId) : null;
+if ($sayimMusteri):
+    $sGrid = $repo->aylikSayimGrid($sayimId, $month);
+    $sBirim = (float) $repo->priceFor($sayimId, $month)['unit_price'];
+    // Öğün sütunları: müşteri o ay hangi öğünleri kullanıyorsa o sütun görünür (sade kalsın).
+    $ogunVar = ['ogle' => true, 'aksam' => false, 'kumanya' => false];
+    foreach ($sGrid as $g) {
+        if ($g['aksam'] > 0) { $ogunVar['aksam'] = true; }
+        if ($g['kumanya'] > 0) { $ogunVar['kumanya'] = true; }
+    }
+    $sonrakiAy = date('Y-m', strtotime($month . '-01 +1 month'));
+    $oncekiAy = date('Y-m', strtotime($month . '-01 -1 month'));
+    $ayUretim = 0; $ayFatura = 0;
+    foreach ($sGrid as $g) { $ayUretim += $g['uretim']; $ayFatura += $g['fatura_kisi']; }
+?>
+      <div class="cardx card-pad">
+        <div class="head-row">
+          <h2><?= Helpers::e((string) $sayimMusteri['name']) ?> — aylık sayım</h2>
+          <a class="btn-action btn-ghost" href="musteriler.php">Müşterilere dön</a>
+        </div>
+        <div class="ftr-kisayol" style="margin-bottom:10px">
+          <a class="chip" href="musteriler.php?sayim=<?= $sayimId ?>&ay=<?= $oncekiAy ?>">‹ <?= Helpers::e(ay_label_tr($oncekiAy)) ?></a>
+          <span class="chip active"><?= Helpers::e(ay_label_tr($month)) ?></span>
+          <a class="chip" href="musteriler.php?sayim=<?= $sayimId ?>&ay=<?= $sonrakiAy ?>"><?= Helpers::e(ay_label_tr($sonrakiAy)) ?> ›</a>
+        </div>
+        <p class="row-meta" style="margin:0 0 12px">
+          Kişi başı <strong>₺<?= Helpers::money($sBirim) ?></strong> ·
+          Ay toplamı <strong><?= $ayUretim ?></strong> üretim / <strong><?= $ayFatura ?></strong> fatura kişisi
+          <?php if ($ayFatura !== $ayUretim): ?><span class="badge-soft">fark <?= $ayFatura - $ayUretim ?></span><?php endif; ?>
+          <br>Boş güne sayı girip kaydedebilirsin — <strong>fatura bu sayılardan kesilir</strong>.
+          İrsaliyesi/faturası kesilmiş günler kilitlidir (belge ile kayıt ayrışmasın).
+        </p>
+
+        <form method="post">
+          <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
+          <input type="hidden" name="action" value="sayim_kaydet">
+          <input type="hidden" name="id" value="<?= $sayimId ?>">
+          <input type="hidden" name="ay" value="<?= Helpers::e($month) ?>">
+          <?php for ($dn = 1; $dn <= 5; $dn++):
+              $grup = array_values(array_filter($sGrid, static fn(array $x): bool => $x['donem'] === $dn));
+              if (!$grup) { continue; }
+              $gU = 0; $gF = 0;
+              foreach ($grup as $g) { $gU += $g['uretim']; $gF += $g['fatura_kisi']; }
+          ?>
+          <div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:12px">
+            <div class="head-row" style="margin-bottom:6px">
+              <strong><?= Helpers::e(Repo::donemEtiketi($dn, $month)) ?> <?= Helpers::e(ay_label_tr($month)) ?></strong>
+              <span class="row-meta"><?= $gU ?> üretim<?= $gF !== $gU ? ' / ' . $gF . ' fatura' : '' ?> kişi
+                · ₺<?= Helpers::money($gF * $sBirim) ?></span>
+            </div>
+            <table class="tbl">
+              <thead><tr>
+                <th>Gün</th>
+                <th class="num">Öğle</th>
+                <?php if ($ogunVar['aksam']): ?><th class="num">Akşam</th><?php endif; ?>
+                <?php if ($ogunVar['kumanya']): ?><th class="num">Kumanya</th><?php endif; ?>
+                <th class="num">Fatura kişisi</th>
+                <th>Durum</th>
+              </tr></thead>
+              <tbody>
+              <?php foreach ($grup as $g):
+                  $kilitli = $g['kilit'] !== '';
+                  $ro = $kilitli ? ' readonly tabindex="-1"' : '';
+                  $st = 'width:70px;font-size:16px;text-align:right' . ($kilitli ? ';opacity:.55' : '');
+              ?>
+                <tr<?= $g['haftasonu'] ? ' style="background:var(--bg-soft)"' : '' ?>>
+                  <td><?= sprintf('%02d', $g['gun_no']) ?> <span class="row-meta"><?= $g['gun_adi'] ?></span></td>
+                  <td class="num"><input type="number" min="0" name="ogle[<?= $g['gun'] ?>]" value="<?= $g['ogle'] ?: '' ?>" style="<?= $st ?>"<?= $ro ?>></td>
+                  <?php if ($ogunVar['aksam']): ?>
+                    <td class="num"><input type="number" min="0" name="aksam[<?= $g['gun'] ?>]" value="<?= $g['aksam'] ?: '' ?>" style="<?= $st ?>"<?= $ro ?>></td>
+                  <?php endif; ?>
+                  <?php if ($ogunVar['kumanya']): ?>
+                    <td class="num"><input type="number" min="0" name="kumanya[<?= $g['gun'] ?>]" value="<?= $g['kumanya'] ?: '' ?>" style="<?= $st ?>"<?= $ro ?>></td>
+                  <?php endif; ?>
+                  <td class="num"><input type="number" min="0" name="fatura[<?= $g['gun'] ?>]" value="<?= $g['fatura_kisi'] ?: '' ?>"
+                      placeholder="=üretim" title="Boş bırakılırsa üretim toplamıyla aynı"
+                      style="width:80px;font-size:16px;text-align:right<?= $kilitli ? ';opacity:.55' : '' ?><?= $g['fatura_kisi'] !== $g['uretim'] ? ';font-weight:700' : '' ?>"<?= $ro ?>></td>
+                  <td class="row-meta">
+                    <?php if ($kilitli): ?>
+                      🔒 <?= Helpers::e($g['kilit']) ?><?= $g['irsaliye_no'] !== '' ? ' · ' . Helpers::e($g['irsaliye_no']) : '' ?>
+                    <?php elseif ($g['uretim'] === 0): ?>
+                      <span style="color:var(--muted)">boş</span>
+                    <?php else: ?>
+                      açık
+                    <?php endif; ?>
+                  </td>
+                </tr>
+              <?php endforeach; ?>
+              </tbody>
+            </table>
+          </div>
+          <?php endfor; ?>
+          <button type="submit" class="btn btn-primary">Kaydet — fatura bu sayılardan kesilir</button>
+        </form>
+      </div>
+<?php require __DIR__ . '/partials/footer.php'; ?>
+<?php exit; ?>
+<?php endif; ?>
+
 
       <?php
       // aksiyon-faz6: KARAR RAKAMI + AKILLI DURUM. Fiyatı girilmemiş müşteri sessizce
@@ -715,6 +896,7 @@ require __DIR__ . '/partials/header.php';
               <p class="row-meta"><?php if ($satirFiyat > 0): ?>₺ <?= Helpers::money($satirFiyat) ?> kişi başı · <?= Helpers::e(ay_label_tr($month)) ?><?php else: ?><span class="fiyat-yok">fiyat girilmemiş</span> · <a href="musteriler.php?edit=<?= (int) $c['id'] ?>&ay=<?= Helpers::e($month) ?>" class="fiyat-gir">Fiyat gir</a><?php endif; ?></p>
             </div>
             <div class="actions-row" style="justify-content:flex-end">
+              <a class="icon-btn" href="musteriler.php?sayim=<?= (int) $c['id'] ?>&ay=<?= Helpers::e($month) ?>" aria-label="Aylık sayım" title="Aylık sayı (haftalık ayrımlı)"><i class="bi bi-calendar3"></i></a>
               <a class="icon-btn" href="musteriler.php?edit=<?= (int) $c['id'] ?>" aria-label="Düzenle"><i class="bi bi-pencil"></i></a>
               <form method="post" onsubmit="return confirm('Bu müşteri pasifleştirilsin mi?');" style="display:inline">
                 <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
@@ -762,6 +944,7 @@ require __DIR__ . '/partials/header.php';
             </div>
             <div class="actions-row" style="justify-content:flex-end">
               <a class="icon-btn" href="rapor.php?musteri=<?= (int) $c['id'] ?>&ay=<?= $month ?>" aria-label="Rapor"><i class="bi bi-graph-up-arrow"></i></a>
+              <a class="icon-btn" href="musteriler.php?sayim=<?= (int) $c['id'] ?>&ay=<?= Helpers::e($month) ?>" aria-label="Aylık sayım" title="Aylık sayı (haftalık ayrımlı)"><i class="bi bi-calendar3"></i></a>
               <a class="icon-btn" href="musteriler.php?edit=<?= (int) $c['id'] ?>&ay=<?= $month ?>" aria-label="Düzenle"><i class="bi bi-pencil"></i></a>
             </div>
           </div>
