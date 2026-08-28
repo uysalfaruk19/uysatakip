@@ -616,7 +616,12 @@ if ($sayimMusteri):
       <div class="cardx card-pad">
         <div class="head-row">
           <h2><?= Helpers::e((string) $sayimMusteri['name']) ?> — aylık sayım</h2>
-          <a class="btn-action btn-ghost" href="musteriler.php">Müşterilere dön</a>
+          <div class="actions-row" style="gap:8px">
+            <a class="btn-action btn-primaryx" href="musteriler.php?sayim=<?= $sayimId ?>&ay=<?= Helpers::e($month) ?>&xlsx=1">
+              <i class="bi bi-file-earmark-excel"></i> Excel indir
+            </a>
+            <a class="btn-action btn-ghost" href="musteriler.php">Müşterilere dön</a>
+          </div>
         </div>
         <div class="ftr-kisayol" style="margin-bottom:10px">
           <a class="chip" href="musteriler.php?sayim=<?= $sayimId ?>&ay=<?= $oncekiAy ?>">‹ <?= Helpers::e(ay_label_tr($oncekiAy)) ?></a>
@@ -669,11 +674,7 @@ if ($sayimMusteri):
           </div>
         <?php endif; ?>
 
-        <p style="margin:0 0 12px">
-          <a class="btn-action btn-ghost" href="musteriler.php?sayim=<?= $sayimId ?>&ay=<?= Helpers::e($month) ?>&xlsx=1">
-            <i class="bi bi-file-earmark-excel"></i> Excel indir
-          </a>
-        </p>
+
 
         <form method="post">
           <input type="hidden" name="csrf" value="<?= Helpers::e(Helpers::csrfToken()) ?>">
