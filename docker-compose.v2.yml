@@ -17,6 +17,12 @@ services:
       # "oturum doğrulaması başarısız" ile iş yarıda kaldı ve bir irsaliye Paraşüt'te
       # kesilip Kokpit'e yazılamadı). Artık güncelleme oturumu bozmaz.
       - uysatakip_sessions:/var/lib/php-sessions
+      # fable-094 (Ömer, 28 Ağu): "Excel indir deyince sayfa açılıyor, indirmiyor —
+      # direkt paylaş mı koysan (GTO'daki belge üretince paylaş mantığı gibi)".
+      # iOS uygulamasındaki WebView dosya indirmiyor. Uygulama belgeyi buraya yazar;
+      # host'taki cron (uysatakip-wa-gonder) OFUclaw sunucusuna taşıyıp WhatsApp'tan yollar.
+      # Kokpit ile OFUclaw AYRI sunucularda, o yüzden doğrudan gönderim mümkün değil.
+      - /root/uysatakip/gonder:/var/www/gonder
     ports:
       - "127.0.0.1:8093:8080"
     networks: [uysanet]

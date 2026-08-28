@@ -25,7 +25,8 @@ $sayimId = (int) ($_GET['sayim'] ?? 0) ?: null;
 // ── fable-093: aylık sayımın EXCEL çıktısı (Ömer: "bir de Excel olarak indirebileyim") ──
 // Ekranla AYNI kaynaktan üretilir (aylikSayimGrid + altFirmaGunGun) — dosyada başka, ekranda
 // başka rakam çıkmasın. Sayılar gerçek sayı yazılır ki Ömer dosyada toplam alabilsin.
-if ($sayimId && ($_GET['xlsx'] ?? '') === '1') {
+if ($sayimId && (($_GET['xlsx'] ?? '') === '1' || ($_GET['paylas'] ?? '') === '1')) {
+    $xPaylas = ($_GET['paylas'] ?? '') === '1';
     $xm = (string) ($_GET['ay'] ?? date('Y-m'));
     if (!preg_match('/^\d{4}-\d{2}$/', $xm)) {
         $xm = date('Y-m');
@@ -135,6 +136,35 @@ if ($sayimId && ($_GET['xlsx'] ?? '') === '1') {
         'ö'=>'o','Ö'=>'O','ş'=>'s','Ş'=>'S','ü'=>'u','Ü'=>'U']);
     $ad = trim((string) preg_replace('/[^A-Za-z0-9]+/', '-', $adHam), '-') . '-' . $xm . '-sayim.xlsx';
     $bin = \Uysa\XlsxSayim::yaz($rows, 'Firma Dağılım', $kalin);
+
+    if ($xPaylas) {
+        // fable-094: iOS uygulamasındaki WebView dosya indirmiyor → belge WhatsApp'tan gider.
+        // Kokpit ile OFUclaw ayrı sunucularda; buraya yazılan dosyayı host'taki cron taşır.
+        $dizin = '/var/www/gonder';
+        if (!is_dir($dizin) || !is_writable($dizin)) {
+            header('Location: musteriler.php?sayim=' . $sayimId . '&ay=' . urlencode($xm)
+                 . '&m=' . urlencode('Gönderim klasörü hazır değil — belge gönderilemedi.'));
+            exit;
+        }
+        $damga = date('Ymd-His') . '-' . bin2hex(random_bytes(3));
+        file_put_contents($dizin . '/' . $damga . '.xlsx', $bin);
+        file_put_contents($dizin . '/' . $damga . '.json', json_encode([
+            'dosya'   => $damga . '.xlsx',
+            'ad'      => $ad,
+            'hedef'   => '+905321608119',
+            'mesaj'   => mb_strtoupper((string) $xc['name'], 'UTF-8') . ' ' . ay_label_tr($xm)
+                         . ' sayim: ' . $tF . ' kisi x ' . (int) $xBirim . ' TL = '
+                         . number_format($tF * $xBirim, 2, ',', '.') . ' TL',
+            'isteyen' => (string) $u['username'],
+            'zaman'   => date('c'),
+        ], JSON_UNESCAPED_UNICODE));
+        uysa_audit('sayim_xlsx_paylas', (string) $u['username'], $xm,
+            json_encode(['musteri' => $xc['name'], 'dosya' => $ad], JSON_UNESCAPED_UNICODE), client_ip());
+        header('Location: musteriler.php?sayim=' . $sayimId . '&ay=' . urlencode($xm)
+             . '&m=' . urlencode('Belge WhatsApp' . chr(39) . 'a gonderiliyor - birkac saniye icinde duser.'));
+        exit;
+    }
+
     header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     header('Content-Disposition: attachment; filename="' . $ad . '"');
     header('Content-Length: ' . strlen($bin));
@@ -617,8 +647,11 @@ if ($sayimMusteri):
         <div class="head-row">
           <h2><?= Helpers::e((string) $sayimMusteri['name']) ?> — aylık sayım</h2>
           <div class="actions-row" style="gap:8px">
-            <a class="btn-action btn-primaryx" href="musteriler.php?sayim=<?= $sayimId ?>&ay=<?= Helpers::e($month) ?>&xlsx=1">
-              <i class="bi bi-file-earmark-excel"></i> Excel indir
+            <a class="btn-action btn-primaryx" href="musteriler.php?sayim=<?= $sayimId ?>&ay=<?= Helpers::e($month) ?>&paylas=1">
+              <i class="bi bi-whatsapp"></i> WhatsApp'a gönder
+            </a>
+            <a class="btn-action btn-ghost" href="musteriler.php?sayim=<?= $sayimId ?>&ay=<?= Helpers::e($month) ?>&xlsx=1">
+              <i class="bi bi-download"></i> İndir
             </a>
             <a class="btn-action btn-ghost" href="musteriler.php">Müşterilere dön</a>
           </div>
