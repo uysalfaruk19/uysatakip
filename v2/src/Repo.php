@@ -5423,24 +5423,10 @@ final class Repo
                 'tutar' => (float) $poz[array_key_first($poz)]['tutar'], 'adet' => count($poz)];
         }
 
-        // 2) Aynı tedarikçi(açıklama başı) + aynı tutar + ≤2 gün arayla iki kayıt (no'suz mükerrer).
-        $st2 = $this->pdo->prepare(
-            "SELECT a.id ai, b.id bi, a.tx_date ad, b.tx_date bd, a.amount, a.description
-               FROM transactions a JOIN transactions b
-                 ON a.id < b.id
-                AND a.type='gider' AND b.type='gider'
-                AND ABS(a.amount - b.amount) < 0.01 AND a.amount > 0
-                AND SUBSTRING_INDEX(a.description,' · ',1) = SUBSTRING_INDEX(b.description,' · ',1)
-                AND ABS(DATEDIFF(a.tx_date, b.tx_date)) <= 2
-              WHERE a.tx_date >= ?"
-        );
-        $st2->execute([$from]);
-        foreach ($st2->fetchAll() as $r) {
-            $firma = trim(explode(' · ', (string) $r['description'])[0]);
-            $out[] = ['tur' => 'yakin', 'aciklama' => $firma . ' — aynı tutar ' . $r['ad'] . ' ve '
-                . $r['bd'] . ' (#' . $r['ai'] . ', #' . $r['bi'] . ') — mükerrer olabilir',
-                'tutar' => (float) $r['amount'], 'adet' => 2];
-        }
+        // NOT: "aynı tutar + yakın tarih" sezgisi denendi ama YANLIŞ POZİTİF üretti (AZİZ gibi
+        // tedarikçiler günlük aynı tutarlı fatura kesiyor). Gürültülü alarm alarmsızdan kötü
+        // (Ömer: karmaşıklaştırma) → yalnız KESİN sinyal: aynı fatura numarası birden çok kayıtta.
+        // İki kanal (Paraşüt + EDM) aynı faturayı getirirse numara AYNIDIR, bu onu yakalar.
         return $out;
     }
 
