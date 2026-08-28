@@ -54,26 +54,24 @@ if ($sayimId && ($_GET['xlsx'] ?? '') === '1') {
     $bas = ['Tarih', 'Gün', 'Öğle'];
     if ($xAksam) { $bas[] = 'Akşam'; }
     if ($xKumanya) { $bas[] = 'Kumanya'; }
-    $bas[] = 'Üretim';
     $bas[] = 'Fatura kişisi';
     foreach ($xFirma as $f) { $bas[] = (string) $f['ad']; }
-    $bas[] = 'Durum';
+    $bas[] = 'Durum / Tutar';
     $rows[] = $bas;
     $kalin[] = count($rows);
 
     $fToplam = [];
     foreach ($xFirma as $f) { $fToplam[$f['kod']] = 0; }
-    $tU = 0; $tF = 0;
+    $tF = 0;
     for ($dn = 1; $dn <= 5; $dn++) {
         $grup = array_values(array_filter($xGrid, static fn(array $x): bool => $x['donem'] === $dn));
         if (!$grup) { continue; }
-        $gU = 0; $gF = 0; $gFirma = [];
+        $gF = 0; $gFirma = [];
         foreach ($xFirma as $f) { $gFirma[$f['kod']] = 0; }
         foreach ($grup as $g) {
             $sat = [date('d.m.Y', (int) strtotime($g['gun'])), $g['gun_adi'], $g['ogle'] ?: null];
             if ($xAksam) { $sat[] = $g['aksam'] ?: null; }
             if ($xKumanya) { $sat[] = $g['kumanya'] ?: null; }
-            $sat[] = $g['uretim'] ?: null;
             $sat[] = $g['fatura_kisi'] ?: null;
             foreach ($xFirma as $f) {
                 $fk = (int) ($xKir[$g['gun']][$f['kod']] ?? 0);
@@ -83,27 +81,26 @@ if ($sayimId && ($_GET['xlsx'] ?? '') === '1') {
             }
             $sat[] = $g['kilit'] !== '' ? $g['kilit'] : ($g['uretim'] === 0 ? 'boş' : 'açık');
             $rows[] = $sat;
-            $gU += $g['uretim']; $gF += $g['fatura_kisi'];
+            $gF += $g['fatura_kisi'];
         }
         $ara = [Repo::donemEtiketi($dn, $xm) . ' TOPLAM', '', null];
         if ($xAksam) { $ara[] = null; }
         if ($xKumanya) { $ara[] = null; }
-        $ara[] = $gU;
         $ara[] = $gF;
         foreach ($xFirma as $f) { $ara[] = $gFirma[$f['kod']]; }
-        $ara[] = '₺' . number_format($gF * $xBirim, 2, ',', '.');
+        $ara[] = round($gF * $xBirim, 2);
         $rows[] = $ara;
         $kalin[] = count($rows);
         $rows[] = [];
-        $tU += $gU; $tF += $gF;
+        $tF += $gF;
     }
 
     $son = ['AY TOPLAMI', '', null];
     if ($xAksam) { $son[] = null; }
     if ($xKumanya) { $son[] = null; }
-    $son[] = $tU;
     $son[] = $tF;
     foreach ($xFirma as $f) { $son[] = $fToplam[$f['kod']]; }
+    $son[] = round($tF * $xBirim, 2);
     $rows[] = $son;
     $kalin[] = count($rows);
     $rows[] = [];
@@ -517,8 +514,11 @@ if ($sayimMusteri):
     }
     $sonrakiAy = date('Y-m', strtotime($month . '-01 +1 month'));
     $oncekiAy = date('Y-m', strtotime($month . '-01 -1 month'));
-    $ayUretim = 0; $ayFatura = 0;
-    foreach ($sGrid as $g) { $ayUretim += $g['uretim']; $ayFatura += $g['fatura_kisi']; }
+    // Ömer (28 Ağu): "üretimi yazma, CANTAŞ özetinde karışıyor — fatura tutarları olsa iyi."
+    // Özetler yalnız FATURA kişisi + tutar gösterir; üretim sayısı gün satırındaki öğün
+    // kutularında zaten duruyor (orası düzenlenebilir alan, özet değil).
+    $ayFatura = 0;
+    foreach ($sGrid as $g) { $ayFatura += $g['fatura_kisi']; }
     // fable-093 (Ömer): "CANTAŞ özelinde sayıları FATURA BAZLI göreyim; 3 firmanın ayrı toplamı
     // özette yazsın." Marmara da 2 firmalı — kırılım alt firması olan HER müşteride görünür.
     $sFirmalar = $repo->altFirmalar($sayimId);
@@ -541,8 +541,8 @@ if ($sayimMusteri):
         </div>
         <p class="row-meta" style="margin:0 0 10px">
           Kişi başı <strong>₺<?= Helpers::money($sBirim) ?></strong> ·
-          Ay toplamı <strong><?= $ayUretim ?></strong> üretim / <strong><?= $ayFatura ?></strong> fatura kişisi
-          <?php if ($ayFatura !== $ayUretim): ?><span class="badge-soft">fark <?= $ayFatura - $ayUretim ?></span><?php endif; ?>
+          Ay toplamı <strong><?= $ayFatura ?></strong> kişi ·
+          <strong>₺<?= Helpers::money($ayFatura * $sBirim) ?></strong>
           <br>Boş güne sayı girip kaydedebilirsin — <strong>fatura bu sayılardan kesilir</strong>.
           İrsaliyesi/faturası kesilmiş günler kilitlidir (belge ile kayıt ayrışmasın).
         </p>
@@ -554,7 +554,7 @@ if ($sayimMusteri):
           <div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:12px">
             <div class="head-row" style="margin-bottom:6px">
               <strong>Fatura bazlı aylık toplam</strong>
-              <span class="row-meta"><?= count($sFirmalar) ?> ayrı e-Fatura · <?= Helpers::e(ay_label_tr($month)) ?></span>
+              <span class="row-meta"><?= count($sFirmalar) ?> ayrı e-Fatura kesilecek · <?= Helpers::e(ay_label_tr($month)) ?></span>
             </div>
             <table class="tbl">
               <thead><tr><th>Firma</th><th class="num">Kişi</th><th class="num">Tutar</th></tr></thead>
@@ -599,14 +599,13 @@ if ($sayimMusteri):
           <?php for ($dn = 1; $dn <= 5; $dn++):
               $grup = array_values(array_filter($sGrid, static fn(array $x): bool => $x['donem'] === $dn));
               if (!$grup) { continue; }
-              $gU = 0; $gF = 0;
-              foreach ($grup as $g) { $gU += $g['uretim']; $gF += $g['fatura_kisi']; }
+              $gF = 0;
+              foreach ($grup as $g) { $gF += $g['fatura_kisi']; }
           ?>
           <div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:12px">
             <div class="head-row" style="margin-bottom:6px">
               <strong><?= Helpers::e(Repo::donemEtiketi($dn, $month)) ?> <?= Helpers::e(ay_label_tr($month)) ?></strong>
-              <span class="row-meta"><?= $gU ?> üretim<?= $gF !== $gU ? ' / ' . $gF . ' fatura' : '' ?> kişi
-                · ₺<?= Helpers::money($gF * $sBirim) ?></span>
+              <span class="row-meta"><strong><?= $gF ?></strong> kişi · <strong>₺<?= Helpers::money($gF * $sBirim) ?></strong></span>
             </div>
             <table class="tbl">
               <thead><tr>
