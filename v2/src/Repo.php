@@ -5376,6 +5376,75 @@ final class Repo
     }
 
     /**
+     * fable-103 (Hikari giderCiftSuphesi deseninden — Ömer 28 Ağu): olası MÜKERRER gider
+     * kayıtlarını bulur. İki kanal (Paraşüt gelen kutusu + EDM/mail) aynı faturayı getirebilir;
+     * 28 Ağu'da EDM'de 16 kayıt çift yazılmıştı. Bu, aynı fatura NUMARASININ birden çok gider
+     * kaydında geçtiği (kaynak fark etmez) VEYA aynı tedarikçi + aynı tutar + ≤2 gün arayla
+     * yazılmış kayıt çiftlerini işaretler. SALT-OKUMA — silmez, yalnız gösterir.
+     * @return list<array{tur:string,aciklama:string,tutar:float,adet:int}>
+     */
+    public function giderCiftSuphesi(int $sonGun = 60): array
+    {
+        $from = date('Y-m-d', (int) strtotime("-{$sonGun} days"));
+        $out = [];
+
+        // 1) Aynı fatura NUMARASI birden fazla gider kaydında (en kesin sinyal).
+        //    Numara açıklamada ("FİRMA · NO") veya parasut_id'de (xls-NO / ei-NO). Regexle çıkar.
+        $st = $this->pdo->prepare(
+            "SELECT id, tx_date, amount, description, parasut_id, source FROM transactions
+              WHERE type='gider' AND tx_date >= ? ORDER BY id"
+        );
+        $st->execute([$from]);
+        $noMap = [];   // fatura no => [ [id,tutar,tarih,src], ... ]
+        foreach ($st->fetchAll() as $r) {
+            $no = '';
+            if (preg_match('/([A-ZÇĞİÖŞÜ]{2,4}\d{10,})/u', (string) $r['description'], $m)) {
+                $no = $m[1];
+            } elseif (preg_match('/([A-ZÇĞİÖŞÜ]{2,4}\d{10,})/u', (string) $r['parasut_id'], $m)) {
+                $no = $m[1];
+            }
+            if ($no !== '') {
+                $noMap[$no][] = ['id' => (int) $r['id'], 'tutar' => (float) $r['amount'],
+                    'tarih' => (string) $r['tx_date'], 'src' => (string) $r['source']];
+            }
+        }
+        foreach ($noMap as $no => $kayitlar) {
+            if (count($kayitlar) < 2) {
+                continue;
+            }
+            // Aynı numara birden çok kayıtta — iade (negatif) çiftleri hariç: hepsi aynı işaretse şüpheli.
+            $poz = array_filter($kayitlar, static fn(array $k): bool => $k['tutar'] > 0);
+            if (count($poz) < 2) {
+                continue;
+            }
+            $out[] = ['tur' => 'ayni_no', 'aciklama' => 'Fatura no ' . $no . ' ' . count($poz)
+                . ' kez gider yazılmış (' . implode(', ', array_map(static fn(array $k): string
+                    => '#' . $k['id'] . ' ' . $k['src'], $poz)) . ')',
+                'tutar' => (float) $poz[array_key_first($poz)]['tutar'], 'adet' => count($poz)];
+        }
+
+        // 2) Aynı tedarikçi(açıklama başı) + aynı tutar + ≤2 gün arayla iki kayıt (no'suz mükerrer).
+        $st2 = $this->pdo->prepare(
+            "SELECT a.id ai, b.id bi, a.tx_date ad, b.tx_date bd, a.amount, a.description
+               FROM transactions a JOIN transactions b
+                 ON a.id < b.id
+                AND a.type='gider' AND b.type='gider'
+                AND ABS(a.amount - b.amount) < 0.01 AND a.amount > 0
+                AND SUBSTRING_INDEX(a.description,' · ',1) = SUBSTRING_INDEX(b.description,' · ',1)
+                AND ABS(DATEDIFF(a.tx_date, b.tx_date)) <= 2
+              WHERE a.tx_date >= ?"
+        );
+        $st2->execute([$from]);
+        foreach ($st2->fetchAll() as $r) {
+            $firma = trim(explode(' · ', (string) $r['description'])[0]);
+            $out[] = ['tur' => 'yakin', 'aciklama' => $firma . ' — aynı tutar ' . $r['ad'] . ' ve '
+                . $r['bd'] . ' (#' . $r['ai'] . ', #' . $r['bi'] . ') — mükerrer olabilir',
+                'tutar' => (float) $r['amount'], 'adet' => 2];
+        }
+        return $out;
+    }
+
+    /**
      * fable-102 (Hikari fiyatErozyonu deseninden — Ömer 28 Ağu): tedarikçi faturalarındaki
      * ürün birim fiyatlarının son N ayda ne kadar zamlandığını çıkarır. Kaynak `gider_kalem`
      * (Paraşüt e-fatura satırları — ürün · miktar · birim · birim_fiyat). Mail/EDM kanalı satır
