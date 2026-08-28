@@ -607,6 +607,7 @@ if ($sayimMusteri):
               <strong><?= Helpers::e(Repo::donemEtiketi($dn, $month)) ?> <?= Helpers::e(ay_label_tr($month)) ?></strong>
               <span class="row-meta"><strong><?= $gF ?></strong> kişi · <strong>₺<?= Helpers::money($gF * $sBirim) ?></strong></span>
             </div>
+            <div style="overflow-x:auto">
             <table class="tbl">
               <thead><tr>
                 <th>Gün</th>
@@ -614,8 +615,13 @@ if ($sayimMusteri):
                 <?php if ($ogunVar['aksam']): ?><th class="num">Akşam</th><?php endif; ?>
                 <?php if ($ogunVar['kumanya']): ?><th class="num">Kumanya</th><?php endif; ?>
                 <th class="num">Fatura kişisi</th>
-                <?php foreach ($sFirmalar as $f): ?>
-                  <th class="num" style="white-space:nowrap" title="Desenden hesaplanır — fatura bu kırılımdan kesilir"><?= Helpers::e((string) $f['ad']) ?></th>
+                <?php foreach ($sFirmalar as $f):
+                    // Başlıkta müşteri adını tekrarlama — tabloyu taşırıyor ve zaten o müşterinin
+                    // panelindeyiz: "CANTAŞ İç-Dış" → "İç-Dış". Tam ad title'da duruyor.
+                    $fKisa = trim((string) preg_replace('/^' . preg_quote((string) $sayimMusteri['name'], '/') . '\s*/iu', '', (string) $f['ad']));
+                    if ($fKisa === '') { $fKisa = (string) $f['ad']; }
+                ?>
+                  <th class="num" style="white-space:nowrap" title="<?= Helpers::e((string) $f['ad']) ?> — desenden hesaplanır, fatura bu kırılımdan kesilir"><?= Helpers::e($fKisa) ?></th>
                 <?php endforeach; ?>
                 <th>Durum</th>
               </tr></thead>
@@ -655,6 +661,7 @@ if ($sayimMusteri):
               <?php endforeach; ?>
               </tbody>
             </table>
+            </div>
           </div>
           <?php endfor; ?>
           <button type="submit" class="btn btn-primary">Kaydet — fatura bu sayılardan kesilir</button>
