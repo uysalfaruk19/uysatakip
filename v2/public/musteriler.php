@@ -611,10 +611,9 @@ if ($sayimMusteri):
             <table class="tbl">
               <thead><tr>
                 <th>Gün</th>
-                <th class="num">Öğle</th>
-                <?php if ($ogunVar['aksam']): ?><th class="num">Akşam</th><?php endif; ?>
-                <?php if ($ogunVar['kumanya']): ?><th class="num">Kumanya</th><?php endif; ?>
-                <th class="num">Fatura kişisi</th>
+                <?php // fable-093b (Ömer): "ekranda hâlâ 50-70 yazıyor; istediğim HC şu, İç-Dış şu,
+                      // Bakır şu FATURA SAYILARI." Bölüşümlü müşteride asıl rakam firma kırılımıdır;
+                      // öğün kutuları veri GİRİŞİ olduğu için duruyor ama geri plana alındı. ?>
                 <?php foreach ($sFirmalar as $f):
                     // Başlıkta müşteri adını tekrarlama — tabloyu taşırıyor ve zaten o müşterinin
                     // panelindeyiz: "CANTAŞ İç-Dış" → "İç-Dış". Tam ad title'da duruyor.
@@ -623,6 +622,11 @@ if ($sayimMusteri):
                 ?>
                   <th class="num" style="white-space:nowrap" title="<?= Helpers::e((string) $f['ad']) ?> — desenden hesaplanır, fatura bu kırılımdan kesilir"><?= Helpers::e($fKisa) ?></th>
                 <?php endforeach; ?>
+                <?php if ($sFirmalar): ?><th class="num">Toplam</th><?php endif; ?>
+                <th class="num">Öğle<?= $sFirmalar ? ' <span class="row-meta">(giriş)</span>' : '' ?></th>
+                <?php if ($ogunVar['aksam']): ?><th class="num">Akşam</th><?php endif; ?>
+                <?php if ($ogunVar['kumanya']): ?><th class="num">Kumanya</th><?php endif; ?>
+                <?php if (!$sFirmalar): ?><th class="num">Fatura kişisi</th><?php endif; ?>
                 <th>Durum</th>
               </tr></thead>
               <tbody>
@@ -633,6 +637,15 @@ if ($sayimMusteri):
               ?>
                 <tr<?= $g['haftasonu'] ? ' style="background:var(--bg-soft)"' : '' ?>>
                   <td><?= sprintf('%02d', $g['gun_no']) ?> <span class="row-meta"><?= $g['gun_adi'] ?></span></td>
+                  <?php $kirToplam = 0; foreach ($sFirmalar as $f):
+                      $fk = (int) ($sKirilim[$g['gun']][$f['kod']] ?? 0);
+                      $kirToplam += $fk;
+                  ?>
+                    <td class="num" style="font-size:15px<?= $fk > 0 ? ';font-weight:700' : ';color:var(--muted)' ?>"><?= $fk > 0 ? $fk : '—' ?></td>
+                  <?php endforeach; ?>
+                  <?php if ($sFirmalar): ?>
+                    <td class="num row-meta"><?= $kirToplam > 0 ? $kirToplam : '—' ?></td>
+                  <?php endif; ?>
                   <td class="num"><input type="number" min="0" name="ogle[<?= $g['gun'] ?>]" value="<?= $g['ogle'] ?: '' ?>" style="<?= $st ?>"<?= $ro ?>></td>
                   <?php if ($ogunVar['aksam']): ?>
                     <td class="num"><input type="number" min="0" name="aksam[<?= $g['gun'] ?>]" value="<?= $g['aksam'] ?: '' ?>" style="<?= $st ?>"<?= $ro ?>></td>
@@ -640,14 +653,15 @@ if ($sayimMusteri):
                   <?php if ($ogunVar['kumanya']): ?>
                     <td class="num"><input type="number" min="0" name="kumanya[<?= $g['gun'] ?>]" value="<?= $g['kumanya'] ?: '' ?>" style="<?= $st ?>"<?= $ro ?>></td>
                   <?php endif; ?>
-                  <td class="num"><input type="number" min="0" name="fatura[<?= $g['gun'] ?>]" value="<?= $g['fatura_kisi'] ?: '' ?>"
-                      placeholder="=üretim" title="Boş bırakılırsa üretim toplamıyla aynı"
-                      style="width:80px;font-size:16px;text-align:right<?= $kilitli ? ';opacity:.55' : '' ?><?= $g['fatura_kisi'] !== $g['uretim'] ? ';font-weight:700' : '' ?>"<?= $ro ?>></td>
-                  <?php foreach ($sFirmalar as $f):
-                      $fk = (int) ($sKirilim[$g['gun']][$f['kod']] ?? 0);
-                  ?>
-                    <td class="num row-meta"><?= $fk > 0 ? $fk : '—' ?></td>
-                  <?php endforeach; ?>
+                  <?php // Bölüşümlü müşteride fatura kişisi ayrı sütun değil: firma sayılarının
+                        // toplamı zaten odur. Değeri korumak için gizli alanla taşınır. ?>
+                  <?php if ($sFirmalar): ?>
+                    <input type="hidden" name="fatura[<?= $g['gun'] ?>]" value="<?= $g['fatura_kisi'] ?: '' ?>">
+                  <?php else: ?>
+                    <td class="num"><input type="number" min="0" name="fatura[<?= $g['gun'] ?>]" value="<?= $g['fatura_kisi'] ?: '' ?>"
+                        placeholder="=üretim" title="Boş bırakılırsa üretim toplamıyla aynı"
+                        style="width:80px;font-size:16px;text-align:right<?= $kilitli ? ';opacity:.55' : '' ?><?= $g['fatura_kisi'] !== $g['uretim'] ? ';font-weight:700' : '' ?>"<?= $ro ?>></td>
+                  <?php endif; ?>
                   <td class="row-meta">
                     <?php if ($kilitli): ?>
                       🔒 <?= Helpers::e($g['kilit']) ?><?= $g['irsaliye_no'] !== '' ? ' · ' . Helpers::e($g['irsaliye_no']) : '' ?>
