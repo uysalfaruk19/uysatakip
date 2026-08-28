@@ -110,30 +110,26 @@ foreach ($st->fetchAll() as $r) {
 }
 $push = new Push($pdo);
 
-if ($bugunBeklenen && $parasutIrs === null) {
-    printf("  DURDU: Paraşüt'e ulaşılamadı — irsaliyeler doğrulanamadı, fatura KESİLMEDİ.\n");
-    if (!$kuru) {
-        $push->toAdmins('Fatura kesimi DURDU', date('d.m.Y', (int) strtotime($bugun))
-            . ' · Paraşüt\'e ulaşılamadığı için irsaliyeler doğrulanamadı; otomatik fatura kesimi yapılmadı.',
-            ['url' => '/fatura-kes.php'], 'kritik', 'fatura_oto_durdu:' . $bugun);
+// fable-101 (Ömer, 28 Ağu): "faturayı ayın son günü kes BOMİ'ye de, DİĞER AYA SEKMESİN, tutar
+// sabit." Eskiden Kapı 2 bir irsaliye eksikse TÜM scripti durduruyordu → 31'inde bir irsaliye
+// takılsa aylık/sabit (Marmara, BOMİ personel — günlük irsaliyeyle ALAKASIZ) de kesilmeyip
+// EYLÜLE SARKARDI. Artık: eksik irsaliyeli müşterinin YALNIZ İRSALİYE faturası atlanır;
+// aylık/sabit her hâlde kesilir (onların doğrulaması ayrı — bölüşüm hedefi / sabit tutar).
+$parasutUlasilamadi = ($bugunBeklenen && $parasutIrs === null);
+$irsEksikSet = [];   // cid => ad (irsaliye faturası kesilmeyecek müşteriler)
+if ($parasutUlasilamadi) {
+    $irsEksikSet = $bugunBeklenen;   // hiçbiri doğrulanamadı → irsaliye kolu komple atlanır
+    printf("  UYARI: Paraşüt'e ulaşılamadı — İRSALİYE faturaları atlanır; aylık/sabit devam eder.\n");
+} else {
+    foreach ($bugunBeklenen as $cid => $ad) {
+        if (!isset($parasutIrs[$cid])) {
+            $irsEksikSet[$cid] = $ad;
+        }
     }
-    exit(2);
-}
-$irsEksik = [];
-foreach ($bugunBeklenen as $cid => $ad) {
-    if (!isset($parasutIrs[$cid])) {
-        $irsEksik[] = $ad;
+    if ($irsEksikSet) {
+        printf("  UYARI: bugünün irsaliyesi eksik (%s) — bu müşterilerin İRSALİYE faturası atlanır; aylık/sabit devam.\n",
+            implode(', ', $irsEksikSet));
     }
-}
-if ($irsEksik) {
-    printf("  DURDU: bugünün irsaliyesi eksik (%s) — fatura KESİLMEDİ.\n", implode(', ', $irsEksik));
-    if (!$kuru) {
-        $push->toAdmins('Fatura kesimi DURDU: eksik irsaliye',
-            date('d.m.Y', (int) strtotime($bugun)) . ' · Şu müşterilerin bugünkü irsaliyesi Paraşüt\'te yok: '
-            . implode(' · ', $irsEksik) . '. Önce irsaliyeleri kesin, sonra faturayı elle kesin.',
-            ['url' => '/bugun.php'], 'kritik', 'fatura_oto_durdu:' . $bugun);
-    }
-    exit(2);
 }
 
 // ── Adaylar ──────────────────────────────────────────────────────────────────
@@ -158,6 +154,14 @@ foreach ($repo->faturaAdaylari($bas, $son) as $a) {
     if (empty($a['secilebilir'])) {
         $atlanan[] = ['ad' => $ad . ($tip === 'sabit' ? ' · ' . $a['kalem_ad'] : ''),
             'sebep' => (string) ($a['sebep'] ?: 'kesilemez')];
+        continue;
+    }
+    // fable-101: irsaliyesi bugün eksik olan müşterinin YALNIZ irsaliye faturası atlanır;
+    // aylık/sabit bu kontrole takılmaz (sekmesin).
+    if ($tip === 'irsaliye' && isset($irsEksikSet[$cid])) {
+        $atlanan[] = ['ad' => $ad, 'sebep' => $parasutUlasilamadi
+            ? 'Paraşüt\'e ulaşılamadı — irsaliye doğrulanamadı'
+            : 'bugünün irsaliyesi Paraşüt\'te yok'];
         continue;
     }
 
