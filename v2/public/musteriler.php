@@ -180,10 +180,24 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             // Bölüşümlü müşteride (CANTAŞ/Marmara) ekranda TEK giriş vardır ve o FATURA sayısıdır
             // (Ömer: "üretim toplamı 50'yi istemiyorum, fatura istiyorum"). Öğün kutuları
             // gönderilmez → üretim kaydı KORUNUR; yalnız faturalanacak tutar güncellenir.
+            // Bölüşümlü müşteride giriş FİRMA BAZINDA gelir: firma[kod][gun].
+            $firmaKodlari = array_column($repo->altFirmalar($pid), 'kod');
+            $firmaPost = (array) ($_POST['firma'] ?? []);
+            $firmaGunleri = [];
+            foreach ($firmaPost as $kod => $gunler) {
+                foreach ((array) $gunler as $gk => $_) {
+                    $firmaGunleri[(string) $gk] = true;
+                }
+            }
             $gunAnahtarlari = array_unique(array_merge(
                 array_keys((array) ($_POST['ogle'] ?? [])),
-                array_keys((array) ($_POST['fatura'] ?? []))
+                array_keys((array) ($_POST['fatura'] ?? [])),
+                array_keys($firmaGunleri)
             ));
+            $mevcutKir = $firmaKodlari
+                ? $repo->altFirmaGunGun($pid, $sAy . '-01', date('Y-m-t', strtotime($sAy . '-01')))
+                : [];
+            $kirilimYazilan = 0;
             foreach ($gunAnahtarlari as $gun) {
                 $gun = (string) $gun;
                 $m = $mevcut[$gun] ?? null;
@@ -195,6 +209,16 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     continue;   // belgesi kesilmiş gün DEĞİŞTİRİLMEZ (sessiz de geçilmez, sayılır)
                 }
                 $fatRaw = trim((string) ($_POST['fatura'][$gun] ?? ''));
+                // ── Firma bazlı giriş (bölüşümlü müşteri) ──
+                $kirGiris = null;
+                if ($firmaKodlari && $firmaGunleri) {
+                    $kirGiris = [];
+                    foreach ($firmaKodlari as $kod) {
+                        $v = trim((string) ($firmaPost[$kod][$gun] ?? ''));
+                        $kirGiris[$kod] = $v === '' ? 0 : max(0, (int) $v);
+                    }
+                    $fatRaw = (string) array_sum($kirGiris);   // toplam = faturalanacak kişi
+                }
                 if (!isset($_POST['ogle'][$gun])) {
                     // Yalnız fatura sayısı geldi: üretim olduğu gibi kalır. Gün boşsa (hiç üretim
                     // kaydı yok) girilen sayı üretim olarak da yazılır — o gün gerçekten o kadar
@@ -242,12 +266,35 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                         'uysa', null, null, $tutar !== null ? max(0.0, $tutar) : null);
                 }
                 $yazilan++;
+
+                // fable-059 + Ömer (28 Ağu): elle kırılım YALNIZ değiştirilen güne yazılır.
+                // Her güne yazılsaydı desen (hafta içi sabit kota) devre dışı kalır ve desen
+                // ileride değişince geçmiş kendiliğinden düzelmezdi.
+                if ($kirGiris !== null) {
+                    $eski = [];
+                    foreach ($firmaKodlari as $kod) {
+                        $eski[$kod] = (int) ($mevcutKir[$gun][$kod] ?? 0);
+                    }
+                    if ($kirGiris !== $eski) {
+                        try {
+                            $repo->saveGunAltFirma($pid, $gun, $kirGiris);
+                            $kirilimYazilan++;
+                        } catch (\Throwable $e) {
+                            // Kalkan: kırılım toplamı gün hedefiyle tutmuyorsa yazılmaz.
+                            error_log('[UYSA v2 sayim] kırılım yazılamadı (' . $gun . '): ' . $e->getMessage());
+                        }
+                    }
+                }
             }
             uysa_audit('sayim_kaydet', $u['username'], (string) $pid,
-                json_encode(['ay' => $sAy, 'gun' => $yazilan, 'kilitli' => $kilitli], JSON_UNESCAPED_UNICODE), client_ip());
+                json_encode(['ay' => $sAy, 'gun' => $yazilan, 'kilitli' => $kilitli,
+                    'kirilim' => $kirilimYazilan], JSON_UNESCAPED_UNICODE), client_ip());
             $flash = $yazilan > 0
                 ? $yazilan . ' gün güncellendi — fatura bu sayılardan kesilir.'
                 : 'Değişiklik yok.';
+            if ($kirilimYazilan > 0) {
+                $flash .= ' ' . $kirilimYazilan . ' günde firma kırılımı elle kaydedildi.';
+            }
             if ($kilitli > 0) {
                 $flash .= ' ' . $kilitli . ' gün belgesi kesildiği için değiştirilmedi.';
             }
@@ -660,7 +707,7 @@ if ($sayimMusteri):
                   <th class="num" style="white-space:nowrap" title="<?= Helpers::e((string) $f['ad']) ?> — desenden hesaplanır, fatura bu kırılımdan kesilir"><?= Helpers::e($fKisa) ?></th>
                 <?php endforeach; ?>
                 <?php if ($sFirmalar): ?>
-                  <th class="num">Fatura sayısı</th>
+                  <th class="num">Toplam</th>
                 <?php else: ?>
                   <th class="num">Öğle</th>
                   <?php if ($ogunVar['aksam']): ?><th class="num">Akşam</th><?php endif; ?>
@@ -677,11 +724,19 @@ if ($sayimMusteri):
               ?>
                 <tr<?= $g['haftasonu'] ? ' style="background:var(--bg-soft)"' : '' ?>>
                   <td><?= sprintf('%02d', $g['gun_no']) ?> <span class="row-meta"><?= $g['gun_adi'] ?></span></td>
+                  <?php // Ömer (28 Ağu): "boş olan günlerde her birine ayrı ayrı da düzeltme
+                        // yapabileyim — aynı gün 3'ü çalışmadığı oluyor, ha tatillerde."
+                        // (Temmuz'da 15'inde yalnız İç-Dış 36 kişiydi.) Firma hücreleri artık
+                        // GİRİŞ alanı: dokunulmazsa desen sürer, değiştirilirse o güne ELLE
+                        // kırılım yazılır ve deseni ezer (fable-059). ?>
                   <?php $kirToplam = 0; foreach ($sFirmalar as $f):
                       $fk = (int) ($sKirilim[$g['gun']][$f['kod']] ?? 0);
                       $kirToplam += $fk;
                   ?>
-                    <td class="num" style="font-size:15px<?= $fk > 0 ? ';font-weight:700' : ';color:var(--muted)' ?>"><?= $fk > 0 ? $fk : '—' ?></td>
+                    <td class="num"><input type="number" min="0"
+                        name="firma[<?= Helpers::e((string) $f['kod']) ?>][<?= $g['gun'] ?>]"
+                        value="<?= $fk > 0 ? $fk : '' ?>" placeholder="—"
+                        style="width:66px;font-size:16px;text-align:right;font-weight:700<?= $kilitli ? ';opacity:.55' : '' ?>"<?= $ro ?>></td>
                   <?php endforeach; ?>
                   <?php if ($sFirmalar): ?>
                     <?php // Ömer (28 Ağu): "üretim toplamı 50'yi istemiyorum, FATURA istiyorum —
@@ -689,9 +744,7 @@ if ($sayimMusteri):
                           // firmanın fatura sayısı var. Bu yüzden bölüşümlü müşteride TEK giriş
                           // vardır ve o FATURA sayısıdır; firma kırılımı ondan doğar.
                           // Üretim (persons) kaydı korunur — kişi başı gıda maliyeti ona bölünüyor. ?>
-                    <td class="num"><input type="number" min="0" name="fatura[<?= $g['gun'] ?>]" value="<?= $g['fatura_kisi'] ?: '' ?>"
-                        title="Faturalanacak kişi — firma kırılımı bundan hesaplanır"
-                        style="width:80px;font-size:16px;text-align:right<?= $kilitli ? ';opacity:.55' : '' ?>"<?= $ro ?>></td>
+                    <td class="num row-meta" title="Firma sayılarının toplamı — faturalanacak kişi"><?= $kirToplam > 0 ? $kirToplam : '—' ?></td>
                   <?php else: ?>
                     <td class="num"><input type="number" min="0" name="ogle[<?= $g['gun'] ?>]" value="<?= $g['ogle'] ?: '' ?>" style="<?= $st ?>"<?= $ro ?>></td>
                     <?php if ($ogunVar['aksam']): ?>
