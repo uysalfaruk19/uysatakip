@@ -616,7 +616,7 @@ if ($sayimMusteri):
                 <?php if ($ogunVar['kumanya']): ?><th class="num">Kumanya</th><?php endif; ?>
                 <th class="num">Fatura kişisi</th>
                 <?php foreach ($sFirmalar as $f): ?>
-                  <th class="num" title="Desenden hesaplanır — fatura bu kırılımdan kesilir"><?= Helpers::e(mb_substr((string) $f['ad'], 0, 12)) ?></th>
+                  <th class="num" style="white-space:nowrap" title="Desenden hesaplanır — fatura bu kırılımdan kesilir"><?= Helpers::e((string) $f['ad']) ?></th>
                 <?php endforeach; ?>
                 <th>Durum</th>
               </tr></thead>
