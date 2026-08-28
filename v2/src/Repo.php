@@ -5375,6 +5375,57 @@ final class Repo
         return $st->fetchAll();
     }
 
+    /**
+     * fable-102 (Hikari fiyatErozyonu deseninden — Ömer 28 Ağu): tedarikçi faturalarındaki
+     * ürün birim fiyatlarının son N ayda ne kadar zamlandığını çıkarır. Kaynak `gider_kalem`
+     * (Paraşüt e-fatura satırları — ürün · miktar · birim · birim_fiyat). Mail/EDM kanalı satır
+     * içermez (yalnız toplam), o yüzden bu kalem-bazlı erozyon Paraşüt kanalını kapsar.
+     *
+     * Her ürün için pencere içi MİN fiyat ile SON fiyatı kıyaslar; artış eşiği aşarsa listeler.
+     * Maliyet artışını fatura toplamına bakmadan KALEM bazında önceden görmek için.
+     * @return list<array{urun:string,birim:string,min:float,son:float,artis:float,son_gun:string,adet:int}>
+     */
+    public function fiyatErozyonu(int $ay = 3, float $esik = 15.0): array
+    {
+        $from = date('Y-m-d', (int) strtotime("-{$ay} months"));
+        // Ürün adı normalize edilmeden gruplanır (Paraşüt ürün adı tutarlı gelir). tx_date için
+        // transactions'a join — gider_kalem'de tarih yok, tx üzerinden.
+        $st = $this->pdo->prepare(
+            "SELECT gk.urun, gk.birim,
+                    (SELECT gk2.birim_fiyat FROM gider_kalem gk2 JOIN transactions t2 ON t2.id=gk2.tx_id
+                      WHERE gk2.urun = gk.urun AND t2.tx_date >= ? AND gk2.birim_fiyat > 0
+                      ORDER BY t2.tx_date DESC, gk2.id DESC LIMIT 1) AS son,
+                    (SELECT MIN(gk3.birim_fiyat) FROM gider_kalem gk3 JOIN transactions t3 ON t3.id=gk3.tx_id
+                      WHERE gk3.urun = gk.urun AND t3.tx_date >= ? AND gk3.birim_fiyat > 0) AS minf,
+                    (SELECT MAX(t4.tx_date) FROM gider_kalem gk4 JOIN transactions t4 ON t4.id=gk4.tx_id
+                      WHERE gk4.urun = gk.urun AND t4.tx_date >= ?) AS son_gun,
+                    COUNT(*) AS adet
+               FROM gider_kalem gk JOIN transactions t ON t.id = gk.tx_id
+              WHERE t.tx_date >= ? AND gk.birim_fiyat > 0
+              GROUP BY gk.urun, gk.birim"
+        );
+        $st->execute([$from, $from, $from, $from]);
+        $out = [];
+        foreach ($st->fetchAll() as $r) {
+            $min = (float) $r['minf'];
+            $son = (float) $r['son'];
+            if ($min <= 0 || $son <= 0 || (int) $r['adet'] < 2) {
+                continue;   // tek alım = kıyas yok
+            }
+            $artis = ($son - $min) / $min * 100;
+            if ($artis < $esik) {
+                continue;
+            }
+            $out[] = [
+                'urun' => (string) $r['urun'], 'birim' => (string) $r['birim'],
+                'min' => round($min, 2), 'son' => round($son, 2), 'artis' => round($artis, 1),
+                'son_gun' => (string) $r['son_gun'], 'adet' => (int) $r['adet'],
+            ];
+        }
+        usort($out, static fn(array $a, array $b): int => $b['artis'] <=> $a['artis']);
+        return $out;
+    }
+
     /** Porsiyon maliyeti = Σ(gram/1000 × birim fiyat). */
     public function recipeCost(int $recipeId): float
     {
