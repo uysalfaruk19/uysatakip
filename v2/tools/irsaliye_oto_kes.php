@@ -147,8 +147,8 @@ if ($atlanan) {
 
 $push = new Push($pdo);
 $baslik = $basarisiz || $atlanan
-    ? 'Otomatik irsaliye: ' . count($basarili) . ' kesildi, ' . (count($basarisiz) + count($atlanan)) . ' sorunlu'
-    : 'Otomatik irsaliye: ' . count($basarili) . ' kesildi';
+    ? 'İrsaliyeler kesildi (' . count($basarili) . ') · ' . (count($basarisiz) + count($atlanan)) . ' sorunlu'
+    : 'İrsaliyeler kesildi (' . count($basarili) . ')';
 $r = $push->toAdmins($baslik, date('d.m.Y', (int) strtotime($gun)) . ' · ' . implode(' | ', $parca),
     ['url' => '/bugun.php'], 'kritik', 'irsaliye_oto:' . $gun);
 printf("  Bildirim: %d cihaz · %d gönderildi\n", (int) $r['devices'], (int) $r['sent']);

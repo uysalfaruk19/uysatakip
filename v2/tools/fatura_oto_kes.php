@@ -265,7 +265,14 @@ if ($onBildirim) {
             . implode(' · ', array_map(static fn(array $x): string => $x['ad'] . ' (' . $x['sebep'] . ')', $atlanan));
     }
     $govde .= ' — 13:30\'da otomatik kesilecek. İstemiyorsanız Fatura ekranından otomatik kesimi kapatın.';
-    $r = $push->toAdmins('13:30\'da ' . count($kesilecek) . ' fatura kesilecek', $govde,
+    // fable-108 (Ömer, 31 Ağu): kesilecek fatura YOKSA ön bildirim GÖNDERİLMEZ — "0 fatura
+    // kesilecek" bildirimi gürültüdür (31 Ağu'da faturalar elle kesilmişken yine gitmişti).
+    if (!$kesilecek) {
+        echo "  Ön bildirim gönderilmedi (kesilecek fatura yok).
+";
+        exit(0);
+    }
+    $r = $push->toAdmins(count($kesilecek) . ' fatura kesilecek (13:30)', $govde,
         ['url' => '/fatura-kes.php'], 'kritik', 'fatura_on:' . $bugun);
     printf("  Bildirim: %d cihaz · %d gönderildi\n", (int) $r['devices'], (int) $r['sent']);
     exit(0);
@@ -346,8 +353,8 @@ if ($aySonu && !$repo->faturaOtoAcik(3)) {
 }
 
 $baslik = $basarisiz || $atlanan
-    ? 'Otomatik fatura: ' . count($basarili) . ' kesildi, ' . (count($basarisiz) + count($atlanan)) . ' sorunlu'
-    : 'Otomatik fatura: ' . count($basarili) . ' kesildi';
+    ? 'Faturalar kesildi (' . count($basarili) . ') · ' . (count($basarisiz) + count($atlanan)) . ' sorunlu'
+    : 'Faturalar kesildi (' . count($basarili) . ')';
 $r = $push->toAdmins($baslik,
     date('d.m', (int) strtotime($bas)) . '–' . date('d.m.Y', (int) strtotime($son)) . ' · ' . implode(' | ', $parca),
     ['url' => '/fatura-kes.php'], 'kritik', 'fatura_oto:' . $bugun);
