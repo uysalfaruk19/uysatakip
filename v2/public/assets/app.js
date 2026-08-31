@@ -725,4 +725,25 @@
   if (navigator.onLine === false) netBanner(true);
 
   document.addEventListener("DOMContentLoaded", recalc);
+
+  // fable-108: bildirim paneli aç/kapa. Zil tam sayfaya gitmiyor; tekrar basınca kapanır,
+  // dışarı tıklayınca ve ESC ile de kapanır. Ekranı kaplamaz (CSS: sağ üstte dar panel).
+  document.addEventListener("DOMContentLoaded", function () {
+    var zil = document.getElementById("bildirimZil");
+    var panel = document.getElementById("bildirimPanel");
+    if (!zil || !panel) return;
+    function kapat() { panel.hidden = true; zil.setAttribute("aria-expanded", "false"); }
+    zil.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var acik = !panel.hidden;
+      panel.hidden = acik;                                   // tekrar basınca kapanır
+      zil.setAttribute("aria-expanded", acik ? "false" : "true");
+    });
+    document.addEventListener("click", function (e) {
+      if (panel.hidden) return;
+      if (!panel.contains(e.target) && e.target !== zil && !zil.contains(e.target)) kapat();
+    });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") kapat(); });
+  });
 })();

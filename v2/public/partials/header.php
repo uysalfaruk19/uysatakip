@@ -45,14 +45,40 @@ $eyebrow = $eyebrow ?? ($selam . ' ' . ($u['display_name'] ?: $u['username']) . 
         try { $f087Yeni = (new Repo(Db::pdo()))->okunmamisBildirim((int) $u['uid']); }
         catch (\Throwable $e) { $f087Yeni = 0; }   // bildirim sayacı sayfayı ASLA çökertmez
       ?>
-      <a class="icon-btn" href="bildirimler.php" aria-label="Bildirimler" style="position:relative">
-        <i class="bi bi-bell"></i>
-        <?php if ($f087Yeni > 0): ?>
-        <span style="position:absolute;top:-2px;right:-2px;min-width:17px;height:17px;padding:0 4px;
-                     background:var(--red);color:#fff;border-radius:9px;font-size:10.5px;font-weight:700;
-                     line-height:17px;text-align:center"><?= $f087Yeni > 99 ? '99+' : $f087Yeni ?></span>
-        <?php endif; ?>
-      </a>
+      <?php // fable-108 (Ömer, 31 Ağu): "bildirime basınca tüm ekranı kaplıyor, küçült; tekrar
+            // basınca kapansın." Zil artık ayrı sayfaya GİTMİYOR — küçük açılır panel açıyor.
+            // Tam liste hâlâ bildirimler.php'de (paneldeki "Tümünü gör").
+      $f108Liste = [];
+      try { $f108Liste = (new Repo(Db::pdo()))->yoneticiBildirimleri(8); }
+      catch (\Throwable $e) { $f108Liste = []; }   // panel sayfayı ASLA çökertmez
+      ?>
+      <div class="bildirim-sarmal">
+        <button type="button" class="icon-btn" id="bildirimZil" aria-label="Bildirimler"
+                aria-expanded="false" aria-controls="bildirimPanel">
+          <i class="bi bi-bell"></i>
+          <?php if ($f087Yeni > 0): ?>
+          <span class="bildirim-rozet"><?= $f087Yeni > 99 ? '99+' : $f087Yeni ?></span>
+          <?php endif; ?>
+        </button>
+        <div class="bildirim-panel" id="bildirimPanel" hidden>
+          <div class="bildirim-panel-bas">
+            <strong>Bildirimler</strong>
+            <?php if ($f087Yeni > 0): ?><span class="bildirim-yeni"><?= $f087Yeni ?> yeni</span><?php endif; ?>
+          </div>
+          <?php if (!$f108Liste): ?>
+            <div class="bildirim-bos">Bildirim yok</div>
+          <?php else: foreach ($f108Liste as $b): ?>
+            <div class="bildirim-satir">
+              <div class="bildirim-baslik"><?= Helpers::e((string) ($b['title'] ?? '')) ?></div>
+              <?php if (!empty($b['body'])): ?>
+              <div class="bildirim-govde"><?= Helpers::e(mb_substr((string) $b['body'], 0, 110)) ?></div>
+              <?php endif; ?>
+              <div class="bildirim-zaman"><?= Helpers::e(date('d.m H:i', (int) strtotime((string) ($b['created_at'] ?? 'now')))) ?></div>
+            </div>
+          <?php endforeach; endif; ?>
+          <a class="bildirim-tumu" href="bildirimler.php">Tümünü gör</a>
+        </div>
+      </div>
       <?php endif; ?>
       <a class="icon-btn" href="logout.php" aria-label="Çıkış"><i class="bi bi-box-arrow-right"></i></a>
     </div>
