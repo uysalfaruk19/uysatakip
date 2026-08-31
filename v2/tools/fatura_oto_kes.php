@@ -268,8 +268,7 @@ if ($onBildirim) {
     // fable-108 (Ömer, 31 Ağu): kesilecek fatura YOKSA ön bildirim GÖNDERİLMEZ — "0 fatura
     // kesilecek" bildirimi gürültüdür (31 Ağu'da faturalar elle kesilmişken yine gitmişti).
     if (!$kesilecek) {
-        echo "  Ön bildirim gönderilmedi (kesilecek fatura yok).
-";
+        echo '  Ön bildirim gönderilmedi (kesilecek fatura yok).' . PHP_EOL;
         exit(0);
     }
     $r = $push->toAdmins(count($kesilecek) . ' fatura kesilecek (13:30)', $govde,
