@@ -904,6 +904,40 @@ final class ParasutYaz
     }
 
     /** Enjekte edilen ağ katmanını çağır (+ hız sınırı için istekler arası küçük bekleme). */
+    /**
+     * fable-107: Fatura kalemi için ÜRÜN bulur, yoksa oluşturur. Paraşüt ürünsüz kalem kabul
+     * etmiyor ("Ürün/hizmet doldurulmalı", HTTP 422 — 31 Ağu CANTAŞ kesiminde çıktı) ve ürün
+     * bağlıysa faturaya ÜRÜN ADINI basıyor. Dolayısıyla kalem adının faturada görünmesi için
+     * o adda bir ürün gerekiyor. Ad mevcut desene uyar: "ÖĞLEN YEMEK BEDELİ", "KUMANYA BEDELİ".
+     * @return string ürün id (bulunamaz/oluşturulamazsa boş)
+     */
+    public function urunBulVeyaOlustur(string $ad, float $liste = 0.0): string
+    {
+        $ad = trim($ad);
+        if ($ad === '') {
+            return '';
+        }
+        try {
+            $mevcut = Parasut::get('products', ['filter[name]' => $ad, 'page[size]' => 25]);
+            foreach (($mevcut['data'] ?? []) as $pr) {
+                if (mb_strtoupper(trim((string) ($pr['attributes']['name'] ?? '')), 'UTF-8') === mb_strtoupper($ad, 'UTF-8')) {
+                    return (string) $pr['id'];
+                }
+            }
+        } catch (\Throwable $e) {
+            // aramada hata -> oluşturmayı dene
+        }
+        $govde = ['data' => ['type' => 'products', 'attributes' => [
+            'name' => $ad, 'unit' => 'Adet', 'vat_rate' => $this->faturaKdvOrani(),
+            'list_price' => $liste, 'currency' => 'TRL',
+        ]]];
+        $r = $this->cagir('POST', '/products', $govde);
+        if ($r['net'] === 'ok' && $r['status'] >= 200 && $r['status'] < 300) {
+            return (string) ($r['data']['data']['id'] ?? '');
+        }
+        return '';
+    }
+
     private function cagir(string $method, string $path, ?array $body): array
     {
         $r = ($this->http)($method, $path, $body);
@@ -1410,7 +1444,7 @@ final class ParasutYaz
             if ($mik <= 0 || $brm <= 0) {
                 continue;
             }
-            $detaylar[] = [
+            $ekDetay = [
                 'type'       => 'sales_invoice_details',
                 'attributes' => [
                     'quantity'    => $mik,
@@ -1419,6 +1453,11 @@ final class ParasutYaz
                     'description' => trim((string) ($ek['ad'] ?? 'Ek kalem')),
                 ],
             ];
+            $ekUrun = trim((string) ($ek['urun_id'] ?? ''));
+            if ($ekUrun !== '') {
+                $ekDetay['relationships'] = ['product' => ['data' => ['id' => $ekUrun, 'type' => 'products']]];
+            }
+            $detaylar[] = $ekDetay;
         }
         return ['data' => [
             'type'       => 'sales_invoices',
@@ -1678,7 +1717,8 @@ final class ParasutYaz
         foreach ((array) ($part['ek_kalemler'] ?? []) as $ek) {
             if ((float) ($ek['miktar'] ?? 0) > 0 && (float) ($ek['birim'] ?? 0) > 0) {
                 $ekKalemler[] = ['miktar' => (float) $ek['miktar'], 'birim' => (float) $ek['birim'],
-                    'ad' => trim((string) ($ek['ad'] ?? 'Ek kalem'))];
+                    'ad' => trim((string) ($ek['ad'] ?? 'Ek kalem')),
+                    'urun_id' => trim((string) ($ek['urun_id'] ?? ''))];
             }
         }
         $hesapKalem = [['miktar' => $kisi, 'birim' => $birim]];
