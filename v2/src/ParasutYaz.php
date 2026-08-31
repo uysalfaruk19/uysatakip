@@ -1714,6 +1714,20 @@ final class ParasutYaz
         $vadeGun = (int) ($c['fatura_vade_gun'] ?? 1);
         // fable-107: opsiyonel ek kalemler (Kahvaltı, İkram...) — hesaba ve gövdeye dahil edilir.
         $ekKalemler = [];
+        // fable-107c: müşterinin KAHVALTI birim fiyatı tanımlıysa (CANTAŞ 78) fatura sayısı kadar
+        // "Kahvaltı" kalemi OTOMATİK eklenir — her ay elle eklemek gerekmesin (Ömer: "sabit olacak").
+        $kahvBirim = (float) ($c['kahvalti_birim'] ?? 0);
+        $kahvUrun = trim((string) $this->repo->ayar('urun_kahvalti', ''));
+        if ($kahvBirim > 0 && $kahvUrun !== '' && empty($part['kahvalti_haric'])) {
+            $zatenVar = false;
+            foreach ((array) ($part['ek_kalemler'] ?? []) as $e) {
+                if (mb_stripos((string) ($e['ad'] ?? ''), 'kahvalt') !== false) { $zatenVar = true; break; }
+            }
+            if (!$zatenVar) {
+                $part['ek_kalemler'][] = ['miktar' => $kisi, 'birim' => $kahvBirim,
+                    'ad' => 'Kahvaltı', 'urun_id' => $kahvUrun];
+            }
+        }
         foreach ((array) ($part['ek_kalemler'] ?? []) as $ek) {
             if ((float) ($ek['miktar'] ?? 0) > 0 && (float) ($ek['birim'] ?? 0) > 0) {
                 $ekKalemler[] = ['miktar' => (float) $ek['miktar'], 'birim' => (float) $ek['birim'],
