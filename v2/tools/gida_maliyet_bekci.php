@@ -57,7 +57,8 @@ if ($onceki['kisi_basi'] < 1 || $bu['uretim'] < 1) {
 }
 
 $sapmaYuzde = (int) round((($bu['kisi_basi'] - $onceki['kisi_basi']) / $onceki['kisi_basi']) * 100);
-$esik = 25;   // ±%25'ten fazla sapma = incele
+$esik = 15;   // ±%15'ten fazla sapma = incele (Ömer 31 Ağu: Ağustos %22,9 düştü ve %25 eşiğinin
+         // kıl payı altında kaldığı için uyarı vermeyecekti — eşik düşürüldü)
 
 printf("[%s] gıda bekçi: %s kişi başı %s TL · %s (önceki) %s TL · sapma %+d%%\n",
     date('Y-m-d'), $ay, number_format($bu['kisi_basi'], 2, ',', '.'),
