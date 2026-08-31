@@ -1382,7 +1382,7 @@ final class ParasutYaz
     }
 
     /** Aylık tek-kalem fatura gövdesi (tevkifat YOK, irsaliye bağı YOK). */
-    public function aylikGovde(string $parasutId, string $son, int $adet, float $birim, int $vadeGun, string $etiket = 'Yemek hizmet bedeli'): array
+    public function aylikGovde(string $parasutId, string $son, int $adet, float $birim, int $vadeGun, string $etiket = 'Yemek hizmet bedeli', array $ekKalemler = []): array
     {
         $vat = $this->faturaKdvOrani();
         $vade = date('Y-m-d', strtotime($son . ' +' . max(0, $vadeGun) . ' day'));
@@ -1399,6 +1399,27 @@ final class ParasutYaz
         if ($urun !== '') {
             $detail['relationships'] = ['product' => ['data' => ['id' => $urun, 'type' => 'products']]];
         }
+        $detaylar = [$detail];
+        // fable-107 (Ömer, 31 Ağu): CANTAŞ faturasına KAHVALTI (fatura sayısı kadar × 78) ve
+        // İKRAM (götürü) kalemleri eklenir. Her biri: ['miktar'=>N,'birim'=>X,'ad'=>'Kahvaltı'].
+        // ⚠️ Bu kaleme ÜRÜN BAĞLANMAZ: Paraşüt ürün bağlıysa faturaya ÜRÜN ADINI basıyor ve
+        // gönderilen description görünmüyor (fable-034 dersi). Ürünsüz kalemde 'Kahvaltı' yazar.
+        foreach ($ekKalemler as $ek) {
+            $mik = (float) ($ek['miktar'] ?? 0);
+            $brm = (float) ($ek['birim'] ?? 0);
+            if ($mik <= 0 || $brm <= 0) {
+                continue;
+            }
+            $detaylar[] = [
+                'type'       => 'sales_invoice_details',
+                'attributes' => [
+                    'quantity'    => $mik,
+                    'unit_price'  => $brm,
+                    'vat_rate'    => $vat,
+                    'description' => trim((string) ($ek['ad'] ?? 'Ek kalem')),
+                ],
+            ];
+        }
         return ['data' => [
             'type'       => 'sales_invoices',
             'attributes' => [
@@ -1410,7 +1431,7 @@ final class ParasutYaz
             ],
             'relationships' => [
                 'contact' => ['data' => ['id' => $parasutId, 'type' => 'contacts']],
-                'details' => ['data' => [$detail]],
+                'details' => ['data' => $detaylar],
             ],
         ]];
     }
@@ -1652,18 +1673,33 @@ final class ParasutYaz
         $altAd = trim((string) ($part['ad'] ?? $c['name']));
         $birim = $this->repo->priceFor($customerId, substr($son, 0, 7))['unit_price'];
         $vadeGun = (int) ($c['fatura_vade_gun'] ?? 1);
-        $hesap = self::faturaHesap([['miktar' => $kisi, 'birim' => $birim]], $this->faturaKdvOrani(), null);
+        // fable-107: opsiyonel ek kalemler (Kahvaltı, İkram...) — hesaba ve gövdeye dahil edilir.
+        $ekKalemler = [];
+        foreach ((array) ($part['ek_kalemler'] ?? []) as $ek) {
+            if ((float) ($ek['miktar'] ?? 0) > 0 && (float) ($ek['birim'] ?? 0) > 0) {
+                $ekKalemler[] = ['miktar' => (float) $ek['miktar'], 'birim' => (float) $ek['birim'],
+                    'ad' => trim((string) ($ek['ad'] ?? 'Ek kalem'))];
+            }
+        }
+        $hesapKalem = [['miktar' => $kisi, 'birim' => $birim]];
+        foreach ($ekKalemler as $ek) {
+            $hesapKalem[] = ['miktar' => $ek['miktar'], 'birim' => $ek['birim']];
+        }
+        $hesap = self::faturaHesap($hesapKalem, $this->faturaKdvOrani(), null);
         $actor = (string) ($ctx['actor'] ?? '');
 
         $faturaLogId = $this->repo->faturaLogEkle([
             'customer_id' => $customerId, 'donem_bas' => $bas, 'donem_son' => $son, 'tip' => 'aylik',
             'parasut_contact_id' => $contactId, 'alt_ad' => $altAd,
-            'kalemler' => [['ogun' => 'aylik', 'urun_id' => trim((string) $this->repo->ayar('irsaliye_urun_ogle', '')), 'miktar' => $kisi, 'birim_fiyat' => $birim]],
+            'kalemler' => array_merge(
+                [['ogun' => 'aylik', 'urun_id' => trim((string) $this->repo->ayar('irsaliye_urun_ogle', '')), 'miktar' => $kisi, 'birim_fiyat' => $birim]],
+                array_map(static fn(array $e): array => ['ogun' => $e['ad'], 'urun_id' => '', 'miktar' => $e['miktar'], 'birim_fiyat' => $e['birim']], $ekKalemler)
+            ),
             'toplam_kisi' => $kisi, 'toplam_tutar' => $hesap['net'],
             'durum' => 'bilinmiyor', 'entered_by' => $actor,
         ]);
 
-        $govde = $this->aylikGovde($contactId, $son, $kisi, $birim, $vadeGun, $altAd . ' — yemek hizmet bedeli');
+        $govde = $this->aylikGovde($contactId, $son, $kisi, $birim, $vadeGun, $altAd . ' — yemek hizmet bedeli', $ekKalemler);
         $r = $this->cagir('POST', '/sales_invoices', $govde);
         if ($r['net'] === 'connect') {
             $r = $this->cagir('POST', '/sales_invoices', $govde);
