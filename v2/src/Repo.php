@@ -6737,7 +6737,7 @@ final class Repo
         // torbasına düşüyordu; oysa açıklaması "FİRMA · BELGE" biçiminde. Artık firma buradan
         // çözülür → borç kendi tedarikçisinin altında görünür (sistem bütün olsun).
         $src = (string) ($r['source'] ?? 'manuel');
-        if ($src === 'parasut' || $src === 'gib' || $src === 'mail') {
+        if ($src === 'parasut' || $src === 'gib' || $src === 'mail' || $src === 'ekstre') {
             $d = (string) ($r['description'] ?? '');
             $firma = trim(explode(' · ', $d)[0] ?? '');
             if ($firma !== '') {
